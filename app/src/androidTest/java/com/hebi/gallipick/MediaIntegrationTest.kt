@@ -84,7 +84,9 @@ class MediaIntegrationTest {
         val selected = group.items.first { it.uri == created[0].toString() }
         val keeper = group.items.first { it.uri == created[1].toString() }
         assertTrue(repository.hasSurvivingCopy(group, setOf(selected.uri)))
-        app.contentResolver.delete(Uri.parse(keeper.uri), null, null)
+        val keeperUri = Uri.parse(keeper.uri)
+        assertEquals(1, app.contentResolver.delete(keeperUri, null, null))
+        created.remove(keeperUri)
         assertFalse(repository.hasSurvivingCopy(group, group.items.filterNot { it.uri == keeper.uri }.map { it.uri }.toSet()))
     }
 
