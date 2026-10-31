@@ -14,6 +14,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,7 +41,8 @@ class UiSmokeTest {
 
     private fun saveScreenshot(name: String) {
         val bitmap = compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap()
-        val directory = File(compose.activity.filesDir, "test-screenshots").apply { mkdirs() }
+        val outputPath = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+        val directory = (outputPath?.let(::File) ?: File(compose.activity.filesDir, "test-screenshots")).apply { mkdirs() }
         File(directory, "$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
     }
 }

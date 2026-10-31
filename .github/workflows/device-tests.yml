@@ -41,11 +41,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            gradle connectedDebugAndroidTest --stacktrace --max-workers=2
-            mkdir -p app/build/reports/screenshots
-            adb exec-out run-as com.hebi.gallipick cat files/test-screenshots/home.png > app/build/reports/screenshots/home.png
-            adb exec-out run-as com.hebi.gallipick cat files/test-screenshots/filters.png > app/build/reports/screenshots/filters.png
+          script: gradle connectedDebugAndroidTest --stacktrace --max-workers=2
       - name: Upload device reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,4 +50,4 @@ jobs:
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
-            app/build/reports/screenshots/
+            app/build/outputs/connected_android_test_additional_output/
