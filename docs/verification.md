@@ -36,7 +36,7 @@ gradle clean testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest 
 
 ## 기기 통합 검사
 
-GitHub Actions `Android device tests`가 Android 16/API 36 에뮬레이터에서 다음을 검증하도록 구성했습니다. 첫 실행 결과는 Actions에서 확인합니다.
+GitHub Actions `Android device tests`가 Android 16/API 36 에뮬레이터에서 다음을 검증했습니다. **통합 검사 4개, 실패/오류 0개**입니다.
 
 1. 실제 MediaStore에 동일 PNG 두 개를 기록한 후 WorkManager 중복 검사.
 2. 남길 사본을 외부 삭제했을 때 생존 사본 검증 실패.
@@ -45,6 +45,19 @@ GitHub Actions `Android device tests`가 Android 16/API 36 에뮬레이터에서
 5. 홈·파일·필터·중복·정리·설정 화면 진입, 홈/필터 화면 캡처.
 
 PARTIAL 테스트는 ViewModel의 표시 차단을 검증합니다. Android 사진 선택창을 통한 실제 권한 변경을 자동 조작하는 테스트는 아닙니다.
+
+최종 검증 소스 커밋은 `b0e8186806849d6fc1156b52e615be5f21ed983c`입니다.
+
+- [GitHub 빌드·단위 검사·lint 통과](https://github.com/hebi10/GalliPick/actions/runs/41196795075)
+- [Android 16 통합 검사 통과](https://github.com/hebi10/GalliPick/actions/runs/41196795024)
+- 홈·필터의 실제 화면 캡처를 내려받아 간격·정렬·입력란·고정 버튼을 확인했습니다. 캡처는 기기 검사 보고서 artifact에 포함됩니다.
+- 테스트 후처리의 동일 파일 이중 삭제를 수정했습니다. 화면 캡처는 Android 테스트의 additional output 경로로 수집합니다.
+
+최종 전달 파일: `GalliPick-v0.1.0-debug.apk`, 62,475,273 bytes.
+
+```text
+SHA-256: 2dd0d4a0ef85505a234dc9286e3221ea81e8104487c9cd225d54f87075e2f55b
+```
 
 ## 아직 확인하지 않은 범위
 

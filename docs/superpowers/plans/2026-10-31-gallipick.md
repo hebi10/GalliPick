@@ -25,25 +25,25 @@
 
 ## Task 1: 필터·중복 정책
 Files: domain/MediaQuery.kt, DuplicatePolicy.kt, MediaHasher.kt, app/src/test.
-- [ ] 교집합 필터, 경계 날짜, 큰 용량, 정렬 tie, 해시 알려진 값, 보존 정책 테스트 작성.
-- [ ] MediaQuery.apply, DuplicatePolicy, MediaHasher.sha256 구현.
-- [ ] testDebugUnitTest 통과.
+- [x] 교집합 필터, 경계 날짜, 큰 용량, 정렬 tie, 해시 알려진 값, 보존 정책 테스트 작성.
+- [x] MediaQuery.apply, DuplicatePolicy, MediaHasher.sha256 구현.
+- [x] testDebugUnitTest 통과.
 
 ## Task 2: 미디어·분석 저장소
 Files: data/*.kt.
-- [ ] 접근 가능한 MediaStore 사진/영상과 휴지통 조회, Room 캐시/보호 테이블 구현.
-- [ ] 중복 후보 파일 해시 검사, pause/resume, 캐시 무효화 구현.
-- [ ] revalidate / revalidateForRestore로 최종 요청 전 상태 검증.
-- [ ] 빌드·lint 및 검사 상태 회복 시나리오 검증.
+- [x] 접근 가능한 MediaStore 사진/영상과 휴지통 조회, Room 캐시/보호 테이블 구현.
+- [x] 중복 후보 파일 해시 검사, pause/resume, 캐시 무효화 구현.
+- [x] revalidate / revalidateForRestore로 최종 요청 전 상태 검증.
+- [x] 빌드·lint·캐시/보호 정책 검증. 백그라운드 중단 실기기 항목 기록.
 
 ## Task 3: 화면과 시스템 작업
 Files: ui/*.kt, AppViewModel.kt, AppSettings.kt, MainActivity.kt.
-- [ ] 홈/파일/중복/정리/설정 및 휴지통, 필터, 프리셋, 상세 미리보기 구현.
-- [ ] Android 버전별 권한/일부 접근 UI, 휴지통 승인/취소/복원 연결.
-- [ ] 임의 데이터 없는 실제 상태와 읽기 실패 피드백 확인.
+- [x] 홈/파일/중복/정리/설정 및 휴지통, 필터, 프리셋, 상세 미리보기 구현.
+- [x] Android 버전별 권한/일부 접근 UI, 휴지통 승인/취소/복원 연결.
+- [x] 임의 데이터 없는 실제 상태와 읽기 실패 피드백 확인.
 
 ## Task 4: 통합·전달
 Files: build files, .github/workflows/android.yml, README.md, docs/verification.md.
-- [ ] Gradle wrapper, SDK 설정, JVM 테스트·lint·APK 빌드.
-- [ ] 독립 코드 검토와 중대한 문제 수정.
-- [ ] 저장소 반영 및 Actions 검증 결과 확인. 실기기 미검증 범위를 기록.
+- [x] Gradle wrapper, SDK 설정, JVM 테스트·lint·APK 빌드.
+- [x] 독립 코드 검토와 중대한 문제 수정.
+- [x] 저장소 반영 및 Actions 검증 결과 확인. 실기기 미검증 범위를 기록.
