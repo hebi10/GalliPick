@@ -1,6 +1,6 @@
 # GalliPick Cute Redesign Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** GalliPick에 픽이 마스코트와 생성 아이콘을 적용하고 모든 화면을 둥근 민트·크림 콘셉트로 통일한다.
 
@@ -40,11 +40,11 @@
 - Consumes: 기존 `Destination`, `GalliPickTheme`, `ActionButton`, `IconAction`, `EmptyState` 호출 계약.
 - Produces: 다섯 목적지와 의미별 PNG 리소스, 공유 색·모서리·버튼·탭 스타일. 기존 화면 호출은 동작을 유지한다.
 
-- [ ] 같은 콘셉트의 투명 PNG를 생성·추출하고 리소스 이름을 위 계약에 맞춘다.
-- [ ] 원래 색을 보존하는 명시적 크기 이미지 표시와 Material Rounded 조작 아이콘을 적용한다.
-- [ ] 공유 테마·헤더·버튼·탭·알림·빈 상태를 변경하고 선택 의미와 disabled 동작을 보존한다.
-- [ ] 민트 배경 adaptive 런처에 픽이를 배치하고 원형/둥근 사각 마스크, 투명 가장자리 및 탐색 아이콘 크기를 확인한다.
-- [ ] 텍스트 대비 계산과 실제 선택/비활성 상태를 확인한다. Muted의 4.5:1 미달 조합을 활성 본문에 사용하지 않는다.
+- [x] 같은 콘셉트의 투명 PNG를 생성·추출하고 리소스 이름을 위 계약에 맞춘다.
+- [x] 원래 색을 보존하는 명시적 크기 이미지 표시와 Material Rounded 조작 아이콘을 적용한다.
+- [x] 공유 테마·헤더·버튼·탭·알림·빈 상태를 변경하고 선택 의미와 disabled 동작을 보존한다.
+- [x] 민트 배경 adaptive 런처에 픽이를 배치하고 원형/둥근 사각 마스크, 투명 가장자리 및 탐색 아이콘 크기를 확인한다.
+- [x] 텍스트 대비 계산과 실제 선택/비활성 상태를 확인한다. Muted의 4.5:1 미달 조합을 활성 본문에 사용하지 않는다.
 
 ### Task 2: 화면 전체에 콘셉트 적용
 
@@ -54,10 +54,10 @@
 - Consumes: Task 1의 공통 테마·아이콘 자산과 기존 화면 입력/콜백.
 - Produces: 기능과 데이터 계약이 같은 홈·파일·중복·정리·설정·휴지통·필터·상세 화면.
 
-- [ ] 홈의 픽이/통계/정리 시작 카드를 구성하고 권한·일부 접근·로컬 분석 안내를 유지한다.
-- [ ] 목록·미리보기·상세·선택 배지·중복 그룹·휴지통에 둥근 형태와 일관된 색을 적용한다.
-- [ ] 필터 입력·칩·드롭다운·대화상자와 설정/보호 폴더 카드를 같은 콘셉트로 마무리한다.
-- [ ] 긴 한글, 빈 데이터, 일부 접근, 선택/보호/즐겨찾기 상태와 넓은 화면 스크롤을 검토한다.
+- [x] 홈의 픽이/통계/정리 시작 카드를 구성하고 권한·일부 접근·로컬 분석 안내를 유지한다.
+- [x] 목록·미리보기·상세·선택 배지·중복 그룹·휴지통에 둥근 형태와 일관된 색을 적용한다.
+- [x] 필터 입력·칩·드롭다운·대화상자와 설정/보호 폴더 카드를 같은 콘셉트로 마무리한다.
+- [x] 긴 한글·빈 상태·선택 의미를 캡처/코드로 검토한다. 일부 접근·보호·즐겨찾기·넓은 화면 분기 코드를 보존하며 실제 폴더블 검증은 별도 항목으로 남긴다.
 
 ### Task 3: 통합 검증과 전달
 
@@ -67,9 +67,9 @@
 - Consumes: 통합된 UI와 자산. 기존 테스트의 의미와 보호 정책은 변경하지 않는다.
 - Produces: 이번 시각 변경에 대한 빌드·회귀 결과 및 실제 화면 검토 증거.
 
-- [ ] `./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --max-workers=2` 실행. 기존 JVM 회귀 38개 실패/오류 0, lint 오류 0, debug 앱/기기 테스트 APK 빌드 성공 확인.
-- [ ] Android 16/API 36에서 기존 통합 검사 4개 실행: 실제 MediaStore 중복 검사, 생존 사본 외부 삭제 차단, 보호 설정 유지/후보 제외, PARTIAL 접근 재검증 중 목록 숨김.
-- [ ] UI smoke로 홈·파일·필터·중복·정리·설정 진입 확인, 홈/필터 캡처 확인. 라벨과 보호/휴지통 동작을 시각 변경 때문에 약화하지 않는다.
-- [ ] 캡처 및 런처에서 텍스트 대비, 선택/비활성 상태, 긴 한글, PNG 투명 가장자리, adaptive 마스크와 아이콘 구별을 검토한다.
-- [ ] `git diff --check`와 변경 범위 검토. 이번 실행 결과만 기록하고 기존 실기기 미검증 범위는 유지한다.
-- [ ] 검토 의견을 반영하고 최종 APK 및 변경 내용을 전달한다.
+- [x] `./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --max-workers=2` 실행. 기존 JVM 회귀 38개 실패/오류 0, lint 오류 0, debug 앱/기기 테스트 APK 빌드 성공 확인.
+- [x] Android 16/API 36에서 기존 통합 검사 4개 실행: 실제 MediaStore 중복 검사, 생존 사본 외부 삭제 차단, 보호 설정 유지/후보 제외, PARTIAL 접근 재검증 중 목록 숨김.
+- [x] UI smoke로 홈·파일·필터·중복·정리·설정 진입 확인, 홈/필터 캡처 확인. 라벨과 보호/휴지통 동작을 시각 변경 때문에 약화하지 않는다.
+- [x] 캡처 및 런처에서 텍스트 대비, 선택/비활성 상태, 긴 한글, PNG 투명 가장자리, adaptive 마스크와 아이콘 구별을 검토한다.
+- [x] `git diff --check`와 변경 범위 검토. 이번 실행 결과만 기록하고 기존 실기기 미검증 범위는 유지한다.
+- [x] 검토 의견을 반영하고 최종 APK 및 변경 내용을 전달한다.
