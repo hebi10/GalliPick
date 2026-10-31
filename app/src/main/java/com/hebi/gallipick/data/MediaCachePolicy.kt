@@ -7,6 +7,10 @@ import com.hebi.gallipick.domain.MediaItem
 internal object MediaCachePolicy {
     private val sha256Pattern = Regex("[0-9a-f]{64}")
 
+    /** Missing epochs include digests written before volume version tracking existed. */
+    fun invalidatedVolumes(previous: Map<String, String>, current: Map<String, String>): Set<String> =
+        current.filter { (volume, version) -> previous[volume] != version }.keys
+
     fun normalizeFolder(path: String): String = path.trim('/').let {
         if (it.isEmpty()) "" else "$it/"
     }
@@ -20,7 +24,26 @@ internal object MediaCachePolicy {
 
     fun sameVersion(previous: MediaItem, current: MediaItem): Boolean =
         current.uri == previous.uri && current.fingerprint == previous.fingerprint &&
-            current.id == previous.id && current.volume == previous.volume && current.kind == previous.kind
+            current.id == previous.id && current.volume == previous.volume && current.kind == previous.kind &&
+            current.volumeVersion == previous.volumeVersion
+
+    /** Provider resets can reuse both an ID and its apparent generation/fingerprint. */
+    suspend fun freshUnchanged(
+        items: List<MediaItem>,
+        cachedVersions: Map<String, String>,
+        currentVersion: (String) -> String,
+        currentItem: suspend (String) -> MediaItem?,
+    ): List<MediaItem> {
+        val originals = items.distinctBy { it.uri }
+        val eligibleVolumes = originals.mapTo(hashSetOf()) { it.volume }.filterTo(hashSetOf()) {
+            cachedVersions[it]?.let { cached -> cached == currentVersion(it) } == true
+        }
+        val fresh = originals.filter { it.volume in eligibleVolumes }.mapNotNull { previous ->
+            currentItem(previous.uri)?.takeIf { sameVersion(previous, it) }
+        }
+        val stableVolumes = eligibleVolumes.filterTo(hashSetOf()) { cachedVersions[it] == currentVersion(it) }
+        return fresh.filter { it.volume in stableVolumes }
+    }
 
     fun duplicateGroups(items: List<MediaItem>, hashes: Map<Pair<String, String>, String?>): List<DuplicateGroup> {
         val validHashes = hashes.filterValues { it?.matches(sha256Pattern) == true }

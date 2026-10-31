@@ -16,9 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -32,30 +31,38 @@ class MediaRepository(context: Context) {
     internal val reader = MediaStoreReader(appContext)
     private val workManager by lazy { WorkManager.getInstance(appContext) }
 
-    private val catalog: Flow<List<MediaItem>> = combine(
-        dao.observeMedia(), dao.observeProtection(), dao.observeFolders(),
-    ) { rows, protectedItems, folders ->
-        val itemUris = protectedItems.mapTo(hashSetOf()) { it.uri }
-        val paths = folders.map { it.path }
-        rows.map { it.item(MediaCachePolicy.isProtected(it.uri, it.relativePath, itemUris, paths)) }
-    }.flowOn(Dispatchers.Default)
+    private val catalog = Coordinator.catalog(database)
 
-    val media: Flow<List<MediaItem>> = catalog.map { rows -> rows.filterNot { it.isTrashed } }
-    val trashed: Flow<List<MediaItem>> = catalog.map { rows -> rows.filter { it.isTrashed } }
-    val protectedFolders: Flow<Set<String>> = dao.observeFolders()
-        .map { folders -> folders.mapTo(hashSetOf()) { it.path } }.flowOn(Dispatchers.Default)
+    val catalogReady: StateFlow<Boolean> = catalog.ready
+    val catalogError: StateFlow<String?> = catalog.error
+    val media: Flow<List<MediaItem>> = catalog.media
+    val trashed: Flow<List<MediaItem>> = catalog.trashed
+    val protectedFolders: Flow<Set<String>> = catalog.protectedFolders
     val scan: Flow<ScanState> = dao.observeScan().map { it?.state() ?: ScanState() }
-    val duplicates: Flow<List<DuplicateGroup>> = combine(media, dao.observeHashes()) { items, hashes ->
-        MediaCachePolicy.duplicateGroups(items, hashes.associate { (it.uri to it.fingerprint) to it.sha256 })
-    }.flowOn(Dispatchers.Default)
+    val duplicates: Flow<List<DuplicateGroup>> = catalog.duplicates
 
     suspend fun refresh() = withContext(Dispatchers.IO) {
         Coordinator.refreshMutex.withLock {
-            // The complete scoped snapshot replaces old visibility, including revoked access.
-            val snapshot = reader.load().map(CachedMedia::from)
-            dao.replaceAccessible(snapshot)
+            catalog.markRefreshing()
+            try {
+                val snapshot = reader.load()
+                val rows = snapshot.items.map(CachedMedia::from)
+                dao.replaceAccessible(rows, snapshot.volumeVersions)
+                // Room invalidation is asynchronous. Wait before reopening a shared replay.
+                catalog.awaitSnapshot(rows, snapshot.volumeVersions)
+                catalog.markReady()
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                // Preserve durable checkpoints and the previous DB transaction for retry,
+                // while preventing stale/revoked rows from reaching any catalog consumer.
+                catalog.markFailed("파일 목록을 확인하지 못했습니다. 접근 권한을 확인하고 다시 시도해 주세요.")
+                throw exception
+            }
         }
     }
+
+    suspend fun verifiedCatalog(): VerifiedCatalog = catalog.snapshot()
 
     fun startScan() = launchControl { queueNewSession(clearFailures = true) }
     fun resumeScan() = launchControl { queueNewSession(clearFailures = false) }
@@ -105,13 +112,19 @@ class MediaRepository(context: Context) {
 
     suspend fun hasSurvivingCopy(group: DuplicateGroup, selectedUris: Set<String>): Boolean =
         withContext(Dispatchers.IO) {
-            freshUnchanged(group.items.filter { it.uri !in selectedUris }).any { !it.isTrashed }
+            for (item in group.items) {
+                if (item.uri in selectedUris || item.volumeVersion.isBlank()) continue
+                val proof = dao.hash(item.uri, item.fingerprint) ?: continue
+                if (proof.sha256 != group.hash || proof.volumeVersion != item.volumeVersion) continue
+                if (freshUnchanged(listOf(item)).any { !it.isTrashed }) return@withContext true
+            }
+            false
         }
 
     private suspend fun freshUnchanged(items: List<MediaItem>): List<MediaItem> =
-        items.distinctBy { it.uri }.mapNotNull { previous ->
-            reader.current(previous.uri)?.takeIf { MediaCachePolicy.sameVersion(previous, it) }
-        }
+        MediaCachePolicy.freshUnchanged(items,
+            dao.allVolumeVersions().associate { it.volume to it.version },
+            reader::volumeVersion, reader::current)
 
     private fun launchControl(action: suspend () -> Unit) {
         Coordinator.scope.launch {
@@ -153,7 +166,8 @@ class MediaRepository(context: Context) {
             if (dao.session()?.token != token) return@withLock
             database.withTransaction {
                 val item = dao.media(hash.uri)
-                if (item != null && !item.isTrashed && item.fingerprint == hash.fingerprint) {
+                if (item != null && !item.isTrashed && item.fingerprint == hash.fingerprint &&
+                    hash.volumeVersion.isNotBlank() && dao.volumeVersion(item.volume) == hash.volumeVersion) {
                     dao.putHash(hash)
                 }
             }
@@ -204,4 +218,12 @@ internal object Coordinator {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val controlMutex = Mutex()
     val refreshMutex = Mutex()
+    @Volatile private var sharedCatalog: SharedMediaCatalog? = null
+
+    fun catalog(database: MediaDatabase): SharedMediaCatalog = sharedCatalog ?: synchronized(this) {
+        sharedCatalog ?: database.mediaDao().let { dao ->
+            SharedMediaCatalog(dao.observeMedia(), dao.observeProtection(), dao.observeFolders(),
+                dao.observeVolumeVersions(), dao.observeHashes(), scope)
+        }.also { sharedCatalog = it }
+    }
 }

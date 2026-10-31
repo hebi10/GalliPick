@@ -25,6 +25,7 @@ data class MediaItem(
     val isFavorite: Boolean = false,
     val isProtected: Boolean = false,
     val isTrashed: Boolean = false,
+    val volumeVersion: String = "",
 ) {
     val pixels: Long get() = width.toLong() * height.toLong()
     val capturedAt: Long get() = dateTakenMs.takeIf { it > 0 } ?: dateAddedMs

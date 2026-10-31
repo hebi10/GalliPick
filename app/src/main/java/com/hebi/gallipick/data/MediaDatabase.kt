@@ -1,6 +1,7 @@
 package com.hebi.gallipick.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -11,6 +12,8 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.ScanPhase
@@ -55,7 +58,15 @@ internal data class CachedMedia(
 
 /** A null digest records a failed read; it can never qualify as a duplicate. */
 @Entity(tableName = "media_hash", primaryKeys = ["uri", "fingerprint"])
-internal data class CachedHash(val uri: String, val fingerprint: String, val sha256: String?)
+internal data class CachedHash(
+    val uri: String,
+    val fingerprint: String,
+    val sha256: String?,
+    @ColumnInfo(defaultValue = "''") val volumeVersion: String = "",
+)
+
+@Entity(tableName = "media_volume_version")
+internal data class MediaVolumeVersion(@PrimaryKey val volume: String, val version: String)
 
 // Protection is deliberately independent of the replaceable media/hash cache.
 @Entity(tableName = "protected_media")
@@ -96,17 +107,38 @@ internal abstract class MediaDao {
     abstract suspend fun deleteMedia()
     @Query("DELETE FROM media_hash WHERE NOT EXISTS (SELECT 1 FROM media_cache AS m WHERE m.uri = media_hash.uri AND m.fingerprint = media_hash.fingerprint AND m.isTrashed = 0)")
     abstract suspend fun pruneHashes()
+    @Query("DELETE FROM media_hash WHERE uri IN (SELECT uri FROM media_cache WHERE volume IN (:volumes))")
+    abstract suspend fun invalidateVolumeHashes(volumes: Set<String>)
+    @Query("SELECT * FROM media_volume_version")
+    abstract fun observeVolumeVersions(): Flow<List<MediaVolumeVersion>>
+    @Query("SELECT * FROM media_volume_version")
+    abstract suspend fun allVolumeVersions(): List<MediaVolumeVersion>
+    @Query("SELECT version FROM media_volume_version WHERE volume = :volume LIMIT 1")
+    abstract suspend fun volumeVersion(volume: String): String?
+    @Query("DELETE FROM media_volume_version")
+    abstract suspend fun deleteVolumeVersions()
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun insertVolumeVersions(versions: List<MediaVolumeVersion>)
+
+    /** Rows, provider epochs, and digest invalidation commit or roll back together. */
     @Transaction
-    open suspend fun replaceAccessible(items: List<CachedMedia>) {
+    open suspend fun replaceAccessible(items: List<CachedMedia>, versions: Map<String, String>) {
+        val previous = allVolumeVersions().associate { it.volume to it.version }
+        val invalidated = MediaCachePolicy.invalidatedVolumes(previous, versions)
+        if (invalidated.isNotEmpty()) invalidateVolumeHashes(invalidated)
         deleteMedia()
         insertMedia(items)
         pruneHashes()
+        deleteVolumeVersions()
+        insertVolumeVersions(versions.map { (volume, version) -> MediaVolumeVersion(volume, version) })
     }
 
     @Query("SELECT * FROM media_hash")
     abstract fun observeHashes(): Flow<List<CachedHash>>
     @Query("SELECT * FROM media_hash")
     abstract suspend fun allHashes(): List<CachedHash>
+    @Query("SELECT * FROM media_hash WHERE uri = :uri AND fingerprint = :fingerprint LIMIT 1")
+    abstract suspend fun hash(uri: String, fingerprint: String): CachedHash?
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun putHash(hash: CachedHash)
     @Query("DELETE FROM media_hash")
@@ -141,18 +173,25 @@ internal abstract class MediaDao {
 
 @Database(
     entities = [CachedMedia::class, CachedHash::class, ProtectedMedia::class,
-        ProtectedFolder::class, ScanSession::class],
-    version = 1,
+        ProtectedFolder::class, ScanSession::class, MediaVolumeVersion::class],
+    version = 2,
     exportSchema = false,
 )
 internal abstract class MediaDatabase : RoomDatabase() {
     abstract fun mediaDao(): MediaDao
 
     companion object {
+        private val migration1To2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS media_volume_version (volume TEXT NOT NULL PRIMARY KEY, version TEXT NOT NULL)")
+                db.execSQL("ALTER TABLE media_hash ADD COLUMN volumeVersion TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         @Volatile private var instance: MediaDatabase? = null
         fun get(context: Context): MediaDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext,
-                MediaDatabase::class.java, "gallipick-local.db").build().also { instance = it }
+                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2).build().also { instance = it }
         }
     }
 }

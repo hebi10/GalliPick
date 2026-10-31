@@ -21,8 +21,10 @@ data class AppUiState(
     val filter: MediaFilter = MediaFilter(),
     val presets: List<FilterPreset> = emptyList(),
     val duplicates: List<DuplicateGroup> = emptyList(),
+    val duplicateKeepers: Map<String, String> = emptyMap(),
     val scan: ScanState = ScanState(),
     val selected: Set<String> = emptySet(),
+    val catalogError: String? = null,
     val message: String? = null,
     val totalStorageBytes: Long = 0,
     val freeStorageBytes: Long = 0,
@@ -35,59 +37,85 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val ui: StateFlow<AppUiState> = _ui.asStateFlow()
     private var filterJob: Job? = null
     private var refreshJob: Job? = null
+    private var refreshGeneration = 0L
     private val selectedDuplicateGroups = mutableMapOf<String, DuplicateGroup>()
+    private val selectedVersions = linkedMapOf<String, MediaItem>()
     private var catalogVerified = false
 
     init {
         viewModelScope.launch {
+            repository.catalogReady.collect { ready -> if (!ready) hideCatalog() }
+        }
+        viewModelScope.launch {
+            repository.catalogError.collect { error -> _ui.update { it.copy(catalogError = error) } }
+        }
+        viewModelScope.launch {
             repository.media.collect { items ->
-                if (!catalogVerified) return@collect
-                _ui.update { it.copy(items = items, selected = it.selected.intersect(items.map { item -> item.uri }.toSet())) }
-                updateFiltered()
+                if (catalogVerified && repository.catalogReady.value) publishMedia(items)
             }
         }
-        viewModelScope.launch { repository.trashed.collect { items -> if (catalogVerified) _ui.update { it.copy(trashed = items) } } }
+        viewModelScope.launch { repository.trashed.collect { items ->
+            if (catalogVerified && repository.catalogReady.value) _ui.update { it.copy(trashed = items) }
+        } }
         viewModelScope.launch { repository.protectedFolders.collect { paths -> _ui.update { it.copy(protectedFolders = paths) } } }
-        viewModelScope.launch { repository.duplicates.collect { groups -> if (catalogVerified) _ui.update { it.copy(duplicates = groups) } } }
+        viewModelScope.launch { repository.duplicates.collect { groups ->
+            if (catalogVerified && repository.catalogReady.value) _ui.update { it.copy(duplicates = groups) }
+        } }
         viewModelScope.launch { repository.scan.collect { scan -> _ui.update { it.copy(scan = scan) } } }
     }
 
-    fun setAccess(access: MediaAccess) {
-        catalogVerified = false
+    private fun hideCatalog() {
         filterJob?.cancel()
-        selectedDuplicateGroups.clear()
-        _ui.update { it.copy(access = access, items = emptyList(), trashed = emptyList(),
-            filtered = emptyList(), duplicates = emptyList(), selected = emptySet()) }
+        _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(), duplicates = emptyList(), selected = emptySet()) }
+    }
+
+    private fun publishMedia(items: List<MediaItem>) {
+        val retained = SelectionPolicy.retain(selectedVersions.values, items)
+        val dropped = selectedVersions.size - retained.size
+        selectedVersions.clear()
+        retained.forEach { selectedVersions[it.uri] = it }
+        _ui.update { it.copy(items = items, selected = selectedVersions.keys.toSet(),
+            message = if (dropped > 0) "변경되었거나 접근할 수 없는 선택 ${dropped}개를 해제했습니다." else it.message) }
+        updateFiltered()
+    }
+
+    fun setAccess(access: MediaAccess) {
+        refreshJob?.cancel()
+        refreshGeneration++
+        catalogVerified = false
+        if (access == MediaAccess.NONE) clearSelection()
+        hideCatalog()
+        _ui.update { it.copy(access = access) }
     }
 
     fun refresh() {
+        val generation = ++refreshGeneration
         val previous = refreshJob
         previous?.cancel()
         catalogVerified = false
-        filterJob?.cancel()
-        _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(), duplicates = emptyList()) }
+        hideCatalog()
+        _ui.update { it.copy(loading = true, catalogError = null) }
         refreshJob = viewModelScope.launch {
             previous?.join()
-            _ui.update { it.copy(loading = true) }
             try {
                 repository.refresh()
-                val items = repository.media.first()
-                val trashed = repository.trashed.first()
-                val duplicates = repository.duplicates.first()
                 val stat = withContext(Dispatchers.IO) { StatFs(Environment.getDataDirectory().path) }
+                val snapshot = repository.verifiedCatalog()
                 catalogVerified = true
-                _ui.update { it.copy(items = items, trashed = trashed, duplicates = duplicates,
-                    selected = it.selected.intersect(items.map { item -> item.uri }.toSet()),
-                    totalStorageBytes = stat.totalBytes, freeStorageBytes = stat.availableBytes) }
-                updateFiltered()
+                _ui.update { it.copy(trashed = snapshot.trashed, duplicates = snapshot.duplicates,
+                    totalStorageBytes = stat.totalBytes, freeStorageBytes = stat.availableBytes, catalogError = null) }
+                publishMedia(snapshot.items)
             } catch (e: CancellationException) { throw e
-            } catch (_: Exception) { showMessage("파일을 불러오지 못했습니다. 접근 권한을 확인한 뒤 새로고침해 주세요.")
-            } finally { _ui.update { it.copy(loading = false) } }
+            } catch (_: Exception) {
+                val message = "파일 조회를 완료하지 못했습니다. 접근 권한과 저장소를 확인한 뒤 새로고침해 주세요."
+                _ui.update { it.copy(catalogError = message, message = message) }
+            } finally { if (generation == refreshGeneration) _ui.update { it.copy(loading = false) } }
         }
     }
 
     fun setFilter(filter: MediaFilter) {
-        _ui.update { it.copy(filter = filter) }
+        if (filter != _ui.value.filter) clearSelection()
+        _ui.update { it.copy(filter = filter, filtered = emptyList()) }
         settings.saveFilter(filter)
         updateFiltered()
     }
@@ -115,42 +143,79 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun applyPreset(preset: FilterPreset) = setFilter(preset.filter)
+
     fun toggleSelection(uri: String) {
+        if (uri in selectedVersions) {
+            selectedVersions.remove(uri)
+            _ui.update { it.copy(selected = selectedVersions.keys.toSet()) }
+            return
+        }
         val item = _ui.value.items.find { it.uri == uri } ?: return
         if (item.isProtected || item.isFavorite) {
             showMessage("즐겨찾기·보호 파일은 휴지통 선택에서 제외됩니다.")
             return
         }
-        _ui.update { it.copy(selected = if (uri in it.selected) it.selected - uri else it.selected + uri) }
-        if (uri in _ui.value.selected) {
-            _ui.value.duplicates.filter { group -> group.items.any { it.uri == uri } }
-                .forEach { selectedDuplicateGroups[it.hash] = it }
+        if (selectedVersions.size >= SelectionPolicy.MAX_SELECTION_SIZE) {
+            showMessage("한 번에 최대 500개까지 선택할 수 있습니다. 현재 선택을 먼저 처리해 주세요.")
+            return
+        }
+        selectedVersions[uri] = item
+        rememberSafety(listOf(item))
+        _ui.update { it.copy(selected = selectedVersions.keys.toSet()) }
+    }
+
+    fun clearSelection() {
+        selectedVersions.clear()
+        selectedDuplicateGroups.clear()
+        _ui.update { it.copy(selected = emptySet()) }
+    }
+
+    private fun replaceSelection(items: List<MediaItem>) {
+        clearSelection()
+        val candidates = SelectionPolicy.candidates(items)
+        candidates.forEach { selectedVersions[it.uri] = it }
+        rememberSafety(candidates)
+        _ui.update { it.copy(selected = selectedVersions.keys.toSet()) }
+        if (items.count { !it.isProtected && !it.isFavorite } > SelectionPolicy.MAX_SELECTION_SIZE) {
+            showMessage("한 번에 최대 500개까지 처리합니다. 앞의 500개를 선택했습니다.")
         }
     }
-    fun clearSelection() {
-        _ui.update { it.copy(selected = emptySet()) }
-        selectedDuplicateGroups.clear()
-    }
-    fun selectAllFiltered() {
-        val uris = _ui.value.filtered.filterNot { it.isFavorite || it.isProtected }.map { it.uri }.toSet()
+
+    fun selectAllFiltered() = replaceSelection(_ui.value.filtered)
+
+    private fun rememberSafety(items: List<MediaItem>) {
+        val uris = items.mapTo(hashSetOf()) { it.uri }
         _ui.value.duplicates.filter { group -> group.items.any { it.uri in uris } }
             .forEach { selectedDuplicateGroups[it.hash] = it }
-        _ui.update { it.copy(selected = it.selected + uris) }
     }
+
+    fun selectedItemsForReview(items: List<MediaItem>): List<MediaItem> = items.mapNotNull { current ->
+        selectedVersions[current.uri]?.takeIf { it.fingerprint == current.fingerprint && it.volumeVersion == current.volumeVersion }
+    }
+
     fun selectionSafetyGroups(items: List<MediaItem>): List<DuplicateGroup> {
-        val uris = items.map { it.uri }.toSet()
+        val uris = items.mapTo(hashSetOf()) { it.uri }
         return (selectedDuplicateGroups.values + _ui.value.duplicates).distinctBy { it.hash }
             .filter { group -> group.items.any { it.uri in uris } }
     }
-    fun selectRecommendedDuplicates() {
-        val uris = _ui.value.duplicates.flatMap(DuplicatePolicy::deletionCandidates).map { it.uri }.toSet()
-        selectedDuplicateGroups.clear()
-        _ui.value.duplicates.forEach { selectedDuplicateGroups[it.hash] = it }
-        _ui.update { it.copy(selected = uris) }
+
+    fun selectRecommendedDuplicates() = replaceSelection(_ui.value.duplicates.flatMap { group ->
+        DuplicatePolicy.deletionCandidates(group, _ui.value.duplicateKeepers[group.hash])
+    })
+
+    fun chooseDuplicateKeeper(group: DuplicateGroup, uri: String) {
+        val live = _ui.value.duplicates.firstOrNull { it.hash == group.hash } ?: return
+        if (live.items.none { it.uri == uri }) return
+        selectedVersions.remove(uri)
+        _ui.update { it.copy(duplicateKeepers = it.duplicateKeepers + (group.hash to uri), selected = selectedVersions.keys.toSet()) }
     }
+
     fun setProtected(item: MediaItem, protected: Boolean) = task {
         repository.setProtected(item.uri, protected)
-        if (protected) _ui.update { it.copy(selected = it.selected - item.uri) }
+        if (protected) {
+            selectedVersions.remove(item.uri)
+            _ui.update { it.copy(selected = selectedVersions.keys.toSet()) }
+        }
     }
     fun protectFolder(path: String, protected: Boolean) = task { repository.setFolderProtected(path, protected) }
     fun startScan() = repository.startScan()

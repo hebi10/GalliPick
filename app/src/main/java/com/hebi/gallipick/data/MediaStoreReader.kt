@@ -22,37 +22,21 @@ internal class MediaStoreReader(context: Context) {
     private val resolver = context.applicationContext.contentResolver
     private val appContext = context.applicationContext
 
-    suspend fun load(): List<MediaItem> = withContext(Dispatchers.IO) {
-        val volumes = try {
-            MediaStore.getExternalVolumeNames(appContext)
-        } catch (_: SecurityException) {
-            emptySet()
-        }
-        val result = mutableListOf<MediaItem>()
-        for (volume in volumes.sorted()) {
-            ensureActive()
-            for (kind in MediaKind.entries) {
-                ensureActive()
+    suspend fun load(): MediaSnapshot = withContext(Dispatchers.IO) {
+        MediaSnapshotLoader(
+            volumes = { MediaStore.getExternalVolumeNames(appContext) },
+            version = { MediaStore.getVersion(appContext, it) },
+            query = { volume, kind ->
                 val collection = when (kind) {
                     MediaKind.PHOTO -> MediaStore.Images.Media.getContentUri(volume)
                     MediaKind.VIDEO -> MediaStore.Video.Media.getContentUri(volume)
                 }
-                // Keep the category result local: permission revocation during cursor
-                // traversal must not leave a partially collected category in the cache.
-                val rows = try {
-                    query(collection, collection, volume, kind)
-                } catch (exception: CancellationException) {
-                    throw exception
-                } catch (_: Exception) {
-                    // Permission or a removable volume can disappear between
-                    // enumeration and query. Do not retain this category's old rows.
-                    emptyList()
-                }
-                result.addAll(rows)
-            }
-        }
-        result.distinctBy { it.uri }
+                query(collection, collection, volume, kind)
+            },
+        ).load()
     }
+
+    internal fun volumeVersion(volume: String): String = MediaStore.getVersion(appContext, volume)
 
     /** A fresh row is required immediately before a destructive system request. */
     suspend fun current(uri: String): MediaItem? = withContext(Dispatchers.IO) {
@@ -75,7 +59,9 @@ internal class MediaStoreReader(context: Context) {
             MediaKind.VIDEO -> MediaStore.Video.Media.getContentUri(volume)
         }
         try {
-            query(parsed, collection, volume, kind).singleOrNull()
+            val before = volumeVersion(volume)
+            val row = query(parsed, collection, volume, kind).singleOrNull()
+            if (volumeVersion(volume) != before) null else row?.copy(volumeVersion = before)
         } catch (exception: CancellationException) {
             throw exception
         } catch (_: Exception) {
@@ -97,9 +83,9 @@ internal class MediaStoreReader(context: Context) {
                 putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_EXCLUDE)
                 putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "${MediaStore.MediaColumns.DATE_ADDED} DESC")
             }
-            val rows = resolver.query(uri, PROJECTION, arguments, signal)?.use { cursor ->
+            val rows: List<MediaItem> = resolver.query(uri, PROJECTION, arguments, signal)?.use { cursor ->
                 val columns = Columns(cursor)
-                buildList {
+                buildList<MediaItem> {
                     while (cursor.moveToNext()) {
                         continuation.context.ensureActive()
                         if (columns.long(MediaStore.MediaColumns.IS_PENDING) != 0L) continue
@@ -137,11 +123,13 @@ internal class MediaStoreReader(context: Context) {
                         )
                     }
                 }
-            }.orEmpty()
+            } ?: throw java.io.IOException("MediaStore returned no cursor for $uri")
             continuation.context.ensureActive()
             continuation.resumeWith(Result.success(rows))
         } catch (exception: OperationCanceledException) {
-            continuation.cancel(CancellationException("미디어 조회가 취소되었습니다.", exception))
+            // A provider can cancel its own operation while our coroutine is active.
+            // Only caller cancellation is control flow; provider cancellation is a read failure.
+            if (continuation.isActive) continuation.resumeWith(Result.failure(exception))
         } catch (exception: Exception) {
             continuation.resumeWith(Result.failure(exception))
         }

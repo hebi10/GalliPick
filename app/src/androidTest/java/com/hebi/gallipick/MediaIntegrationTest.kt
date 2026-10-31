@@ -80,10 +80,17 @@ class MediaIntegrationTest {
         repository.startScan()
         val scan = withTimeout(45_000) { repository.scan.first { it.phase == ScanPhase.COMPLETE || it.phase == ScanPhase.FAILED } }
         assertEquals(scan.message, ScanPhase.COMPLETE, scan.phase)
-        val group = repository.duplicates.first().first { group -> created.all { uri -> group.items.any { it.uri == uri.toString() } } }
+        val group = withTimeout(15_000) {
+            repository.duplicates.first { groups -> groups.any { group -> created.all { uri -> group.items.any { it.uri == uri.toString() } } } }
+        }.first { group -> created.all { uri -> group.items.any { it.uri == uri.toString() } } }
         val selected = group.items.first { it.uri == created[0].toString() }
         val keeper = group.items.first { it.uri == created[1].toString() }
         assertTrue(repository.hasSurvivingCopy(group, setOf(selected.uri)))
+        val vm = loadedViewModel()
+        assertTrue(vm.ui.value.duplicates.any { it.hash == group.hash })
+        instrumentation.runOnMainSync { vm.refresh(); vm.refresh() }
+        withTimeout(15_000) { vm.ui.first { !it.loading && it.items.any { item -> item.uri == selected.uri } } }
+        assertTrue(vm.ui.value.duplicates.any { it.hash == group.hash })
         val keeperUri = Uri.parse(keeper.uri)
         assertEquals(1, app.contentResolver.delete(keeperUri, null, null))
         created.remove(keeperUri)
@@ -95,7 +102,8 @@ class MediaIntegrationTest {
         repository.setProtected(item.uri, true)
         repository.clearAnalysisCache()
         repository.refresh()
-        assertTrue(repository.media.first().first { it.uri == item.uri }.isProtected)
+        val protected = withTimeout(15_000) { repository.media.first { items -> items.any { it.uri == item.uri && it.isProtected } } }
+        assertTrue(protected.first { it.uri == item.uri }.isProtected)
         assertTrue(repository.revalidate(listOf(item)).isEmpty())
         repository.setProtected(item.uri, false)
         repository.setFolderProtected(item.relativePath, true)
@@ -119,5 +127,50 @@ class MediaIntegrationTest {
         assertTrue(vm.ui.value.filtered.isEmpty())
         assertTrue(vm.ui.value.duplicates.isEmpty())
         assertTrue(vm.ui.value.trashed.isEmpty())
+    }
+
+    @Test fun resumeRetainsUnchangedSelectionButDropsAnEditedVersion() = runBlocking {
+        val vm = loadedViewModel()
+        val uri = created[0].toString()
+        instrumentation.runOnMainSync { vm.toggleSelection(uri) }
+        assertEquals(setOf(uri), vm.ui.value.selected)
+        instrumentation.runOnMainSync {
+            vm.setAccess(MediaAccess.PARTIAL)
+            assertTrue(vm.ui.value.items.isEmpty())
+            assertTrue(vm.ui.value.selected.isEmpty())
+            vm.refresh()
+        }
+        withTimeout(15_000) { vm.ui.first { !it.loading && it.items.any { item -> item.uri == uri } } }
+        assertEquals(setOf(uri), vm.ui.value.selected)
+        val before = vm.ui.value.items.first { it.uri == uri }.fingerprint
+        app.contentResolver.update(created[0], ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "gallipick-edited-${System.nanoTime()}.png")
+        }, null, null)
+        instrumentation.runOnMainSync { vm.refresh() }
+        val refreshed = withTimeout(15_000) { vm.ui.first { !it.loading && it.items.any { item -> item.uri == uri && item.fingerprint != before } } }
+        assertTrue(refreshed.selected.isEmpty())
+    }
+
+    @Test fun changingFiltersClearsPreviouslySelectedFiles() = runBlocking {
+        val vm = loadedViewModel()
+        val uri = created[0].toString()
+        instrumentation.runOnMainSync {
+            vm.toggleSelection(uri)
+            vm.setFilter(com.hebi.gallipick.domain.MediaFilter(query = "no-match"))
+        }
+        assertTrue(vm.ui.value.selected.isEmpty())
+        assertTrue(vm.selectedItemsForReview(vm.ui.value.items).isEmpty())
+    }
+
+    private suspend fun loadedViewModel(): AppViewModel {
+        lateinit var vm: AppViewModel
+        instrumentation.runOnMainSync {
+            val store = ViewModelStore().also { stores += it }
+            vm = ViewModelProvider(store, ViewModelProvider.AndroidViewModelFactory.getInstance(app))[AppViewModel::class.java]
+            vm.setAccess(MediaAccess.PARTIAL)
+            vm.refresh()
+        }
+        withTimeout(15_000) { vm.ui.first { !it.loading && it.items.any { item -> item.uri == created[0].toString() } } }
+        return vm
     }
 }

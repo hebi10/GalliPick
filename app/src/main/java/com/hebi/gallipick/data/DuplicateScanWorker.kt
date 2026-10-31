@@ -37,7 +37,8 @@ class DuplicateScanWorker(context: Context, parameters: WorkerParameters) : Coro
             var completed = plan.completed
             var skipped = plan.skipped
             val startedAt = SystemClock.elapsedRealtime()
-            for (item in plan.remaining) {
+            for (candidate in plan.remaining) {
+                val item = candidate.item
                 coroutineContext.ensureActive()
                 if (SystemClock.elapsedRealtime() - startedAt >= CHUNK_BUDGET_MS) {
                     repository.refresh()
@@ -47,7 +48,8 @@ class DuplicateScanWorker(context: Context, parameters: WorkerParameters) : Coro
                 if (!repository.beginFile(token, item.uri)) return@withContext Result.success()
                 val hash = try {
                     val before = repository.reader.current(item.uri)
-                    if (before == null || before.isTrashed || before.fingerprint != item.fingerprint) {
+                    if (before == null || before.isTrashed || before.fingerprint != item.fingerprint ||
+                        repository.reader.volumeVersion(item.volume) != candidate.volumeVersion) {
                         throw IOException("미디어가 변경되었거나 접근할 수 없습니다.")
                     }
                     val context = coroutineContext
@@ -68,7 +70,8 @@ class DuplicateScanWorker(context: Context, parameters: WorkerParameters) : Coro
                             }
                         } ?: throw IOException("파일을 열 수 없습니다.")
                     val after = repository.reader.current(item.uri)
-                    if (after == null || after.isTrashed || after.fingerprint != item.fingerprint) {
+                    if (after == null || after.isTrashed || after.fingerprint != item.fingerprint ||
+                        repository.reader.volumeVersion(item.volume) != candidate.volumeVersion) {
                         throw IOException("미디어가 분석 중 변경되었습니다.")
                     }
                     digest
@@ -79,7 +82,7 @@ class DuplicateScanWorker(context: Context, parameters: WorkerParameters) : Coro
                     null
                 }
                 coroutineContext.ensureActive()
-                repository.saveHashIfCurrent(token, CachedHash(item.uri, item.fingerprint, hash))
+                repository.saveHashIfCurrent(token, CachedHash(item.uri, item.fingerprint, hash, candidate.volumeVersion))
                 if (hash == null) skipped++ else completed++
                 if (!repository.updateSession(token) {
                         it.copy(completed = completed, skipped = skipped,
@@ -120,21 +123,28 @@ class DuplicateScanWorker(context: Context, parameters: WorkerParameters) : Coro
             .filter { !it.isTrashed && it.sizeBytes > 0 }
             .groupBy { it.sizeBytes }.values.filter { it.size > 1 }.flatten()
             .sortedWith(compareBy<CachedMedia> { it.sizeBytes }.thenBy { it.uri })
-        val known = repository.dao.allHashes().associateBy { it.uri to it.fingerprint }
+        val versions = repository.dao.allVolumeVersions().associate { it.volume to it.version }
+        val eligible = candidates.mapNotNull { item ->
+            versions[item.volume]?.let { ScanCandidate(item, it) }
+        }
+        val known = repository.dao.allHashes().associateBy { Triple(it.uri, it.fingerprint, it.volumeVersion) }
+        fun ScanCandidate.key() = Triple(item.uri, item.fingerprint, volumeVersion)
         return ScanPlan(
-            candidates = candidates,
-            remaining = candidates.filter { (it.uri to it.fingerprint) !in known },
-            completed = candidates.count { known[it.uri to it.fingerprint]?.sha256 != null },
-            skipped = candidates.count {
-                val value = known[it.uri to it.fingerprint]
+            candidates = eligible,
+            remaining = eligible.filter { it.key() !in known },
+            completed = eligible.count { known[it.key()]?.sha256 != null },
+            skipped = eligible.count {
+                val value = known[it.key()]
                 value != null && value.sha256 == null
             },
         )
     }
 
+    private data class ScanCandidate(val item: CachedMedia, val volumeVersion: String)
+
     private data class ScanPlan(
-        val candidates: List<CachedMedia>,
-        val remaining: List<CachedMedia>,
+        val candidates: List<ScanCandidate>,
+        val remaining: List<ScanCandidate>,
         val completed: Int,
         val skipped: Int,
     )
