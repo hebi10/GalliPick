@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
     <application android:name=".GalliPickApplication" android:allowBackup="false"
         android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules"
-        android:label="GalliPick" android:icon="@mipmap/ic_launcher"
+        android:label="GalliPick" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true" android:theme="@style/Theme.GalliPick">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>

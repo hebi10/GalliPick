@@ -1,0 +1,3 @@
+<inset xmlns:android="http://schemas.android.com/apk/res/android" android:inset="15%">
+    <bitmap android:src="@drawable/gp_launcher_monochrome" android:gravity="fill" android:filter="true" android:antialias="true" />
+</inset>

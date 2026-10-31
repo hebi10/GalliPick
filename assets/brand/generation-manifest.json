@@ -1,0 +1,140 @@
+{
+  "concept": "말랑한 추억 정리함",
+  "mascot": "픽이",
+  "generator": "built-in image_gen",
+  "packaging": "Original generated PNGs preserved; Android copies only cropped to transparent bounds, centered and resized. No manually drawn icon paths.",
+  "assets": [
+    {
+      "name": "gp_mascot",
+      "master": "source/gp_mascot.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_mascot.png",
+      "size": [
+        768,
+        768
+      ],
+      "sha256": "aa220cbcd4f387dea03e3ddbb2cf9f45e3d0ad2653b7caf8e3f9e95ee9a3010e",
+      "prompt": "Use case: logo-brand. Create the primary brand mascot and Android adaptive app icon FOREGROUND for an original Android photo and video organizer named GalliPick. Concept: a soft, cute 'memory sorting companion'. A single chubby rounded-square CREAM PHOTO CARD character, front facing with very gently puffy thickness, tiny dark forest-green dot eyes and a tiny friendly smile near the lower cream border. Inside the card: simple sage-mint rounded hills and one small warm apricot sun, so it unmistakably reads as a PHOTO GALLERY, not an animal face or a camera lens. A second small mint photo card peeks from behind at a slight angle, and one small round forest-green badge with a cream check mark overlaps bottom-right to communicate choosing the best memories. Super simple silhouette, large soft curves, no sharp corners, premium flat-ish sticker illustration with a tiny amount of soft inner tonal volume, NO cast shadow, NO reflective gloss, NO gradients across the background. Palette cream #FFF8E9, sage mint #BCDCCB, deep forest #25483F, apricot #F5CBAA. Strictly isolated transparent alpha background, not a white square or checkerboard. Entire character centered occupying roughly 65% canvas width/height with generous transparent padding for Android adaptive-icon safe zone, no parts near edges, full silhouette visible. Strong readability at 48px. No words, no letters, no watermark, no extra objects, no UI mockup. Square image, clean antialiased edges. This is a standalone finished bitmap icon asset."
+    },
+    {
+      "name": "gp_home",
+      "master": "source/gp_home.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_home.png",
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "9c32d28a0a4af8d6bb702d6f7529a8eec90e9ec49a33065932620294c3a04b9d",
+      "prompt": "Use case: stylized-concept. Create ONE standalone small Android UI icon in exactly the same gentle visual family as the reference GalliPick photo-card mascot. Rounded puffy matte sticker, very simple 2.5D soft curves, restrained inner tonal volume, no cast shadow, no ground plane, no glossy material. Colors cream #FFF8E9, sage mint #BCDCCB, deep forest #25483F, small apricot #F5CBAA accent. Strong simple shape readable at 32px, front view with minimal depth, transparent alpha backdrop. No text, no letters, no watermark, no scene, no multiple separate icons. Center the subject at 80% canvas width/height with even transparent padding. This is a bitmap asset, not a mockup. Symbol: a cute rounded HOME / little house with soft arched roof, forest-green roof, cream wall, a small sage arched door and one apricot round window. Friendly and calm, unmistakable home icon, no face."
+    },
+    {
+      "name": "gp_files",
+      "master": "source/gp_files.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_files.png",
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "31dece7aa6443d10afbede230ad7fa88b9666ea3b22b5e8752d4dbf74212cbf1",
+      "prompt": "Use case: stylized-concept. Create ONE standalone small Android UI icon in exactly the same gentle visual family as the reference GalliPick photo-card mascot. Rounded puffy matte sticker, very simple 2.5D soft curves, restrained inner tonal volume, no cast shadow, no ground plane, no glossy material. Colors cream #FFF8E9, sage mint #BCDCCB, deep forest #25483F, small apricot #F5CBAA accent. Strong simple shape readable at 32px, front view with minimal depth, transparent alpha backdrop. No text, no letters, no watermark, no scene, no multiple separate icons. Center the subject at 80% canvas width/height with even transparent padding. This is a bitmap asset, not a mockup. Symbol: a tidy miniature stack of THREE PHOTO CARDS / gallery files, one cream rounded photo card in front showing two simple sage hills and an apricot sun, two mint rounded tabs peeking behind. No eyes, no check badge; distinguish from home and from two-card duplicate icon."
+    },
+    {
+      "name": "gp_duplicates",
+      "master": "source/gp_duplicates.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_duplicates.png",
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "5092e2d0b6f4706ff5736dfc600852834bb7ccd57058b390869ac0357df999e1",
+      "prompt": "Use case: stylized-concept. Create ONE standalone small Android UI icon in exactly the same gentle visual family as the reference GalliPick photo-card mascot. Rounded puffy matte sticker, very simple 2.5D soft curves, restrained inner tonal volume, no cast shadow, no ground plane, no glossy material. Colors cream #FFF8E9, sage mint #BCDCCB, deep forest #25483F, small apricot #F5CBAA accent. Strong simple shape readable at 32px, front view with minimal depth, transparent alpha backdrop. No text, no letters, no watermark, no scene, no multiple separate icons. Center the subject at 80% canvas width/height with even transparent padding. This is a bitmap asset, not a mockup. Symbol: TWO matching overlapping rounded cream PHOTO CARDS side by side slightly offset, both visibly identical with one sage hill and apricot sun on each, joined visually by a tiny forest-green equals sign in a round mint badge. Unmistakable duplicate copies, no faces, no letters."
+    },
+    {
+      "name": "gp_cleanup",
+      "master": "source/gp_cleanup.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_cleanup.png",
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "0c0bec11587d67665947f15caa4bbf291afe43dcd403836317ca0989b96f9286",
+      "prompt": "Use case: stylized-concept. ONE standalone Android UI icon matching the reference GalliPick mascot's soft cream-and-sage puffy matte sticker family. Simple rounded silhouette and clear function readable at 32px, front view, no scene. Cream #FFF8E9, sage mint #BCDCCB, dark forest #25483F, tiny apricot #F5CBAA accent. Gently rounded pill-like forms and restrained inner tonal depth. No cast shadow, no ground, no glossy reflections. Actual transparent alpha background, not white or checkerboard. Center object occupying 80% canvas, even padding. No text/letters/watermark, no collage. Symbol: a short friendly rounded cleaning broom leaning slightly right, forest-green thick round-ended handle, cream collar, sage rounded bristle head with just three wide rounded bristle lobes. ONE tiny apricot four-point sparkle beside the broom to signal gentle cleanup. No dust, no faces, no photo card."
+    },
+    {
+      "name": "gp_settings",
+      "master": "source/gp_settings.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_settings.png",
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "326006e23113f0f45f891da8d4c0ad33085a05b3ab3f28ee53f86273a6b3b6c7",
+      "prompt": "Use case: stylized-concept. ONE standalone Android UI icon matching the reference GalliPick mascot's soft cream-and-sage puffy matte sticker family. Simple rounded silhouette and clear function readable at 32px, front view, no scene. Cream #FFF8E9, sage mint #BCDCCB, dark forest #25483F, tiny apricot #F5CBAA accent. Gently rounded pill-like forms and restrained inner tonal depth. No cast shadow, no ground, no glossy reflections. Actual transparent alpha background, not white or checkerboard. Center object occupying 80% canvas, even padding. No text/letters/watermark, no collage. Symbol: one chunky sage-mint gear / settings cog with SIX thick very rounded teeth, cream circular center inset and dark forest ring. Soft donut-like simple form. Clearly a gear not a flower, no face, no extra objects."
+    },
+    {
+      "name": "gp_photo",
+      "master": "source/gp_photo.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_photo.png",
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "78a83a8c324b904f4004892b085766af506cb90b1e3ac367e424b9ae6f6f57f8",
+      "prompt": "Use case: stylized-concept. ONE standalone Android UI icon matching the reference GalliPick mascot's soft cream-and-sage puffy matte sticker family. Simple rounded silhouette and clear function readable at 32px, front view, no scene. Cream #FFF8E9, sage mint #BCDCCB, dark forest #25483F, tiny apricot #F5CBAA accent. Gently rounded pill-like forms and restrained inner tonal depth. No cast shadow, no ground, no glossy reflections. Actual transparent alpha background, not white or checkerboard. Center object occupying 80% canvas, even padding. No text/letters/watermark, no collage. Symbol: one SINGLE cream rounded photo card front-facing, pale mint picture area with two simple dark sage round hills and one apricot sun. No stack, no check, no face, no badges. Very simple clear photo symbol."
+    },
+    {
+      "name": "gp_video",
+      "master": "source/gp_video.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_video.png",
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "acebd44075b41df3b731011cc698574b7a3991d0b390a421399614eb2ee90b70",
+      "prompt": "Use case: stylized-concept. ONE standalone Android UI icon matching the reference GalliPick mascot's soft cream-and-sage puffy matte sticker family. Simple rounded silhouette and clear function readable at 32px, front view, no scene. Cream #FFF8E9, sage mint #BCDCCB, dark forest #25483F, tiny apricot #F5CBAA accent. Gently rounded pill-like forms and restrained inner tonal depth. No cast shadow, no ground, no glossy reflections. Actual transparent alpha background, not white or checkerboard. Center object occupying 80% canvas, even padding. No text/letters/watermark, no collage. Symbol: one sage-mint rounded rectangular VIDEO tile, extra soft pill-like corners, a large cream right-facing rounded PLAY TRIANGLE at center, small cream edge rim. Unmistakable video/play symbol, no faces, no text, no film-strip tiny details."
+    },
+    {
+      "name": "gp_trash",
+      "master": "source/gp_trash.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_trash.png",
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "815d546754849298bb35b688a8185554018b745a6ff9da4d47dd7d4f4ab5ac06",
+      "prompt": "Use case: stylized-concept. ONE standalone Android UI icon matching the reference GalliPick mascot's soft cream-and-sage puffy matte sticker family. Simple rounded silhouette and clear function readable at 32px, front view, no scene. Cream #FFF8E9, sage mint #BCDCCB, dark forest #25483F, tiny apricot #F5CBAA accent. Gently rounded pill-like forms and restrained inner tonal depth. No cast shadow, no ground, no glossy reflections. Actual transparent alpha background, not white or checkerboard. Center object occupying 80% canvas, even padding. No text/letters/watermark, no collage. Symbol: a small rounded sage mint TRASH BIN with three wide very soft vertical ribs, cream rounded lid with a small forest-green curved handle at top. Calm and friendly, upright bin, NO face, no angry red color, no extra objects. Clearly a trash icon."
+    },
+    {
+      "name": "gp_shield",
+      "master": "source/gp_shield.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_shield.png",
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "d685416cefa792e73d7fae7b7f14ad2967c166686de34ca5e4b7567e2c522dea",
+      "prompt": "Use case: stylized-concept. ONE standalone Android UI icon matching the reference GalliPick mascot's soft cream-and-sage puffy matte sticker family. Simple rounded silhouette and clear function readable at 32px, front view, no scene. Cream #FFF8E9, sage mint #BCDCCB, dark forest #25483F, tiny apricot #F5CBAA accent. Gently rounded pill-like forms and restrained inner tonal depth. No cast shadow, no ground, no glossy reflections. Actual transparent alpha background, not white or checkerboard. Center object occupying 80% canvas, even padding. No text/letters/watermark, no collage. Symbol: a chunky rounded sage mint protective SHIELD with a large cream CHECK mark centered, forest-green gentle edge rim, soft rounded lower point. Clearly protection and safety. No face, no extra objects."
+    },
+    {
+      "name": "gp_folder",
+      "master": "source/gp_folder.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_folder.png",
+      "size": [
+        256,
+        256
+      ],
+      "sha256": "00aa51b404f48d556879b41747598153ebebc06707df278327a23e302696fb8b",
+      "prompt": "Use case: stylized-concept. ONE standalone Android UI icon matching the reference GalliPick mascot's soft cream-and-sage puffy matte sticker family. Simple rounded silhouette and clear function readable at 32px, front view, no scene. Cream #FFF8E9, sage mint #BCDCCB, dark forest #25483F, tiny apricot #F5CBAA accent. Gently rounded pill-like forms and restrained inner tonal depth. No cast shadow, no ground, no glossy reflections. Actual transparent alpha background, not white or checkerboard. Center object occupying 80% canvas, even padding. No text/letters/watermark, no collage. Symbol: one rounded cream-and-sage FILE FOLDER, sage back tab peeking at top-left, puffy cream front with one small forest-green rounded photo-card symbol inset. Simple gentle folder silhouette, no face, no words."
+    },
+    {
+      "name": "gp_launcher_monochrome",
+      "master": "source/gp_launcher_monochrome.png",
+      "android_resource": "app/src/main/res/drawable-nodpi/gp_launcher_monochrome.png",
+      "size": [
+        768,
+        768
+      ],
+      "sha256": "a4b9533126e951fc6aeac272d652ba7decbbed6c4dd646b15bcae25ba413cf47",
+      "prompt": "Use case: logo-brand. Draw a SINGLE clean flat Android monochrome app symbol: two overlapping soft round PHOTO CARD FRAMES with a simple hill and round sun inside the front card, tiny dot eyes and tiny smile on its lower border, a small round check badge at lower right. Entire drawing uses ONE SOLID dark forest-green ink color #25483F only, fully opaque foreground ink, with empty areas and all negative-space cutouts truly TRANSPARENT. Uniform bold rounded strokes and big simple open spaces, crisp geometric stencil icon for a 48px app launcher. NO white fill, NO color shades, NO gradients, NO texture, NO grain, NO rough/eroded/distressed edges, NO shadows, NO 3D, NO backdrop. Centered in square canvas with large clear padding around it, occupied symbol about60% width. This is the monochrome themed variant for a cute gallery app, not a camera body or animal. Transparent background, no words, no letters, no watermark."
+    }
+  ]
+}

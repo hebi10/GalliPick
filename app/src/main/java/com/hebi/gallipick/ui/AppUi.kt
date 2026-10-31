@@ -7,15 +7,16 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -23,6 +24,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hebi.gallipick.AppViewModel
@@ -32,15 +34,18 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-internal val Ink = Color(0xFF171717)
-internal val Muted = Color(0xFF626262)
-internal val Line = Color(0xFFD6D6D6)
-internal val Panel = Color(0xFFF5F5F5)
+internal val Ink = Color(0xFF25483F)
+internal val Muted = Color(0xFF597267)
+internal val Line = Color(0xFFDCE6DF)
+internal val Panel = Color(0xFFEEF4EE)
+internal val AppBackground = Color(0xFFFAF9F5)
+internal val Mint = Color(0xFFCDE6D8)
+internal val Peach = Color(0xFFF5D6BD)
 
 internal enum class Destination(val title: String, val icon: ImageVector) {
-    HOME("홈", Icons.Outlined.Home), FILES("파일", Icons.Outlined.GridView),
-    DUPLICATES("중복", Icons.Outlined.CopyAll), CLEANUP("정리", Icons.Outlined.CleaningServices),
-    SETTINGS("설정", Icons.Outlined.Settings),
+    HOME("홈", Icons.Rounded.Home), FILES("파일", Icons.Rounded.GridView),
+    DUPLICATES("중복", Icons.Rounded.CopyAll), CLEANUP("정리", Icons.Rounded.CleaningServices),
+    SETTINGS("설정", Icons.Rounded.Settings),
 }
 
 @Composable
@@ -63,25 +68,37 @@ fun GalliPickApp(
         destination = Destination.FILES
     }
     GalliPickTheme {
-        Surface(Modifier.fillMaxSize(), color = Color.White) {
+        Surface(Modifier.fillMaxSize(), color = AppBackground) {
             BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
                 val wide = maxWidth >= 650.dp
                 Column(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.CropFree, contentDescription = null, modifier = Modifier.size(27.dp))
-                        Spacer(Modifier.width(9.dp))
-                        Text("GalliPick", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                        if (state.loading) Text("불러오는 중", style = MaterialTheme.typography.labelMedium, color = Muted)
-                        IconAction("새로고침", Icons.Outlined.Refresh, onClick = vm::refresh)
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        GalliMascot(Modifier.size(40.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text("GalliPick", style = MaterialTheme.typography.titleLarge)
+                            Text("말랑한 추억 정리함", style = MaterialTheme.typography.labelSmall, color = Muted)
+                        }
+                        if (state.loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted)
+                        IconAction("새로고침", Icons.Rounded.Refresh, onClick = vm::refresh)
                     }
                     if (state.message != null) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).border(1.dp, Line).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
+                                .background(Color.White, RoundedCornerShape(16.dp)).border(1.dp, Line, RoundedCornerShape(16.dp))
+                                .padding(start = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(state.message.orEmpty(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                            IconAction("알림 닫기", Icons.Outlined.Close, onClick = vm::dismissMessage)
+                            IconAction("알림 닫기", Icons.Rounded.Close, onClick = vm::dismissMessage)
                         }
                     }
                     if (state.access == MediaAccess.PARTIAL) {
-                        Row(Modifier.fillMaxWidth().background(Panel).padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
+                                .background(Panel, RoundedCornerShape(16.dp)).padding(start = 14.dp, end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text("허용된 사진·동영상만 표시 중", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                             TextAction("접근 변경", onClick = onRequestPermission)
                         }
@@ -104,7 +121,11 @@ fun GalliPickApp(
                         }
                     }
                     if (!wide) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
                             Destination.entries.forEach { NavItem(it, destination == it, { showTrash = false; destination = it }, Modifier.weight(1f), vertical = true) }
                         }
                     }
@@ -120,19 +141,19 @@ fun GalliPickTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = lightColorScheme(
             primary = Ink, onPrimary = Color.White, secondary = Muted, onSecondary = Color.White,
-            tertiary = Ink, onTertiary = Color.White, background = Color.White, onBackground = Ink,
-            primaryContainer = Panel, onPrimaryContainer = Ink, inversePrimary = Color.White,
+            tertiary = Ink, onTertiary = Color.White, background = AppBackground, onBackground = Ink,
+            primaryContainer = Mint, onPrimaryContainer = Ink, inversePrimary = Mint,
             secondaryContainer = Panel, onSecondaryContainer = Ink,
-            tertiaryContainer = Panel, onTertiaryContainer = Ink,
-            surface = Color.White, onSurface = Ink, surfaceVariant = Panel, onSurfaceVariant = Muted,
+            tertiaryContainer = Peach, onTertiaryContainer = Ink,
+            surface = AppBackground, onSurface = Ink, surfaceVariant = Panel, onSurfaceVariant = Muted,
             inverseSurface = Ink, inverseOnSurface = Color.White, surfaceTint = Color.Transparent,
-            surfaceBright = Color.White, surfaceDim = Color(0xFFE6E6E6),
-            surfaceContainer = Panel, surfaceContainerHigh = Panel, surfaceContainerHighest = Color(0xFFEBEBEB),
-            surfaceContainerLow = Color(0xFFFAFAFA), surfaceContainerLowest = Color.White,
-            outline = Line, outlineVariant = Line, scrim = Ink, error = Ink, onError = Color.White,
-            errorContainer = Panel, onErrorContainer = Ink,
+            surfaceBright = Color.White, surfaceDim = Line,
+            surfaceContainer = Panel, surfaceContainerHigh = Panel, surfaceContainerHighest = Line,
+            surfaceContainerLow = AppBackground, surfaceContainerLowest = Color.White,
+            outline = Muted, outlineVariant = Line, scrim = Ink, error = Color(0xFF944837), onError = Color.White,
+            errorContainer = Color(0xFFF9E7DC), onErrorContainer = Color(0xFF753B2D),
         ),
-        shapes = Shapes(CutCornerShape(0.dp), CutCornerShape(0.dp), CutCornerShape(0.dp), CutCornerShape(0.dp), CutCornerShape(0.dp)),
+        shapes = Shapes(RoundedCornerShape(10.dp), RoundedCornerShape(14.dp), RoundedCornerShape(18.dp), RoundedCornerShape(24.dp), RoundedCornerShape(28.dp)),
         typography = Typography(
             headlineLarge = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
             headlineMedium = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
@@ -146,9 +167,19 @@ fun GalliPickTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun NavItem(destination: Destination, selected: Boolean, onClick: () -> Unit, modifier: Modifier, vertical: Boolean) {
-    Column(modifier.semantics { this.selected = selected; role = Role.Tab }.background(if (selected) Ink else Color.White).plainClick(action = onClick).padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Icon(destination.icon, contentDescription = null, tint = if (selected) Color.White else Muted, modifier = Modifier.size(22.dp))
-        Text(destination.title, color = if (selected) Color.White else Muted, style = MaterialTheme.typography.labelMedium)
+    Column(
+        modifier.semantics { this.selected = selected; role = Role.Tab }.clip(RoundedCornerShape(20.dp))
+            .plainClick(action = onClick).padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Box(
+            Modifier.size(width = 54.dp, height = 34.dp).background(if (selected) Mint else Color.Transparent, RoundedCornerShape(18.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            GalliIcon(destination.icon, contentDescription = null, tint = if (selected) Ink else Muted, modifier = Modifier.size(27.dp))
+        }
+        Text(destination.title, color = if (selected) Ink else Muted, style = MaterialTheme.typography.labelMedium, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
 
@@ -161,21 +192,30 @@ internal fun Modifier.plainClick(enabled: Boolean = true, action: () -> Unit): M
 internal fun ActionButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, filled: Boolean = false, enabled: Boolean = true, icon: ImageVector? = null) {
     val background = if (filled && enabled) Ink else if (!enabled) Panel else Color.White
     val foreground = if (filled && enabled) Color.White else if (!enabled) Muted else Ink
-    Row(modifier.heightIn(min = 48.dp).background(background).border(BorderStroke(1.dp, if (enabled) Ink else Line)).plainClick(enabled, onClick).padding(horizontal = 15.dp, vertical = 11.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        if (icon != null) { Icon(icon, null, tint = foreground, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)) }
-        Text(label, color = foreground, style = MaterialTheme.typography.labelLarge)
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier.heightIn(min = 48.dp).clip(shape).background(background)
+            .border(BorderStroke(1.dp, if (filled && enabled) Ink else Line), shape)
+            .semantics { role = Role.Button }.plainClick(enabled, onClick).padding(horizontal = 15.dp, vertical = 11.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) { GalliIcon(icon, null, tint = foreground, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(7.dp)) }
+        Text(label, color = foreground, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
     }
 }
 
 @Composable
 internal fun TextAction(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Text(label, style = MaterialTheme.typography.labelLarge, modifier = modifier.plainClick(action = onClick).padding(10.dp))
+    Box(modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp)).semantics { role = Role.Button }.plainClick(action = onClick).padding(horizontal = 10.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+        Text(label, color = Ink, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+    }
 }
 
 @Composable
 internal fun IconAction(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(modifier.size(48.dp).plainClick(action = onClick), contentAlignment = Alignment.Center) {
-        Icon(icon, label, modifier = Modifier.size(23.dp))
+    Box(modifier.size(48.dp).clip(CircleShape).semantics { role = Role.Button }.plainClick(action = onClick), contentAlignment = Alignment.Center) {
+        GalliIcon(icon, label, modifier = Modifier.size(23.dp))
     }
 }
 
@@ -188,11 +228,16 @@ internal fun SectionTitle(title: String, subtitle: String? = null) {
 }
 
 @Composable
-internal fun EmptyState(title: String, body: String, icon: ImageVector = Icons.Outlined.PhotoLibrary, action: @Composable (() -> Unit)? = null) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 36.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(icon, null, Modifier.size(38.dp), tint = Muted)
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = Muted)
+internal fun EmptyState(title: String, body: String, icon: ImageVector = Icons.Rounded.PhotoLibrary, action: @Composable (() -> Unit)? = null) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
+            GalliMascot(Modifier.size(92.dp))
+            Box(Modifier.align(Alignment.BottomEnd).size(36.dp).background(Mint, CircleShape).border(2.dp, AppBackground, CircleShape), contentAlignment = Alignment.Center) {
+                GalliIcon(icon, null, Modifier.size(23.dp), tint = Ink)
+            }
+        }
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = Muted, textAlign = TextAlign.Center)
         action?.invoke()
     }
 }

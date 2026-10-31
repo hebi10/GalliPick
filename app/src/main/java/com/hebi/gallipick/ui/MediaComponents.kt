@@ -11,15 +11,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -59,10 +59,10 @@ internal fun MediaThumbnail(item: MediaItem, modifier: Modifier = Modifier) {
             }
         }
     }
-    Box(modifier.background(Panel), contentAlignment = Alignment.Center) {
+    Box(modifier.clip(RoundedCornerShape(12.dp)).background(Panel), contentAlignment = Alignment.Center) {
         val loaded = bitmap
         if (loaded != null) Image(loaded.asImageBitmap(), contentDescription = item.displayName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else Icon(if (item.kind == MediaKind.VIDEO) Icons.Outlined.Videocam else Icons.Outlined.Image, "미리보기 없음", Modifier.size(30.dp), tint = Muted)
+        else GalliIcon(if (item.kind == MediaKind.VIDEO) Icons.Rounded.Videocam else Icons.Rounded.Image, "미리보기 없음", Modifier.size(30.dp), tint = Muted)
     }
 }
 
@@ -73,9 +73,9 @@ internal fun SelectBox(checked: Boolean, enabled: Boolean = true, description: S
         interactionSource = remember { MutableInteractionSource() }, indication = null,
         onValueChange = { onClick() },
     ), contentAlignment = Alignment.Center) {
-        Box(Modifier.size(24.dp).background(if (checked) Ink else Color.White).border(1.dp, if (enabled) Ink else Line), contentAlignment = Alignment.Center) {
-            if (checked) Icon(Icons.Outlined.Check, null, Modifier.size(19.dp), tint = Color.White)
-            else if (!enabled) Icon(Icons.Outlined.Lock, null, Modifier.size(14.dp), tint = Muted)
+        Box(Modifier.size(24.dp).background(if (checked) Ink else MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).border(1.dp, if (enabled) Ink else Line, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+            if (checked) GalliIcon(Icons.Rounded.Check, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onPrimary)
+            else if (!enabled) GalliIcon(Icons.Rounded.Lock, null, Modifier.size(14.dp), tint = Muted)
         }
     }
 }
@@ -83,11 +83,11 @@ internal fun SelectBox(checked: Boolean, enabled: Boolean = true, description: S
 @Composable
 internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit, onOpen: (MediaItem) -> Unit, onProtect: (Boolean) -> Unit, folderProtected: Boolean = false) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxWidth(.94f).widthIn(max = 560.dp).fillMaxHeight(.9f), shape = RectangleShape) {
+        Surface(Modifier.fillMaxWidth(.94f).widthIn(max = 560.dp).fillMaxHeight(.9f), shape = RoundedCornerShape(24.dp)) {
             Column {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("파일 정보", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                    IconAction("닫기", Icons.Outlined.Close, onClick = onDismiss)
+                    IconAction("닫기", Icons.Rounded.Close, onClick = onDismiss)
                 }
                 MediaDetail(item, onOpen, onProtect, Modifier.weight(1f), folderProtected)
             }
@@ -101,8 +101,8 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
         MediaThumbnail(item, Modifier.fillMaxWidth().aspectRatio(1.2f))
         Text(item.displayName, style = MaterialTheme.typography.titleMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton("원본 열기", { onOpen(item) }, Modifier.weight(1f), filled = true, icon = Icons.Outlined.OpenInNew)
-            ActionButton(if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호", { onProtect(!item.isProtected) }, Modifier.weight(1f), enabled = !folderProtected, icon = Icons.Outlined.Shield)
+            ActionButton("원본 열기", { onOpen(item) }, Modifier.weight(1f), filled = true, icon = Icons.Rounded.OpenInNew)
+            ActionButton(if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호", { onProtect(!item.isProtected) }, Modifier.weight(1f), enabled = !folderProtected, icon = Icons.Rounded.Shield)
         }
         if (folderProtected) Text("폴더 보호는 설정의 보호 폴더에서 해제할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
         if (item.isFavorite || item.isProtected) Text(

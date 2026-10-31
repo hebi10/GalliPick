@@ -5,12 +5,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.AppUiState
@@ -31,22 +33,22 @@ internal fun DuplicatesScreen(state: AppUiState, vm: AppViewModel, trash: (List<
         Spacer(Modifier.height(16.dp))
         SectionTitle("완전히 같은 파일", "파일 전체의 SHA-256 해시로 중복 사본을 비교합니다.")
         Spacer(Modifier.height(16.dp))
-        Column(Modifier.fillMaxWidth().background(Panel).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(20.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(scanTitle(scan), style = MaterialTheme.typography.titleMedium)
                     if (scan.total > 0) Text("${scan.completed} / ${scan.total}개 · 건너뜀 ${scan.skipped}개", style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
                 when (scan.phase) {
-                    ScanPhase.RUNNING, ScanPhase.QUEUED -> ActionButton("일시정지", vm::pauseScan, icon = Icons.Outlined.Pause)
-                    ScanPhase.PAUSED -> ActionButton("계속 검사", vm::resumeScan, filled = true, icon = Icons.Outlined.PlayArrow)
-                    else -> ActionButton(if (scan.phase == ScanPhase.COMPLETE) "다시 검사" else "검사 시작", vm::startScan, filled = true, enabled = state.items.isNotEmpty(), icon = Icons.Outlined.Search)
+                    ScanPhase.RUNNING, ScanPhase.QUEUED -> ActionButton("일시정지", vm::pauseScan, icon = Icons.Rounded.Pause)
+                    ScanPhase.PAUSED -> ActionButton("계속 검사", vm::resumeScan, filled = true, icon = Icons.Rounded.PlayArrow)
+                    else -> ActionButton(if (scan.phase == ScanPhase.COMPLETE) "다시 검사" else "검사 시작", vm::startScan, filled = true, enabled = state.items.isNotEmpty(), icon = Icons.Rounded.Search)
                 }
             }
             if (scan.total > 0) {
                 val progress = ((scan.completed + scan.skipped).toFloat() / scan.total).coerceIn(0f, 1f)
-                Box(Modifier.fillMaxWidth().height(5.dp).background(Line)) {
-                    if (progress > 0) Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(Ink))
+                Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(12.dp)).background(Line)) {
+                    if (progress > 0) Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(Ink, RoundedCornerShape(12.dp)))
                 }
             }
             if (scan.message.isNotBlank()) Text(scan.message, style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -71,21 +73,27 @@ internal fun DuplicatesScreen(state: AppUiState, vm: AppViewModel, trash: (List<
                     }
                     items(group.items, key = { "${group.hash}:${it.uri}" }) { item ->
                         val isKeeper = item.uri == keep.uri
-                        Row(Modifier.fillMaxWidth().border(1.dp, if (isKeeper) Ink else Line).padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val selectedCopy = item.uri in state.selected && !isKeeper
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                                .background(if (isKeeper || selectedCopy) Panel else MaterialTheme.colorScheme.surface)
+                                .border(1.dp, if (isKeeper || selectedCopy) Ink else Line, RoundedCornerShape(16.dp)).padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
                             MediaThumbnail(item, Modifier.size(66.dp).plainClick { detailUri = item.uri })
                             Column(Modifier.weight(1f).plainClick { detailUri = item.uri }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(item.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                                 Text(item.relativePath.trimEnd('/').ifEmpty { "기본 폴더" }, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                                 Text(when { isKeeper -> "보관 추천"; item.isFavorite -> "즐겨찾기 · 선택 제외"; item.isProtected -> "보호 파일 · 선택 제외"; else -> "사본 · ${bytesLabel(item.sizeBytes)}" }, style = MaterialTheme.typography.labelSmall)
                             }
-                            SelectBox(item.uri in state.selected && !isKeeper, !isKeeper && item.canTrash(), if (isKeeper) "보관 추천 파일" else "${item.displayName} 선택", { vm.toggleSelection(item.uri) })
+                            SelectBox(selectedCopy, !isKeeper && item.canTrash(), if (isKeeper) "보관 추천 파일" else "${item.displayName} 선택", { vm.toggleSelection(item.uri) })
                         }
                     }
                 }
             }
         } else {
             Box(Modifier.weight(1f)) {
-                EmptyState(if (scan.phase == ScanPhase.COMPLETE) "확인된 중복 파일이 없습니다" else "중복 사본을 찾아보세요", if (scan.phase == ScanPhase.COMPLETE) "접근이 허용된 미디어에서 검사한 결과입니다." else "검사를 시작하면 같은 내용의 파일이 묶여 표시됩니다.", Icons.Outlined.CopyAll)
+                EmptyState(if (scan.phase == ScanPhase.COMPLETE) "확인된 중복 파일이 없습니다" else "중복 사본을 찾아보세요", if (scan.phase == ScanPhase.COMPLETE) "접근이 허용된 미디어에서 검사한 결과입니다." else "검사를 시작하면 같은 내용의 파일이 묶여 표시됩니다.", Icons.Rounded.CopyAll)
             }
         }
         SelectionBar(selected, vm::clearSelection, { trash(selected) })

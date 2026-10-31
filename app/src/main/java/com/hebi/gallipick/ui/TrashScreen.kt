@@ -16,10 +16,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.RestoreFromTrash
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.RestoreFromTrash
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,7 +53,7 @@ internal fun TrashScreen(
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(Modifier.widthIn(max = 1040.dp).fillMaxSize().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                IconAction("뒤로", Icons.Outlined.ArrowBack, onClick = onBack)
+                IconAction("뒤로", Icons.Rounded.ArrowBack, onClick = onBack)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text("휴지통", style = MaterialTheme.typography.headlineMedium)
@@ -63,10 +65,10 @@ internal fun TrashScreen(
                 "휴지통은 Android가 관리합니다. 보관 기간이 지나면 파일이 자동 삭제될 수 있으며, 복원할 때 시스템 확인이 표시됩니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Muted,
-                modifier = Modifier.fillMaxWidth().background(Panel).border(1.dp, Line).padding(14.dp),
+                modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).border(1.dp, Line, RoundedCornerShape(16.dp)).padding(14.dp),
             )
             if (items.isEmpty()) {
-                EmptyState("휴지통이 비어 있습니다", "휴지통으로 이동한 사진과 동영상이 여기에 표시됩니다.", Icons.Outlined.DeleteOutline)
+                EmptyState("휴지통이 비어 있습니다", "휴지통으로 이동한 사진과 동영상이 여기에 표시됩니다.", Icons.Rounded.DeleteOutline)
             } else {
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -99,7 +101,7 @@ internal fun TrashScreen(
                     ActionButton(
                         "선택한 파일 복원", onClick = { onRestore(selectedItems) },
                         modifier = Modifier.fillMaxWidth(), filled = true,
-                        enabled = selectedItems.isNotEmpty(), icon = Icons.Outlined.RestoreFromTrash,
+                        enabled = selectedItems.isNotEmpty(), icon = Icons.Rounded.RestoreFromTrash,
                     )
                 }
             }
@@ -110,7 +112,10 @@ internal fun TrashScreen(
 @Composable
 private fun TrashRow(item: MediaItem, selected: Boolean, onToggle: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().border(1.dp, if (selected) Ink else Line).plainClick(action = onToggle).padding(8.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            .background(if (selected) Panel else MaterialTheme.colorScheme.surface)
+            .border(1.dp, if (selected) Ink else Line, RoundedCornerShape(16.dp))
+            .plainClick(action = onToggle).padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SelectBox(checked = selected, description = "${item.displayName} 복원 선택", onClick = onToggle)

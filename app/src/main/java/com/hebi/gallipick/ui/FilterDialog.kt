@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -101,8 +102,8 @@ fun FilterDialog(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             modifier = Modifier.padding(16.dp).widthIn(max = 760.dp).fillMaxWidth().fillMaxHeight(.93f),
-            shape = RectangleShape,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            shape = RoundedCornerShape(24.dp),
+            border = BorderStroke(1.dp, Line),
             shadowElevation = 0.dp,
             tonalElevation = 0.dp,
         ) {
@@ -120,7 +121,7 @@ fun FilterDialog(
                     }
                     OutlinedTextField(
                         value = query, onValueChange = { query = it }, label = { Text("파일 이름 검색") },
-                        singleLine = true, shape = RectangleShape, modifier = Modifier.fillMaxWidth(),
+                        singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
                     )
                     FilterDropdown("폴더", folder.ifBlank { "모든 폴더" }, listOf("" to "모든 폴더") + folders.map { it to it }) { folder = it }
                     FilterDropdown("파일 형식", mimeType.ifBlank { "모든 형식" }, listOf("" to "모든 형식") + mimeTypes.map { it to it }) { mimeType = it }
@@ -130,7 +131,7 @@ fun FilterDialog(
                         FilterSection("동영상 길이 · 분")
                         FilterBounds(minDuration, { minDuration = it }, maxDuration, { maxDuration = it }, "최소 분", "최대 분")
                     } else {
-                        Text("길이 조건은 동영상 유형에서 설정할 수 있습니다.", style = MaterialTheme.typography.bodySmall)
+                        Text("길이 조건은 동영상 유형에서 설정할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
                     }
                     FilterSection("날짜")
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -139,16 +140,16 @@ fun FilterDialog(
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
                             value = fromDate, onValueChange = { fromDate = it }, label = { Text("시작일") },
-                            placeholder = { Text("yyyy-MM-dd") }, singleLine = true, shape = RectangleShape,
+                            placeholder = { Text("yyyy-MM-dd") }, singleLine = true, shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                         )
                         OutlinedTextField(
                             value = toDate, onValueChange = { toDate = it }, label = { Text("종료일") },
-                            placeholder = { Text("yyyy-MM-dd") }, singleLine = true, shape = RectangleShape,
+                            placeholder = { Text("yyyy-MM-dd") }, singleLine = true, shape = RoundedCornerShape(16.dp),
                             modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                         )
                     }
-                    Text("날짜는 yyyy-MM-dd 형식이며, 종료일 전체를 포함합니다.", style = MaterialTheme.typography.bodySmall)
+                    Text("날짜는 yyyy-MM-dd 형식이며, 종료일 전체를 포함합니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
                     FilterSection("화면 방향")
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChoice("전체", orientation == null) { orientation = null }
@@ -181,7 +182,7 @@ fun FilterDialog(
                     }
                 }
                 error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                    Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                 }
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextAction("초기화", onClick = { onApply(MediaFilter()); onDismiss() })
@@ -234,8 +235,9 @@ private fun FilterChoice(label: String, selected: Boolean, onClick: () -> Unit) 
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier.sizeIn(minHeight = 44.dp)
             .semantics { this.selected = selected; role = Role.RadioButton }
+            .clip(RoundedCornerShape(24.dp))
             .background(if (selected) colors.primary else colors.surface)
-            .border(1.dp, if (selected) colors.primary else colors.outline)
+            .border(1.dp, if (selected) colors.primary else Line, RoundedCornerShape(24.dp))
             .plainClick(action = onClick).padding(horizontal = 14.dp, vertical = 13.dp),
     )
 }
@@ -249,12 +251,12 @@ private fun FilterBounds(
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedTextField(
             value = minimum, onValueChange = onMinimum, label = { Text(minimumLabel) },
-            singleLine = true, shape = RectangleShape, modifier = Modifier.weight(1f),
+            singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         )
         OutlinedTextField(
             value = maximum, onValueChange = onMaximum, label = { Text(maximumLabel) },
-            singleLine = true, shape = RectangleShape, modifier = Modifier.weight(1f),
+            singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         )
     }
@@ -282,20 +284,21 @@ private fun <T> FilterDropdown(label: String, valueLabel: String, options: List<
         }
     }
     Column {
-        Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 5.dp))
+        Text(label, color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 5.dp))
         Box {
             ActionButton("$valueLabel  ▾", onClick = { expanded = true }, modifier = Modifier.fillMaxWidth().onSizeChanged { anchorWidth = it.width })
             if (expanded) {
                 Popup(popupPositionProvider = position, onDismissRequest = { expanded = false }, properties = PopupProperties(focusable = true)) {
                     Surface(
-                        shape = RectangleShape, shadowElevation = 0.dp, tonalElevation = 0.dp,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        shape = RoundedCornerShape(16.dp), shadowElevation = 0.dp, tonalElevation = 0.dp,
+                        border = BorderStroke(1.dp, Line),
                         modifier = Modifier.width(with(density) { anchorWidth.toDp() }).heightIn(max = 340.dp),
                     ) {
                         Column(Modifier.verticalScroll(rememberScrollState())) {
                             options.forEach { (value, title) ->
                                 Text(title, style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.fillMaxWidth().semantics { selected = valueLabel == title; role = Role.RadioButton }
+                                        .background(if (valueLabel == title) Panel else MaterialTheme.colorScheme.surface)
                                         .plainClick { onSelect(value); expanded = false }.padding(horizontal = 16.dp, vertical = 14.dp))
                             }
                         }

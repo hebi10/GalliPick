@@ -8,15 +8,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -42,7 +43,7 @@ internal fun FilesScreen(state: AppUiState, vm: AppViewModel, wide: Boolean, tra
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("파일", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
             TextAction("필터 저장", { showSave = true })
-            IconAction("필터와 정렬", Icons.Outlined.Tune, onClick = { showFilter = true })
+            IconAction("필터와 정렬", Icons.Rounded.Tune, onClick = { showFilter = true })
         }
         Spacer(Modifier.height(12.dp))
         SearchField(state.filter.query, { vm.setFilter(state.filter.copy(query = it)) })
@@ -57,9 +58,9 @@ internal fun FilesScreen(state: AppUiState, vm: AppViewModel, wide: Boolean, tra
         if (state.presets.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                 items(state.presets, key = { it.id }) { preset ->
-                    Row(Modifier.border(1.dp, Line), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.clip(RoundedCornerShape(24.dp)).background(Panel).border(1.dp, Line, RoundedCornerShape(24.dp)), verticalAlignment = Alignment.CenterVertically) {
                         TextAction(preset.name, { vm.applyPreset(preset) })
-                        IconAction("${preset.name} 필터 삭제", Icons.Outlined.Close, Modifier.size(40.dp), onClick = { vm.deletePreset(preset.id) })
+                        IconAction("${preset.name} 필터 삭제", Icons.Rounded.Close, Modifier.size(40.dp), onClick = { vm.deletePreset(preset.id) })
                     }
                 }
             }
@@ -80,9 +81,9 @@ internal fun FilesScreen(state: AppUiState, vm: AppViewModel, wide: Boolean, tra
                     items(state.filtered, key = { it.uri }) { item -> MediaTile(item, item.uri in state.selected, { vm.toggleSelection(item.uri) }, { detailUri = item.uri }) }
                 }
                 if (wide) {
-                    Box(Modifier.width(280.dp).fillMaxHeight().border(1.dp, Line)) {
+                    Box(Modifier.width(280.dp).fillMaxHeight().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surface).border(1.dp, Line, RoundedCornerShape(20.dp))) {
                         if (detail != null) MediaDetail(detail, open, { vm.setProtected(detail, it) }, folderProtected = detail.hasFolderProtection(state.protectedFolders))
-                        else EmptyState("파일 정보", "파일을 눌러 원본과 상세 정보를 확인하세요.", Icons.Outlined.Info)
+                        else EmptyState("파일 정보", "파일을 눌러 원본과 상세 정보를 확인하세요.", Icons.Rounded.Info)
                     }
                 }
             }
@@ -96,29 +97,29 @@ internal fun FilesScreen(state: AppUiState, vm: AppViewModel, wide: Boolean, tra
 
 @Composable
 private fun SearchField(value: String, onChange: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 50.dp).border(1.dp, Line).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.Search, null, Modifier.size(21.dp), tint = Muted)
+    Row(Modifier.fillMaxWidth().heightIn(min = 50.dp).clip(RoundedCornerShape(16.dp)).background(Panel).border(1.dp, Line, RoundedCornerShape(16.dp)).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        GalliIcon(Icons.Rounded.Search, null, Modifier.size(21.dp), tint = Muted)
         Spacer(Modifier.width(10.dp))
         BasicTextField(value, onChange, modifier = Modifier.weight(1f).padding(vertical = 12.dp), singleLine = true, textStyle = TextStyle(color = Ink, fontSize = 16.sp), decorationBox = { field ->
             Box { if (value.isEmpty()) Text("파일 이름 검색", color = Muted, fontSize = 16.sp); field() }
         })
-        if (value.isNotEmpty()) IconAction("검색어 지우기", Icons.Outlined.Close, Modifier.size(36.dp), onClick = { onChange("") })
+        if (value.isNotEmpty()) IconAction("검색어 지우기", Icons.Rounded.Close, Modifier.size(36.dp), onClick = { onChange("") })
     }
 }
 
 @Composable
 private fun KindChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Text(label, modifier = Modifier.semantics { this.selected = selected; role = Role.RadioButton }.heightIn(min = 44.dp).background(if (selected) Ink else Color.White).border(1.dp, if (selected) Ink else Line).plainClick(action = onClick).padding(horizontal = 15.dp, vertical = 12.dp), color = if (selected) Color.White else Ink, style = MaterialTheme.typography.labelLarge)
+    Text(label, modifier = Modifier.semantics { this.selected = selected; role = Role.RadioButton }.heightIn(min = 44.dp).clip(RoundedCornerShape(24.dp)).background(if (selected) Ink else MaterialTheme.colorScheme.surface).border(1.dp, if (selected) Ink else Line, RoundedCornerShape(24.dp)).plainClick(action = onClick).padding(horizontal = 15.dp, vertical = 12.dp), color = if (selected) MaterialTheme.colorScheme.onPrimary else Ink, style = MaterialTheme.typography.labelLarge)
 }
 
 @Composable
 private fun MediaTile(item: MediaItem, selected: Boolean, toggle: () -> Unit, detail: () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).plainClick(action = detail)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)).plainClick(action = detail)) {
             MediaThumbnail(item, Modifier.fillMaxSize())
             SelectBox(selected, item.canTrash(), if (item.canTrash()) "${item.displayName} 선택" else "${item.displayName} 즐겨찾기 또는 보호 파일", toggle, Modifier.align(Alignment.TopEnd))
-            if (item.kind == MediaKind.VIDEO) Text(durationLabel(item.durationMs), color = Color.White, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp).background(Ink).padding(horizontal = 5.dp, vertical = 3.dp))
-            if (item.isFavorite || item.isProtected) Icon(if (item.isFavorite) Icons.Outlined.Star else Icons.Outlined.Shield, if (item.isFavorite) "즐겨찾기" else "보호됨", tint = Color.White, modifier = Modifier.align(Alignment.BottomStart).padding(5.dp).background(Ink).padding(4.dp).size(16.dp))
+            if (item.kind == MediaKind.VIDEO) Text(durationLabel(item.durationMs), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp).background(Ink, RoundedCornerShape(12.dp)).padding(horizontal = 7.dp, vertical = 3.dp))
+            if (item.isFavorite || item.isProtected) GalliIcon(if (item.isFavorite) Icons.Rounded.Star else Icons.Rounded.Shield, if (item.isFavorite) "즐겨찾기" else "보호됨", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.align(Alignment.BottomStart).padding(5.dp).background(Ink, RoundedCornerShape(12.dp)).padding(4.dp).size(16.dp))
         }
         Spacer(Modifier.height(6.dp))
         Text(item.displayName, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.plainClick(action = detail))
@@ -128,14 +129,14 @@ private fun MediaTile(item: MediaItem, selected: Boolean, toggle: () -> Unit, de
 
 @Composable
 internal fun SelectionBar(selected: List<MediaItem>, clear: () -> Unit, trash: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(Panel).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(20.dp)).border(1.dp, Line, RoundedCornerShape(20.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f)) {
                 Text("${selected.size}개 선택", style = MaterialTheme.typography.titleSmall)
                 Text(bytesLabel(selected.sumOf { it.sizeBytes }), style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             if (selected.isNotEmpty()) TextAction("해제", clear)
-            ActionButton("휴지통으로", trash, filled = true, enabled = selected.isNotEmpty(), icon = Icons.Outlined.DeleteOutline)
+            ActionButton("휴지통으로", trash, filled = true, enabled = selected.isNotEmpty(), icon = Icons.Rounded.DeleteOutline)
         }
         Text("즐겨찾기·보호 파일은 선택할 수 없습니다. 이동 전 Android 확인창이 표시됩니다.", color = Muted, style = MaterialTheme.typography.labelSmall)
     }
@@ -144,10 +145,10 @@ internal fun SelectionBar(selected: List<MediaItem>, clear: () -> Unit, trash: (
 @Composable
 private fun SavePresetDialog(save: (String) -> Unit, dismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = dismiss, title = { Text("현재 필터 저장") }, text = {
+    AlertDialog(onDismissRequest = dismiss, shape = RoundedCornerShape(24.dp), title = { Text("현재 필터 저장") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("검색어, 조건, 정렬을 함께 저장합니다.")
-            OutlinedTextField(name, { name = it.take(40) }, label = { Text("필터 이름") }, singleLine = true)
+            OutlinedTextField(name, { name = it.take(40) }, label = { Text("필터 이름") }, singleLine = true, shape = RoundedCornerShape(16.dp))
         }
     }, confirmButton = { ActionButton("저장", { save(name.trim()) }, enabled = name.isNotBlank(), filled = true) }, dismissButton = { TextAction("취소", dismiss) })
 }
