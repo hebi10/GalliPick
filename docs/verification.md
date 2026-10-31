@@ -2,7 +2,7 @@
 
 ## v0.1.2 · 사용성·안전성 보완
 
-검증일: 2026-11-01. 검증 코드: `1bd89d8cbaa4c237eca0a9e7bd4b6767043faa42`.
+검증일: 2026-11-01. 로컬 검증 커밋: `1bd89d8cbaa4c237eca0a9e7bd4b6767043faa42`. GitHub 게시·CI 검증 코드: `596dc27f339e6a0bf63c63b70159c9c05521f8ee`.
 
 Android 11 이상 / compile·target SDK 36 / versionCode 3.
 
@@ -22,6 +22,14 @@ Android 11 이상 / compile·target SDK 36 / versionCode 3.
 - debug 앱과 Android 테스트 APK 빌드 성공.
 - 독립 코드 검토에서 확인한 확인창 개인정보 잔류, 연속 새로고침의 loading 소유권, 오래된 볼륨 버전 선택/미리보기, 중복 결과 게시 시점의 경합을 보완했습니다. 최종 검토에 Critical/Important 잔여 지적은 없습니다.
 
+### GitHub 반영과 CI
+
+[PR #1](https://github.com/hebi10/GalliPick/pull/1)을 통해 main에 반영했습니다. 게시한 Git 트리 `3525274ac9c868e4775e16931b76a14956eac1c1`이 로컬 검증본과 일치함을 확인했습니다.
+
+- [빌드·단위 검사·lint](https://github.com/hebi10/GalliPick/actions/runs/41231627571): JVM 59개 통과, 실패/건너뜀 0개, lint 오류 0개, 앱 APK 빌드 성공. CI에서는 경고 26개와 hint 1개이며 위 로컬 경고 수와 구분합니다.
+- [Android 16/API 36 기기 검사](https://github.com/hebi10/GalliPick/actions/runs/41231627558): 22개 통과, 실패/오류/건너뜀 0개. 보고서 XML 기준 34.578초입니다. KVM 환경의 AndroidJUnitRunner 전체 검사입니다.
+- GitHub Actions의 APK는 개발 검증용 debug 빌드이며, 아래 전달 파일의 서명 검증 기록과 구분합니다.
+
 ### Android 실행 검사
 
 최종 Android 11/API 30 실행 검사 **22개 통과, 실패/오류/건너뜀 0개**입니다.
@@ -36,7 +44,7 @@ Gradle/UTP의 별도 JVM에서 기기 정보 조회가 시간 초과되어 테�
 
 ### 전달 APK
 
-`GalliPick-v0.1.2-debug.apk` · 63,630,083 bytes. 서명 검증 성공. 전달한 v0.1.1 APK와 인증서가 일치하여 기존 설치 위에 업데이트할 수 있습니다. 기기 검사에 사용한 최종 APK와 전달 파일의 SHA-256도 일치합니다.
+`GalliPick-v0.1.2-debug.apk` · 63,630,083 bytes. 서명 검증 성공. 전달한 v0.1.1 APK와 인증서가 일치하여 기존 설치 위에 업데이트할 수 있습니다. 로컬 Android 11 기기 검사에 사용한 최종 APK와 전달 파일의 SHA-256도 일치합니다.
 
 ```text
 SHA-256: ea3f0a201e71c393da4ac53ce19253ba152e4b69a317a381f70256bc3e7a89f0
@@ -46,7 +54,7 @@ SHA-256: ea3f0a201e71c393da4ac53ce19253ba152e4b69a317a381f70256bc3e7a89f0
 
 ### 확인 범위
 
-Android 16/API 36 소프트웨어 에뮬레이터는 하드웨어 가속이 없는 환경에서 제한 시간 내 부팅되지 않았습니다. 이를 통과한 기기 검사로 기록하지 않습니다. Android 11/API 30 및 단위 검사 결과를 실제 확인 범위로 구분합니다. 실제 사용자 폰의 시스템 승인/취소·복원, Android 14+ 일부 파일 허용 선택창, 대량 미디어/SD 카드/폴더블·큰 글꼴은 추가 확인이 필요합니다. 유사 사진·유사 동영상 탐지는 후속 범위입니다.
+로컬 Android 16/API 36 소프트웨어 에뮬레이터는 하드웨어 가속이 없는 환경에서 제한 시간 내 부팅되지 않았습니다. 이후 GitHub KVM 환경에서 API 36의 전체 22개 검사가 통과했습니다. 확인한 자동 검사 범위는 로컬 Android 11/API 30과 GitHub Android 16/API 36이며, 로컬 부팅 실패를 통과로 계산하지 않았습니다. 실제 사용자 폰의 시스템 승인/취소·복원, Android 14+ 일부 파일 허용 선택창, 대량 미디어/SD 카드/폴더블·큰 글꼴은 추가 확인이 필요합니다. 유사 사진·유사 동영상 탐지는 후속 범위입니다.
 
 ---
 
