@@ -114,7 +114,7 @@ fun GalliPickApp(
                             else when (destination) {
                                 Destination.HOME -> HomeScreen(state, onRequestPermission, navigateFiles, { destination = Destination.DUPLICATES }, { destination = Destination.CLEANUP })
                                 Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission)
-                                Destination.DUPLICATES -> DuplicatesScreen(state, vm, onTrash, onOpenMedia)
+                                Destination.DUPLICATES -> DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission)
                                 Destination.CLEANUP -> CleanupScreen(state, navigateFiles)
                                 Destination.SETTINGS -> SettingsScreen(state, vm, onRequestPermission, onOpenSettings, { showTrash = true })
                             }

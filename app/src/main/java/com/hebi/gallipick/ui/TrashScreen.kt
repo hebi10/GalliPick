@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -32,11 +33,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
+import com.hebi.gallipick.domain.SelectionPolicy
 
 @Composable
 internal fun TrashScreen(
@@ -44,11 +50,25 @@ internal fun TrashScreen(
     onRestore: (List<MediaItem>) -> Unit,
     onBack: () -> Unit,
 ) {
-    var selected by remember { mutableStateOf(emptySet<String>()) }
-    LaunchedEffect(items) { selected = selected.intersect(items.mapTo(mutableSetOf()) { it.uri }) }
-    val selectedItems = items.filter { it.uri in selected }
+    var selected by remember { mutableStateOf(emptyMap<String, Pair<String, String>>()) }
+    var limitMessage by remember { mutableStateOf<String?>(null) }
+    val listState = rememberLazyListState()
+    // Only a refreshed catalog can confirm a restore; a cancelled system dialog keeps its selection.
+    LaunchedEffect(items) {
+        val current = items.associateBy { it.uri }
+        selected = selected.filter { (uri, version) -> current[uri]?.let { it.fingerprint to it.volumeVersion } == version }
+        if (selected.isEmpty()) limitMessage = null
+    }
+    val selectedItems = items.filter { selected[it.uri] == (it.fingerprint to it.volumeVersion) }
     val toggle: (MediaItem) -> Unit = { item ->
-        selected = if (item.uri in selected) selected - item.uri else selected + item.uri
+        when {
+            selected[item.uri] == (item.fingerprint to item.volumeVersion) -> { selected = selected - item.uri; limitMessage = null }
+            selectedItems.size < SelectionPolicy.MAX_SELECTION_SIZE -> {
+                selected = selected + (item.uri to (item.fingerprint to item.volumeVersion))
+                limitMessage = null
+            }
+            else -> limitMessage = "한 번에 최대 ${SelectionPolicy.MAX_SELECTION_SIZE}개까지 복원할 수 있습니다. 선택을 해제한 뒤 다시 선택해 주세요."
+        }
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(Modifier.widthIn(max = 1040.dp).fillMaxSize().padding(horizontal = 20.dp)) {
@@ -72,21 +92,30 @@ internal fun TrashScreen(
             } else {
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    val allSelected = selectedItems.size == items.size
+                    val allSelected = selectedItems.size == minOf(items.size, SelectionPolicy.MAX_SELECTION_SIZE)
                     SelectBox(
                         checked = allSelected,
                         description = "휴지통 전체 선택",
-                        onClick = { selected = if (!allSelected) items.mapTo(mutableSetOf()) { it.uri } else emptySet() },
+                        onClick = {
+                            selected = if (allSelected) emptyMap() else items.take(SelectionPolicy.MAX_SELECTION_SIZE).associate { it.uri to (it.fingerprint to it.volumeVersion) }
+                            limitMessage = if (!allSelected && items.size > SelectionPolicy.MAX_SELECTION_SIZE) "앞의 ${SelectionPolicy.MAX_SELECTION_SIZE}개를 선택했습니다. 한 번에 최대 ${SelectionPolicy.MAX_SELECTION_SIZE}개까지 복원할 수 있습니다." else null
+                        },
                     )
-                    Text("전체 선택", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                    Text(if (items.size > SelectionPolicy.MAX_SELECTION_SIZE) "앞 ${SelectionPolicy.MAX_SELECTION_SIZE}개 선택" else "전체 선택", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
                     Text("${selectedItems.size}개 선택", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
+                Text(
+                    limitMessage ?: "한 번에 최대 ${SelectionPolicy.MAX_SELECTION_SIZE}개까지 복원할 수 있습니다.",
+                    color = Muted, style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(bottom = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                )
                 LazyColumn(
-                    Modifier.weight(1f),
+                    Modifier.weight(1f).semantics { contentDescription = "휴지통 파일 목록" },
+                    state = listState,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(items, key = { it.uri }) { item ->
-                        TrashRow(item, item.uri in selected) { toggle(item) }
+                        TrashRow(item, selected[item.uri] == (item.fingerprint to item.volumeVersion)) { toggle(item) }
                     }
                     item { Spacer(Modifier.height(8.dp)) }
                 }

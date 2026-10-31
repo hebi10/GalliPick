@@ -48,7 +48,7 @@ private object ThumbnailCache {
 @Composable
 internal fun MediaThumbnail(item: MediaItem, modifier: Modifier = Modifier) {
     val resolver = LocalContext.current.contentResolver
-    val key = "${item.uri}:${item.fingerprint}"
+    val key = "${item.uri}:${item.fingerprint}:${item.volumeVersion}"
     var bitmap by remember(key) { mutableStateOf(ThumbnailCache.bitmaps.get(key)) }
     LaunchedEffect(key) {
         if (bitmap == null) bitmap = withContext(Dispatchers.IO) {
@@ -97,11 +97,15 @@ internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit, onOpen: (
 
 @Composable
 internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect: (Boolean) -> Unit, modifier: Modifier = Modifier, folderProtected: Boolean = false) {
+    var previewOpen by remember(item.uri, item.fingerprint, item.volumeVersion) { mutableStateOf(false) }
+    if (previewOpen) MediaPreviewDialog(item, onDismiss = { previewOpen = false }, onOpen = onOpen)
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         MediaThumbnail(item, Modifier.fillMaxWidth().aspectRatio(1.2f))
         Text(item.displayName, style = MaterialTheme.typography.titleMedium)
+        ActionButton("앱에서 미리보기", { previewOpen = true }, Modifier.fillMaxWidth(), filled = true,
+            icon = if (item.kind == MediaKind.VIDEO) Icons.Rounded.PlayArrow else Icons.Rounded.ZoomIn)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton("원본 열기", { onOpen(item) }, Modifier.weight(1f), filled = true, icon = Icons.Rounded.OpenInNew)
+            ActionButton("원본 열기", { onOpen(item) }, Modifier.weight(1f), icon = Icons.Rounded.OpenInNew)
             ActionButton(if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호", { onProtect(!item.isProtected) }, Modifier.weight(1f), enabled = !folderProtected, icon = Icons.Rounded.Shield)
         }
         if (folderProtected) Text("폴더 보호는 설정의 보호 폴더에서 해제할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)

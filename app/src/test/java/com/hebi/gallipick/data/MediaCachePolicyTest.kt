@@ -4,6 +4,7 @@ import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
 import org.junit.Assert.*
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 
 class MediaCachePolicyTest {
     @Test fun folderRuleIncludesDescendantsButNotSimilarNames() {
@@ -34,6 +35,40 @@ class MediaCachePolicyTest {
         assertFalse(MediaCachePolicy.sameVersion(original, original.copy(generationModified = 2)))
         assertFalse(MediaCachePolicy.sameVersion(original, original.copy(volume = "other-volume")))
         assertFalse(MediaCachePolicy.sameVersion(original, original.copy(id = 7)))
+        assertFalse(MediaCachePolicy.sameVersion(original, original.copy(volumeVersion = "reset")))
+    }
+
+    @Test fun volumeResetRejectsUnchangedMetadataBeforeActionValidation() = runBlocking {
+        val original = media("a")
+        val result = MediaCachePolicy.freshUnchanged(listOf(original),
+            mapOf("external_primary" to "old"), { "reset" }, { original })
+        assertTrue(result.isEmpty())
+    }
+
+    @Test fun volumeResetDuringActionValidationRejectsPreviouslyReadRows() = runBlocking {
+        val original = media("a")
+        var version = "old"
+        val result = MediaCachePolicy.freshUnchanged(listOf(original),
+            mapOf("external_primary" to "old"), { version }, {
+                version = "reset"
+                original
+            })
+        assertTrue(result.isEmpty())
+    }
+
+    @Test fun unchangedVolumeAndFingerprintCanPassActionValidation() = runBlocking {
+        val original = media("a")
+        val result = MediaCachePolicy.freshUnchanged(listOf(original),
+            mapOf("external_primary" to "same"), { "same" }, { original })
+        assertEquals(listOf(original), result)
+    }
+
+    @Test fun selectionEpochCannotBeReplacedByANewerSuccessfulCatalogEpoch() = runBlocking {
+        val selected = media("a").copy(volumeVersion = "selected-epoch")
+        val fresh = selected.copy(volumeVersion = "refreshed-epoch")
+        val result = MediaCachePolicy.freshUnchanged(listOf(selected),
+            mapOf("external_primary" to "refreshed-epoch"), { "refreshed-epoch" }, { fresh })
+        assertTrue(result.isEmpty())
     }
 
     @Test fun staleFailedOrInvalidHashesCannotProveDuplicates() {

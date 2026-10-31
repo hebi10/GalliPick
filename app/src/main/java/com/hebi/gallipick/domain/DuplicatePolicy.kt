@@ -2,8 +2,9 @@ package com.hebi.gallipick.domain
 
 /** Recommendations for byte-identical media. Protected and favorite items always survive. */
 object DuplicatePolicy {
-    fun recommendedKeep(group: DuplicateGroup): MediaItem {
+    fun recommendedKeep(group: DuplicateGroup, preferredUri: String? = null): MediaItem {
         require(group.items.isNotEmpty()) { "An empty duplicate group has no item to keep" }
+        group.items.firstOrNull { it.uri == preferredUri }?.let { return it }
         return group.items.minWithOrNull(
             compareByDescending<MediaItem> { it.isProtected }
                 .thenByDescending { it.isFavorite }
@@ -13,9 +14,9 @@ object DuplicatePolicy {
         )!!
     }
 
-    fun deletionCandidates(group: DuplicateGroup): List<MediaItem> {
+    fun deletionCandidates(group: DuplicateGroup, preferredUri: String? = null): List<MediaItem> {
         if (group.items.size < 2) return emptyList()
-        val keepUri = recommendedKeep(group).uri
+        val keepUri = recommendedKeep(group, preferredUri).uri
         // A repeated URI is one physical item, even if its metadata snapshots disagree.
         val protectedUris = group.items.asSequence()
             .filter { it.isFavorite || it.isProtected }
@@ -28,11 +29,11 @@ object DuplicatePolicy {
             .toList()
     }
 
-    fun reclaimableBytes(groups: List<DuplicateGroup>): Long {
+    fun reclaimableBytes(groups: List<DuplicateGroup>, preferredKeepers: Map<String, String> = emptyMap()): Long {
         val countedUris = HashSet<String>()
         var total = 0L
         for (group in groups) {
-            for (item in deletionCandidates(group)) {
+            for (item in deletionCandidates(group, preferredKeepers[group.hash])) {
                 if (!countedUris.add(item.uri)) continue
                 val bytes = item.sizeBytes.coerceAtLeast(0)
                 // Corrupt metadata must not turn a large estimate into a negative number.

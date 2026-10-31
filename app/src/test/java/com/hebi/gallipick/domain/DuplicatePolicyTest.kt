@@ -6,6 +6,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DuplicatePolicyTest {
+    @Test fun chosenAlbumCopyCanBeKeptWhileProtectedCopiesRemainSafe() {
+        val camera = media("camera").copy(relativePath = "DCIM/Camera/")
+        val album = media("album").copy(relativePath = "Pictures/Album/")
+        val protected = media("protected").copy(isProtected = true)
+        val group = group(camera, album, protected)
+        assertEquals(album, DuplicatePolicy.recommendedKeep(group, album.uri))
+        assertEquals(listOf(camera), DuplicatePolicy.deletionCandidates(group, album.uri))
+        assertEquals(camera.sizeBytes, DuplicatePolicy.reclaimableBytes(listOf(group), mapOf(group.hash to album.uri)))
+    }
+
+    @Test fun removedPreferredCopyFallsBackToSafeRecommendation() {
+        val a = media("a")
+        val b = media("b")
+        assertEquals(a, DuplicatePolicy.recommendedKeep(group(a, b), "missing"))
+        assertEquals(listOf(b), DuplicatePolicy.deletionCandidates(group(a, b), "missing"))
+    }
+
     @Test
     fun cameraOriginalWinsOverCopiesRegardlessOfFileSizeOrPixels() {
         val original = media("camera").copy(relativePath = "DCIM/Camera/", sizeBytes = 1024, width = 100, height = 100)
