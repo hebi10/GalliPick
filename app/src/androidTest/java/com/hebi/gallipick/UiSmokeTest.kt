@@ -3,11 +3,10 @@ package com.hebi.gallipick
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
-import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -40,7 +39,8 @@ class UiSmokeTest {
     }
 
     private fun saveScreenshot(name: String) {
-        val bitmap = compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap()
+        val node = if (name == "filters") compose.onNode(isDialog()) else compose.onRoot()
+        val bitmap = node.captureToImage().asAndroidBitmap()
         val outputPath = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
         val directory = (outputPath?.let(::File) ?: File(compose.activity.filesDir, "test-screenshots")).apply { mkdirs() }
         File(directory, "$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }

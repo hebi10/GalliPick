@@ -181,8 +181,10 @@ internal fun IconAction(label: String, icon: ImageVector, modifier: Modifier = M
 
 @Composable
 internal fun SectionTitle(title: String, subtitle: String? = null) {
-    Text(title, style = MaterialTheme.typography.headlineMedium)
-    if (subtitle != null) { Spacer(Modifier.height(6.dp)); Text(subtitle, color = Muted, style = MaterialTheme.typography.bodyMedium) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, style = MaterialTheme.typography.headlineMedium)
+        if (subtitle != null) Text(subtitle, color = Muted, style = MaterialTheme.typography.bodyMedium)
+    }
 }
 
 @Composable
