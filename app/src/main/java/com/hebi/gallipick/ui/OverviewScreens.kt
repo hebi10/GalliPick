@@ -3,6 +3,9 @@ package com.hebi.gallipick.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,12 +16,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hebi.gallipick.AppUiState
+import com.hebi.gallipick.AppThemeMode
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.*
@@ -35,15 +40,15 @@ internal fun HomeScreen(state: AppUiState, requestAccess: () -> Unit, browse: (M
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("픽이와 함께, 차근차근", style = MaterialTheme.typography.labelMedium, color = Muted)
-                Text("추억은 소중하게,\n공간은 가볍게.", style = MaterialTheme.typography.titleLarge.copy(lineHeight = 29.sp))
-                Text("사진과 동영상을 한눈에 살펴보세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                Text("정리 도우미 픽이", style = MaterialTheme.typography.labelMedium, color = Muted)
+                Text("사진과 동영상을\n한곳에서 정리하세요.", style = MaterialTheme.typography.titleLarge.copy(lineHeight = 29.sp))
+                Text("파일 검색·필터·중복 검사", style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             GalliMascot(Modifier.size(80.dp))
         }
         if (state.access == MediaAccess.NONE) {
             Column(
-                Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp),
+                Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Box(Modifier.size(48.dp).background(Peach, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
@@ -56,7 +61,7 @@ internal fun HomeScreen(state: AppUiState, requestAccess: () -> Unit, browse: (M
             }
         }
         Column(
-            Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp),
+            Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -92,7 +97,7 @@ internal fun HomeScreen(state: AppUiState, requestAccess: () -> Unit, browse: (M
 @Composable
 private fun MediaStat(title: String, count: Int, size: Long, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier, accent: Color, onClick: () -> Unit) {
     Column(
-        modifier.clip(RoundedCornerShape(24.dp)).background(Color.White).border(1.dp, Line, RoundedCornerShape(24.dp)).plainClick(action = onClick).padding(16.dp),
+        modifier.clip(RoundedCornerShape(24.dp)).background(AppSurface).border(1.dp, Line, RoundedCornerShape(24.dp)).plainClick(action = onClick).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.size(44.dp).background(accent, RoundedCornerShape(15.dp)), contentAlignment = Alignment.Center) {
@@ -107,7 +112,7 @@ private fun MediaStat(title: String, count: Int, size: Long, icon: androidx.comp
 @Composable
 private fun OverviewAction(title: String, body: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Color.White).border(1.dp, Line, RoundedCornerShape(20.dp)).plainClick(action = onClick).padding(16.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(AppSurface).border(1.dp, Line, RoundedCornerShape(20.dp)).plainClick(action = onClick).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -146,7 +151,7 @@ internal fun CleanupScreen(state: AppUiState, browse: (MediaFilter) -> Unit) {
         SectionTitle("정리 후보", "필요한 파일인지 확인한 뒤 직접 선택해주세요.")
         suggestions.forEachIndexed { index, suggestion ->
             val deletable = suggestion.items.filter { it.canTrash() }
-            Column(Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.size(46.dp).background(if (index == 1) Peach else Mint, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
                         GalliIcon(if (suggestion.filter.kind == MediaKind.PHOTO) Icons.Rounded.Image else Icons.Rounded.Videocam, null, Modifier.size(31.dp))
@@ -174,7 +179,31 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
         (observed.keys + state.protectedFolders).associateWith { observed[it].orEmpty() }.toSortedMap()
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        SectionTitle("설정", "파일은 안전하게, 분석은 기기 안에서.")
+        SectionTitle("설정", "화면 테마와 파일 접근·보호 설정")
+        SettingsSection("화면 테마") {
+            Text("기기 설정을 따르거나 사용할 모드를 직접 선택하세요.", color = Muted, style = MaterialTheme.typography.bodySmall)
+            Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                AppThemeMode.entries.forEach { mode ->
+                    val selected = state.themeMode == mode
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(14.dp))
+                            .background(if (selected) Panel else androidx.compose.ui.graphics.Color.Transparent)
+                            .selectable(selected = selected, role = Role.RadioButton, onClick = { vm.setThemeMode(mode) },
+                                indication = null, interactionSource = remember { MutableInteractionSource() })
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        RadioButton(selected = selected, onClick = null)
+                        Text(when (mode) {
+                            AppThemeMode.SYSTEM -> "기기 설정 따르기"
+                            AppThemeMode.LIGHT -> "라이트 모드"
+                            AppThemeMode.DARK -> "다크 모드"
+                        }, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        }
         SettingsSection("미디어 접근") {
             Text(when (state.access) { MediaAccess.NONE -> "접근 권한 없음"; MediaAccess.PARTIAL -> "일부 사진·동영상 접근 허용"; MediaAccess.FULL -> "전체 사진·동영상 접근 허용" }, style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -214,7 +243,6 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
             GalliMascot(Modifier.size(38.dp))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("GalliPick · 기기 내 미디어 정리", style = MaterialTheme.typography.bodySmall, color = Muted)
-                Text("소중한 추억을 위한 작은 정리함", style = MaterialTheme.typography.labelSmall, color = Muted)
             }
         }
     }
@@ -229,13 +257,14 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
 @Composable
 private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
     val icon = when (title) {
+        "화면 테마" -> Icons.Rounded.DarkMode
         "미디어 접근" -> Icons.Rounded.PhotoLibrary
         "휴지통" -> Icons.Rounded.RestoreFromTrash
         "보호 폴더" -> Icons.Rounded.Folder
         "분석 캐시" -> Icons.Rounded.CleaningServices
         else -> Icons.Rounded.Shield
     }
-    Column(Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.size(40.dp).background(Panel, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
                 GalliIcon(icon, null, Modifier.size(28.dp))

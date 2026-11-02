@@ -16,26 +16,26 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.DuplicateGroup
-import com.hebi.gallipick.domain.formatBytes
 import com.hebi.gallipick.domain.SelectionPolicy
+import com.hebi.gallipick.domain.MediaKind
+import com.hebi.gallipick.domain.TrashIdentity
+import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.ui.GalliPickApp
 import com.hebi.gallipick.ui.GalliPickTheme
+import com.hebi.gallipick.ui.TrashReviewDialog
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -46,13 +46,32 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-          GalliPickTheme {
+          val uiState by vm.ui.collectAsState()
+          val useDarkTheme = uiState.themeMode.isDark(isSystemInDarkTheme())
+          val view = LocalView.current
+          SideEffect {
+              WindowCompat.getInsetsController(window, view).apply {
+                  isAppearanceLightStatusBars = !useDarkTheme
+                  isAppearanceLightNavigationBars = !useDarkTheme
+              }
+          }
+          GalliPickTheme(themeMode = uiState.themeMode) {
             var pending by remember { mutableStateOf<TrashReview?>(null) }
             var restored by rememberSaveable { mutableStateOf(false) }
+            var submitted by rememberSaveable { mutableStateOf("") }
+            var reviewChecking by remember { mutableStateOf(false) }
             var reviewGeneration by remember { mutableLongStateOf(0L) }
             val catalogReady by vm.repository.catalogReady.collectAsState()
             LaunchedEffect(catalogReady) {
                 if (!catalogReady) { pending = null; reviewGeneration++ }
+            }
+            LaunchedEffect(uiState.selected) {
+                val request = pending
+                if (request != null && !request.restore && request.selectionSnapshot != uiState.selected) {
+                    pending = null
+                    reviewGeneration++
+                    vm.showMessage("선택이 변경되어 확인창을 닫았습니다. 이동할 파일을 다시 확인해 주세요.")
+                }
             }
             DisposableEffect(Unit) {
                 val observer = LifecycleEventObserver { _, event ->
@@ -66,15 +85,34 @@ class MainActivity : ComponentActivity() {
                 vm.refresh()
             }
             val trashLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+                val identities = decodeTrashRequest(submitted)
+                val wasRestore = restored
+                submitted = ""
                 if (result.resultCode == Activity.RESULT_OK) {
                     vm.clearSelection()
-                    vm.showMessage(if (restored) "복원 요청이 승인되었습니다. 파일 상태를 새로고침합니다." else "휴지통 이동이 승인되었습니다. 실제 확보 공간은 영구 제거 후 달라질 수 있습니다.")
-                } else vm.showMessage("요청을 취소했습니다. 파일 상태를 새로고침합니다.")
-                vm.refresh()
+                    reviewChecking = true
+                    vm.showMessage("Android 승인을 받았습니다. 실제 파일 상태를 확인하고 있습니다.")
+                    lifecycleScope.launch {
+                        try {
+                            if (identities.isEmpty()) vm.showMessage("요청이 승인되었습니다. 파일 목록에서 결과를 확인해 주세요.")
+                            else vm.showMessage(trashOutcomeMessage(vm.repository.inspectTrashOutcome(identities, wasRestore), wasRestore))
+                        } catch (e: CancellationException) { throw e
+                        } catch (_: Exception) { vm.showMessage("요청은 승인되었으나 결과를 확인하지 못했습니다. 파일 목록과 접근 권한을 확인해 주세요.")
+                        } finally { reviewChecking = false; vm.refresh() }
+                    }
+                } else {
+                    reviewChecking = false
+                    vm.showMessage(if (wasRestore) "복원을 취소했습니다. 파일 상태를 다시 확인합니다." else "휴지통 이동을 취소했습니다. 파일 상태를 다시 확인합니다.")
+                    vm.refresh()
+                }
             }
 
             fun review(items: List<MediaItem>, restore: Boolean) {
                 if (items.isEmpty()) return
+                if (reviewChecking || pending != null || submitted.isNotEmpty()) {
+                    vm.showMessage("앞선 파일 확인 또는 Android 확인을 먼저 완료해 주세요.")
+                    return
+                }
                 if (items.size > SelectionPolicy.MAX_SELECTION_SIZE) {
                     vm.showMessage("한 번에 최대 500개까지 처리할 수 있습니다. 선택 수를 줄여 주세요.")
                     return
@@ -82,6 +120,8 @@ class MainActivity : ComponentActivity() {
                 val requested = if (restore) items else vm.selectedItemsForReview(items)
                 val safetyGroups = if (restore) emptyList() else vm.selectionSafetyGroups(requested)
                 val generation = reviewGeneration
+                val selectionSnapshot = vm.ui.value.selected.toSet()
+                reviewChecking = true
                 lifecycleScope.launch {
                     try {
                         val verified = if (restore) vm.repository.revalidateForRestore(requested) else vm.repository.revalidate(requested)
@@ -91,19 +131,24 @@ class MainActivity : ComponentActivity() {
                         } else {
                             val selectedUris = verified.map { it.uri }.toSet()
                             var survivorsValid = true
+                            val kept = mutableListOf<MediaItem>()
                             for (group in safetyGroups) {
-                                if (!vm.repository.hasSurvivingCopy(group, selectedUris)) survivorsValid = false
+                                val survivor = vm.repository.confirmedSurvivingCopy(group, selectedUris, vm.ui.value.duplicateKeepers[group.hash])
+                                if (survivor == null) survivorsValid = false else kept += survivor
                             }
                             if (generation != reviewGeneration || !vm.repository.catalogReady.value || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                                 vm.showMessage("접근 범위 확인 후 파일을 다시 선택해 주세요.")
-                            } else if (survivorsValid) pending = TrashReview(verified, restore, items.size - verified.size, safetyGroups)
+                            } else if (!restore && vm.ui.value.selected != selectionSnapshot) {
+                                vm.showMessage("선택이 변경되었습니다. 이동할 파일을 다시 확인해 주세요.")
+                            } else if (survivorsValid) pending = TrashReview(verified, restore, items.size - verified.size, safetyGroups, kept.distinctBy { it.uri }, selectionSnapshot)
                             else {
                                 vm.showMessage("중복 묶음에는 변경되지 않은 사본이 한 개 이상 남아 있어야 합니다. 다시 검사하고 선택해 주세요.")
                                 vm.refresh()
                             }
                         }
                     } catch (e: CancellationException) { throw e
-                    } catch (_: Exception) { vm.showMessage("파일 상태를 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요.") }
+                    } catch (_: Exception) { vm.showMessage("파일 상태를 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요.")
+                    } finally { reviewChecking = false }
                 }
             }
 
@@ -124,29 +169,13 @@ class MainActivity : ComponentActivity() {
             )
 
             pending?.let { request ->
-                AlertDialog(
-                    onDismissRequest = { pending = null },
-                    title = { Text(if (request.restore) "파일 복원" else "휴지통 이동") },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("${request.items.size}개 · ${formatBytes(request.items.sumOf { it.sizeBytes })}")
-                            if (request.excluded > 0) Text("변경되었거나 보호된 ${request.excluded}개는 제외했습니다.")
-                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 260.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                items(request.items, key = { it.uri }) { item ->
-                                    Column {
-                                        Text(item.displayName)
-                                        Text(item.relativePath.ifBlank { "기본 폴더" }, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                            }
-                            Text(if (request.restore) "Android 승인 후 원래 위치로 복원을 요청합니다." else "다음 Android 승인창에서 확인합니다. 휴지통 파일은 자동 삭제 시점까지 저장 공간을 차지할 수 있습니다.")
-                        }
-                    },
-                    dismissButton = { TextButton(onClick = { pending = null }) { Text("취소") } },
-                    confirmButton = {
-                        TextButton(onClick = {
+                TrashReviewDialog(
+                    moving = request.items, kept = request.kept, restore = request.restore, excluded = request.excluded,
+                    onDismiss = { pending = null },
+                    onProceed = {
                             pending = null
                             val generation = reviewGeneration
+                            reviewChecking = true
                             lifecycleScope.launch {
                                 try {
                                     val current = if (request.restore) vm.repository.revalidateForRestore(request.items) else vm.repository.revalidate(request.items)
@@ -157,6 +186,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                     if (generation != reviewGeneration || !vm.repository.catalogReady.value || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                                         vm.showMessage("파일 접근 상태가 변경되었습니다. 새로고침 후 다시 선택해 주세요.")
+                                    } else if (!request.restore && vm.ui.value.selected != request.selectionSnapshot) {
+                                        vm.showMessage("선택이 변경되었습니다. 이동할 파일을 다시 확인해 주세요.")
                                     } else if (!survivorsValid) {
                                         vm.showMessage("남겨 둘 중복 사본이 변경되거나 사라졌습니다. 다시 검사한 뒤 선택해 주세요.")
                                         vm.refresh()
@@ -166,12 +197,15 @@ class MainActivity : ComponentActivity() {
                                     } else {
                                         restored = request.restore
                                         val sender = MediaStore.createTrashRequest(contentResolver, current.map { Uri.parse(it.uri) }, !request.restore)
+                                        submitted = encodeTrashRequest(current)
                                         trashLauncher.launch(IntentSenderRequest.Builder(sender.intentSender).build())
                                     }
                                 } catch (e: CancellationException) { throw e
-                                } catch (_: Exception) { vm.showMessage("Android 휴지통 요청을 시작하지 못했습니다. 파일과 접근 권한을 확인해 주세요.") }
+                                } catch (_: Exception) {
+                                    submitted = ""
+                                    vm.showMessage("Android 휴지통 요청을 시작하지 못했습니다. 파일과 접근 권한을 확인해 주세요.")
+                                } finally { reviewChecking = false }
                             }
-                        }) { Text(if (request.restore) "복원 요청" else "이동 요청") }
                     },
                 )
             }
@@ -201,4 +235,25 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class TrashReview(val items: List<MediaItem>, val restore: Boolean, val excluded: Int, val safetyGroups: List<DuplicateGroup>)
+private data class TrashReview(val items: List<MediaItem>, val restore: Boolean, val excluded: Int, val safetyGroups: List<DuplicateGroup>, val kept: List<MediaItem>, val selectionSnapshot: Set<String>)
+
+private fun encodeTrashRequest(items: List<MediaItem>): String = JSONArray().apply {
+    items.forEach { item -> put(JSONObject().apply {
+        put("u", item.uri); put("i", item.id); put("v", item.volume); put("k", item.kind.name)
+        put("s", item.sizeBytes); put("e", item.volumeVersion)
+    }) }
+}.toString()
+
+private fun decodeTrashRequest(value: String): List<TrashIdentity> = try {
+    if (value.isBlank()) emptyList() else JSONArray(value).let { array ->
+        (0 until array.length().coerceAtMost(SelectionPolicy.MAX_SELECTION_SIZE)).map { index -> array.getJSONObject(index).let {
+            TrashIdentity(it.getString("u"), it.getLong("i"), it.getString("v"), MediaKind.valueOf(it.getString("k")), it.getLong("s"), it.getString("e"))
+        } }
+    }
+} catch (_: Exception) { emptyList() }
+
+private fun trashOutcomeMessage(result: TrashOutcome, restore: Boolean): String {
+    if (result.unchanged == 0 && result.unknown == 0) return if (restore) "${result.completed}개를 복원했습니다." else "${result.completed}개를 휴지통으로 이동했습니다. 실제 여유 공간은 영구 제거 후 달라질 수 있습니다."
+    val action = if (restore) "복원" else "이동"
+    return "$action 확인 ${result.completed}개 · 미${action} ${result.unchanged}개 · 확인 불가 ${result.unknown}개. 파일 목록과 접근 권한을 다시 확인해 주세요."
+}

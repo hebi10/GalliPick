@@ -10,6 +10,9 @@ import com.hebi.gallipick.domain.DuplicateGroup
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.ScanPhase
 import com.hebi.gallipick.domain.ScanState
+import com.hebi.gallipick.domain.TrashIdentity
+import com.hebi.gallipick.domain.TrashOutcome
+import com.hebi.gallipick.domain.TrashOutcomePolicy
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -111,15 +114,23 @@ class MediaRepository(context: Context) {
         withContext(Dispatchers.IO) { freshUnchanged(items).filter { it.isTrashed } }
 
     suspend fun hasSurvivingCopy(group: DuplicateGroup, selectedUris: Set<String>): Boolean =
+        confirmedSurvivingCopy(group, selectedUris) != null
+
+    suspend fun confirmedSurvivingCopy(group: DuplicateGroup, selectedUris: Set<String>, preferredUri: String? = null): MediaItem? =
         withContext(Dispatchers.IO) {
-            for (item in group.items) {
+            for (item in group.items.distinctBy { it.uri }.sortedBy { if (it.uri == preferredUri) 0 else 1 }) {
                 if (item.uri in selectedUris || item.volumeVersion.isBlank()) continue
                 val proof = dao.hash(item.uri, item.fingerprint) ?: continue
                 if (proof.sha256 != group.hash || proof.volumeVersion != item.volumeVersion) continue
-                if (freshUnchanged(listOf(item)).any { !it.isTrashed }) return@withContext true
+                freshUnchanged(listOf(item)).firstOrNull { !it.isTrashed }?.let { return@withContext it }
             }
-            false
+            null
         }
+
+    suspend fun inspectTrashOutcome(requested: List<TrashIdentity>, restore: Boolean): TrashOutcome = withContext(Dispatchers.IO) {
+        val current = requested.distinctBy { it.uri }.associate { it.uri to reader.current(it.uri) }
+        TrashOutcomePolicy.classify(requested, current, restore)
+    }
 
     private suspend fun freshUnchanged(items: List<MediaItem>): List<MediaItem> =
         MediaCachePolicy.freshUnchanged(items,

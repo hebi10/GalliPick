@@ -12,6 +12,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hebi.gallipick.data.MediaRepository
 import com.hebi.gallipick.domain.ScanPhase
+import com.hebi.gallipick.domain.TrashIdentity
+import com.hebi.gallipick.domain.TrashOutcome
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -91,6 +93,11 @@ class MediaIntegrationTest {
         instrumentation.runOnMainSync { vm.refresh(); vm.refresh() }
         withTimeout(15_000) { vm.ui.first { !it.loading && it.items.any { item -> item.uri == selected.uri } } }
         assertTrue(vm.ui.value.duplicates.any { it.hash == group.hash })
+        repository.clearAnalysisCache()
+        assertFalse(repository.hasSurvivingCopy(group, setOf(selected.uri)))
+        repository.startScan()
+        withTimeout(45_000) { repository.duplicates.first { groups -> groups.any { it.hash == group.hash } } }
+        assertTrue(repository.hasSurvivingCopy(group, setOf(selected.uri)))
         val keeperUri = Uri.parse(keeper.uri)
         assertEquals(1, app.contentResolver.delete(keeperUri, null, null))
         created.remove(keeperUri)
@@ -155,11 +162,65 @@ class MediaIntegrationTest {
         val vm = loadedViewModel()
         val uri = created[0].toString()
         instrumentation.runOnMainSync {
+            vm.setFilter(com.hebi.gallipick.domain.MediaFilter())
             vm.toggleSelection(uri)
             vm.setFilter(com.hebi.gallipick.domain.MediaFilter(query = "no-match"))
         }
         assertTrue(vm.ui.value.selected.isEmpty())
         assertTrue(vm.selectedItemsForReview(vm.ui.value.items).isEmpty())
+    }
+
+    @Test fun groupSelectionAndKeeperChangePreserveOnlyOtherDuplicateSelections() = runBlocking {
+        val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val bytes = ByteArrayOutputStream().use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, output); output.toByteArray() }
+        bitmap.recycle()
+        repeat(2) { index ->
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, "gallipick-second-${System.nanoTime()}-$index.png")
+                put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/GalliPickTests/")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = app.contentResolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)!!
+            created += uri
+            app.contentResolver.openOutputStream(uri)!!.use { it.write(bytes) }
+            app.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        }
+        repository.refresh()
+        repository.startScan()
+        val groups = withTimeout(45_000) { repository.duplicates.first { result ->
+            result.any { group -> group.items.any { it.uri == created[0].toString() } } &&
+                result.any { group -> group.items.any { it.uri == created[2].toString() } }
+        } }
+        val first = groups.first { group -> group.items.any { it.uri == created[0].toString() } }
+        val other = groups.first { group -> group.items.any { it.uri == created[2].toString() } }
+        val vm = loadedViewModel()
+        withTimeout(15_000) { vm.ui.first { state -> state.duplicates.any { it.hash == first.hash } && state.duplicates.any { it.hash == other.hash } } }
+        instrumentation.runOnMainSync {
+            vm.chooseDuplicateKeeper(first, created[0].toString())
+            vm.chooseDuplicateKeeper(other, created[2].toString())
+            vm.toggleDuplicateCandidateSelection(created[3].toString())
+            vm.selectDuplicateGroupCandidates(first)
+        }
+        assertTrue(created[1].toString() in vm.ui.value.selected)
+        assertTrue(created[3].toString() in vm.ui.value.selected)
+        instrumentation.runOnMainSync { vm.chooseDuplicateKeeper(first, created[1].toString()) }
+        assertEquals(setOf(created[3].toString()), vm.ui.value.selected)
+        instrumentation.runOnMainSync { vm.toggleSelection(created[1].toString()); vm.prepareDuplicateReview() }
+        assertEquals(setOf(created[3].toString()), vm.ui.value.selected)
+    }
+
+    @Test fun trashOutcomeReadsActualProviderStateAfterGenerationChanges() = runBlocking {
+        val items = repository.media.first().filter { item -> created.any { it.toString() == item.uri } }
+        val identities = items.map(TrashIdentity::from)
+        try {
+            assertEquals(1, app.contentResolver.update(created[0], ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, 1) }, null, null))
+            assertEquals(TrashOutcome(1, 1, 0), repository.inspectTrashOutcome(identities, false))
+            assertEquals(1, app.contentResolver.update(created[0], ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, 0) }, null, null))
+            assertEquals(TrashOutcome(2, 0, 0), repository.inspectTrashOutcome(identities, true))
+        } finally {
+            app.contentResolver.update(created[0], ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, 0) }, null, null)
+        }
     }
 
     private suspend fun loadedViewModel(): AppViewModel {

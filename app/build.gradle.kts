@@ -1,8 +1,53 @@
+import java.security.KeyStore
+import java.security.MessageDigest
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+}
+
+val testSigning = providers.gradleProperty("gallipickTestSigning").orNull == "true"
+val signingPropertiesFile = providers.environmentVariable("GALLIPICK_SIGNING_PROPERTIES").orNull
+    ?.let { rootProject.file(it) }
+    ?: rootProject.file("signing.properties").takeIf { it.isFile }
+    ?: File(System.getProperty("user.home"), ".config/GalliPick/signing.properties")
+val signingProperties = Properties().apply {
+    if (signingPropertiesFile.isFile) signingPropertiesFile.inputStream().use { load(it) }
+}
+val signingStore = signingProperties.getProperty("storeFile")?.let {
+    File(it).let { path -> if (path.isAbsolute) path else File(signingPropertiesFile.parentFile, it) }
+}
+val verifyGalliPickSigning = tasks.register("verifyGalliPickSigning") {
+    group = "verification"
+    doLast {
+        check(signingPropertiesFile.isFile) { "GalliPick signing configuration is missing. Restore the private signing backup or set GALLIPICK_SIGNING_PROPERTIES." }
+        fun required(name: String): String = signingProperties.getProperty(name)?.takeIf { it.isNotBlank() }
+            ?: throw GradleException("GalliPick signing configuration is missing $name.")
+        required("storeFile")
+        val store = signingStore?.takeIf { it.isFile }
+            ?: throw GradleException("GalliPick signing keystore is missing. Restore the original key; do not generate a replacement.")
+        val keyStore = try {
+            KeyStore.getInstance(signingProperties.getProperty("storeType", "PKCS12")).apply {
+                store.inputStream().use { load(it, required("storePassword").toCharArray()) }
+            }
+        } catch (_: Exception) { throw GradleException("GalliPick signing keystore could not be opened. Check the private signing configuration.") }
+        val alias = required("keyAlias")
+        val available = try { keyStore.isKeyEntry(alias) && keyStore.getKey(alias, required("keyPassword").toCharArray()) != null }
+            catch (_: Exception) { false }
+        check(available) { "GalliPick signing private key could not be loaded. Check the private signing configuration." }
+        val cert = keyStore.getCertificate(alias) ?: throw GradleException("GalliPick signing certificate is missing.")
+        val actual = MessageDigest.getInstance("SHA-256").digest(cert.encoded).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        val expected = rootProject.file("signing/certificate.sha256").readText().trim().lowercase()
+        check(expected.matches(Regex("[0-9a-f]{64}")) && actual == expected) { "GalliPick signing certificate does not match the pinned identity. Restore the original signing backup." }
+        logger.lifecycle("GalliPick fixed signing identity verified.")
+    }
+}
+val verifyGalliPickReleaseSigning = tasks.register("verifyGalliPickReleaseSigning") {
+    dependsOn(verifyGalliPickSigning)
+    doLast { check(!testSigning) { "Ephemeral test signing is allowed only for debug verification, never for release APKs." } }
 }
 
 android {
@@ -12,9 +57,18 @@ android {
         applicationId = "com.hebi.gallipick"
         minSdk = 30
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 7
+        versionName = "0.1.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    signingConfigs {
+        create("galliPick") {
+            storeFile = signingStore
+            storePassword = signingProperties.getProperty("storePassword")
+            keyAlias = signingProperties.getProperty("keyAlias")
+            keyPassword = signingProperties.getProperty("keyPassword")
+            storeType = signingProperties.getProperty("storeType", "PKCS12")
+        }
     }
     buildFeatures { compose = true }
     compileOptions {
@@ -22,9 +76,20 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildTypes { release { isMinifyEnabled = false } }
+    buildTypes {
+        debug {
+            if (!testSigning) signingConfig = signingConfigs.getByName("galliPick")
+            resValue("string", "app_name", "GalliPick")
+        }
+        release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("galliPick") }
+    }
     testOptions { unitTests.isReturnDefaultValues = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+}
+
+tasks.configureEach {
+    if (name in setOf("preReleaseBuild", "validateSigningRelease", "signReleaseBundle")) dependsOn(verifyGalliPickReleaseSigning)
+    if (!testSigning && name in setOf("preDebugBuild", "validateSigningDebug", "validateSigningDebugAndroidTest")) dependsOn(verifyGalliPickSigning)
 }
 
 dependencies {

@@ -83,7 +83,7 @@ internal fun SelectBox(checked: Boolean, enabled: Boolean = true, description: S
 @Composable
 internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit, onOpen: (MediaItem) -> Unit, onProtect: (Boolean) -> Unit, folderProtected: Boolean = false) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxWidth(.94f).widthIn(max = 560.dp).fillMaxHeight(.9f), shape = RoundedCornerShape(24.dp)) {
+        Surface(Modifier.widthIn(max = 1100.dp).fillMaxWidth(.96f).fillMaxHeight(.94f), shape = RoundedCornerShape(24.dp)) {
             Column {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("파일 정보", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
@@ -99,28 +99,44 @@ internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit, onOpen: (
 internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect: (Boolean) -> Unit, modifier: Modifier = Modifier, folderProtected: Boolean = false) {
     var previewOpen by remember(item.uri, item.fingerprint, item.volumeVersion) { mutableStateOf(false) }
     if (previewOpen) MediaPreviewDialog(item, onDismiss = { previewOpen = false }, onOpen = onOpen)
-    Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        MediaThumbnail(item, Modifier.fillMaxWidth().aspectRatio(1.2f))
-        Text(item.displayName, style = MaterialTheme.typography.titleMedium)
-        ActionButton("앱에서 미리보기", { previewOpen = true }, Modifier.fillMaxWidth(), filled = true,
-            icon = if (item.kind == MediaKind.VIDEO) Icons.Rounded.PlayArrow else Icons.Rounded.ZoomIn)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton("원본 열기", { onOpen(item) }, Modifier.weight(1f), icon = Icons.Rounded.OpenInNew)
-            ActionButton(if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호", { onProtect(!item.isProtected) }, Modifier.weight(1f), enabled = !folderProtected, icon = Icons.Rounded.Shield)
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val beside = maxWidth >= 840.dp || (maxWidth >= 600.dp && maxHeight < 500.dp)
+        val thumbnailHeight = (maxWidth / 1.2f).coerceAtMost(320.dp)
+        val previewAction: @Composable (Modifier) -> Unit = { actionModifier ->
+            ActionButton("앱에서 미리보기", { previewOpen = true }, actionModifier, filled = true,
+                icon = if (item.kind == MediaKind.VIDEO) Icons.Rounded.PlayArrow else Icons.Rounded.ZoomIn)
         }
-        if (folderProtected) Text("폴더 보호는 설정의 보호 폴더에서 해제할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
-        if (item.isFavorite || item.isProtected) Text(
-            if (item.isFavorite) "즐겨찾기 파일은 정리에서 제외됩니다. 즐겨찾기 변경은 갤러리에서 해주세요." else "보호한 파일은 정리에서 제외됩니다.",
-            color = Muted, style = MaterialTheme.typography.bodySmall,
-        )
-        DetailRow("용량", bytesLabel(item.sizeBytes))
-        DetailRow("해상도", "${item.width} × ${item.height} · %.1f MP".format(item.pixels / 1_000_000.0))
-        if (item.kind == MediaKind.VIDEO) DetailRow("재생 시간", durationLabel(item.durationMs))
-        DetailRow("촬영일", dateLabel(item.capturedAt))
-        DetailRow("추가일", dateLabel(item.dateAddedMs))
-        DetailRow("수정일", dateLabel(item.dateModifiedMs))
-        DetailRow("파일 형식", item.mimeType.ifEmpty { "정보 없음" })
-        DetailRow("폴더", item.relativePath.ifEmpty { "기본 폴더" })
+        val metadata: @Composable (Modifier) -> Unit = { detailModifier ->
+            Column(detailModifier.then(if (beside) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(item.displayName, style = MaterialTheme.typography.titleMedium)
+                if (!beside) previewAction(Modifier.fillMaxWidth())
+                ActionButton("파일 열기", { onOpen(item) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.OpenInNew)
+                ActionButton(if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호", { onProtect(!item.isProtected) }, Modifier.fillMaxWidth(), enabled = !folderProtected, icon = Icons.Rounded.Shield)
+                if (folderProtected) Text("폴더 보호는 설정의 보호 폴더에서 해제할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                if (item.isFavorite || item.isProtected) Text(
+                    if (item.isFavorite) "즐겨찾기 파일은 정리에서 제외됩니다. 즐겨찾기 변경은 갤러리에서 해주세요." else "보호한 파일은 정리에서 제외됩니다.",
+                    color = Muted, style = MaterialTheme.typography.bodySmall,
+                )
+                DetailRow("용량", bytesLabel(item.sizeBytes))
+                DetailRow("해상도", "${item.width} × ${item.height} · %.1f MP".format(item.pixels / 1_000_000.0))
+                if (item.kind == MediaKind.VIDEO) DetailRow("재생 시간", durationLabel(item.durationMs))
+                DetailRow("촬영일", dateLabel(item.capturedAt))
+                DetailRow("추가일", dateLabel(item.dateAddedMs))
+                DetailRow("수정일", dateLabel(item.dateModifiedMs))
+                DetailRow("파일 형식", item.mimeType.ifEmpty { "정보 없음" })
+                DetailRow("폴더", item.relativePath.ifEmpty { "기본 폴더" })
+            }
+        }
+        if (beside) Row(Modifier.fillMaxSize()) {
+            Column(Modifier.weight(1f).fillMaxHeight().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MediaThumbnail(item, Modifier.weight(1f).fillMaxWidth())
+                previewAction(Modifier.fillMaxWidth())
+            }
+            metadata(Modifier.weight(1f).fillMaxHeight())
+        } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            MediaThumbnail(item, Modifier.fillMaxWidth().height(thumbnailHeight))
+            metadata(Modifier.fillMaxWidth())
+        }
     }
 }
 
