@@ -8,6 +8,9 @@ import android.provider.MediaStore
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hebi.gallipick.domain.MediaFilter
 import kotlinx.coroutines.flow.first
@@ -19,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
+import java.io.File
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.Rule
@@ -40,6 +45,11 @@ class TrashReviewFlowTest {
         withReviewedFile { vm, uri ->
             val messages = CopyOnWriteArrayList<String>()
             val job = CoroutineScope(Dispatchers.Unconfined).launch { vm.ui.collect { it.message?.let(messages::add) } }
+            val pauses = AtomicInteger()
+            val lifecycleObserver = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_PAUSE) pauses.incrementAndGet()
+            }
+            compose.runOnUiThread { compose.activity.lifecycle.addObserver(lifecycleObserver) }
             try {
                 compose.activity.contentResolver.update(uri, ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, "changed-after-review-${System.nanoTime()}.png")
@@ -47,9 +57,24 @@ class TrashReviewFlowTest {
                 compose.onNodeWithText("Android 확인").performClick()
                 compose.waitUntil(15_000) { messages.any { it.contains("확인 중 파일 상태가 변경되었습니다") } }
                 compose.onNodeWithText("Android 확인").assertDoesNotExist()
+                compose.onNodeWithText("확인 중 파일 상태가 변경되었습니다. 새로고침 후 다시 선택해 주세요.").assertIsDisplayed()
                 assertFalse(vm.repository.reader.current(uri.toString())!!.isTrashed)
-                assertEquals(compose.activity.packageName, InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow.packageName.toString())
-            } finally { job.cancel() }
+                // Accessibility may still expose the dismissed platform Dialog's
+                // root. Verify our activity never yielded to a system request instead.
+                compose.runOnIdle {
+                    assertEquals(0, pauses.get())
+                    assertEquals(Lifecycle.State.RESUMED, compose.activity.lifecycle.currentState)
+                }
+                val directory = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+                    ?.let(::File) ?: File(compose.activity.filesDir, "test-screenshots")
+                directory.mkdirs()
+                File(directory, "review-edited-file-rejected.png").outputStream().use {
+                    compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+            } finally {
+                compose.runOnUiThread { compose.activity.lifecycle.removeObserver(lifecycleObserver) }
+                job.cancel()
+            }
         }
     }
 
