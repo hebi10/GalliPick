@@ -4,7 +4,7 @@
 
 ## 공개 APK
 
-다운로드 경로는 [GitHub 최신 릴리스](https://github.com/hebi10/GalliPick/releases/latest)입니다. **v0.1.6은 현재 원격 푸시·CI 검사·게시가 대기 중입니다.** 게시 완료 후 해당 릴리스의 `GalliPick-v0.1.6-release.apk`와 `SHA256SUMS`를 확인합니다.
+v0.1.6 소스는 [PR #2](https://github.com/hebi10/GalliPick/pull/2)로 main에 반영했습니다. JVM 82개·Android API 36 검사 46개·릴리스 스크립트 18개가 통과했습니다. **공개 APK 게시는 비공개 Actions 서명 키 설정을 기다리고 있습니다.** 게시 완료 후 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 `GalliPick-v0.1.6-release.apk`와 `SHA256SUMS`를 확인합니다.
 
 ## 중복 정리 개선 · v0.1.6
 
@@ -69,7 +69,7 @@ Windows PowerShell에서는 다음을 사용합니다.
 
 v0.1.5의 일반 release APK와 같은 앱 전용 키를 사용하므로 기존 v0.1.5 위에 업데이트하는 구성입니다. **v0.1.5 사용자는 이번 업데이트를 위해 앱을 삭제할 필요가 없습니다.** 예전의 다른 키로 서명된 개발 APK에서 한 번 재설치했던 전환과 구분합니다. 별도 preview 앱의 설정은 일반 패키지로 자동 이전되지 않습니다.
 
-일반 CI는 `-PgallipickTestSigning=true`를 명시한 debug 검사를 수행하고 보고서를 보관합니다. [공개 APK 릴리스](docs/release.md)는 같은 커밋의 단위 검사·lint·Android 기기 검사 통과 후 고정 키로 release APK를 서명하고 GitHub Releases에 게시하도록 구성했습니다. 실제 원격 실행과 게시 결과는 아직 대기 중입니다.
+일반 CI는 `-PgallipickTestSigning=true`를 명시한 debug 검사를 수행하고 보고서를 보관합니다. [공개 APK 릴리스](docs/release.md)는 같은 커밋의 단위 검사·lint·Android 기기 검사 통과 후 고정 키로 release APK를 서명하고 GitHub Releases에 게시하도록 구성했습니다. PR의 원격 검사는 모두 통과했으며, 서명 키 설정과 공개 릴리스 실행이 남아 있습니다. 실제 결과는 [검증 기록](docs/verification.md)에서 확인합니다.
 
 ## 처음 사용
 

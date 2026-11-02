@@ -46,7 +46,7 @@ storeType=<PKCS12-or-JKS>
 
 공개 릴리스 job은 Actions secret **`GALLIPICK_SIGNING_BUNDLE_BASE64` 한 개**에서 비공개 복구 ZIP을 복원합니다. 이 값에는 키스토어와 비밀번호가 포함되므로 내용을 출력하지 않습니다. 허용된 파일만 runner 임시 디렉터리에 비공개 권한으로 복원하고, 종료 시 임시 서명 파일을 정리합니다. 이 secret은 서명·게시 job에만 전달합니다.
 
-같은 커밋의 단위 검사·lint·Android 16/API 36 기기 검사가 성공한 뒤 고정 키로 빌드하고, APK 메타데이터·인증서·체크섬을 확인해 공개하도록 구성했습니다. 절차와 실제 게시 상태는 [공개 APK 릴리스](release.md)와 [검증 기록](verification.md)에서 확인합니다. 현재 원격 푸시·CI·공개 게시 결과는 대기 중입니다.
+같은 커밋의 단위 검사·lint·Android 16/API 36 기기 검사가 성공한 뒤 고정 키로 빌드하고, APK 메타데이터·인증서·체크섬을 확인해 공개하도록 구성했습니다. 절차와 실제 게시 상태는 [공개 APK 릴리스](release.md)와 [검증 기록](verification.md)에서 확인합니다. 소스는 main에 반영했고 PR의 JVM 82개·API 36 검사 46개가 통과했습니다. 비공개 키의 Actions secret 등록과 공개 릴리스 실행은 대기 중입니다.
 
 ## 설치 호환성
 
