@@ -44,13 +44,17 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Install compile SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build test APKs before starting the emulator
+        run: gradle --no-daemon -PgallipickTestSigning=true assembleDebug assembleDebugAndroidTest --stacktrace --max-workers=2
       - uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: gradle -PgallipickTestSigning=true connectedDebugAndroidTest --stacktrace --max-workers=2
+          script: |
+            adb shell am force-stop com.android.launcher3
+            gradle --no-daemon -PgallipickTestSigning=true connectedDebugAndroidTest --stacktrace --max-workers=2
       - name: Upload device reports
         if: always()
         uses: actions/upload-artifact@v4

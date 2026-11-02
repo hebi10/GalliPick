@@ -51,11 +51,15 @@ class TrashReviewFlowTest {
             }
             compose.runOnUiThread { compose.activity.lifecycle.addObserver(lifecycleObserver) }
             try {
+                val changedName = "changed-after-review-${System.nanoTime()}.png"
                 compose.activity.contentResolver.update(uri, ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, "changed-after-review-${System.nanoTime()}.png")
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, changedName)
                 }, null, null)
                 compose.onNodeWithText("Android 확인").performClick()
                 compose.waitUntil(15_000) { messages.any { it.contains("확인 중 파일 상태가 변경되었습니다") } }
+                withTimeout(15_000) { vm.ui.first { state ->
+                    !state.loading && state.items.any { it.uri == uri.toString() && it.displayName == changedName }
+                } }
                 compose.onNodeWithText("Android 확인").assertDoesNotExist()
                 saveReviewDiagnostics(pauses.get())
                 compose.onNodeWithText("확인 중 파일 상태가 변경되었습니다. 새로고침 후 다시 선택해 주세요.").assertIsDisplayed()
@@ -63,6 +67,7 @@ class TrashReviewFlowTest {
                 // Accessibility may still expose the dismissed platform Dialog's
                 // root. Verify our activity never yielded to a system request instead.
                 compose.runOnIdle {
+                    assertTrue(vm.ui.value.selected.isEmpty())
                     assertEquals(0, pauses.get())
                     assertEquals(Lifecycle.State.RESUMED, compose.activity.lifecycle.currentState)
                 }

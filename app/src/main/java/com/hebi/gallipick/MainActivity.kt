@@ -192,6 +192,7 @@ class MainActivity : ComponentActivity() {
                                         vm.showMessage("남겨 둘 중복 사본이 변경되거나 사라졌습니다. 다시 검사한 뒤 선택해 주세요.")
                                         vm.refresh()
                                     } else if (current.size != request.items.size) {
+                                        if (!request.restore) vm.clearSelection()
                                         vm.showMessage("확인 중 파일 상태가 변경되었습니다. 새로고침 후 다시 선택해 주세요.")
                                         vm.refresh()
                                     } else {
