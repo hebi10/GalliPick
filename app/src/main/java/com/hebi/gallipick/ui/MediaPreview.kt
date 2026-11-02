@@ -12,6 +12,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.OpenInNew
@@ -139,7 +141,7 @@ private sealed interface PhotoState {
 }
 
 @Composable
-private fun PhotoPreview(item: MediaItem, modifier: Modifier = Modifier) {
+internal fun PhotoPreview(item: MediaItem, modifier: Modifier = Modifier, compact: Boolean = false) {
     val resolver = LocalContext.current.contentResolver
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val started = rememberPreviewStarted()
@@ -170,13 +172,13 @@ private fun PhotoPreview(item: MediaItem, modifier: Modifier = Modifier) {
         else when (val current = state) {
             PhotoState.Loading -> CircularProgressIndicator(Modifier.semantics { contentDescription = "사진을 불러오는 중" })
             is PhotoState.Failed -> PreviewError(current.message) { attempt++ }
-            is PhotoState.Ready -> ZoomablePhoto(current.bitmap, item.displayName)
+            is PhotoState.Ready -> ZoomablePhoto(current.bitmap, item.displayName, compact)
         }
     }
 }
 
 @Composable
-private fun ZoomablePhoto(bitmap: Bitmap, name: String) {
+private fun ZoomablePhoto(bitmap: Bitmap, name: String, compact: Boolean = false) {
     var scale by remember(bitmap) { mutableFloatStateOf(1f) }
     var offset by remember(bitmap) { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -210,9 +212,11 @@ private fun ZoomablePhoto(bitmap: Bitmap, name: String) {
             IconAction("사진 확대", Icons.Rounded.ZoomIn) { scale = min(6f, scale * 1.5f); offset = boundedOffset(offset, scale) }
             TextButton(onClick = { scale = 1f; offset = Offset.Zero }) { Text("맞춤") }
         }
-        Text("두 손가락으로 확대하고 끌어서 이동", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = Muted)
-        Text("미리보기 ${bitmap.width} × ${bitmap.height} · 긴 변 최대 2,048px", Modifier.padding(12.dp).align(Alignment.CenterHorizontally),
-            style = MaterialTheme.typography.bodySmall, color = Muted)
+        if (!compact) {
+            Text("두 손가락으로 확대하고 끌어서 이동", Modifier.align(Alignment.CenterHorizontally), style = MaterialTheme.typography.bodySmall, color = Muted)
+            Text("미리보기 ${bitmap.width} × ${bitmap.height} · 긴 변 최대 2,048px", Modifier.padding(12.dp).align(Alignment.CenterHorizontally),
+                style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
     }
 }
 
@@ -238,13 +242,41 @@ private class VideoSession(val view: VideoView) {
     }
 }
 
-@Composable
-internal fun VideoPreview(item: MediaItem, modifier: Modifier = Modifier, createView: (Context) -> VideoView = { VideoView(it) }) {
-    key(item.uri, item.fingerprint, item.volumeVersion) { VideoPreviewContent(item, modifier, createView) }
+internal class PreviewPlaybackCoordinator {
+    private var owner: Any? = null
+    private var pause: (() -> Unit)? = null
+
+    fun requestPlayback(owner: Any, onPause: () -> Unit) {
+        if (this.owner !== owner) pause?.invoke()
+        this.owner = owner
+        pause = onPause
+    }
+
+    fun release(owner: Any) {
+        if (this.owner === owner) { this.owner = null; pause = null }
+    }
+
+    fun pauseActive() {
+        val active = pause
+        owner = null
+        pause = null
+        active?.invoke()
+    }
 }
 
 @Composable
-private fun VideoPreviewContent(item: MediaItem, modifier: Modifier, createView: (Context) -> VideoView) {
+internal fun VideoPreview(
+    item: MediaItem,
+    modifier: Modifier = Modifier,
+    createView: (Context) -> VideoView = { VideoView(it) },
+    coordinator: PreviewPlaybackCoordinator? = null,
+    controlLabel: String? = null,
+) {
+    key(item.uri, item.fingerprint, item.volumeVersion) { VideoPreviewContent(item, modifier, createView, coordinator, controlLabel) }
+}
+
+@Composable
+private fun VideoPreviewContent(item: MediaItem, modifier: Modifier, createView: (Context) -> VideoView, coordinator: PreviewPlaybackCoordinator?, controlLabel: String?) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val started = rememberPreviewStarted()
     var attempt by remember { mutableIntStateOf(0) }
@@ -257,12 +289,14 @@ private fun VideoPreviewContent(item: MediaItem, modifier: Modifier, createView:
     var scrubbing by remember { mutableStateOf(false) }
     var scrubPosition by remember { mutableFloatStateOf(0f) }
     var session by remember { mutableStateOf<VideoSession?>(null) }
+    val playbackOwner = remember { Any() }
 
     fun stopSession() {
         session?.takeUnless { it.released }?.let { position = it.release() }
         playing = false
         prepared = false
         scrubbing = false
+        coordinator?.release(playbackOwner)
     }
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
@@ -285,7 +319,9 @@ private fun VideoPreviewContent(item: MediaItem, modifier: Modifier, createView:
         }
     }
     Column(modifier.fillMaxWidth()) {
-        Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
+        Box(Modifier.weight(1f).fillMaxWidth().background(Color.Black).then(
+            if (controlLabel != null) Modifier.semantics { contentDescription = "$controlLabel 영상 표시 영역" } else Modifier,
+        ), contentAlignment = Alignment.Center) {
             if (!started) Text("앱으로 돌아온 뒤 재생 버튼을 눌러 주세요.", Modifier.padding(24.dp), color = Color.White)
             else if (failed) PreviewError("영상을 재생할 수 없습니다. 파일과 접근 권한을 확인해 주세요.") { attempt++ }
             else key(item.uri, item.fingerprint, item.volumeVersion, attempt, playbackEpoch) {
@@ -297,9 +333,11 @@ private fun VideoPreviewContent(item: MediaItem, modifier: Modifier, createView:
                         createView(context).also { view ->
                             val current = VideoSession(view)
                             session = current
-                            val controller = MediaController(context).apply { setAnchorView(view) }
-                            current.controller = controller
-                            view.setMediaController(controller)
+                            if (coordinator == null) {
+                                val controller = MediaController(context).apply { setAnchorView(view) }
+                                current.controller = controller
+                                view.setMediaController(controller)
+                            } else view.setMediaController(null)
                             view.setOnPreparedListener { player ->
                                 if (!current.released && started) {
                                     duration = player.duration.coerceAtLeast(0)
@@ -324,10 +362,19 @@ private fun VideoPreviewContent(item: MediaItem, modifier: Modifier, createView:
             }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(enabled = started && prepared && !failed, onClick = {
+            TextButton(enabled = started && prepared && !failed, modifier = Modifier.then(
+                if (controlLabel != null) Modifier.semantics { contentDescription = "$controlLabel 영상 ${if (playing) "일시정지" else "재생"}" } else Modifier,
+            ), onClick = {
                 session?.takeUnless { it.released }?.let { current ->
                     if (current.view.isPlaying) current.view.pause()
-                    else { if (position >= duration) { current.view.seekTo(0); position = 0 }; current.view.start() }
+                    else {
+                        coordinator?.requestPlayback(playbackOwner) {
+                            session?.takeUnless { it.released }?.view?.pause()
+                            playing = false
+                        }
+                        if (position >= duration) { current.view.seekTo(0); position = 0 }
+                        current.view.start()
+                    }
                     playing = current.view.isPlaying
                 }
             }) {
@@ -335,12 +382,15 @@ private fun VideoPreviewContent(item: MediaItem, modifier: Modifier, createView:
                 Text(if (playing) "일시정지" else "재생")
             }
             Slider(value = (if (scrubbing) scrubPosition else position.toFloat()).coerceIn(0f, max(1, duration).toFloat()),
-                onValueChange = { scrubbing = true; scrubPosition = it },
+                onValueChange = {
+                    if (!scrubbing) { session?.takeUnless { it.released }?.view?.pause(); playing = false }
+                    scrubbing = true; scrubPosition = it
+                },
                 onValueChangeFinished = {
                     session?.takeUnless { it.released }?.view?.seekTo(scrubPosition.roundToInt())
                     position = scrubPosition.roundToInt(); scrubbing = false
                 }, valueRange = 0f..max(1, duration).toFloat(), enabled = started && prepared && duration > 0 && !failed,
-                modifier = Modifier.weight(1f).semantics { contentDescription = "영상 재생 위치" })
+                modifier = Modifier.weight(1f).semantics { contentDescription = if (controlLabel == null) "영상 재생 위치" else "$controlLabel 영상 재생 위치" })
         }
         Text("${durationLabel(position.toLong())} / ${durationLabel(duration.toLong())}", Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp),
             style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -349,8 +399,8 @@ private fun VideoPreviewContent(item: MediaItem, modifier: Modifier, createView:
 
 @Composable
 private fun PreviewError(message: String, onRetry: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.padding(24.dp)) {
-        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).heightIn(max = 300.dp)) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(message, style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = onRetry) { Text("다시 시도") }
         }

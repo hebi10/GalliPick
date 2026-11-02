@@ -33,7 +33,7 @@ internal fun GalliIcon(
     tint: Color = Ink,
 ) {
     val drawable = brandDrawable(imageVector)
-    if (drawable != null && tint != Color.White) {
+    if (drawable != null && tint != OnPrimary) {
         Image(
             painter = painterResource(drawable),
             contentDescription = contentDescription,
@@ -41,7 +41,7 @@ internal fun GalliIcon(
             contentScale = ContentScale.Fit,
         )
     } else {
-        // Small white glyphs need the single-color silhouette for contrast.
+        // Action glyphs use a single-color silhouette for contrast.
         NativeIcon(
             imageVector = imageVector,
             contentDescription = contentDescription,

@@ -8,6 +8,12 @@ import java.util.UUID
 
 class AppSettings(context: Context) {
     private val prefs = context.getSharedPreferences("filters", Context.MODE_PRIVATE)
+    fun loadThemeMode(): AppThemeMode = AppThemeMode.fromStored(prefs.getString("theme_mode", null))
+
+    fun saveThemeMode(mode: AppThemeMode) {
+        prefs.edit().putString("theme_mode", mode.name).apply()
+    }
+
     fun loadFilter(): MediaFilter = runCatching {
         decode(JSONObject(prefs.getString("default_filter", "{}") ?: "{}"))
     }.getOrDefault(MediaFilter())

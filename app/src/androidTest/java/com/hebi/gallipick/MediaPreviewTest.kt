@@ -89,7 +89,7 @@ class MediaPreviewTest {
         compose.onNodeWithText("외부 앱에서 원본 열기").performClick()
         compose.runOnIdle { assertEquals(1, externalOpens) }
         compose.onAllNodesWithContentDescription("미리보기 닫기").assertCountEquals(0)
-        compose.onNodeWithText("원본 열기").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("파일 열기").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun photoErrorCanRetryAfterFileBecomesAvailable() {

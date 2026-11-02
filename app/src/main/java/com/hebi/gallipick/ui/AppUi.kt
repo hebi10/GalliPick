@@ -26,21 +26,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.MediaItem
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-internal val Ink = Color(0xFF25483F)
-internal val Muted = Color(0xFF597267)
-internal val Line = Color(0xFFDCE6DF)
-internal val Panel = Color(0xFFEEF4EE)
-internal val AppBackground = Color(0xFFFAF9F5)
-internal val Mint = Color(0xFFCDE6D8)
-internal val Peach = Color(0xFFF5D6BD)
 
 internal enum class Destination(val title: String, val icon: ImageVector) {
     HOME("홈", Icons.Rounded.Home), FILES("파일", Icons.Rounded.GridView),
@@ -60,6 +51,11 @@ fun GalliPickApp(
     val state by vm.ui.collectAsState()
     var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
+    fun navigate(destinationValue: Destination) {
+        if (destinationValue == Destination.DUPLICATES) vm.prepareDuplicateReview()
+        showTrash = false
+        destination = destinationValue
+    }
     BackHandler(enabled = showTrash || destination != Destination.HOME) {
         if (showTrash) showTrash = false else destination = Destination.HOME
     }
@@ -67,102 +63,79 @@ fun GalliPickApp(
         vm.setFilter(it)
         destination = Destination.FILES
     }
-    GalliPickTheme {
-        Surface(Modifier.fillMaxSize(), color = AppBackground) {
-            BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-                val wide = maxWidth >= 650.dp
-                Column(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        GalliMascot(Modifier.size(40.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Text("GalliPick", style = MaterialTheme.typography.titleLarge)
-                            Text("말랑한 추억 정리함", style = MaterialTheme.typography.labelSmall, color = Muted)
-                        }
-                        if (state.loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted)
-                        IconAction("새로고침", Icons.Rounded.Refresh, onClick = vm::refresh)
-                    }
-                    if (state.message != null) {
+    Surface(Modifier.fillMaxSize(), color = AppBackground) {
+        BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+            val wide = maxWidth >= 650.dp
+            Column(Modifier.fillMaxSize()) {
+                ScrollAwayHeaderLayout(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    resetKey = Triple(destination, showTrash, state.filter),
+                    header = {
                         Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
-                                .background(Color.White, RoundedCornerShape(16.dp)).border(1.dp, Line, RoundedCornerShape(16.dp))
-                                .padding(start = 14.dp),
+                            Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 16.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(state.message.orEmpty(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                            IconAction("알림 닫기", Icons.Rounded.Close, onClick = vm::dismissMessage)
+                            GalliMascot(Modifier.size(32.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("GalliPick", style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.weight(1f))
+                            if (state.loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
+                            IconAction("새로고침", Icons.Rounded.Refresh, onClick = vm::refresh)
                         }
-                    }
-                    if (state.access == MediaAccess.PARTIAL) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
-                                .background(Panel, RoundedCornerShape(16.dp)).padding(start = 14.dp, end = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("허용된 사진·동영상만 표시 중", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                            TextAction("접근 변경", onClick = onRequestPermission)
-                        }
-                    }
-                    Row(Modifier.weight(1f).fillMaxWidth()) {
-                        if (wide) {
-                            Column(Modifier.width(100.dp).padding(start = 12.dp, top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Destination.entries.forEach { NavItem(it, destination == it, { showTrash = false; destination = it }, Modifier.fillMaxWidth(), vertical = true) }
+                    },
+                ) {
+                    Column(Modifier.fillMaxSize()) {
+                        if (state.message != null) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
+                                    .background(AppSurface, RoundedCornerShape(16.dp)).border(1.dp, Line, RoundedCornerShape(16.dp))
+                                    .padding(start = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(state.message.orEmpty(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                IconAction("알림 닫기", Icons.Rounded.Close, onClick = vm::dismissMessage)
                             }
                         }
-                        Box(Modifier.weight(1f).fillMaxHeight()) {
-                            if (showTrash) TrashScreen(state.trashed, onRestore, { showTrash = false })
-                            else when (destination) {
-                                Destination.HOME -> HomeScreen(state, onRequestPermission, navigateFiles, { destination = Destination.DUPLICATES }, { destination = Destination.CLEANUP })
-                                Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission)
-                                Destination.DUPLICATES -> DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission)
-                                Destination.CLEANUP -> CleanupScreen(state, navigateFiles)
-                                Destination.SETTINGS -> SettingsScreen(state, vm, onRequestPermission, onOpenSettings, { showTrash = true })
+                        if (state.access == MediaAccess.PARTIAL) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
+                                    .background(Panel, RoundedCornerShape(16.dp)).padding(start = 14.dp, end = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("허용된 사진·동영상만 표시 중", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                TextAction("접근 변경", onClick = onRequestPermission)
+                            }
+                        }
+                        Row(Modifier.weight(1f).fillMaxWidth()) {
+                            if (wide) {
+                                Column(Modifier.width(100.dp).padding(start = 12.dp, top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Destination.entries.forEach { NavItem(it, destination == it, { navigate(it) }, Modifier.fillMaxWidth(), vertical = true) }
+                                }
+                            }
+                            Box(Modifier.weight(1f).fillMaxHeight()) {
+                                if (showTrash) TrashScreen(state.trashed, onRestore, { showTrash = false })
+                                else when (destination) {
+                                    Destination.HOME -> HomeScreen(state, onRequestPermission, navigateFiles, { navigate(Destination.DUPLICATES) }, { navigate(Destination.CLEANUP) })
+                                    Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission)
+                                    Destination.DUPLICATES -> DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission)
+                                    Destination.CLEANUP -> CleanupScreen(state, navigateFiles)
+                                    Destination.SETTINGS -> SettingsScreen(state, vm, onRequestPermission, onOpenSettings, { showTrash = true })
+                                }
                             }
                         }
                     }
-                    if (!wide) {
-                        Row(
-                            Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                                .padding(horizontal = 8.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        ) {
-                            Destination.entries.forEach { NavItem(it, destination == it, { showTrash = false; destination = it }, Modifier.weight(1f), vertical = true) }
-                        }
+                }
+                if (!wide) {
+                    Row(
+                        Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Destination.entries.forEach { NavItem(it, destination == it, { navigate(it) }, Modifier.weight(1f), vertical = true) }
                     }
                 }
             }
         }
     }
-}
-
-@Composable
-@OptIn(ExperimentalMaterial3Api::class)
-fun GalliPickTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = lightColorScheme(
-            primary = Ink, onPrimary = Color.White, secondary = Muted, onSecondary = Color.White,
-            tertiary = Ink, onTertiary = Color.White, background = AppBackground, onBackground = Ink,
-            primaryContainer = Mint, onPrimaryContainer = Ink, inversePrimary = Mint,
-            secondaryContainer = Panel, onSecondaryContainer = Ink,
-            tertiaryContainer = Peach, onTertiaryContainer = Ink,
-            surface = AppBackground, onSurface = Ink, surfaceVariant = Panel, onSurfaceVariant = Muted,
-            inverseSurface = Ink, inverseOnSurface = Color.White, surfaceTint = Color.Transparent,
-            surfaceBright = Color.White, surfaceDim = Line,
-            surfaceContainer = Panel, surfaceContainerHigh = Panel, surfaceContainerHighest = Line,
-            surfaceContainerLow = AppBackground, surfaceContainerLowest = Color.White,
-            outline = Muted, outlineVariant = Line, scrim = Ink, error = Color(0xFF944837), onError = Color.White,
-            errorContainer = Color(0xFFF9E7DC), onErrorContainer = Color(0xFF753B2D),
-        ),
-        shapes = Shapes(RoundedCornerShape(10.dp), RoundedCornerShape(14.dp), RoundedCornerShape(18.dp), RoundedCornerShape(24.dp), RoundedCornerShape(28.dp)),
-        typography = Typography(
-            headlineLarge = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-            headlineMedium = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            titleLarge = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-            titleMedium = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            bodyLarge = MaterialTheme.typography.bodyLarge.copy(lineHeight = 25.sp),
-            bodyMedium = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-        ),
-    ) { CompositionLocalProvider(LocalRippleConfiguration provides null, content = content) }
 }
 
 @Composable
@@ -190,12 +163,12 @@ internal fun Modifier.plainClick(enabled: Boolean = true, action: () -> Unit): M
 
 @Composable
 internal fun ActionButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, filled: Boolean = false, enabled: Boolean = true, icon: ImageVector? = null) {
-    val background = if (filled && enabled) Ink else if (!enabled) Panel else Color.White
-    val foreground = if (filled && enabled) Color.White else if (!enabled) Muted else Ink
+    val background = if (filled && enabled) Primary else if (!enabled) Panel else AppSurface
+    val foreground = if (filled && enabled) OnPrimary else if (!enabled) Muted else Ink
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier.heightIn(min = 48.dp).clip(shape).background(background)
-            .border(BorderStroke(1.dp, if (filled && enabled) Ink else Line), shape)
+            .border(BorderStroke(1.dp, if (filled && enabled) Primary else Line), shape)
             .semantics { role = Role.Button }.plainClick(enabled, onClick).padding(horizontal = 15.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,

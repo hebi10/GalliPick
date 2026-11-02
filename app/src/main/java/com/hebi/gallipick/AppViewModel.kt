@@ -28,12 +28,13 @@ data class AppUiState(
     val message: String? = null,
     val totalStorageBytes: Long = 0,
     val freeStorageBytes: Long = 0,
+    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     val repository = (application as GalliPickApplication).repository
     private val settings = AppSettings(application)
-    private val _ui = MutableStateFlow(AppUiState(filter = settings.loadFilter(), presets = settings.loadPresets()))
+    private val _ui = MutableStateFlow(AppUiState(filter = settings.loadFilter(), presets = settings.loadPresets(), themeMode = settings.loadThemeMode()))
     val ui: StateFlow<AppUiState> = _ui.asStateFlow()
     private var filterJob: Job? = null
     private var refreshJob: Job? = null
@@ -144,6 +145,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun applyPreset(preset: FilterPreset) = setFilter(preset.filter)
 
+    fun setThemeMode(mode: AppThemeMode) {
+        settings.saveThemeMode(mode)
+        _ui.update { it.copy(themeMode = mode) }
+    }
+
     fun toggleSelection(uri: String) {
         if (uri in selectedVersions) {
             selectedVersions.remove(uri)
@@ -199,15 +205,79 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             .filter { group -> group.items.any { it.uri in uris } }
     }
 
-    fun selectRecommendedDuplicates() = replaceSelection(_ui.value.duplicates.flatMap { group ->
-        DuplicatePolicy.deletionCandidates(group, _ui.value.duplicateKeepers[group.hash])
-    })
+    private fun currentDuplicateCandidates(): List<MediaItem> = _ui.value.let {
+        DuplicateReviewPolicy.candidates(it.duplicates, it.items, it.duplicateKeepers, it.protectedFolders)
+    }
+
+    private fun duplicateSelectionReady(): Boolean {
+        if (catalogVerified && repository.catalogReady.value && !_ui.value.loading && _ui.value.catalogError == null) return true
+        showMessage("중복 결과를 다시 확인한 뒤 선택해 주세요.")
+        return false
+    }
+
+    private fun applyDuplicateSelection(items: List<MediaItem>) {
+        selectedVersions.clear()
+        selectedDuplicateGroups.clear()
+        SelectionPolicy.candidates(items).forEach { selectedVersions[it.uri] = it }
+        rememberSafety(selectedVersions.values.toList())
+        _ui.update { it.copy(selected = selectedVersions.keys.toSet()) }
+    }
+
+    fun prepareDuplicateReview() {
+        if (!duplicateSelectionReady()) return
+        val retained = SelectionPolicy.retain(selectedVersions.values, currentDuplicateCandidates())
+        val dropped = selectedVersions.size - retained.size
+        applyDuplicateSelection(retained)
+        if (dropped > 0) showMessage("현재 중복 정리 대상이 아닌 ${dropped}개는 선택에서 제외했습니다.")
+    }
+
+    fun toggleDuplicateCandidateSelection(uri: String) {
+        if (!duplicateSelectionReady()) return
+        val eligible = currentDuplicateCandidates()
+        val retained = SelectionPolicy.retain(selectedVersions.values, eligible)
+        val target = eligible.firstOrNull { it.uri == uri }
+        if (target == null) {
+            applyDuplicateSelection(retained)
+            showMessage("남길 파일·보호 파일·즐겨찾기는 선택 대상에서 제외됩니다.")
+            return
+        }
+        if (retained.any { it.uri == uri }) applyDuplicateSelection(retained.filterNot { it.uri == uri })
+        else if (retained.size < SelectionPolicy.MAX_SELECTION_SIZE) applyDuplicateSelection(retained + target)
+        else showMessage("한 번에 최대 500개까지 선택할 수 있습니다. 현재 선택을 먼저 처리해 주세요.")
+    }
+
+    fun selectRecommendedDuplicates() {
+        if (!duplicateSelectionReady()) return
+        val eligible = currentDuplicateCandidates()
+        applyDuplicateSelection(eligible)
+        showMessage(if (eligible.size > SelectionPolicy.MAX_SELECTION_SIZE)
+            "정리 후보 ${eligible.size}개 중 앞의 500개를 선택했습니다."
+        else "정리 후보 ${selectedVersions.size}개를 선택했습니다. 아직 휴지통으로 이동하지 않았습니다.")
+    }
+
+    fun selectDuplicateGroupCandidates(group: DuplicateGroup) {
+        if (!duplicateSelectionReady()) return
+        val live = DuplicateReviewPolicy.liveGroups(_ui.value.duplicates, _ui.value.items).firstOrNull { it.hash == group.hash } ?: return
+        val eligible = currentDuplicateCandidates()
+        val retained = SelectionPolicy.retain(selectedVersions.values, eligible)
+        val targetUris = live.items.mapTo(hashSetOf()) { it.uri }
+        val wanted = (retained.map { it.uri } + eligible.filter { it.uri in targetUris }.map { it.uri }).distinct().size
+        val chosen = DuplicateReviewPolicy.selectGroup(retained, eligible, live)
+        applyDuplicateSelection(chosen)
+        if (wanted > SelectionPolicy.MAX_SELECTION_SIZE) showMessage("선택 한도 500개까지 추가했습니다. 다른 묶음의 선택은 유지됩니다.")
+    }
 
     fun chooseDuplicateKeeper(group: DuplicateGroup, uri: String) {
-        val live = _ui.value.duplicates.firstOrNull { it.hash == group.hash } ?: return
+        if (!duplicateSelectionReady()) return
+        val live = DuplicateReviewPolicy.liveGroups(_ui.value.duplicates, _ui.value.items).firstOrNull { it.hash == group.hash } ?: return
         if (live.items.none { it.uri == uri }) return
-        selectedVersions.remove(uri)
-        _ui.update { it.copy(duplicateKeepers = it.duplicateKeepers + (group.hash to uri), selected = selectedVersions.keys.toSet()) }
+        val affected = DuplicateGroup(live.hash, (live.items + selectedDuplicateGroups[live.hash]?.items.orEmpty()).distinctBy { it.uri })
+        val retained = DuplicateReviewPolicy.afterKeeperChange(selectedVersions.values, affected)
+        selectedVersions.clear()
+        retained.forEach { selectedVersions[it.uri] = it }
+        selectedDuplicateGroups.remove(live.hash)
+        _ui.update { it.copy(duplicateKeepers = it.duplicateKeepers + (live.hash to uri), selected = selectedVersions.keys.toSet(),
+            message = "남길 파일을 변경했습니다. 이 묶음의 선택을 해제했으며 다른 묶음의 선택은 유지됩니다.") }
     }
 
     fun setProtected(item: MediaItem, protected: Boolean) = task {
