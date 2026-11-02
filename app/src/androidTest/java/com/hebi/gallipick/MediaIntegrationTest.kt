@@ -95,6 +95,9 @@ class MediaIntegrationTest {
         assertTrue(vm.ui.value.duplicates.any { it.hash == group.hash })
         repository.clearAnalysisCache()
         assertFalse(repository.hasSurvivingCopy(group, setOf(selected.uri)))
+        // The shared duplicate flow publishes Room changes asynchronously. Observe
+        // the cleared proof before rescanning so the old group cannot satisfy first().
+        withTimeout(15_000) { repository.duplicates.first { groups -> groups.none { it.hash == group.hash } } }
         repository.startScan()
         withTimeout(45_000) { repository.duplicates.first { groups -> groups.any { it.hash == group.hash } } }
         assertTrue(repository.hasSurvivingCopy(group, setOf(selected.uri)))

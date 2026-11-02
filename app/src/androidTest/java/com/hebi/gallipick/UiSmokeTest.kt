@@ -40,7 +40,7 @@ class UiSmokeTest {
         compose.onNodeWithText("취소").performClick()
         saveScreenshot("files")
         compose.onAllNodesWithText("중복").onFirst().performClick()
-        compose.onNodeWithText("완전히 같은 파일").assertIsDisplayed()
+        compose.onNodeWithText("중복 정리").assertIsDisplayed()
         saveScreenshot("duplicates")
         compose.onAllNodesWithText("정리").onFirst().performClick()
         saveScreenshot("cleanup")
