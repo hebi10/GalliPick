@@ -1,0 +1,70 @@
+{
+  "app": "GalliPick",
+  "locale": "ko-KR",
+  "source_commit": "1b06758c895ae30f394d49ea35ada93207246c40",
+  "feature_graphic": {
+    "generator": "built-in image_gen",
+    "reference": "assets/brand/source/gp_mascot.png",
+    "prompt_summary": "Cream, sage-mint, forest-green and apricot Play feature graphic using the established smiling photo-card mascot. Text: GalliPick / 사진과 동영상을 / 쉽게 찾고 안전하게 정리 / 길이·용량 정렬 | 중복 검사. No fake app UI, rankings, badges or prices.",
+    "packaging": "Resized generated artwork to required 1024x500 RGB PNG."
+  },
+  "app_icon": {
+    "source": "assets/brand/source/gp_mascot.png",
+    "packaging": "Existing generated mascot placed on an opaque mint square; 512x512 RGB; no new illustration."
+  },
+  "screenshots": {
+    "origin": "API 36 native instrumentation captures from CI run 41395177884 on source_commit; not image-generated UI.",
+    "packaging": "Original full UI proportions preserved inside a 1350x2400 opaque canvas; no interface text or values changed.",
+    "data_notice": "04-duplicates uses test fixtures, not a real user library; the test thumbnails are placeholders."
+  },
+  "files": [
+    {
+      "file": "01-home.png",
+      "dimensions": [
+        1350,
+        2400
+      ],
+      "sha256": "2928691779bf7d4f59a4dd0a7284717953c30d23f69b1186c853093b3c4b9cec"
+    },
+    {
+      "file": "02-filters.png",
+      "dimensions": [
+        1350,
+        2400
+      ],
+      "sha256": "579ac94ed28ef64a84f976d8d0c8867324cef83d58d483de55e704c482c4e9c9"
+    },
+    {
+      "file": "03-dark-mode.png",
+      "dimensions": [
+        1350,
+        2400
+      ],
+      "sha256": "50875e32aa2fbbc7a759e70a7dbd88d791f75318bbc3271eb2085e0d490197f6"
+    },
+    {
+      "file": "04-duplicates.png",
+      "dimensions": [
+        1350,
+        2400
+      ],
+      "sha256": "e180d8fc564a783c13e76e44d520f1ab154ec5c5ee005784641a0659c7c200fc"
+    },
+    {
+      "file": "app-icon.png",
+      "dimensions": [
+        512,
+        512
+      ],
+      "sha256": "597488ba4b919d22d4a84babe305a0db5ec90895337b6c306c6d08830e503f8e"
+    },
+    {
+      "file": "feature-graphic.png",
+      "dimensions": [
+        1024,
+        500
+      ],
+      "sha256": "7c5ebb5895dba00db914b1a7f5f555a8256494f19ac2aba960c68b9fd0bc677b"
+    }
+  ]
+}
