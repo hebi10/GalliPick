@@ -57,6 +57,7 @@ class TrashReviewFlowTest {
                 compose.onNodeWithText("Android 확인").performClick()
                 compose.waitUntil(15_000) { messages.any { it.contains("확인 중 파일 상태가 변경되었습니다") } }
                 compose.onNodeWithText("Android 확인").assertDoesNotExist()
+                saveReviewDiagnostics(pauses.get())
                 compose.onNodeWithText("확인 중 파일 상태가 변경되었습니다. 새로고침 후 다시 선택해 주세요.").assertIsDisplayed()
                 assertFalse(vm.repository.reader.current(uri.toString())!!.isTrashed)
                 // Accessibility may still expose the dismissed platform Dialog's
@@ -75,6 +76,26 @@ class TrashReviewFlowTest {
                 compose.runOnUiThread { compose.activity.lifecycle.removeObserver(lifecycleObserver) }
                 job.cancel()
             }
+        }
+    }
+
+    private fun saveReviewDiagnostics(pauses: Int) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val directory = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+            ?.let(::File) ?: File(compose.activity.filesDir, "test-screenshots")
+        directory.mkdirs()
+        val automation = instrumentation.uiAutomation
+        val root = automation.rootInActiveWindow
+        File(directory, "review-rejection-diagnostics.txt").writeText(
+            "pauses=$pauses\nlifecycle=${compose.activity.lifecycle.currentState}\n" +
+                "windowPackage=${root?.packageName}\nwindowClass=${root?.className}\nwindowText=${root?.text}\n" +
+                compose.onRoot(useUnmergedTree = true).printToString(),
+        )
+        automation.takeScreenshot()?.let { bitmap ->
+            File(directory, "review-rejection-system-screen.png").outputStream().use {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+            bitmap.recycle()
         }
     }
 
