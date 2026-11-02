@@ -1,6 +1,6 @@
 # Google Play registration assets
 
-Prepared for the first GalliPick registration. These files being in the repository does not mean the Play app or a public release has been created.
+Prepared for the first GalliPick registration. The Play app has been created, its AAB has been accepted, its Korean store listing has been saved, and internal testing is active. Fourteen changes covering closed Alpha, the listing, and app content have been sent for review. Approval, closed-test availability, and public production release remain pending.
 
 `ko-KR/app-icon.png` is an opaque 512×512 RGBA (32-bit PNG) icon. `ko-KR/feature-graphic.png` is a 1024×500 promotional graphic created with the built-in image generation tool using the existing GalliPick mascot as the brand reference.
 
@@ -8,6 +8,10 @@ The four numbered PNGs are actual native application captures, packaged as opaqu
 
 `ko-KR/manifest.json` records sources, packaging, and checksums. Feature and icon dimensions, RGB mode, and screenshot limits were checked against [Google Play preview asset requirements](https://support.google.com/googleplay/android-developer/answer/9866151).
 
-The Play app has now been created as GalliPick (`com.hebi.gallipick`), Korean and free. The policy/US-export declarations were accepted after explicit user approval. Ten of eleven setup items are complete. Korean store text is saved as a draft, and IARC content rating answers have been saved after explicit user approval. Image upload remains incomplete. See [the registration checkpoint](../../docs/play-store/declarations.md) for saved settings and outstanding work. The internal-test release has version name and notes saved, with no AAB uploaded or release submitted.
+The Play app has been created as GalliPick (`com.hebi.gallipick`), Korean and free. The policy/US-export declarations and IARC content rating answers were saved after explicit user approval. The icon, feature graphic, and four actual screenshots have been uploaded. Korean store text and the AI-related labels for all six assets have been saved and included in the review submission. These labels record the console state; the source descriptions above and in `manifest.json` remain the provenance record for each asset.
+
+Play Console accepted and released version 0.1.6 (code 7) to the active internal-test track. The console shows it as the latest release and available to internal testers, with no review performed. The existing one-person tester list was linked to GalliPick without changing the shared list's membership. The [internal-test invitation](https://play.google.com/apps/internaltest/4701553322848710324) opens the package's invitation page; the invitation was not accepted during verification.
+
+Closed Alpha track `4700948071568765873` was configured for South Korea, the existing one-person list, and feedback through the approved public support email. It reuses version 0.1.6 (code 7) from the Play library and the same Korean release notes. Photo/video permission reasons and the no-advertising-ID declaration were saved; release revalidation showed zero errors and two mapping/symbol warnings. The final submission confirmed that 14 changes were sent for review. The publishing overview shows Alpha under changes in review and states that the changes are being reviewed, after the automatic pre-review progress indication cleared. Approval and availability to closed testers require separate confirmation. See [the registration checkpoint](../../docs/play-store/declarations.md) for saved settings and outstanding work.
 
 The matching source AAB is version 0.1.6 (code 7), with user-provided signer fingerprint `3da9245ec543bba6348541e60346ebe8ed296bc0fb09eea4ae763138204d1bb1`. Its upload signature does not establish the Google Play distribution signing identity. The AAB itself and all signing credentials are intentionally excluded from this asset directory.
