@@ -4,7 +4,13 @@ GalliPick의 일반 debug·release 빌드는 같은 앱 전용 키를 사용합�
 
 ## 고정 서명 기준
 
-v0.1.5에서 정한 서명 키를 유지합니다. 공개 인증서 지문은 `signing/certificate.sha256`에 고정하며, 실제 키스토어의 인증서가 이 값과 일치해야 빌드합니다. 파일 누락·비밀번호 오류·다른 인증서는 빌드를 중단합니다. 새로운 키를 자동 생성하거나 일반 SDK debug 키로 대체하지 않습니다.
+현재 릴리스 기준은 사용자가 제공한 JKS 키입니다. 공개 인증서 지문은 `signing/certificate.sha256`에 고정하며, 실제 키스토어의 인증서가 이 값과 일치해야 빌드합니다. 파일 누락·비밀번호 오류·다른 인증서는 빌드를 중단합니다. 새로운 키를 자동 생성하거나 일반 SDK debug 키로 대체하지 않습니다.
+
+```text
+인증서 SHA-256: 3da9245ec543bba6348541e60346ebe8ed296bc0fb09eea4ae763138204d1bb1
+```
+
+v0.1.5와 이전 v0.1.6 로컬 APK의 개발 키는 과거 서명 기준입니다. 그 개발 키로 서명한 설치본은 이번 JKS 릴리스와 덮어쓰기 호환되지 않습니다.
 
 키스토어와 실제 비밀번호 설정은 저장소 밖의 비공개 위치에 보관합니다. 개인 키·복구 ZIP·실제 설정 파일·Base64 값은 Git, 빌드 로그, 공개 artifact, 릴리스 파일에 넣지 않습니다.
 
@@ -19,14 +25,14 @@ v0.1.5에서 정한 서명 키를 유지합니다. 공개 인증서 지문은 `s
 설정 형식은 Java properties입니다. 아래는 필드 이름을 설명하는 자리표시자이며 실제 비밀 값이 아닙니다.
 
 ```properties
-storeFile=<keystore-path>
+storeFile=gallipick-signing.jks
 storePassword=<private-store-password>
 keyAlias=<key-alias>
 keyPassword=<private-key-password>
-storeType=<PKCS12-or-JKS>
+storeType=JKS
 ```
 
-`storeFile`, `storePassword`, `keyAlias`, `keyPassword`는 필수입니다. 상대 `storeFile` 경로는 설정 파일이 있는 디렉터리를 기준으로 해석합니다. `storeType`을 생략하면 `PKCS12`를 사용합니다. 비공개 복구 자료를 복원한 뒤 같은 공개 지문인지 확인하고 빌드합니다.
+`storeFile`, `storePassword`, `keyAlias`, `keyPassword`는 필수입니다. 상대 `storeFile` 경로는 설정 파일이 있는 디렉터리를 기준으로 해석합니다. 현재 JKS에는 `storeType=JKS`를 명시하고 저장소 비밀번호와 개인 키 비밀번호를 각각 유지합니다. 두 비밀번호를 같은 값으로 간주하지 않습니다. `storeType` 생략 시의 `PKCS12` 기본값은 이전 형식 지원을 위한 것이며, 비공개 복구 자료를 복원한 뒤 현재 공개 지문과 일치하는지 확인합니다.
 
 ```bash
 ./gradlew :app:verifyGalliPickSigning :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
@@ -46,11 +52,13 @@ storeType=<PKCS12-or-JKS>
 
 공개 릴리스 job은 Actions secret **`GALLIPICK_SIGNING_BUNDLE_BASE64` 한 개**에서 비공개 복구 ZIP을 복원합니다. 이 값에는 키스토어와 비밀번호가 포함되므로 내용을 출력하지 않습니다. 허용된 파일만 runner 임시 디렉터리에 비공개 권한으로 복원하고, 종료 시 임시 서명 파일을 정리합니다. 이 secret은 서명·게시 job에만 전달합니다.
 
-같은 커밋의 단위 검사·lint·Android 16/API 36 기기 검사가 성공한 뒤 고정 키로 빌드하고, APK 메타데이터·인증서·체크섬을 확인해 공개하도록 구성했습니다. 절차와 실제 게시 상태는 [공개 APK 릴리스](release.md)와 [검증 기록](verification.md)에서 확인합니다. 소스는 main에 반영했고 PR의 JVM 82개·API 36 검사 46개가 통과했습니다. 비공개 키의 Actions secret 등록과 공개 릴리스 실행은 대기 중입니다.
+현재 복구 ZIP은 `signing.properties`, `certificate.sha256`, `RESTORE.txt`와 `gallipick-signing.jks`를 포함합니다. 이전 `gallipick-signing.p12` 형식도 지원하지만 키스토어는 둘 중 하나만 허용하며 인증서는 현재 고정 지문과 일치해야 합니다. 형식 지원이 이전 개발 키의 업데이트 호환성을 뜻하지는 않습니다.
+
+같은 커밋의 단위 검사·lint·Android 16/API 36 기기 검사가 성공한 뒤 고정 키로 빌드하고, APK 메타데이터·인증서·체크섬을 확인해 공개하도록 구성했습니다. 소스는 새 공개 지문과 JKS 복구 형식을 사용하며 로컬 APK를 확인했습니다. Actions secret 갱신은 GitHub의 추가 본인 확인 창에서 대기 중이고 새 기준의 원격 CI 결과·공개 게시도 대기 중입니다. 실제 상태는 [공개 APK 릴리스](release.md)와 [검증 기록](verification.md)에서 확인합니다.
 
 ## 설치 호환성
 
-- v0.1.5의 일반 release APK와 v0.1.6은 같은 키·같은 패키지를 사용합니다. versionCode가 6에서 7로 올라가는 업데이트 구성이며, 이번 업데이트를 위해 v0.1.5 앱을 삭제하지 않습니다.
-- 이전의 다른 키로 서명된 개발 APK는 고정 키의 앱과 덮어쓰기 호환되지 않습니다. 이전 키에서 한 번 재설치했던 전환은 과거 버전에 해당하며, 그때 필터·보호 설정·분석 데이터가 초기화됩니다.
+- 기존 개발 키로 서명한 v0.1.5와 이전 v0.1.6 시험 APK는 사용자 제공 JKS와 서명이 다릅니다. 새 APK 공개 후 한 번 삭제·재설치해야 하며 로컬 필터·보호·분석 설정은 초기화될 수 있습니다.
+- 앱 데이터 이전이나 서명 키 회전 증명을 수행하는 전환이 아닙니다. 이후 릴리스는 같은 JKS 키·패키지와 더 높은 versionCode를 유지합니다.
 - `com.hebi.gallipick.preview`는 별도 패키지입니다. 그 앱의 설정을 일반 GalliPick으로 자동 이전하지 않습니다.
 - 실제 기기의 설치·업데이트 검증 결과와 빌드 설정상 호환성은 구분해 기록합니다.

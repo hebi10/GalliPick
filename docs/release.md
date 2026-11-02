@@ -6,7 +6,9 @@
 
 저장소의 Actions secret `GALLIPICK_SIGNING_BUNDLE_BASE64`에는 비공개 `GalliPick-signing-recovery.zip`의 Base64를 저장합니다. 이 값은 키스토어와 비밀번호를 포함하므로 저장소 파일, 로그, 릴리스 본문, 공개 artifact에 넣지 않습니다. 비밀 값은 릴리스 게시 job에서만 사용하며 일반 검사 job에는 전달하지 않습니다.
 
-복구 ZIP의 허용 파일은 `gallipick-signing.p12`, `signing.properties`, `certificate.sha256`, `RESTORE.txt` 네 개입니다. 워크플로는 runner 임시 디렉터리에 비공개 권한으로 복구하고, 공개 지문 `signing/certificate.sha256`과 실제 서명이 일치해야만 빌드합니다. job 종료 시 비공개 임시 파일을 지웁니다. 서명 키가 누락되거나 다르면 새 키를 만들지 않고 중단합니다.
+현재 릴리스는 사용자 제공 JKS를 사용합니다. 복구 ZIP은 공통 파일 `signing.properties`, `certificate.sha256`, `RESTORE.txt`와 키스토어 `gallipick-signing.jks` 한 개로 구성합니다. `storeType=JKS`와 저장소·개인 키의 서로 다른 비밀번호를 각각 보존합니다. 이전 `gallipick-signing.p12`/`PKCS12` 형식도 지원하지만 두 키스토어를 함께 넣을 수는 없습니다.
+
+워크플로는 runner 임시 디렉터리에 비공개 권한으로 복구하고, 공개 지문 `signing/certificate.sha256`과 실제 서명이 일치해야만 빌드합니다. 이전 개발 키의 복구 ZIP은 새 JKS 지문과 다르므로 현재 릴리스 기준이 아닙니다. job 종료 시 비공개 임시 파일을 지웁니다. 서명 키가 누락되거나 다르면 새 키를 만들지 않고 중단합니다.
 
 ## 수동 실행
 
@@ -31,6 +33,6 @@
 
 같은 버전의 릴리스가 이미 있으면 공개·초안 여부와 관계없이 자동으로 수정하거나 파일을 교체하지 않습니다. 업로드·검증이 실패하면 공개하지 않고 초안을 남길 수 있으므로 실행 결과와 원격 상태를 확인한 뒤 처리합니다. 이미 공개한 버전의 APK를 교체하는 대신 새 버전을 사용합니다.
 
-현재 저장소의 워크플로 준비 상태와 실제 게시 완료는 구별합니다. 실제 통과 검사와 게시 링크는 해당 Actions 실행 및 릴리스에서 확인합니다.
+현재 JKS의 로컬 APK·복구 검증은 완료했고, 새 지문 원격 반영·Actions secret 갱신·CI·공개 게시는 대기 중입니다. 실제 통과 검사와 게시 링크는 [검증 기록](verification.md) 및 해당 Actions 실행·릴리스에서 확인합니다.
 
 참고: [Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax), [Actions secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets), [GitHub CLI release create](https://cli.github.com/manual/gh_release_create).

@@ -4,7 +4,7 @@
 
 ## 공개 APK
 
-v0.1.6 소스는 [PR #2](https://github.com/hebi10/GalliPick/pull/2)로 main에 반영했습니다. JVM 82개·Android API 36 검사 46개·릴리스 스크립트 18개가 통과했습니다. **공개 APK 게시는 비공개 Actions 서명 키 설정을 기다리고 있습니다.** 게시 완료 후 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 `GalliPick-v0.1.6-release.apk`와 `SHA256SUMS`를 확인합니다.
+v0.1.6의 기능 소스는 [PR #2](https://github.com/hebi10/GalliPick/pull/2)로 main에 반영했습니다. 소스의 서명 기준은 사용자 제공 JKS이며 새 키의 로컬 APK 검증을 완료했습니다. **Actions 서명 설정 갱신은 GitHub의 추가 본인 확인 대기이며 새 기준의 CI 결과·공개 게시는 대기 중입니다.** 게시 완료 후 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 `GalliPick-v0.1.6-release.apk`와 `SHA256SUMS`를 확인합니다.
 
 ## 중복 정리 개선 · v0.1.6
 
@@ -67,9 +67,9 @@ Windows PowerShell에서는 다음을 사용합니다.
 
 릴리스 APK 경로는 `app/build/outputs/apk/release/app-release.apk`입니다. 패키지 `com.hebi.gallipick`, 앱 이름 `GalliPick`, v0.1.6/versionCode 7을 사용합니다. `.preview` 구분은 없습니다.
 
-v0.1.5의 일반 release APK와 같은 앱 전용 키를 사용하므로 기존 v0.1.5 위에 업데이트하는 구성입니다. **v0.1.5 사용자는 이번 업데이트를 위해 앱을 삭제할 필요가 없습니다.** 예전의 다른 키로 서명된 개발 APK에서 한 번 재설치했던 전환과 구분합니다. 별도 preview 앱의 설정은 일반 패키지로 자동 이전되지 않습니다.
+이번 공개 릴리스는 사용자 제공 JKS 키로 서명합니다. 기존 개발 키로 설치한 v0.1.5 또는 이전 v0.1.6 시험 APK는 서명이 달라 **새 APK 공개 후 한 번 삭제·재설치해야 합니다.** 로컬 필터·보호·분석 설정은 초기화될 수 있습니다. 이번 전환에 앱 데이터 이전이나 서명 키 회전 증명은 포함하지 않습니다. 이후에는 같은 JKS 키·패키지와 더 높은 versionCode로 업데이트합니다. 별도 preview 앱의 설정도 자동 이전되지 않습니다.
 
-일반 CI는 `-PgallipickTestSigning=true`를 명시한 debug 검사를 수행하고 보고서를 보관합니다. [공개 APK 릴리스](docs/release.md)는 같은 커밋의 단위 검사·lint·Android 기기 검사 통과 후 고정 키로 release APK를 서명하고 GitHub Releases에 게시하도록 구성했습니다. PR의 원격 검사는 모두 통과했으며, 서명 키 설정과 공개 릴리스 실행이 남아 있습니다. 실제 결과는 [검증 기록](docs/verification.md)에서 확인합니다.
+일반 CI는 `-PgallipickTestSigning=true`를 명시한 debug 검사를 수행하고 보고서를 보관합니다. [공개 APK 릴리스](docs/release.md)는 같은 커밋의 단위 검사·lint·Android 기기 검사 통과 후 고정 키로 release APK를 서명하고 GitHub Releases에 게시하도록 구성했습니다. 전환 전 기능 검증 기록과 새 JKS 기준의 검증·게시 상태는 [검증 기록](docs/verification.md)에서 구분해 확인합니다.
 
 ## 처음 사용
 

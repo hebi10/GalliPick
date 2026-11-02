@@ -14,7 +14,8 @@ class ReleaseError(RuntimeError):
     pass
 
 
-MEMBERS = {"gallipick-signing.p12", "signing.properties", "certificate.sha256", "RESTORE.txt"}
+COMMON_MEMBERS = {"signing.properties", "certificate.sha256", "RESTORE.txt"}
+KEYSTORE_TYPES = {"gallipick-signing.p12": "PKCS12", "gallipick-signing.jks": "JKS"}
 
 
 def restore_bundle(encoded, runner_temp, expected_pin):
@@ -26,8 +27,11 @@ def restore_bundle(encoded, runner_temp, expected_pin):
         payload = base64.b64decode("".join(encoded.split()), validate=True)
         with zipfile.ZipFile(io.BytesIO(payload)) as archive:
             entries = archive.infolist()
-            if len(entries) != len(MEMBERS) or {entry.filename for entry in entries} != MEMBERS:
+            names = {entry.filename for entry in entries}
+            keystores = names & KEYSTORE_TYPES.keys()
+            if len(entries) != len(COMMON_MEMBERS) + 1 or len(keystores) != 1 or names != COMMON_MEMBERS | keystores:
                 raise ReleaseError("The signing recovery archive has unexpected members.")
+            keystore = next(iter(keystores))
             if sum(entry.file_size for entry in entries) > 1_048_576:
                 raise ReleaseError("The signing recovery archive exceeds the allowed size.")
             if any(entry.is_dir() or stat.S_ISLNK(entry.external_attr >> 16) for entry in entries):
@@ -45,9 +49,9 @@ def restore_bundle(encoded, runner_temp, expected_pin):
             if key in properties:
                 raise ReleaseError("The private signing configuration contains duplicate fields.")
             properties[key] = value
-        if properties.get("storeFile") != "gallipick-signing.p12":
+        if properties.get("storeFile") != keystore:
             raise ReleaseError("The private signing configuration must use the bundled keystore.")
-        if properties.get("storeType", "PKCS12") != "PKCS12" or not all(properties.get(key) for key in ("storePassword", "keyAlias", "keyPassword")):
+        if properties.get("storeType", "PKCS12") != KEYSTORE_TYPES[keystore] or not all(properties.get(key) for key in ("storePassword", "keyAlias", "keyPassword")):
             raise ReleaseError("The private signing configuration is incomplete.")
     except ReleaseError:
         raise

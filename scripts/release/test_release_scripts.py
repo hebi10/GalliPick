@@ -23,23 +23,98 @@ application-label:'GalliPick'
 """
 
 
-def encoded_bundle(overrides=None, extra=None):
+def encoded_bundle(overrides=None, extra=None, *, key_name="gallipick-signing.p12", omit=(), entries=()):
     contents = {
-        "gallipick-signing.p12": b"fake key fixture only",
+        key_name: b"fake key fixture only",
         "signing.properties": b"storeFile=gallipick-signing.p12\nstoreType=PKCS12\nkeyAlias=gallipick\nstorePassword=fixture-value\nkeyPassword=fixture-value\n",
         "certificate.sha256": (PIN + "\n").encode(),
         "RESTORE.txt": b"fixture",
     }
     contents.update(overrides or {})
     contents.update(extra or {})
+    for name in omit:
+        contents.pop(name, None)
     payload = io.BytesIO()
     with zipfile.ZipFile(payload, "w") as archive:
-        for name, value in contents.items():
+        for name, value in list(contents.items()) + list(entries):
             archive.writestr(name, value)
     return base64.b64encode(payload.getvalue()).decode()
 
 
 class SigningBundleTests(unittest.TestCase):
+    def test_jks_restore_preserves_separate_passwords_and_private_permissions(self):
+        properties = b"storeFile=gallipick-signing.jks\nstoreType=JKS\nkeyAlias=fixture-alias\nstorePassword=fixture-store-only\nkeyPassword=fixture-key-only\n"
+        with tempfile.TemporaryDirectory() as root:
+            try:
+                directory = restore_bundle(encoded_bundle({"signing.properties": properties}, key_name="gallipick-signing.jks"), Path(root), PIN)
+            except ReleaseError as error:
+                self.fail(f"A valid JKS recovery bundle was rejected: {error}")
+            self.assertEqual(set(p.name for p in directory.iterdir()), {"gallipick-signing.jks", "signing.properties", "certificate.sha256", "RESTORE.txt"})
+            self.assertEqual((directory / "signing.properties").read_bytes(), properties)
+            self.assertEqual((directory / "gallipick-signing.jks").read_bytes(), b"fake key fixture only")
+            self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o700)
+            self.assertTrue(all(stat.S_IMODE(p.stat().st_mode) == 0o600 for p in directory.iterdir()))
+            cleanup_signing_directory(directory, Path(root))
+            self.assertFalse(directory.exists())
+
+    def test_legacy_pkcs12_bundle_can_omit_store_type(self):
+        properties = b"storeFile=gallipick-signing.p12\nkeyAlias=gallipick\nstorePassword=fixture-store\nkeyPassword=fixture-key\n"
+        with tempfile.TemporaryDirectory() as root:
+            directory = restore_bundle(encoded_bundle({"signing.properties": properties}), Path(root), PIN)
+            self.assertEqual((directory / "signing.properties").read_bytes(), properties)
+
+    def test_bundle_must_contain_exactly_one_supported_keystore(self):
+        candidates = [
+            encoded_bundle(omit=("gallipick-signing.p12",)),
+            encoded_bundle(extra={"gallipick-signing.jks": b"second fixture"}),
+            encoded_bundle(key_name="gallipick-signing.keystore"),
+        ]
+        for candidate in candidates:
+            with self.subTest(candidate_length=len(candidate)), tempfile.TemporaryDirectory() as root:
+                with self.assertRaises(ReleaseError):
+                    restore_bundle(candidate, Path(root), PIN)
+                self.assertEqual(list(Path(root).iterdir()), [])
+
+    def test_duplicate_keystore_archive_entry_is_rejected_before_write(self):
+        for name in ("gallipick-signing.p12", "gallipick-signing.jks"):
+            with self.subTest(name=name):
+                with self.assertWarns(UserWarning):
+                    candidate = encoded_bundle(key_name=name, entries=[(name, b"duplicate fixture")])
+                with tempfile.TemporaryDirectory() as root:
+                    with self.assertRaises(ReleaseError):
+                        restore_bundle(candidate, Path(root), PIN)
+                    self.assertEqual(list(Path(root).iterdir()), [])
+
+    def test_keystore_store_type_must_match_the_bundled_format(self):
+        for name, store_type in [
+            ("gallipick-signing.p12", "JKS"),
+            ("gallipick-signing.jks", "PKCS12"),
+            ("gallipick-signing.jks", "JCEKS"),
+            ("gallipick-signing.jks", None),
+        ]:
+            with self.subTest(name=name, store_type=store_type), tempfile.TemporaryDirectory() as root:
+                properties = f"storeFile={name}\nkeyAlias=fixture\nstorePassword=fixture-store\nkeyPassword=fixture-key\n"
+                if store_type is not None:
+                    properties += f"storeType={store_type}\n"
+                with self.assertRaises(ReleaseError):
+                    restore_bundle(encoded_bundle({"signing.properties": properties.encode()}, key_name=name), Path(root), PIN)
+                self.assertEqual(list(Path(root).iterdir()), [])
+
+    def test_jks_properties_cannot_reference_external_or_other_keystore(self):
+        for store_file in ("/outside/gallipick-signing.jks", "../gallipick-signing.jks", "keys/gallipick-signing.jks", "gallipick-signing.p12"):
+            with self.subTest(store_file=store_file), tempfile.TemporaryDirectory() as root:
+                properties = f"storeFile={store_file}\nstoreType=JKS\nkeyAlias=fixture\nstorePassword=fixture-store\nkeyPassword=fixture-key\n".encode()
+                with self.assertRaises(ReleaseError):
+                    restore_bundle(encoded_bundle({"signing.properties": properties}, key_name="gallipick-signing.jks"), Path(root), PIN)
+                self.assertEqual(list(Path(root).iterdir()), [])
+
+    def test_missing_common_member_is_rejected_even_with_supported_keystore(self):
+        for missing in ("signing.properties", "certificate.sha256", "RESTORE.txt"):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as root:
+                with self.assertRaises(ReleaseError):
+                    restore_bundle(encoded_bundle(omit=(missing,)), Path(root), PIN)
+                self.assertEqual(list(Path(root).iterdir()), [])
+
     def test_restore_accepts_only_expected_files_and_uses_private_permissions(self):
         with tempfile.TemporaryDirectory() as root:
             directory = restore_bundle(encoded_bundle(), Path(root), PIN)
