@@ -10,7 +10,7 @@
   },
   "app_icon": {
     "source": "assets/brand/source/gp_mascot.png",
-    "packaging": "Existing generated mascot placed on an opaque mint square; 512x512 RGB; no new illustration."
+    "packaging": "Existing generated mascot placed on an opaque mint square; 512x512 RGBA (32-bit PNG) with fully opaque alpha; no new illustration."
   },
   "screenshots": {
     "origin": "API 36 native instrumentation captures from CI run 41395177884 on source_commit; not image-generated UI.",
@@ -56,7 +56,7 @@
         512,
         512
       ],
-      "sha256": "597488ba4b919d22d4a84babe305a0db5ec90895337b6c306c6d08830e503f8e"
+      "sha256": "a81e0fc6b47d24913772643de333da0258cf5a471197c198698e47d42e6d57b9"
     },
     {
       "file": "feature-graphic.png",

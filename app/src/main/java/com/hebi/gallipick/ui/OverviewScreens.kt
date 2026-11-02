@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -173,6 +174,7 @@ internal fun CleanupScreen(state: AppUiState, browse: (MediaFilter) -> Unit) {
 
 @Composable
 internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: () -> Unit, openSettings: () -> Unit, openTrash: () -> Unit) {
+    val uriHandler = LocalUriHandler.current
     var confirmClear by remember { mutableStateOf(false) }
     val folders = remember(state.items, state.protectedFolders) {
         val observed = state.items.groupBy { normalizeUiFolder(it.relativePath) }
@@ -238,6 +240,7 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
         SettingsSection("개인정보") {
             Text("미디어와 분석 결과는 외부로 전송하지 않습니다. 인터넷 연결 없이 작동하며 서버에 파일을 업로드하지 않습니다.", style = MaterialTheme.typography.bodyMedium)
             Text("사진 위치정보 접근은 원본 사진의 중복 검사에만 사용합니다. GPS 위치를 추적하거나 현재 위치를 수집하지 않습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
+            ActionButton("개인정보처리방침", { uriHandler.openUri("https://hebi10.github.io/GalliPick/privacy.html") })
         }
         Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             GalliMascot(Modifier.size(38.dp))

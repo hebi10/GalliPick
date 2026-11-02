@@ -2,7 +2,7 @@
 
 Prepared for the first GalliPick registration. These files being in the repository does not mean the Play app or a public release has been created.
 
-`ko-KR/app-icon.png` is an opaque 512×512 icon. `ko-KR/feature-graphic.png` is a 1024×500 promotional graphic created with the built-in image generation tool using the existing GalliPick mascot as the brand reference.
+`ko-KR/app-icon.png` is an opaque 512×512 RGBA (32-bit PNG) icon. `ko-KR/feature-graphic.png` is a 1024×500 promotional graphic created with the built-in image generation tool using the existing GalliPick mascot as the brand reference.
 
 The four numbered PNGs are actual native application captures, packaged as opaque 1350×2400 images without changing the interface or its proportions. They show onboarding, the filter dialog, dark settings, and a duplicate group. The duplicate capture contains controlled test files and placeholder thumbnails. No generated mockup is presented as a screenshot.
 
