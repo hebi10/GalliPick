@@ -73,7 +73,7 @@ class ReviewExperienceTest {
         compose.onNodeWithText(oldVideo.displayName).assertDoesNotExist()
         compose.onNodeWithText("휴지통으로").assertDoesNotExist()
         compose.onNodeWithContentDescription("파일 조건 선택").performClick()
-        compose.onNodeWithText("1 GiB 이상").performScrollTo().performClick()
+        compose.onNodeWithText("1 GB 이상").performScrollTo().performClick()
         compose.onNodeWithText(giantPhoto.displayName).assertIsDisplayed()
         compose.onNodeWithText(longVideo.displayName).assertDoesNotExist()
         compose.runOnIdle { state.value = state.value.copy(selected = setOf(longVideo.uri)) }

@@ -6,21 +6,30 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -30,13 +39,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -62,10 +75,8 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private const val MIB = 1_048_576.0
+private const val BYTES_PER_MB = 1_048_576.0
 
-/** A filter is applied only after every visible bound has passed validation. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FilterDialog(
     current: MediaFilter,
@@ -73,12 +84,40 @@ fun FilterDialog(
     onApply: (MediaFilter) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Box(
+            Modifier.fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime))
+                .padding(12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            FilterDialogContent(
+                current, items, onApply, onDismiss,
+                Modifier.widthIn(max = 920.dp).fillMaxWidth().fillMaxHeight(.96f),
+            )
+        }
+    }
+}
+
+/** Every condition is validated on apply, including a collapsed advanced group. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun FilterDialogContent(
+    current: MediaFilter,
+    items: List<MediaItem>,
+    onApply: (MediaFilter) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var kind by remember(current) { mutableStateOf(current.kind) }
     var query by remember(current) { mutableStateOf(current.query) }
     var folder by remember(current) { mutableStateOf(current.folder) }
     var mimeType by remember(current) { mutableStateOf(current.mimeType) }
-    var minSize by remember(current) { mutableStateOf(numberText(current.minSizeBytes, MIB)) }
-    var maxSize by remember(current) { mutableStateOf(numberText(current.maxSizeBytes, MIB)) }
+    var minSize by remember(current) { mutableStateOf(numberText(current.minSizeBytes, BYTES_PER_MB)) }
+    var maxSize by remember(current) { mutableStateOf(numberText(current.maxSizeBytes, BYTES_PER_MB)) }
     var minDuration by remember(current) { mutableStateOf(numberText(current.minDurationMs, 60_000.0)) }
     var maxDuration by remember(current) { mutableStateOf(numberText(current.maxDurationMs, 60_000.0)) }
     var dateField by remember(current) { mutableStateOf(current.dateField) }
@@ -91,6 +130,15 @@ fun FilterDialog(
     var sortField by remember(current) { mutableStateOf(current.sortField) }
     var sortDirection by remember(current) { mutableStateOf(current.sortDirection) }
     var error by remember { mutableStateOf<String?>(null) }
+    var sizeHelpExpanded by remember { mutableStateOf(false) }
+    var advancedExpanded by remember(current) {
+        mutableStateOf(
+            current.mimeType.isNotBlank() || current.fromDateMs != null || current.toDateMs != null ||
+                current.dateField != DateField.CAPTURED || current.orientation != null || current.minPixels != null ||
+                current.favoritesOnly || current.protectedOnly || current.sortField != SortField.CAPTURED ||
+                current.sortDirection != SortDirection.DESCENDING,
+        )
+    }
     val folders = remember(items, current.folder) {
         (items.map { it.relativePath }.filter { it.isNotBlank() } + current.folder)
             .filter { it.isNotBlank() }.distinct().sorted()
@@ -99,122 +147,177 @@ fun FilterDialog(
         (items.map { it.mimeType }.filter { it.isNotBlank() } + current.mimeType)
             .filter { it.isNotBlank() }.distinct().sorted()
     }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            modifier = Modifier.padding(16.dp).widthIn(max = 760.dp).fillMaxWidth().fillMaxHeight(.93f),
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(1.dp, Line),
-            shadowElevation = 0.dp,
-            tonalElevation = 0.dp,
-        ) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("파일 필터", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    FilterSection("미디어 유형")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChoice("전체", kind == null) { kind = null }
-                        FilterChoice("사진", kind == MediaKind.PHOTO) { kind = MediaKind.PHOTO }
-                        FilterChoice("동영상", kind == MediaKind.VIDEO) { kind = MediaKind.VIDEO }
-                    }
-                    OutlinedTextField(
-                        value = query, onValueChange = { query = it }, label = { Text("파일 이름 검색") },
-                        singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
-                    )
-                    FilterDropdown("폴더", folder.ifBlank { "모든 폴더" }, listOf("" to "모든 폴더") + folders.map { it to it }) { folder = it }
-                    FilterDropdown("파일 형식", mimeType.ifBlank { "모든 형식" }, listOf("" to "모든 형식") + mimeTypes.map { it to it }) { mimeType = it }
-                    FilterSection("파일 크기 · MiB")
-                    FilterBounds(minSize, { minSize = it }, maxSize, { maxSize = it }, "최소 MiB", "최대 MiB")
-                    if (kind == MediaKind.VIDEO) {
-                        FilterSection("동영상 길이 · 분")
-                        FilterBounds(minDuration, { minDuration = it }, maxDuration, { maxDuration = it }, "최소 분", "최대 분")
-                    } else {
-                        Text("길이 조건은 동영상 유형에서 설정할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
-                    }
-                    FilterSection("날짜")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        DateField.entries.forEach { field -> FilterChoice(dateFieldLabel(field), dateField == field) { dateField = field } }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            value = fromDate, onValueChange = { fromDate = it }, label = { Text("시작일") },
-                            placeholder = { Text("yyyy-MM-dd") }, singleLine = true, shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-                        )
-                        OutlinedTextField(
-                            value = toDate, onValueChange = { toDate = it }, label = { Text("종료일") },
-                            placeholder = { Text("yyyy-MM-dd") }, singleLine = true, shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-                        )
-                    }
-                    Text("날짜는 yyyy-MM-dd 형식이며, 종료일 전체를 포함합니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
-                    FilterSection("화면 방향")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChoice("전체", orientation == null) { orientation = null }
-                        Orientation.entries.forEach { value -> FilterChoice(orientationLabel(value), orientation == value) { orientation = value } }
-                    }
-                    FilterSection("최소 해상도")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(null to "전체", 921_600L to "HD", 2_073_600L to "FHD", 3_686_400L to "QHD", 8_294_400L to "4K", 33_177_600L to "8K", 1_000_000L to "1 MP", 4_000_000L to "4 MP", 8_000_000L to "8 MP", 12_000_000L to "12 MP").forEach { (pixels, label) ->
-                            FilterChoice(label, minPixels == pixels) { minPixels = pixels }
-                        }
-                        if (minPixels != null && minPixels !in listOf(921_600L, 2_073_600L, 3_686_400L, 8_294_400L, 33_177_600L, 1_000_000L, 4_000_000L, 8_000_000L, 12_000_000L)) {
-                            FilterChoice("${numberText(minPixels, 1_000_000.0)} MP", true) { }
-                        }
-                    }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Row(Modifier.plainClick { favoritesOnly = !favoritesOnly }) {
-                            SelectBox(checked = favoritesOnly, description = "즐겨찾기만", onClick = { favoritesOnly = !favoritesOnly })
-                            Text("즐겨찾기만", Modifier.padding(top = 13.dp))
-                        }
-                        Row(Modifier.plainClick { protectedOnly = !protectedOnly }) {
-                            SelectBox(checked = protectedOnly, description = "보호된 파일만", onClick = { protectedOnly = !protectedOnly })
-                            Text("보호된 파일만", Modifier.padding(top = 13.dp))
-                        }
-                    }
-                    FilterSection("정렬")
-                    FilterDropdown("정렬 기준", sortFieldLabel(sortField), SortField.entries.map { it to sortFieldLabel(it) }) { sortField = it }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChoice("내림차순", sortDirection == SortDirection.DESCENDING) { sortDirection = SortDirection.DESCENDING }
-                        FilterChoice("오름차순", sortDirection == SortDirection.ASCENDING) { sortDirection = SortDirection.ASCENDING }
-                    }
-                }
-                error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                }
-                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextAction("초기화", onClick = { onApply(MediaFilter()); onDismiss() })
-                    TextAction("취소", onClick = onDismiss)
-                    ActionButton(
-                        label = "필터 적용", filled = true,
-                        onClick = {
-                            try {
-                                val minimumSize = parseBound(minSize, MIB, "최소 크기")
-                                val maximumSize = parseBound(maxSize, MIB, "최대 크기")
-                                checkOrder(minimumSize, maximumSize, "파일 크기")
-                                val minimumDuration = if (kind == MediaKind.VIDEO) parseBound(minDuration, 60_000.0, "최소 길이") else null
-                                val maximumDuration = if (kind == MediaKind.VIDEO) parseBound(maxDuration, 60_000.0, "최대 길이") else null
-                                checkOrder(minimumDuration, maximumDuration, "동영상 길이")
-                                val from = parseDateBound(fromDate, false)
-                                val to = parseDateBound(toDate, true)
-                                checkOrder(from, to, "날짜")
-                                onApply(current.copy(
-                                    kind = kind, query = query.trim(), folder = folder, mimeType = mimeType,
-                                    minSizeBytes = minimumSize, maxSizeBytes = maximumSize,
-                                    minDurationMs = minimumDuration, maxDurationMs = maximumDuration,
-                                    dateField = dateField, fromDateMs = from, toDateMs = to,
-                                    minPixels = minPixels, orientation = orientation,
-                                    favoritesOnly = favoritesOnly, protectedOnly = protectedOnly,
-                                    sortField = sortField, sortDirection = sortDirection,
-                                ))
-                                onDismiss()
-                            } catch (invalid: IllegalArgumentException) {
-                                error = invalid.message ?: "입력한 조건을 확인해 주세요."
+    val basicContent: @Composable ColumnScope.() -> Unit = {
+        FilterSection("미디어 유형")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChoice("전체", kind == null) { kind = null }
+            FilterChoice("사진", kind == MediaKind.PHOTO) { kind = MediaKind.PHOTO }
+            FilterChoice("동영상", kind == MediaKind.VIDEO) { kind = MediaKind.VIDEO }
+        }
+        OutlinedTextField(
+            value = query, onValueChange = { query = it }, label = { Text("파일 이름 검색") },
+            singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+        )
+        FilterDropdown("폴더", folder.ifBlank { "모든 폴더" }, listOf("" to "모든 폴더") + folders.map { it to it }) { folder = it }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            FilterSection("파일 크기 · MB", Modifier.weight(1f))
+            TextAction("용량 단위 안내", onClick = { sizeHelpExpanded = !sizeHelpExpanded },
+                modifier = Modifier.semantics { stateDescription = if (sizeHelpExpanded) "펼쳐짐" else "접힘" })
+        }
+        FilterBounds(minSize, { minSize = it }, maxSize, { maxSize = it }, "최소 MB", "최대 MB")
+        if (sizeHelpExpanded) {
+            Text("앱의 용량 표기와 같은 기준입니다. 1 MB = 1,048,576바이트.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        }
+        if (kind == MediaKind.VIDEO) {
+            FilterSection("동영상 길이 · 분")
+            FilterBounds(minDuration, { minDuration = it }, maxDuration, { maxDuration = it }, "최소 분", "최대 분")
+        } else {
+            Text("길이 조건은 동영상 유형에서 설정할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    val advancedContent: @Composable ColumnScope.() -> Unit = {
+        FilterDropdown("파일 형식", mimeType.ifBlank { "모든 형식" }, listOf("" to "모든 형식") + mimeTypes.map { it to it }) { mimeType = it }
+        FilterSection("날짜")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            DateField.entries.forEach { field -> FilterChoice(dateFieldLabel(field), dateField == field) { dateField = field } }
+        }
+        FilterFieldPair(
+            first = { fieldModifier ->
+                OutlinedTextField(
+                    value = fromDate, onValueChange = { fromDate = it }, label = { Text("시작일") },
+                    placeholder = { Text("yyyy-MM-dd") }, singleLine = true, shape = RoundedCornerShape(16.dp),
+                    modifier = fieldModifier, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+                )
+            },
+            second = { fieldModifier ->
+                OutlinedTextField(
+                    value = toDate, onValueChange = { toDate = it }, label = { Text("종료일") },
+                    placeholder = { Text("yyyy-MM-dd") }, singleLine = true, shape = RoundedCornerShape(16.dp),
+                    modifier = fieldModifier, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+                )
+            },
+        )
+        Text("날짜는 yyyy-MM-dd 형식이며, 종료일 전체를 포함합니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        FilterSection("화면 방향")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChoice("전체", orientation == null) { orientation = null }
+            Orientation.entries.forEach { value -> FilterChoice(orientationLabel(value), orientation == value) { orientation = value } }
+        }
+        FilterSection("최소 해상도")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(null to "전체", 921_600L to "HD", 2_073_600L to "FHD", 3_686_400L to "QHD", 8_294_400L to "4K", 33_177_600L to "8K", 1_000_000L to "1 MP", 4_000_000L to "4 MP", 8_000_000L to "8 MP", 12_000_000L to "12 MP").forEach { (pixels, label) ->
+                FilterChoice(label, minPixels == pixels) { minPixels = pixels }
+            }
+            if (minPixels != null && minPixels !in listOf(921_600L, 2_073_600L, 3_686_400L, 8_294_400L, 33_177_600L, 1_000_000L, 4_000_000L, 8_000_000L, 12_000_000L)) {
+                FilterChoice("${numberText(minPixels, 1_000_000.0)} MP", true) { }
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.plainClick { favoritesOnly = !favoritesOnly }, verticalAlignment = Alignment.CenterVertically) {
+                SelectBox(checked = favoritesOnly, description = "즐겨찾기만", onClick = { favoritesOnly = !favoritesOnly })
+                Text("즐겨찾기만", Modifier.weight(1f, fill = false))
+            }
+            Row(Modifier.plainClick { protectedOnly = !protectedOnly }, verticalAlignment = Alignment.CenterVertically) {
+                SelectBox(checked = protectedOnly, description = "보호된 파일만", onClick = { protectedOnly = !protectedOnly })
+                Text("보호된 파일만", Modifier.weight(1f, fill = false))
+            }
+        }
+        FilterSection("정렬")
+        FilterDropdown("정렬 기준", sortFieldLabel(sortField), SortField.entries.map { it to sortFieldLabel(it) }) { sortField = it }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChoice("내림차순", sortDirection == SortDirection.DESCENDING) { sortDirection = SortDirection.DESCENDING }
+            FilterChoice("오름차순", sortDirection == SortDirection.ASCENDING) { sortDirection = SortDirection.ASCENDING }
+        }
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, Line),
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp,
+    ) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val wide = maxWidth >= 680.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+            val roomyFooter = maxWidth >= 500.dp
+            val compact = maxHeight < 360.dp
+            Column(Modifier.fillMaxSize()) {
+                Text(
+                    "파일 필터", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = if (compact) 8.dp else 16.dp),
+                )
+                // Clip the entire viewport: scrolling and focused fields cannot paint under the footer.
+                Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().semantics { contentDescription = "필터 조건" }) {
+                    Column(
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                    ) {
+                        if (wide) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                                Column(Modifier.weight(1f).semantics { contentDescription = "기본 필터 조건" },
+                                    verticalArrangement = Arrangement.spacedBy(14.dp), content = basicContent)
+                                Column(Modifier.weight(1f).semantics { contentDescription = "고급 필터 조건" },
+                                    verticalArrangement = Arrangement.spacedBy(14.dp), content = advancedContent)
                             }
-                        },
-                    )
+                        } else {
+                            Column(Modifier.fillMaxWidth().semantics { contentDescription = "기본 필터 조건" },
+                                verticalArrangement = Arrangement.spacedBy(14.dp), content = basicContent)
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ActionButton(
+                                    if (advancedExpanded) "고급 조건 접기" else "고급 조건 열기",
+                                    onClick = { advancedExpanded = !advancedExpanded },
+                                    modifier = Modifier.fillMaxWidth().semantics {
+                                        stateDescription = if (advancedExpanded) "펼쳐짐" else "접힘"
+                                    },
+                                )
+                                Text("파일 형식 · 날짜 · 화면 방향 · 해상도 · 정렬", color = Muted, style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (advancedExpanded) {
+                                Column(Modifier.fillMaxWidth().semantics { contentDescription = "고급 필터 조건" },
+                                    verticalArrangement = Arrangement.spacedBy(14.dp), content = advancedContent)
+                            }
+                        }
+                    }
+                }
+                Column(Modifier.fillMaxWidth().semantics { contentDescription = "필터 작업" }) {
+                    HorizontalDivider(color = Line)
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = if (compact) 8.dp else 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        error?.let {
+                            Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                            TextAction("초기화", onClick = { onApply(MediaFilter()); onDismiss() }, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
+                            TextAction("취소", onClick = onDismiss, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
+                            ActionButton(
+                                label = "필터 적용", filled = true, modifier = if (roomyFooter) Modifier else Modifier.weight(1.5f),
+                                onClick = {
+                                    try {
+                                        val minimumSize = parseBound(minSize, BYTES_PER_MB, "최소 크기", current.minSizeBytes)
+                                        val maximumSize = parseBound(maxSize, BYTES_PER_MB, "최대 크기", current.maxSizeBytes)
+                                        checkOrder(minimumSize, maximumSize, "파일 크기")
+                                        val minimumDuration = if (kind == MediaKind.VIDEO) parseBound(minDuration, 60_000.0, "최소 길이", current.minDurationMs) else null
+                                        val maximumDuration = if (kind == MediaKind.VIDEO) parseBound(maxDuration, 60_000.0, "최대 길이", current.maxDurationMs) else null
+                                        checkOrder(minimumDuration, maximumDuration, "동영상 길이")
+                                        val from = parseDateBound(fromDate, false)
+                                        val to = parseDateBound(toDate, true)
+                                        checkOrder(from, to, "날짜")
+                                        onApply(current.copy(
+                                            kind = kind, query = query.trim(), folder = folder, mimeType = mimeType,
+                                            minSizeBytes = minimumSize, maxSizeBytes = maximumSize,
+                                            minDurationMs = minimumDuration, maxDurationMs = maximumDuration,
+                                            dateField = dateField, fromDateMs = from, toDateMs = to,
+                                            minPixels = minPixels, orientation = orientation,
+                                            favoritesOnly = favoritesOnly, protectedOnly = protectedOnly,
+                                            sortField = sortField, sortDirection = sortDirection,
+                                        ))
+                                        onDismiss()
+                                    } catch (invalid: IllegalArgumentException) {
+                                        error = invalid.message ?: "입력한 조건을 확인해 주세요."
+                                    }
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -222,8 +325,8 @@ fun FilterDialog(
 }
 
 @Composable
-private fun FilterSection(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+private fun FilterSection(text: String, modifier: Modifier = Modifier) {
+    Text(text, modifier = modifier, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
 }
 
 @Composable
@@ -248,17 +351,39 @@ private fun FilterBounds(
     maximum: String, onMaximum: (String) -> Unit,
     minimumLabel: String, maximumLabel: String,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        OutlinedTextField(
-            value = minimum, onValueChange = onMinimum, label = { Text(minimumLabel) },
-            singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        )
-        OutlinedTextField(
-            value = maximum, onValueChange = onMaximum, label = { Text(maximumLabel) },
-            singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        )
+    FilterFieldPair(
+        first = { fieldModifier ->
+            OutlinedTextField(
+                value = minimum, onValueChange = onMinimum, label = { Text(minimumLabel) },
+                singleLine = true, shape = RoundedCornerShape(16.dp), modifier = fieldModifier,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            )
+        },
+        second = { fieldModifier ->
+            OutlinedTextField(
+                value = maximum, onValueChange = onMaximum, label = { Text(maximumLabel) },
+                singleLine = true, shape = RoundedCornerShape(16.dp), modifier = fieldModifier,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            )
+        },
+    )
+}
+
+@Composable
+private fun FilterFieldPair(first: @Composable (Modifier) -> Unit, second: @Composable (Modifier) -> Unit) {
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth >= 280.dp * fontScale.coerceAtLeast(1f)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                first(Modifier.weight(1f))
+                second(Modifier.weight(1f))
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                first(Modifier.fillMaxWidth())
+                second(Modifier.fillMaxWidth())
+            }
+        }
     }
 }
 
@@ -315,8 +440,10 @@ private fun numberText(value: Long?, divisor: Double): String {
         .stripTrailingZeros().toPlainString()
 }
 
-private fun parseBound(text: String, multiplier: Double, label: String): Long? {
+private fun parseBound(text: String, multiplier: Double, label: String, original: Long? = null): Long? {
     if (text.isBlank()) return null
+    // The displayed decimal is shortened for editing; an untouched persisted value stays exact.
+    if (original != null && original >= 0 && text == numberText(original, multiplier)) return original
     val number = text.trim().toDoubleOrNull()
     require(number != null && number.isFinite() && number >= 0) { "$label: 0 이상의 숫자를 입력해 주세요." }
     val scaled = number * multiplier

@@ -23,6 +23,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -143,6 +144,11 @@ class NativeScreenCaptureTest {
                 compose.onNodeWithText("상세 필터").performClick()
                 compose.onNodeWithText("파일 필터").assertIsDisplayed()
             }
+            captureDetail("08b-filter-with-keyboard") {
+                compose.onNodeWithText("파일 이름 검색").performScrollTo().performClick().performTextInput("EXAMPLE")
+                compose.onNodeWithText("필터 적용").assertIsDisplayed()
+            }
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             dismissDialogIfPresent("취소")
 
             captureDetail("09-duplicates-scanned") {
@@ -160,7 +166,8 @@ class NativeScreenCaptureTest {
             }
             dismissDialogIfPresent("비교 닫기", contentDescription = true)
 
-            assertTrue("At least the five primary, real activity captures must exist", captures.length() >= 5)
+            assertTrue("All eleven native screen captures must exist", captures.length() == 11)
+            assertTrue("Every detail capture must succeed", detailFailures.length() == 0)
         } catch (failure: Throwable) {
             testFailure = failure
             failureStage = currentStage
@@ -376,6 +383,8 @@ class NativeScreenCaptureTest {
         File(outputDirectory, "$capturePrefix-manifest.json").writeText(JSONObject()
             .put("activity", MainActivity::class.java.name)
             .put("profile", profile)
+            .put("fontScale", app.resources.configuration.fontScale)
+            .put("densityDpi", app.resources.configuration.densityDpi)
             .put("captureMethod", "UiAutomation.takeScreenshot: full Android viewport")
             .put("exampleMedia", JSONArray(listOf("EXAMPLE_mascot_original.png", "EXAMPLE_mascot_copy.png",
                 "EXAMPLE_photo_icon.png", "EXAMPLE_preview_video.mp4")))

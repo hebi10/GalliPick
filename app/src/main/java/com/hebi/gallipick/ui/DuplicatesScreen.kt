@@ -52,6 +52,7 @@ internal fun DuplicatesScreen(state: AppUiState, vm: AppViewModel, trash: (List<
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun DuplicatesScreenContent(
     state: AppUiState,
     trash: (List<MediaItem>) -> Unit,
@@ -122,13 +123,16 @@ internal fun DuplicatesScreenContent(
                     ) }
                 } else {
                     item("selection") {
-                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text("${groups.size}개 묶음 · 정리 후보 ${candidates.size}개", style = MaterialTheme.typography.titleMedium)
-                            Text("후보 파일 용량 ${bytesLabel(duplicateBytes(candidates))}", style = MaterialTheme.typography.bodySmall, color = Muted)
-                            ActionButton(duplicateSelectionLabel(candidates.size), actions.selectRecommended,
-                                Modifier.fillMaxWidth().semantics { contentDescription = "중복 정리 후보 선택" }, enabled = candidates.isNotEmpty())
-                            Text("현재 결과의 모든 묶음에서 선택합니다. 남길 파일·보호 파일·즐겨찾기는 제외합니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
-                            Text("선택만으로는 이동하지 않습니다. 아래 휴지통 이동 버튼에서 확인합니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                        Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Column(Modifier.weight(1f).widthIn(min = 130.dp).align(Alignment.CenterVertically)) {
+                                    Text("${groups.size}개 묶음 · 후보 ${candidates.size}개", style = MaterialTheme.typography.titleSmall)
+                                    Text(bytesLabel(duplicateBytes(candidates)), style = MaterialTheme.typography.bodySmall, color = Muted)
+                                }
+                                ActionButton(duplicateSelectionLabel(candidates.size), actions.selectRecommended,
+                                    Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 정리 후보 선택" }, enabled = candidates.isNotEmpty())
+                            }
+                            Text("남길 파일·보호 파일·즐겨찾기 제외", style = MaterialTheme.typography.bodySmall, color = Muted)
                             if (candidates.size > SelectionPolicy.MAX_SELECTION_SIZE) Text("전체 ${candidates.size}개 중 한 번에 최대 500개를 선택합니다.", style = MaterialTheme.typography.labelMedium, color = Muted)
                         }
                     }
@@ -136,25 +140,21 @@ internal fun DuplicatesScreenContent(
                         val roles = rolesByHash.getValue(group.hash)
                         val selectedInGroup = roles.candidates.count { it.uri in state.selected }
                         item("group:${group.hash}") {
-                            Column(Modifier.fillMaxWidth().padding(top = 14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("묶음 ${index + 1} · 같은 ${if (group.items.all { it.kind == MediaKind.VIDEO }) "영상" else "파일"} ${group.items.size}개", style = MaterialTheme.typography.titleMedium)
-                                        Text("남김 ${roles.kept.size}개 · 정리 후보 ${roles.candidates.size}개", style = MaterialTheme.typography.bodySmall, color = Muted)
-                                    }
-                                    TextAction("비교", { compare(group) }, Modifier.semantics { contentDescription = "중복 묶음 ${index + 1} 비교" })
+                            FlowRow(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Column(Modifier.weight(1f).widthIn(min = 140.dp).align(Alignment.CenterVertically)) {
+                                    Text("묶음 ${index + 1} · ${if (group.items.all { it.kind == MediaKind.VIDEO }) "영상" else "파일"} ${group.items.size}개", style = MaterialTheme.typography.titleSmall)
+                                    Text("남김 ${roles.kept.size}개 · 정리 후보 ${roles.candidates.size}개", style = MaterialTheme.typography.bodySmall, color = Muted)
                                 }
                                 ActionButton(duplicateGroupSelectionLabel(roles.candidates.size, selectedInGroup, selected.size),
-                                    { actions.selectGroupCandidates(group) }, Modifier.fillMaxWidth(),
+                                    { actions.selectGroupCandidates(group) }, Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 묶음 ${index + 1} 후보 선택" },
                                     enabled = selectedInGroup < roles.candidates.size && selected.size < SelectionPolicy.MAX_SELECTION_SIZE)
+                                TextAction("비교", { compare(group) }, Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 묶음 ${index + 1} 비교" })
                             }
                         }
-                        item("kept:${group.hash}") { Text("남길 파일 ${roles.kept.size}개", style = MaterialTheme.typography.labelLarge, color = Ink) }
                         items(roles.kept, key = { "${group.hash}:${it.uri}" }) { item ->
                             DuplicateFileRow(item, roles, state.selected, { compare(group, item.uri) }, { actions.chooseKeeper(group, item.uri) }, { actions.toggleSelection(item.uri) })
                         }
                         if (roles.candidates.isNotEmpty()) {
-                            item("candidates:${group.hash}") { Text("정리 후보 ${roles.candidates.size}개 · ${bytesLabel(duplicateBytes(roles.candidates))}", style = MaterialTheme.typography.labelLarge, color = Muted, modifier = Modifier.padding(top = 6.dp)) }
                             items(roles.candidates, key = { "${group.hash}:${it.uri}" }) { item ->
                                 DuplicateFileRow(item, roles, state.selected, { compare(group, item.uri) }, { actions.chooseKeeper(group, item.uri) }, { actions.toggleSelection(item.uri) })
                             }
@@ -200,7 +200,17 @@ private fun DuplicateIntro() {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun DuplicateScanSummary(scan: ScanState, canScan: Boolean, actions: DuplicatesScreenActions) {
+    if (scan.phase == ScanPhase.COMPLETE) {
+        FlowRow(Modifier.fillMaxWidth().semantics { contentDescription = "중복 검사 완료 요약" },
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("검사 완료 · ${scan.completed}개 확인" + if (scan.skipped > 0) " · ${scan.skipped}개 건너뜀" else "",
+                Modifier.weight(1f).widthIn(min = 130.dp).align(Alignment.CenterVertically).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall, color = Muted)
+            ActionButton("다시 검사", actions.startScan, Modifier.align(Alignment.CenterVertically), enabled = canScan)
+        }
+        return
+    }
     Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -210,7 +220,7 @@ private fun DuplicateScanSummary(scan: ScanState, canScan: Boolean, actions: Dup
             when (scan.phase) {
                 ScanPhase.RUNNING, ScanPhase.QUEUED -> ActionButton("일시정지", actions.pauseScan, icon = Icons.Rounded.Pause)
                 ScanPhase.PAUSED -> ActionButton("계속 검사", actions.resumeScan, filled = true, icon = Icons.Rounded.PlayArrow)
-                else -> ActionButton(if (scan.phase == ScanPhase.COMPLETE) "다시 검사" else "검사 시작", actions.startScan, filled = true, enabled = canScan, icon = Icons.Rounded.Search)
+                else -> ActionButton("검사 시작", actions.startScan, filled = true, enabled = canScan, icon = Icons.Rounded.Search)
             }
         }
         if (scan.total > 0 || scan.phase == ScanPhase.RUNNING || scan.phase == ScanPhase.QUEUED) {
@@ -252,8 +262,12 @@ private fun DuplicateFileRow(item: MediaItem, roles: DuplicateRoles, selected: S
             if (item.uri != roles.keeper.uri) TextAction("이 파일 남기기", chooseKeeper, Modifier.semantics { contentDescription = "${item.displayName} 남길 파일로 지정" })
         }
         if (candidate) SelectBox(chosen, description = "${item.displayName}, ${item.relativePath} 정리 후보 선택", onClick = toggle)
-        else GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders)) Icons.Rounded.Lock else Icons.Rounded.CheckCircle,
-            "남길 파일", Modifier.size(24.dp), tint = Ink)
+        else Column(Modifier.widthIn(min = 36.dp).semantics { contentDescription = "${item.displayName} 남김" },
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders)) Icons.Rounded.Lock else Icons.Rounded.PushPin,
+                null, Modifier.size(22.dp), tint = Ink)
+            Text("남김", style = MaterialTheme.typography.labelSmall, color = Ink)
+        }
     }
 }
 
