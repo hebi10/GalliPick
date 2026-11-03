@@ -220,3 +220,11 @@ SHA-256: 2dd0d4a0ef85505a234dc9286e3221ea81e8104487c9cd225d54f87075e2f55b
 - 기존 검증된 원본 키로 정확한 준비물을 비공개 임시 범위에서 JDK17 JAR 서명했습니다. 기존 full AAB verifier와 bundletool이 통과했고, 모든150개 앱 payload가 준비물과 동일하며 고정 인증서로 정상 서명됨을 확인했습니다.
 - 결과: `GalliPick-v0.1.7-release.aab`, 패키지 `com.hebi.gallipick`, 버전0.1.7/code8, min30/target36, non-debuggable,13,139,649 bytes. SHA-256: `ca4f4cb38023b659f20e9736c6329211c87b2d36775b6b897973802ecb2d83ad`. 서명된 파일은 사용자 전달용으로 저장했습니다.
 - Play 내부 테스트0.1.7(8) 초안은 유지했습니다. 브라우저 host 정책이 ChatGPT 파일 페이지로의 자동 이동을 차단해 PC로 파일을 옮기는 단계는 사용자 다운로드가 필요합니다. 아직 새 AAB 업로드·검토 제출·출시는 완료되지 않았습니다.
+
+## 2026-11-03 — Play AAB 업로드 완료
+
+- 사용자가 내려받아 첨부한 AAB의 크기13,139,649bytes와 SHA-256 `ca4f4cb38023b659f20e9736c6329211c87b2d36775b6b897973802ecb2d83ad`가 기존 검증된 서명 AAB와 동일함을 확인했습니다.
+- 사용자 PC Downloads의 `GalliPick-v0.1.7-release.aab`를 정상 파일 선택 경로로 업로드했습니다. Play Console의 `App Bundle 1개 업로드됨` 성공 알림 및 새 아티팩트 `8 (0.1.7)` 표시를 확인했습니다.
+- 대상은 `com.hebi.gallipick`의 기존 내부 테스트 초안입니다. API30이상/targetSDK36 아티팩트가 수락되었으며, 출시명0.1.7(8)과 한국어 변경 설명을 유지했습니다.
+- `임시보관함에 저장` 실행 후 저장 성공 안내와 비활성 저장 버튼을 확인했습니다. [저장된 Play 초안](https://play.google.com/console/u/0/developers/5537932067090246638/app/4972863093038524623/tracks/4701553322848710324/releases/2/prepare).
+- 이번 요청의 AAB 업로드·초안 저장은 완료했습니다. 검토 제출·테스터 배포·프로덕션 출시는 실행하지 않았습니다.

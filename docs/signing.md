@@ -70,3 +70,5 @@ storeType=JKS
 ## 별도 서명 경로 확인
 
 2026-11-03 QuickCut 방식의 unsigned 준비 경로를 추가했습니다. [준비 빌드](https://github.com/hebi10/GalliPick/actions/runs/41586639777)의 정확한 AAB를 기존 검증 키로 비공개 임시 범위에서 서명했고, 기존 전체 AAB verifier에서 인증서·manifest·150개 payload 검증을 통과했습니다. 모든 앱 payload는 준비물과 동일하며 임시 키 파일은 정리했습니다. 이 경로는 기존 Actions secret을 갱신하지 않습니다. 직접 서명 workflow의 기존 secret 불일치와 구분합니다.
+
+2026-11-03 별도 서명한0.1.7(8) AAB를 Play Console이 정상 수락했고 내부 테스트 초안 저장을 완료했습니다. 이 수락 결과는 기존 인증서로 서명한 업로드 파일의 검증 결과이며, Actions secret이 갱신되었다는 의미는 아닙니다. 현재 서명·업로드 근거는 [검증 기록](verification.md)의 마지막 항목을 확인합니다.
