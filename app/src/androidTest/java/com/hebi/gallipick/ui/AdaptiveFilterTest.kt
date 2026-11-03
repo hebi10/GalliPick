@@ -101,7 +101,8 @@ class AdaptiveFilterTest {
         val minimum = compose.onNodeWithText("최소 MB")
         val maximum = compose.onNodeWithText("최대 MB")
         minimum.performScrollTo().performTextReplacement("2")
-        maximum.performScrollTo().performTextReplacement("1").performClick().assertIsFocused()
+        maximum.performScrollTo().performTextReplacement("1")
+        maximum.performClick().assertIsFocused()
 
         compose.onNodeWithText("필터 적용").performClick()
 
