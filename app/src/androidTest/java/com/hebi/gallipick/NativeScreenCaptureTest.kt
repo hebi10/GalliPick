@@ -12,6 +12,7 @@ import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import android.view.KeyEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -52,6 +53,8 @@ class NativeScreenCaptureTest {
     private val captures = JSONArray()
     private val detailFailures = JSONArray()
     private val progress = JSONArray()
+    private val systemUiAnrEvents = JSONArray()
+    private var systemUiWaitClicks = 0
     private var currentStage = "not-started"
     private var failureStage: String? = null
     private val arguments = InstrumentationRegistry.getArguments()
@@ -304,11 +307,15 @@ class NativeScreenCaptureTest {
         instrumentation.waitForIdleSync()
         // Android compositor/thumbnail work can finish after Compose reports itself idle.
         SystemClock.sleep(500)
+        clearKnownSystemUiAnr(name)
+        assertSystemUiAnrAbsent(name)
         val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot()) {
             "Android did not provide a full viewport screenshot for $name"
         }
         val filename = "$capturePrefix-$name.png"
         try {
+            // Also reject an ANR that appeared between the preflight and the raw screenshot.
+            assertSystemUiAnrAbsent(name)
             File(outputDirectory, filename).outputStream().use {
                 check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
             }
@@ -318,6 +325,45 @@ class NativeScreenCaptureTest {
         } finally {
             bitmap.recycle()
         }
+    }
+
+    private fun clearKnownSystemUiAnr(screen: String) {
+        repeat(3) { attempt ->
+            val root = systemUiAnrRoot() ?: return
+            val owner = root.packageName?.toString()
+            check(owner == "android" || owner == "com.android.systemui") {
+                "Refusing to interact with System UI ANR title from unexpected package: $owner"
+            }
+            val wait = root.findAccessibilityNodeInfosByText("Wait")
+                .firstOrNull { it.text?.toString() == "Wait" }
+            var button = wait
+            // Some Android versions put the Wait label inside a clickable button row.
+            repeat(3) { if (button != null && button?.isClickable != true) button = button?.parent }
+            val clicked = button?.takeIf { it.isClickable }
+                ?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+            if (clicked) systemUiWaitClicks++
+            systemUiAnrEvents.put(JSONObject().put("screen", screen).put("attempt", attempt + 1)
+                .put("title", "System UI isn't responding").put("ownerPackage", owner)
+                .put("action", "Wait").put("clicked", clicked)
+                .put("elapsedRealtimeMs", SystemClock.elapsedRealtime()))
+            Log.i("NativeScreenCapture", "Emulator System UI ANR: screen=$screen attempt=${attempt + 1} owner=$owner WaitClicked=$clicked; this is not a GalliPick ANR")
+            // A missing/stale Wait node is handled by rereading the active root next iteration.
+            SystemClock.sleep(500)
+        }
+        assertSystemUiAnrAbsent(screen)
+    }
+
+    private fun systemUiAnrRoot(): AccessibilityNodeInfo? {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return null
+        return root.takeIf {
+            it.findAccessibilityNodeInfosByText("System UI isn't responding")
+                .any { node -> node.text?.toString() == "System UI isn't responding" }
+        }
+    }
+
+    private fun assertSystemUiAnrAbsent(screen: String) {
+        assertTrue("Refusing to save $screen while the emulator's System UI ANR dialog is visible",
+            systemUiAnrRoot() == null)
     }
 
     private fun recordStage(stage: String) {
@@ -335,6 +381,8 @@ class NativeScreenCaptureTest {
                 "EXAMPLE_photo_icon.png", "EXAMPLE_preview_video.mp4")))
             .put("captures", captures)
             .put("detailFailures", detailFailures)
+            .put("systemUiAnrWaitClicks", systemUiWaitClicks)
+            .put("systemUiAnrEvents", systemUiAnrEvents)
             .put("progress", progress)
             .put("failureStage", failureStage ?: JSONObject.NULL)
             .put("testFailure", testFailure?.toString() ?: JSONObject.NULL)
