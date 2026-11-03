@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.util.Log
 import android.view.KeyEvent
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -50,15 +51,30 @@ class NativeScreenCaptureTest {
     private val created = mutableListOf<Uri>()
     private val captures = JSONArray()
     private val detailFailures = JSONArray()
+    private val progress = JSONArray()
+    private var currentStage = "not-started"
+    private var failureStage: String? = null
     private val arguments = InstrumentationRegistry.getArguments()
     private val profile = (arguments.getString("captureProfile") ?: "viewport")
         .replace(Regex("[^A-Za-z0-9_-]"), "_")
     private val capturePrefix = "native-example-media-$profile-${System.currentTimeMillis()}"
     private val outputDirectory by lazy {
-        (arguments.getString("additionalTestOutputDir")?.let(::File)
-            ?: File(app.filesDir, "native-screen-captures")).apply {
-            check(isDirectory || mkdirs()) { "Cannot create capture directory: $this" }
+        val requested = arguments.getString("additionalTestOutputDir")
+        val directory = requested?.let(::File) ?: File(app.filesDir, "native-screen-captures")
+        Log.i("NativeScreenCapture", "Output preflight: path=$directory source=${if (requested == null) "app.filesDir" else "additionalTestOutputDir"} uid=${android.os.Process.myUid()}")
+        try {
+            check(directory.isDirectory || directory.mkdirs()) { "Cannot create capture directory" }
+            val probe = File(directory, "$capturePrefix-write-probe.tmp")
+            try {
+                probe.outputStream().use { it.write(1) }
+            } finally {
+                probe.delete()
+            }
+        } catch (failure: Exception) {
+            throw IllegalStateException("Capture output is not writable: path=$directory exists=${directory.exists()} directory=${directory.isDirectory} canWrite=${directory.canWrite()} uid=${android.os.Process.myUid()}", failure)
         }
+        Log.i("NativeScreenCapture", "Output preflight passed: $directory")
+        directory
     }
 
     @Test fun captureRealActivityWithExampleMedia() {
@@ -66,11 +82,17 @@ class NativeScreenCaptureTest {
         val originalFilter = prefs.getString("default_filter", null)
         val originalTheme = prefs.getString("theme_mode", null)
         var scenario: ActivityScenario<MainActivity>? = null
+        var testFailure: Throwable? = null
         try {
+            recordStage("prepare-output")
+            outputDirectory
             // createEmptyComposeRule does not launch an activity before permissions/fixtures exist.
+            recordStage("grant-media-access")
             grantMediaAccess()
             prefs.edit().remove("default_filter").putString("theme_mode", AppThemeMode.LIGHT.name).commit()
+            recordStage("seed-example-media")
             seedExampleMedia()
+            recordStage("load-example-catalog")
             runBlocking {
                 app.repository.clearAnalysisCache()
                 withTimeout(30_000) {
@@ -82,7 +104,9 @@ class NativeScreenCaptureTest {
                     }
                 }
             }
+            recordStage("launch-main-activity")
             scenario = ActivityScenario.launch(MainActivity::class.java)
+            recordStage("await-initial-catalog")
             awaitCatalog()
             compose.onNodeWithText("GalliPick").assertIsDisplayed()
             saveViewport("01-home")
@@ -134,22 +158,39 @@ class NativeScreenCaptureTest {
             dismissDialogIfPresent("비교 닫기", contentDescription = true)
 
             assertTrue("At least the five primary, real activity captures must exist", captures.length() >= 5)
+        } catch (failure: Throwable) {
+            testFailure = failure
+            failureStage = currentStage
+            Log.e("NativeScreenCapture", "Capture failed at stage=$currentStage captures=${captures.length()} seeded=${created.size}", failure)
+            throw failure
         } finally {
-            try {
-                scenario?.close()
+            var finalizationFailure: Throwable? = null
+            fun finish(label: String, action: () -> Unit) {
+                try {
+                    action()
+                } catch (failure: Throwable) {
+                    Log.e("NativeScreenCapture", "Finalization failed: $label (originalStage=$failureStage)", failure)
+                    val original = testFailure ?: finalizationFailure
+                    if (original != null) original.addSuppressed(failure) else finalizationFailure = failure
+                }
+            }
+            finish("close-activity") { scenario?.close() }
+            finish("remove-example-media") {
                 // All inserted URIs are owned by this test's target app, so no delete dialog is needed.
                 runBlocking {
                     app.repository.clearAnalysisCache()
                     created.forEach { uri -> app.contentResolver.delete(uri, null, null) }
                     app.repository.refresh()
                 }
-            } finally {
+            }
+            finish("restore-settings") {
                 prefs.edit().apply {
                     if (originalFilter == null) remove("default_filter") else putString("default_filter", originalFilter)
                     if (originalTheme == null) remove("theme_mode") else putString("theme_mode", originalTheme)
                 }.commit()
-                writeManifest()
             }
+            finish("write-manifest") { writeManifest(testFailure) }
+            if (testFailure == null) finalizationFailure?.let { throw it }
         }
     }
 
@@ -224,6 +265,7 @@ class NativeScreenCaptureTest {
     }
 
     private fun navigate(title: String) {
+        recordStage("navigate-$title")
         compose.onAllNodesWithText(title).onFirst().performClick()
         awaitCatalog()
     }
@@ -236,9 +278,11 @@ class NativeScreenCaptureTest {
 
     private fun captureDetail(name: String, action: () -> Unit) {
         try {
+            recordStage("detail-$name")
             action()
             saveViewport(name)
         } catch (failure: Throwable) {
+            Log.e("NativeScreenCapture", "Detail failed: $name", failure)
             detailFailures.put(JSONObject().put("step", name).put("error", failure.toString()))
             // Preserve the actual failed viewport too; do not substitute a synthetic UI.
             runCatching { saveViewport("$name-FAILED") }
@@ -255,6 +299,7 @@ class NativeScreenCaptureTest {
     }
 
     private fun saveViewport(name: String) {
+        recordStage("capture-$name")
         compose.waitForIdle()
         instrumentation.waitForIdleSync()
         // Android compositor/thumbnail work can finish after Compose reports itself idle.
@@ -269,12 +314,19 @@ class NativeScreenCaptureTest {
             }
             captures.put(JSONObject().put("screen", name).put("file", filename)
                 .put("widthPixels", bitmap.width).put("heightPixels", bitmap.height))
+            Log.i("NativeScreenCapture", "Saved $filename ${bitmap.width}x${bitmap.height}")
         } finally {
             bitmap.recycle()
         }
     }
 
-    private fun writeManifest() {
+    private fun recordStage(stage: String) {
+        currentStage = stage
+        progress.put(JSONObject().put("stage", stage).put("elapsedRealtimeMs", SystemClock.elapsedRealtime()))
+        Log.i("NativeScreenCapture", "Stage=$stage captures=${captures.length()} seeded=${created.size}")
+    }
+
+    private fun writeManifest(testFailure: Throwable?) {
         File(outputDirectory, "$capturePrefix-manifest.json").writeText(JSONObject()
             .put("activity", MainActivity::class.java.name)
             .put("profile", profile)
@@ -283,6 +335,9 @@ class NativeScreenCaptureTest {
                 "EXAMPLE_photo_icon.png", "EXAMPLE_preview_video.mp4")))
             .put("captures", captures)
             .put("detailFailures", detailFailures)
+            .put("progress", progress)
+            .put("failureStage", failureStage ?: JSONObject.NULL)
+            .put("testFailure", testFailure?.toString() ?: JSONObject.NULL)
             .toString(2))
     }
 }

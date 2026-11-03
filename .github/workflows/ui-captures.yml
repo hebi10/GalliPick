@@ -113,10 +113,12 @@ jobs:
             adb shell am force-stop com.android.launcher3
             adb install -r capture-apks/debug/app-debug.apk
             adb install -r capture-apks/androidTest/debug/app-debug-androidTest.apk
-            adb shell mkdir -p /sdcard/Android/data/com.hebi.gallipick/files/native-captures
-            adb shell am instrument -w -r -e class com.hebi.gallipick.NativeScreenCaptureTest -e captureProfile ${{ matrix.name }} -e additionalTestOutputDir /sdcard/Android/data/com.hebi.gallipick/files/native-captures com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > capture-instrumentation.txt || echo failed > capture-failed.txt
+            adb shell am instrument -w -r -e class com.hebi.gallipick.NativeScreenCaptureTest -e captureProfile ${{ matrix.name }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > capture-instrumentation.txt || echo failed > capture-failed.txt
             cat capture-instrumentation.txt
-            adb pull /sdcard/Android/data/com.hebi.gallipick/files/native-captures captures || true
+            adb logcat -d -s NativeScreenCapture:I > capture-progress.txt
+            adb exec-out run-as com.hebi.gallipick tar -C files/native-screen-captures -cf - . > capture-payload.tar || true
+            mkdir -p captures
+            tar -xf capture-payload.tar -C captures || true
             python3 -c "import pathlib,re; t=pathlib.Path('capture-instrumentation.txt').read_text(); assert not pathlib.Path('capture-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Native capture instrumentation did not pass'; assert len(list(pathlib.Path('captures').glob('*.png'))) >= 5, 'Expected native screenshots are missing'"
       - name: Upload fresh native captures and execution record
         if: always()
@@ -127,4 +129,5 @@ jobs:
             captures/
             capture-instrumentation.txt
             capture-failed.txt
+            capture-progress.txt
           retention-days: 14
