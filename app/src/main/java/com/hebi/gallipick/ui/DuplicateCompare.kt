@@ -147,6 +147,8 @@ private fun DuplicateComparePanel(
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
             val metadataBeside = maxWidth >= 560.dp * fontScale.coerceAtMost(1.4f) && maxHeight < 400.dp * fontScale
+            // A tall portrait window should bring the decision closer, not enlarge the preview indefinitely.
+            val stackedPreviewHeight = (maxHeight * .45f).coerceIn(220.dp, 280.dp)
             val header: @Composable () -> Unit = {
                 Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(roles.label(item, selectedUris), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
@@ -203,8 +205,7 @@ private fun DuplicateComparePanel(
                     }
                 } else {
                     header()
-                    // A tall portrait window should bring the decision closer, not enlarge the preview indefinitely.
-                    preview(Modifier.height((maxHeight * .45f).coerceIn(220.dp, 280.dp)).fillMaxWidth())
+                    preview(Modifier.height(stackedPreviewHeight).fillMaxWidth())
                     details(Modifier.weight(1f).fillMaxWidth())
                 }
             }
