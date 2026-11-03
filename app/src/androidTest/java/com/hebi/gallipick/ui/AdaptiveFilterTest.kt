@@ -78,14 +78,14 @@ class AdaptiveFilterTest {
         compose.runOnIdle { assertNotNull(applied?.toDateMs) }
     }
 
-    @Test fun focusedQueryStaysFullyVisibleWhenKeyboardLeavesOnly130dp() {
+    @Test fun focusedQueryStaysFullyVisibleWhenKeyboardLeavesOnly116dp() {
         val height = mutableStateOf(480)
         showFilter(width = 900, height = 480, windowHeight = height)
         val query = compose.onNodeWithText("파일 이름 검색")
         query.performScrollTo().performClick().assertIsFocused()
 
-        compose.runOnIdle { height.value = 130 }
-        saveScreenshot("filter-resize-focused-130dp")
+        compose.runOnIdle { height.value = 116 }
+        saveScreenshot("filter-resize-focused-116dp")
 
         query.assertIsFocused().assertIsDisplayed()
         assertFocusedFieldAndActionsFit(query)
@@ -254,7 +254,9 @@ class AdaptiveFilterTest {
     private fun assertFocusedFieldAndActionsFit(field: SemanticsNodeInteraction) {
         assertBodyEndsAboveFooter()
         val body = compose.onNodeWithContentDescription("필터 조건").fetchSemanticsNode().boundsInRoot
-        val fieldBounds = field.fetchSemanticsNode().boundsInRoot
+        val fieldNode = field.fetchSemanticsNode()
+        val fieldBounds = fieldNode.boundsInRoot
+        assertTrue("The whole field including its floating label must remain visible", fieldBounds.height >= fieldNode.size.height - 1f)
         val footer = compose.onNodeWithContentDescription("필터 작업").fetchSemanticsNode().boundsInRoot
         assertTrue("A complete text field needs at least 56dp after the keyboard opens", fieldBounds.height >= 56f * .6f - 1f)
         assertTrue("The focused field must remain inside the clipped body", fieldBounds.top >= body.top && fieldBounds.bottom <= body.bottom)

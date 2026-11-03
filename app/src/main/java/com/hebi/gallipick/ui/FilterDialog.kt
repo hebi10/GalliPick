@@ -304,7 +304,7 @@ internal fun FilterDialogContent(
                 Column(Modifier.fillMaxWidth().semantics { contentDescription = "필터 작업" }) {
                     HorizontalDivider(color = Line)
                     Column(Modifier.padding(horizontal = 12.dp, vertical = when {
-                        compactChrome -> 2.dp
+                        compactChrome -> 0.dp
                         compact -> 8.dp
                         else -> 12.dp
                     }),
