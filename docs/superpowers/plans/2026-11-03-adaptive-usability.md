@@ -26,10 +26,12 @@
 3. Filter adaptive form: FilterDialog.kt and focused instrumentation. Separate weighted scroll body/footer, two-column wide layout, explicit advanced narrow section, consistent unit labels/help. Preserve parse semantics and filter state.
 4. Home/cleanup/settings: OverviewScreens.kt and focused instrumentation. Compact home hero, primary actions first, responsive columns, compact zero cards, readable settings width.
 5. File browsing/integration: FilesScreen.kt, FileToolbar.kt and related tests. Show closable side pane only after selection, align select-all with list count, retain single-line toolbar.
-6. Verify: run local available checks, CI unit/lint/build and native regression tests, capture all three profiles, inspect outputs and obtain independent code/visual review. Fix findings, commit and integrate approved changes to repository.
+6. Verify: run local available checks, CI unit/lint/build and native regression tests, capture all five profiles, inspect outputs and obtain independent code/visual review. Fix findings, commit and integrate approved changes to repository.
 
 ## Progress
 - [x] Scope accepted from user's request to implement the reviewed feedback.
-- [ ] Tasks 1–5 implemented and reviewed.
-- [ ] CI and native captures verified.
-- [ ] Repository integrated and results delivered.
+- [x] Tasks 1–5 implemented and reviewed.
+- [x] CI and native captures verified: 88 JVM tests, 80 native tests, 48 adaptive tests per profile, 55 native screenshots.
+- [x] Repository integrated through PR #3; reviewed screenshots prepared for delivery.
+
+Validation details: [adaptive usability verification](../verification/2026-11-03-adaptive-usability.md).
