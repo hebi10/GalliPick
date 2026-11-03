@@ -1,0 +1,87 @@
+name: Play unsigned preparation
+run-name: GalliPick unsigned Play ${{ inputs.version || github.ref_name }}
+on:
+  push:
+    branches: [main, 'codex/play-external-signing-*']
+    paths-ignore: ['docs/**', 'README.md']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version matching the source, for example v0.1.7'
+        required: true
+        default: v0.1.7
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: play-preparation
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'hebi10/GalliPick'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact source and version
+        id: source
+        env:
+          REQUESTED_TAG: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo 'Manual Play preparation must be built from main.' >&2
+            exit 1
+          fi
+          RELEASE_TAG="$(python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, 'scripts/release')
+          from verify_apk import parse_source_version, validate_source_tag
+          source = Path('app/build.gradle.kts').read_text(encoding='utf-8')
+          version, _ = parse_source_version(source)
+          tag = os.environ['REQUESTED_TAG'] if os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch' else 'v' + version
+          validate_source_tag(tag, source)
+          print(tag)
+          PY
+          )"
+          python3 scripts/release/verify_apk.py source --tag "$RELEASE_TAG"
+          printf 'RELEASE_TAG=%s\n' "$RELEASE_TAG" >> "$GITHUB_ENV"
+          printf 'tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Install release SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Download pinned bundletool
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar' --output "$RUNNER_TEMP/bundletool.jar"
+          printf '%s  %s\n' 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29' "$RUNNER_TEMP/bundletool.jar" | sha256sum --check
+      - name: Build unsigned Play preparation bundle
+        run: gradle --no-daemon :app:lintPlayPreparation :app:bundlePlayPreparation --max-workers=2
+      - name: Verify and stage unsigned Play bundle
+        run: python3 scripts/release/prepare_aab.py --tag "$RELEASE_TAG" --bundle app/build/outputs/bundle/playPreparation/app-playPreparation.aab --bundletool "$RUNNER_TEMP/bundletool.jar" --output unsigned-play-dist
+      - name: Save unsigned Play preparation files
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalliPick-${{ steps.source.outputs.tag }}-unsigned-play-preparation
+          path: unsigned-play-dist/
+          if-no-files-found: error
+          retention-days: 14
