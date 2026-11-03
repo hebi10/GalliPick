@@ -1,0 +1,130 @@
+name: Native phone and tablet captures
+on:
+  push:
+    branches: ['codex/ui-captures-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ui-captures-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install compile SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build current app and capture instrumentation
+        run: gradle --no-daemon -PgallipickTestSigning=true assembleDebug assembleDebugAndroidTest --stacktrace --max-workers=2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capture-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          retention-days: 3
+          if-no-files-found: error
+  capture:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: phone-portrait
+            kind: phone
+            size: 1080x2400
+            density: 420
+          - name: tablet-portrait
+            kind: tablet
+            size: 1600x2560
+            density: 240
+          - name: tablet-landscape
+            kind: tablet
+            size: 2560x1600
+            density: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: capture-apks
+          path: capture-apks
+      - name: Select an installed hardware profile
+        id: hardware
+        env:
+          DEVICE_KIND: ${{ matrix.kind }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess
+          catalog = subprocess.check_output(['avdmanager', 'list', 'device'], text=True)
+          candidates = ('pixel_6',) if os.environ['DEVICE_KIND'] == 'phone' else ('pixel_tablet', 'pixel_c', 'Nexus 10')
+          profile = next((name for name in candidates if re.search(r'id:\s*\d+\s+or\s+"' + re.escape(name) + '"', catalog)), None)
+          if profile is None:
+              raise SystemExit('Required phone/tablet hardware profile is unavailable.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('profile=' + profile + '\n')
+          print('Hardware profile:', profile)
+          PY
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          profile: ${{ steps.hardware.outputs.profile }}
+          disable-animations: true
+          script: |
+            adb shell wm size ${{ matrix.size }}
+            adb shell wm density ${{ matrix.density }}
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 0
+            adb shell settings put system font_scale 1.0
+            adb shell am force-stop com.android.launcher3
+            adb install -r capture-apks/debug/app-debug.apk
+            adb install -r capture-apks/androidTest/debug/app-debug-androidTest.apk
+            adb shell mkdir -p /sdcard/Android/data/com.hebi.gallipick/files/native-captures
+            adb shell am instrument -w -r -e class com.hebi.gallipick.NativeScreenCaptureTest -e captureProfile ${{ matrix.name }} -e additionalTestOutputDir /sdcard/Android/data/com.hebi.gallipick/files/native-captures com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > capture-instrumentation.txt || echo failed > capture-failed.txt
+            cat capture-instrumentation.txt
+            adb pull /sdcard/Android/data/com.hebi.gallipick/files/native-captures captures || true
+            python3 -c "import pathlib,re; t=pathlib.Path('capture-instrumentation.txt').read_text(); assert not pathlib.Path('capture-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Native capture instrumentation did not pass'; assert len(list(pathlib.Path('captures').glob('*.png'))) >= 5, 'Expected native screenshots are missing'"
+      - name: Upload fresh native captures and execution record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-captures-${{ matrix.name }}
+          path: |
+            captures/
+            capture-instrumentation.txt
+            capture-failed.txt
+          retention-days: 14
