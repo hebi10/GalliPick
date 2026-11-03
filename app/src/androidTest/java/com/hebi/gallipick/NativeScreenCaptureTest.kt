@@ -1,10 +1,12 @@
 package com.hebi.gallipick
 
 import android.Manifest
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Rect
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
@@ -13,6 +15,7 @@ import android.provider.MediaStore
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -55,6 +58,7 @@ class NativeScreenCaptureTest {
     private val detailFailures = JSONArray()
     private val progress = JSONArray()
     private val systemUiAnrEvents = JSONArray()
+    private val keyboardObservations = JSONArray()
     private var systemUiWaitClicks = 0
     private var currentStage = "not-started"
     private var failureStage: String? = null
@@ -276,7 +280,8 @@ class NativeScreenCaptureTest {
 
     private fun navigate(title: String) {
         recordStage("navigate-$title")
-        compose.onAllNodesWithText(title).onFirst().performClick()
+        compose.onAllNodesWithText(title).onFirst().assertIsDisplayed().performClick()
+        compose.onAllNodesWithText(title).onFirst().assertIsSelected()
         awaitCatalog()
     }
 
@@ -316,6 +321,12 @@ class NativeScreenCaptureTest {
         SystemClock.sleep(500)
         clearKnownSystemUiAnr(name)
         assertSystemUiAnrAbsent(name)
+        if (name == "08b-filter-with-keyboard") {
+            awaitVisibleKeyboard(name)
+            instrumentation.waitForIdleSync()
+            SystemClock.sleep(300)
+            compose.onNodeWithText("필터 적용").assertIsDisplayed()
+        }
         val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot()) {
             "Android did not provide a full viewport screenshot for $name"
         }
@@ -331,6 +342,31 @@ class NativeScreenCaptureTest {
             Log.i("NativeScreenCapture", "Saved $filename ${bitmap.width}x${bitmap.height}")
         } finally {
             bitmap.recycle()
+        }
+    }
+
+    private fun awaitVisibleKeyboard(screen: String) {
+        val automation = instrumentation.uiAutomation
+        val serviceInfo = automation.serviceInfo
+        val previousFlags = serviceInfo.flags
+        var observed: Rect? = null
+        try {
+            serviceInfo.flags = previousFlags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            automation.serviceInfo = serviceInfo
+            compose.waitUntil(timeoutMillis = 20_000) {
+                observed = automation.windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+                    ?.let { window -> Rect().also { window.getBoundsInScreen(it) } }
+                    ?.takeIf { it.width() > 0 && it.height() >= 100 }
+                observed != null
+            }
+            compose.waitForIdle()
+            keyboardObservations.put(JSONObject().put("screen", screen).put("visible", true)
+                .put("left", observed!!.left).put("top", observed!!.top)
+                .put("right", observed!!.right).put("bottom", observed!!.bottom))
+            Log.i("NativeScreenCapture", "Visible input-method window for $screen: $observed")
+        } finally {
+            serviceInfo.flags = previousFlags
+            automation.serviceInfo = serviceInfo
         }
     }
 
@@ -390,6 +426,7 @@ class NativeScreenCaptureTest {
                 "EXAMPLE_photo_icon.png", "EXAMPLE_preview_video.mp4")))
             .put("captures", captures)
             .put("detailFailures", detailFailures)
+            .put("keyboardObservations", keyboardObservations)
             .put("systemUiAnrWaitClicks", systemUiWaitClicks)
             .put("systemUiAnrEvents", systemUiAnrEvents)
             .put("progress", progress)

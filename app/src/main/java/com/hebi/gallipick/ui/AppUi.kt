@@ -7,8 +7,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -19,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -107,9 +111,7 @@ fun GalliPickApp(
                         }
                         Row(Modifier.weight(1f).fillMaxWidth()) {
                             if (wide) {
-                                Column(Modifier.width(100.dp).padding(start = 12.dp, top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Destination.entries.forEach { NavItem(it, destination == it, { navigate(it) }, Modifier.fillMaxWidth(), vertical = true) }
-                                }
+                                AppDestinationRail(destination, ::navigate)
                             }
                             Box(Modifier.weight(1f).fillMaxHeight()) {
                                 if (showTrash) TrashScreen(state.trashed, onRestore, { showTrash = false })
@@ -130,7 +132,7 @@ fun GalliPickApp(
                             .padding(horizontal = 8.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
-                        Destination.entries.forEach { NavItem(it, destination == it, { navigate(it) }, Modifier.weight(1f), vertical = true) }
+                        Destination.entries.forEach { NavItem(it, destination == it, { navigate(it) }, Modifier.weight(1f)) }
                     }
                 }
             }
@@ -139,20 +141,40 @@ fun GalliPickApp(
 }
 
 @Composable
-private fun NavItem(destination: Destination, selected: Boolean, onClick: () -> Unit, modifier: Modifier, vertical: Boolean) {
+internal fun AppDestinationRail(current: Destination, onNavigate: (Destination) -> Unit, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier.width(100.dp).fillMaxHeight()) {
+        // Base the rail on its remaining height after app banners/header, including text scaling.
+        // The compact layout fits five 48 dp tabs in 272 dp; scrolling covers smaller windows.
+        val compact = maxHeight < 420.dp * LocalDensity.current.fontScale
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).selectableGroup()
+                .padding(start = 12.dp, top = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
+        ) {
+            Destination.entries.forEach { destination ->
+                NavItem(destination, current == destination, { onNavigate(destination) }, Modifier.fillMaxWidth(), compact)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NavItem(destination: Destination, selected: Boolean, onClick: () -> Unit, modifier: Modifier, compact: Boolean = false) {
     Column(
-        modifier.semantics { this.selected = selected; role = Role.Tab }.clip(RoundedCornerShape(20.dp))
-            .plainClick(action = onClick).padding(vertical = 4.dp),
+        modifier.heightIn(min = 48.dp).semantics { this.selected = selected; role = Role.Tab }.clip(RoundedCornerShape(20.dp))
+            .plainClick(action = onClick).padding(vertical = if (compact) 2.dp else 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp, Alignment.CenterVertically),
     ) {
         Box(
-            Modifier.size(width = 54.dp, height = 34.dp).background(if (selected) Mint else Color.Transparent, RoundedCornerShape(18.dp)),
+            Modifier.size(width = 54.dp, height = if (compact) 24.dp else 34.dp)
+                .background(if (selected) Mint else Color.Transparent, RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            GalliIcon(destination.icon, contentDescription = null, tint = if (selected) Ink else Muted, modifier = Modifier.size(27.dp))
+            GalliIcon(destination.icon, contentDescription = null, tint = if (selected) Ink else Muted, modifier = Modifier.size(if (compact) 22.dp else 27.dp))
         }
-        Text(destination.title, color = if (selected) Ink else Muted, style = MaterialTheme.typography.labelMedium, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+        Text(destination.title, color = if (selected) Ink else Muted, style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
 

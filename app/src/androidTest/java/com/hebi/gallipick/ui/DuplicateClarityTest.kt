@@ -47,8 +47,13 @@ class DuplicateClarityTest {
             compose.onNodeWithContentDescription("${kept.displayName} 남김").assertIsDisplayed().assertHasNoClickAction()
                 .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.ToggleableState))
         }
-        list.performScrollToNode(hasContentDescription("${candidate.displayName}, ${candidate.relativePath} 정리 후보 선택"))
-        compose.onNodeWithContentDescription("${candidate.displayName}, ${candidate.relativePath} 정리 후보 선택").performClick().assertIsOn()
+        val candidateDescription = "${candidate.displayName}, ${candidate.relativePath} 정리 후보 선택"
+        list.performScrollToNode(hasContentDescription(candidateDescription))
+        compose.onNodeWithContentDescription(candidateDescription).performClick()
+        compose.runOnIdle { assertEquals(setOf(candidate.uri), state.value.selected) }
+        // The selection bar resizes the lazy list, so reacquire its possibly recreated checkbox.
+        list.performScrollToNode(hasContentDescription(candidateDescription))
+        compose.onNodeWithContentDescription(candidateDescription).assertIsDisplayed().assertIsOn()
         list.performScrollToNode(hasText("이동 대상 · 선택됨"))
         compose.onNodeWithText("이동 대상 · 선택됨").assertIsDisplayed()
         compose.runOnIdle { assertTrue(requested.isEmpty()) }

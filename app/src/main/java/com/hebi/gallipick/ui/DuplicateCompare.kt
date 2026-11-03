@@ -80,45 +80,47 @@ internal fun DuplicateCompareContent(
         val sideMetadataFits = maxWidth - 24.dp >= 560.dp * scale.coerceAtMost(1.4f)
         val scrollBody = !sideBySide && maxHeight < (if (sideMetadataFits) 320.dp else 600.dp) * scale
         val finitePanelHeight = if (sideMetadataFits) (220.dp * scale).coerceAtLeast(300.dp) else 520.dp * scale.coerceAtMost(1.4f)
-        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp).then(if (scrollBody) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (short) "사본 비교" else "남길 파일과 정리 후보 비교", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 IconAction("비교 닫기", Icons.Rounded.Close, onClick = onDismiss)
             }
-            Text(if (short) "파일 전체 내용이 같은 사본" else "파일 이름이 아니라 파일 전체의 SHA-256 값이 같은 사본입니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
             if (!actionsEnabled) Text("중복 결과를 다시 확인하고 있습니다. 확인 후 변경할 수 있습니다.",
                 style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.semantics { contentDescription = "중복 결과 확인 중" })
-            if (!short) Text("선택만으로 이동하지 않습니다. 소리는 한 영상씩 재생합니다.", style = MaterialTheme.typography.bodySmall, color = Muted,
-                modifier = Modifier.padding(top = 3.dp, bottom = 6.dp))
-            if (!sideBySide) PrimaryTabRow(selectedTabIndex = activeSlot) {
-                Tab(selected = activeSlot == 0, onClick = { activeSlot = 0 }, modifier = Modifier.testTag("A 비교 탭"),
-                    text = { Text("A · ${roles.label(left, selectedUris).substringBefore(" · ")}") })
-                Tab(selected = activeSlot == 1, onClick = { activeSlot = 1 }, modifier = Modifier.testTag("B 비교 탭"),
-                    text = { Text("B · ${roles.label(right, selectedUris).substringBefore(" · ")}") })
-            }
-            val panel: @Composable (String, MediaItem, Modifier) -> Unit = { slot, item, panelModifier ->
-                key(slot, item.uri, item.fingerprint, item.volumeVersion) {
-                    DuplicateComparePanel(slot, item, group, roles, selectedUris, coordinator, actionsEnabled,
-                        onChooseItem = { uri ->
-                            if (slot == "A") {
-                                if (uri == right.uri) rightUri = left.uri
-                                leftUri = uri
-                            } else {
-                                if (uri == left.uri) leftUri = right.uri
-                                rightUri = uri
-                            }
-                        },
-                        onOpen = { coordinator.pauseActive(); onOpen(item) },
-                        onChooseKeeper = { onChooseKeeper(group, item.uri) }, onToggleSelection = { onToggleSelection(item.uri) },
-                        onProtect = { onProtect(item, !item.isProtected) }, modifier = panelModifier,
-                    )
+            Column(Modifier.weight(1f).fillMaxWidth().then(if (scrollBody) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
+                Text(if (short) "파일 전체 내용이 같은 사본" else "파일 이름이 아니라 파일 전체의 SHA-256 값이 같은 사본입니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                if (!short) Text("선택만으로 이동하지 않습니다. 소리는 한 영상씩 재생합니다.", style = MaterialTheme.typography.bodySmall, color = Muted,
+                    modifier = Modifier.padding(top = 3.dp, bottom = 6.dp))
+                if (!sideBySide) PrimaryTabRow(selectedTabIndex = activeSlot) {
+                    Tab(selected = activeSlot == 0, onClick = { activeSlot = 0 }, modifier = Modifier.testTag("A 비교 탭"),
+                        text = { Text("A · ${roles.label(left, selectedUris).substringBefore(" · ")}") })
+                    Tab(selected = activeSlot == 1, onClick = { activeSlot = 1 }, modifier = Modifier.testTag("B 비교 탭"),
+                        text = { Text("B · ${roles.label(right, selectedUris).substringBefore(" · ")}") })
                 }
+                val panel: @Composable (String, MediaItem, Modifier) -> Unit = { slot, item, panelModifier ->
+                    key(slot, item.uri, item.fingerprint, item.volumeVersion) {
+                        DuplicateComparePanel(slot, item, group, roles, selectedUris, coordinator, actionsEnabled,
+                            onChooseItem = { uri ->
+                                if (slot == "A") {
+                                    if (uri == right.uri) rightUri = left.uri
+                                    leftUri = uri
+                                } else {
+                                    if (uri == left.uri) leftUri = right.uri
+                                    rightUri = uri
+                                }
+                            },
+                            onOpen = { coordinator.pauseActive(); onOpen(item) },
+                            onChooseKeeper = { onChooseKeeper(group, item.uri) }, onToggleSelection = { onToggleSelection(item.uri) },
+                            onProtect = { onProtect(item, !item.isProtected) }, modifier = panelModifier,
+                        )
+                    }
+                }
+                if (sideBySide) Row(Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    panel("A", left, Modifier.weight(1f).fillMaxHeight())
+                    panel("B", right, Modifier.weight(1f).fillMaxHeight())
+                } else panel(if (activeSlot == 0) "A" else "B", if (activeSlot == 0) left else right,
+                    (if (scrollBody) Modifier.height(finitePanelHeight) else Modifier.weight(1f)).fillMaxWidth().padding(vertical = 8.dp))
             }
-            if (sideBySide) Row(Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                panel("A", left, Modifier.weight(1f).fillMaxHeight())
-                panel("B", right, Modifier.weight(1f).fillMaxHeight())
-            } else panel(if (activeSlot == 0) "A" else "B", if (activeSlot == 0) left else right,
-                (if (scrollBody) Modifier.height(finitePanelHeight) else Modifier.weight(1f)).fillMaxWidth().padding(vertical = 8.dp))
         }
     }
 }

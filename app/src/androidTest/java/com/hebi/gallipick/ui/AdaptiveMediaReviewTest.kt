@@ -236,6 +236,31 @@ class AdaptiveMediaReviewTest {
         saveScreenshot("duplicate-compare-short-after-swipe")
     }
 
+    @Test fun pendingNoticeStaysVisibleWhenLargeTextComparisonActionsScroll() {
+        val original = DuplicateGroup("pending-large-text", listOf(media(1, "first.mp4"), media(2, "second.mp4")))
+        val group = mutableStateOf(original)
+        val pending = mutableStateOf(false)
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.9f, fontScale = 1.6f)) {
+                Surface(Modifier.requiredSize(320.dp, 280.dp)) {
+                    DuplicateCompareContent(group.value, original.items.first().uri, emptySet(), emptySet(), {}, {}, { _, _ -> }, {},
+                        { item, protect ->
+                            group.value = group.value.copy(items = group.value.items.map { if (it.uri == item.uri) it.copy(isProtected = protect) else it })
+                            pending.value = true
+                        }, actionsEnabled = !pending.value)
+                }
+            }
+        } }
+        compose.onNodeWithTag("B 비교 탭").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("B 보호").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("비교 닫기").assertIsDisplayed()
+        compose.onNodeWithContentDescription("중복 결과 확인 중").assertIsDisplayed()
+        compose.onNodeWithContentDescription("B 보호 해제").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithContentDescription("중복 결과 확인 중").assertIsDisplayed()
+        compose.onNodeWithContentDescription("B 정리 후보 선택").assertDoesNotExist()
+        saveScreenshot("duplicate-compare-pending-short-large-text")
+    }
+
     @Test fun shortWideFileDetailsKeepThePreviewActionBesideMetadata() {
         val item = media(1, "가로 화면에서도 전체 이름을 확인하는 영상.mp4")
         compose.setContent { GalliPickTheme {
