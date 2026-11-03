@@ -16,7 +16,11 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -280,8 +284,9 @@ class NativeScreenCaptureTest {
 
     private fun navigate(title: String) {
         recordStage("navigate-$title")
-        compose.onAllNodesWithText(title).onFirst().assertIsDisplayed().performClick()
-        compose.onAllNodesWithText(title).onFirst().assertIsSelected()
+        val navigation = hasText(title) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
+        compose.onNode(navigation).assertIsDisplayed().performClick()
+        compose.onNode(navigation).assertIsSelected()
         awaitCatalog()
     }
 
