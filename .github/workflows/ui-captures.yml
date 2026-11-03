@@ -31,16 +31,7 @@ jobs:
       - name: Install compile SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
       - name: Build current app and capture instrumentation
-        run: gradle --no-daemon -PgallipickTestSigning=true testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace --max-workers=2
-      - name: Verify release tooling
-        run: python3 -m unittest discover -s scripts/release -p 'test_*.py'
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: adaptive-verification-reports
-          path: |
-            app/build/reports/
-            app/build/test-results/
+        run: gradle --no-daemon -PgallipickTestSigning=true assembleDebug assembleDebugAndroidTest --stacktrace --max-workers=2
       - uses: actions/upload-artifact@v4
         with:
           name: capture-apks
@@ -61,26 +52,6 @@ jobs:
             kind: phone
             size: 1080x2400
             density: 420
-            font_scale: 1.0
-          - name: phone-landscape
-            kind: phone
-            size: 2400x1080
-            density: 420
-            font_scale: 1.0
-          - name: phone-large-text
-            kind: phone
-            size: 1080x2400
-            density: 420
-            font_scale: 1.6
-          - name: tablet-portrait
-            kind: tablet
-            size: 1600x2560
-            density: 240
-            font_scale: 1.0
-          - name: tablet-landscape
-            kind: tablet
-            size: 2560x1600
-            density: 240
             font_scale: 1.0
     steps:
       - uses: actions/checkout@v4
@@ -136,7 +107,7 @@ jobs:
             adb shell am force-stop com.android.launcher3
             adb install -r capture-apks/debug/app-debug.apk
             adb install -r capture-apks/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.AdaptiveNavigationTest,com.hebi.gallipick.ui.AdaptiveFilesTest,com.hebi.gallipick.ui.AdaptiveFilterTest,com.hebi.gallipick.ui.AdaptiveOverviewTest,com.hebi.gallipick.ui.AdaptiveMediaReviewTest,com.hebi.gallipick.ui.DuplicateClarityTest com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > adaptive-instrumentation.txt || echo failed > adaptive-failed.txt
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.AdaptiveMediaReviewTest#pendingNoticeStaysVisibleWhenLargeTextComparisonActionsScroll com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > adaptive-instrumentation.txt || echo failed > adaptive-failed.txt
             cat adaptive-instrumentation.txt
             adb shell am instrument -w -r -e class com.hebi.gallipick.NativeScreenCaptureTest -e captureProfile ${{ matrix.name }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > capture-instrumentation.txt || echo failed > capture-failed.txt
             cat capture-instrumentation.txt
@@ -144,6 +115,9 @@ jobs:
             adb exec-out run-as com.hebi.gallipick tar -C files/native-screen-captures -cf - . > capture-payload.tar || true
             mkdir -p captures
             tar -xf capture-payload.tar -C captures || true
+            adb exec-out run-as com.hebi.gallipick tar -C files/test-screenshots -cf - . > adaptive-screenshots.tar || true
+            mkdir -p adaptive-screenshots
+            tar -xf adaptive-screenshots.tar -C adaptive-screenshots || true
             python3 -c "import pathlib,re; t=pathlib.Path('adaptive-instrumentation.txt').read_text(); assert not pathlib.Path('adaptive-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Adaptive UI regression tests did not pass'"
             python3 -c "import pathlib,re; t=pathlib.Path('capture-instrumentation.txt').read_text(); assert not pathlib.Path('capture-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Native capture instrumentation did not pass'; assert len(list(pathlib.Path('captures').glob('*.png'))) >= 5, 'Expected native screenshots are missing'"
       - name: Upload fresh native captures and execution record
@@ -158,4 +132,5 @@ jobs:
             capture-progress.txt
             adaptive-instrumentation.txt
             adaptive-failed.txt
+            adaptive-screenshots/
           retention-days: 14

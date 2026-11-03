@@ -2,6 +2,7 @@ package com.hebi.gallipick.ui
 
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.widget.VideoView
@@ -252,10 +253,14 @@ class AdaptiveMediaReviewTest {
             }
         } }
         compose.onNodeWithTag("B 비교 탭").performScrollTo().performClick()
+        recordPendingComparisonGeometry("before-protection")
         compose.onNodeWithContentDescription("B 보호").performScrollTo().performClick()
+        recordPendingComparisonGeometry("after-protection")
+        saveScreenshot("duplicate-compare-pending-before-assert")
         compose.onNodeWithContentDescription("비교 닫기").assertIsDisplayed()
         compose.onNodeWithContentDescription("중복 결과 확인 중").assertIsDisplayed()
         compose.onNodeWithContentDescription("B 보호 해제").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        recordPendingComparisonGeometry("after-disabled-action-scroll")
         compose.onNodeWithContentDescription("중복 결과 확인 중").assertIsDisplayed()
         compose.onNodeWithContentDescription("B 정리 후보 선택").assertDoesNotExist()
         saveScreenshot("duplicate-compare-pending-short-large-text")
@@ -368,6 +373,20 @@ class AdaptiveMediaReviewTest {
     private fun media(id: Long, name: String) = MediaItem("file:///missing-compare-$id.mp4", id, "test", name, MediaKind.VIDEO, "video/mp4", "Download/", 1_234_567, 1920, 1080, 65_000, id, id, id)
     private class TestOwner : LifecycleOwner { val registry = LifecycleRegistry(this).apply { currentState = Lifecycle.State.RESUMED }; override val lifecycle get() = registry }
     private fun videoViews(view: View): List<VideoView> = when (view) { is VideoView -> listOf(view); is ViewGroup -> (0 until view.childCount).flatMap { videoViews(view.getChildAt(it)) }; else -> emptyList() }
+    private fun recordPendingComparisonGeometry(stage: String) {
+        val root = compose.onRoot().fetchSemanticsNode()
+        val config = compose.activity.resources.configuration
+        val nodes = listOf("비교 닫기", "중복 결과 확인 중", "B 파일 비교 패널", "B 보호", "B 보호 해제").joinToString("\n") { label ->
+            runCatching {
+                val node = compose.onNodeWithContentDescription(label).fetchSemanticsNode()
+                "$label: clipped=${node.boundsInRoot}, position=${node.positionInRoot}, size=${node.size}"
+            }.getOrElse { "$label: absent (${it.javaClass.simpleName})" }
+        }
+        val diagnostics = "Pending comparison $stage: root=${root.boundsInRoot}, position=${root.positionInRoot}, size=${root.size}; " +
+            "device=${config.screenWidthDp}x${config.screenHeightDp}dp densityDpi=${config.densityDpi} fontScale=${config.fontScale}\n$nodes\n" +
+            compose.onRoot().printToString() + "\n"
+        InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply { putString("stream", diagnostics) })
+    }
     private fun saveScreenshot(name: String) {
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
