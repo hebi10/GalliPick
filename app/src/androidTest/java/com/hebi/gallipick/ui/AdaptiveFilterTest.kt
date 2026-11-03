@@ -7,6 +7,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.graphics.asAndroidBitmap
+import android.graphics.Bitmap
+import java.io.File
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.InterceptPlatformTextInput
 import kotlinx.coroutines.awaitCancellation
@@ -80,6 +85,7 @@ class AdaptiveFilterTest {
         query.performScrollTo().performClick().assertIsFocused()
 
         compose.runOnIdle { height.value = 130 }
+        saveScreenshot("filter-resize-focused-130dp")
 
         query.assertIsFocused().assertIsDisplayed()
         assertFocusedFieldAndActionsFit(query)
@@ -92,6 +98,7 @@ class AdaptiveFilterTest {
         query.performScrollTo().performClick().assertIsFocused()
 
         compose.runOnIdle { height.value = 180 }
+        saveScreenshot("filter-resize-focused-large-text")
 
         query.assertIsFocused().assertIsDisplayed()
         assertFocusedFieldAndActionsFit(query)
@@ -203,6 +210,7 @@ class AdaptiveFilterTest {
         compose.runOnIdle { assertNull(applied) }
     }
 
+    @OptIn(ExperimentalComposeUiApi::class)
     private fun showFilter(
         width: Int,
         height: Int,
@@ -226,6 +234,14 @@ class AdaptiveFilterTest {
                 }
             }
         }
+    }
+
+    private fun saveScreenshot(name: String) {
+        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val directory = (InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")?.let(::File)
+            ?: File(instrumentation.targetContext.filesDir, "test-screenshots")).apply { mkdirs() }
+        File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     private fun assertBodyEndsAboveFooter() {
