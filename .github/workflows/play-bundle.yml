@@ -1,0 +1,77 @@
+name: Play Store bundle
+run-name: GalliPick Play ${{ inputs.version }}
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version matching the source, for example v0.1.7'
+        required: true
+        default: v0.1.7
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: play-bundle
+  cancel-in-progress: false
+jobs:
+  bundle:
+    if: github.repository == 'hebi10/GalliPick'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify exact main source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo 'Play bundles must be built from main.' >&2
+            exit 1
+          fi
+          python3 scripts/release/verify_apk.py source --tag "$RELEASE_TAG"
+      - name: Restore fixed signing key privately
+        env:
+          GALLIPICK_SIGNING_BUNDLE_BASE64: ${{ secrets.GALLIPICK_SIGNING_BUNDLE_BASE64 }}
+        run: python3 scripts/release/signing_bundle.py restore
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Install release SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Download pinned bundletool
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 'https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar' --output "$RUNNER_TEMP/bundletool.jar"
+          printf '%s  %s\n' 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29' "$RUNNER_TEMP/bundletool.jar" | sha256sum --check
+      - name: Test release verification tools
+        run: python3 -m unittest discover -s scripts/release -p 'test_*.py'
+      - name: Build fixed-key release bundle
+        run: gradle --no-daemon --no-configuration-cache :app:verifyGalliPickSigning :app:testDebugUnitTest :app:lintRelease :app:bundleRelease --max-workers=2
+      - name: Verify and stage Play bundle
+        run: python3 scripts/release/verify_aab.py --tag "$RELEASE_TAG" --bundle app/build/outputs/bundle/release/app-release.aab --bundletool "$RUNNER_TEMP/bundletool.jar" --output play-dist
+      - name: Save verified Play upload files
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalliPick-${{ inputs.version }}-play-bundle
+          path: play-dist/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove private signing files
+        if: always()
+        run: python3 scripts/release/signing_bundle.py cleanup

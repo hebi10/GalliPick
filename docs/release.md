@@ -36,3 +36,11 @@
 현재 JKS의 로컬 APK·복구 검증은 완료했고, 새 지문 원격 반영·Actions secret 갱신·CI·공개 게시는 대기 중입니다. 실제 통과 검사와 게시 링크는 [검증 기록](verification.md) 및 해당 Actions 실행·릴리스에서 확인합니다.
 
 참고: [Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax), [Actions secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets), [GitHub CLI release create](https://cli.github.com/manual/gh_release_create).
+
+## Play Store AAB
+
+`Play Store bundle`은 main의 정확한 커밋과 입력 버전을 확인하고 같은 고정 JKS로 `bundleRelease`를 빌드합니다. APK 공개 게시와 독립된 수동 workflow이며, Play 트랙을 자동 변경하지 않습니다.
+
+빌드 전에 서명 복구 자료의 구조와 공개 지문을 확인하고 실제 개인 키·인증서를 검증합니다. 릴리스 단위 검사·lint 이후 bundletool 구조/manifest, 모든 payload의 JAR 서명, 패키지·버전·SDK·debuggable 설정과 비공개 키 노출을 확인합니다. 고정 버전 bundletool의 SHA-256도 검사합니다.
+
+검증된 AAB, SHA256SUMS와 공개 빌드 근거만 artifact에 보관합니다. 비공개 서명 파일은 runner 임시 위치에만 복원하고 종료 시 삭제합니다. 일반 PR·main의 전체 기기 검사까지 통과한 소스를 Play Console에 수동 업로드하고, 업로드 수락과 실제 출시 상태를 구분하여 기록합니다.
