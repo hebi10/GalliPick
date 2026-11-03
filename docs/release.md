@@ -44,3 +44,11 @@
 빌드 전에 서명 복구 자료의 구조와 공개 지문을 확인하고 실제 개인 키·인증서를 검증합니다. 릴리스 단위 검사·lint 이후 bundletool 구조/manifest, 모든 payload의 JAR 서명, 패키지·버전·SDK·debuggable 설정과 비공개 키 노출을 확인합니다. 고정 버전 bundletool의 SHA-256도 검사합니다.
 
 검증된 AAB, SHA256SUMS와 공개 빌드 근거만 artifact에 보관합니다. 비공개 서명 파일은 runner 임시 위치에만 복원하고 종료 시 삭제합니다. 일반 PR·main의 전체 기기 검사까지 통과한 소스를 Play Console에 수동 업로드하고, 업로드 수락과 실제 출시 상태를 구분하여 기록합니다.
+
+## 키 없이 AAB 준비 후 별도 서명
+
+QuickCut의 unsigned AAB artifact 흐름과 같이 `Play unsigned preparation`은 main·전용 작업 브랜치 push 또는 main 수동 실행에서 서명 전 AAB를 만듭니다. 별도 `playPreparation` build type은 non-debuggable이고 서명 설정이 없으며, 기존 debug/release의 고정 키 검사는 그대로 유지합니다.
+
+이 workflow는 secret을 사용하지 않고 AAB 구조·패키지·버전·SDK·비공개 자료 부재 및 기존 서명 부재를 확인합니다. 검증한 공식 bundletool과 체크섬·공개 준비 근거도 artifact에 포함합니다. 산출물 이름은 `GalliPick-v버전-unsigned.aab`이고 상태는 `unsigned_preparation`/`signed:false`입니다.
+
+준비물은 그대로 Play에 업로드하지 않습니다. 정확한 소스의 CI와 main 통합을 확인한 뒤, 기존 GalliPick 키를 비공개 임시 범위에서 복원해 JDK `jarsigner`로 별도 서명합니다. 이어서 기존 `verify_aab.py`의 모든 payload 서명·고정 인증서·manifest 검증을 통과한 `GalliPick-v버전-release.aab`만 업로드합니다. 임시 키 파일은 사용 후 삭제합니다. 이 과정은 GitHub의 저장된 자격 증명 값을 바꾸지 않습니다.

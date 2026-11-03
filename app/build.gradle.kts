@@ -82,6 +82,12 @@ android {
             resValue("string", "app_name", "GalliPick")
         }
         release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("galliPick") }
+        create("playPreparation") {
+            initWith(getByName("release"))
+            signingConfig = null
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+        }
     }
     testOptions { unitTests.isReturnDefaultValues = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
