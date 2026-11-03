@@ -66,3 +66,7 @@ storeType=JKS
 ## 2026-11-03 AAB 빌드 확인
 
 `Play Store bundle` 실행 [41584050395](https://github.com/hebi10/GalliPick/actions/runs/41584050395)은 서명 복구 단계에서 공개 인증서 지문 불일치를 검출하고 중단했습니다. 기존 Actions secret에 저장된 복구 자료가 현재 고정 인증서와 다릅니다. 현재 사용자 제공 JKS의 실제 인증서와 개인 키 접근, 새 복구 자료 구조는 비공개로 검증했습니다. Actions secret의 값 갱신은 사용자 입력·저장 단계에 대기 중이며, AAB 생성과 Play 업로드는 아직 완료되지 않았습니다.
+
+## 별도 서명 경로 확인
+
+2026-11-03 QuickCut 방식의 unsigned 준비 경로를 추가했습니다. [준비 빌드](https://github.com/hebi10/GalliPick/actions/runs/41586639777)의 정확한 AAB를 기존 검증 키로 비공개 임시 범위에서 서명했고, 기존 전체 AAB verifier에서 인증서·manifest·150개 payload 검증을 통과했습니다. 모든 앱 payload는 준비물과 동일하며 임시 키 파일은 정리했습니다. 이 경로는 기존 Actions secret을 갱신하지 않습니다. 직접 서명 workflow의 기존 secret 불일치와 구분합니다.

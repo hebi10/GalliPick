@@ -19,8 +19,10 @@
 - Final AAB must match the already verified original certificate and source tree.
 
 ## Tasks
-- [ ] Add playPreparation and automatic no-secret preparation workflow; inspect configuration and actual CI output.
-- [ ] Add prepare_aab.py with meaningful metadata/signature/tool/ZIP/output regression cases; run all release-tooling tests.
-- [ ] Independently review and integrate after Android CI and preparation pass.
-- [ ] Sign exact prepared bytes privately; verify all payload signatures, source metadata and checksums.
+- [x] Add playPreparation and automatic no-secret preparation workflow; inspect configuration and actual CI output.
+- [x] Add prepare_aab.py with meaningful metadata/signature/tool/ZIP/output regression cases; run all release-tooling tests.
+- [x] Independently review and integrate after Android CI and preparation pass.
+- [x] Sign exact prepared bytes privately; verify all payload signatures, source metadata and checksums.
 - [ ] Save signed AAB, upload to the existing Play draft and confirm server acceptance without submitting or rolling out.
+
+The signed AAB is saved. Play draft upload waits for a browser-local copy because the browser host policy blocked automated navigation to the ChatGPT file page. No upload, review submission or rollout is claimed.

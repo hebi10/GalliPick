@@ -211,3 +211,12 @@ SHA-256: 2dd0d4a0ef85505a234dc9286e3221ea81e8104487c9cd225d54f87075e2f55b
 - 원본 사용자 제공 키와 현재 고정 인증서의 일치, 개인 키 접근 및 올바른 복구 ZIP 구조를 비공개로 확인했습니다. 자격 증명 갱신은 사용자 수동 입력·저장 단계에 대기 중입니다.
 - Play 내부 테스트에 출시명 `0.1.7 (8)`과 한국어 변경 설명을 초안으로 저장했습니다. 새 AAB 업로드, 검토 제출 및 출시는 수행되지 않았습니다.
 - 키 변경이 완료되면 실패한 AAB job만 재실행하고, 산출물의 패키지·버전·서명·체크섬을 확인한 뒤 같은 Play 초안에 업로드합니다.
+
+## 2026-11-03 — QuickCut 방식의 AAB 준비·별도 서명
+
+- [PR #5](https://github.com/hebi10/GalliPick/pull/5) 통합 완료. 검증·빌드 소스 `7f17970c136fb1d0c0317720e2f321580232c8e8`와 main 통합 `ef7bbb9fa4555416de48194397683cd2e444ac02`는 tree `bff9b9fc2928a8fa3b5cc9a5d4e7c7c456afd8a2`가 동일합니다.
+- [Android verification](https://github.com/hebi10/GalliPick/actions/runs/41586643978) 성공; Python 검증 46개 통과. [전체 Android 기기 검사](https://github.com/hebi10/GalliPick/actions/runs/41586643977) 80개 통과. 독립 리뷰 P1/P2 없음.
+- [서명 전 AAB 준비](https://github.com/hebi10/GalliPick/actions/runs/41586639777): 실제 별도 variant 빌드와 lint, bundletool·manifest·unsigned·private-material 검사 성공. Actions artifact13208865305의 SHA-256을 대조하고 ZIP 무결성을 확인했습니다.
+- 기존 검증된 원본 키로 정확한 준비물을 비공개 임시 범위에서 JDK17 JAR 서명했습니다. 기존 full AAB verifier와 bundletool이 통과했고, 모든150개 앱 payload가 준비물과 동일하며 고정 인증서로 정상 서명됨을 확인했습니다.
+- 결과: `GalliPick-v0.1.7-release.aab`, 패키지 `com.hebi.gallipick`, 버전0.1.7/code8, min30/target36, non-debuggable,13,139,649 bytes. SHA-256: `ca4f4cb38023b659f20e9736c6329211c87b2d36775b6b897973802ecb2d83ad`. 서명된 파일은 사용자 전달용으로 저장했습니다.
+- Play 내부 테스트0.1.7(8) 초안은 유지했습니다. 브라우저 host 정책이 ChatGPT 파일 페이지로의 자동 이동을 차단해 PC로 파일을 옮기는 단계는 사용자 다운로드가 필요합니다. 아직 새 AAB 업로드·검토 제출·출시는 완료되지 않았습니다.
