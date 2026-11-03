@@ -331,6 +331,8 @@ class NativeScreenCaptureTest {
             instrumentation.waitForIdleSync()
             SystemClock.sleep(300)
             compose.onNodeWithText("필터 적용").assertIsDisplayed()
+            val field = compose.onNodeWithText("파일 이름 검색").assertIsDisplayed().fetchSemanticsNode()
+            assertTrue("The focused field must remain fully visible above the keyboard", field.boundsInRoot.height >= field.size.height - 1f)
         }
         val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot()) {
             "Android did not provide a full viewport screenshot for $name"

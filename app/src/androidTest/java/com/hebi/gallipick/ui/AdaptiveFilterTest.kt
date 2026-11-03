@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
@@ -67,6 +69,53 @@ class AdaptiveFilterTest {
         assertBodyEndsAboveFooter()
         compose.onNodeWithText("필터 적용").assertIsDisplayed().performClick()
         compose.runOnIdle { assertNotNull(applied?.toDateMs) }
+    }
+
+    @Test fun focusedQueryStaysFullyVisibleWhenKeyboardLeavesOnly130dp() {
+        val height = mutableStateOf(480)
+        showFilter(width = 900, height = 480, windowHeight = height)
+        val query = compose.onNodeWithText("파일 이름 검색")
+        query.performScrollTo().performClick().assertIsFocused()
+
+        compose.runOnIdle { height.value = 130 }
+
+        query.assertIsFocused().assertIsDisplayed()
+        assertFocusedFieldAndActionsFit(query)
+    }
+
+    @Test fun shortLargeTextChromeKeepsTheFocusedQueryAndEveryActionReachable() {
+        val height = mutableStateOf(480)
+        showFilter(width = 900, height = 480, fontScale = 1.6f, windowHeight = height)
+        val query = compose.onNodeWithText("파일 이름 검색")
+        query.performScrollTo().performClick().assertIsFocused()
+
+        compose.runOnIdle { height.value = 180 }
+
+        query.assertIsFocused().assertIsDisplayed()
+        assertFocusedFieldAndActionsFit(query)
+    }
+
+    @Test fun compactInvalidApplyRevealsTheErrorAndPreservesTypedBounds() {
+        var applied: MediaFilter? = null
+        showFilter(width = 900, height = 130, onApply = { applied = it })
+        val minimum = compose.onNodeWithText("최소 MB")
+        val maximum = compose.onNodeWithText("최대 MB")
+        minimum.performScrollTo().performTextReplacement("2")
+        maximum.performScrollTo().performTextReplacement("1").performClick().assertIsFocused()
+
+        compose.onNodeWithText("필터 적용").performClick()
+
+        compose.onNodeWithText("파일 크기: 최소값이 최대값보다 클 수 없습니다.").assertIsDisplayed()
+        compose.onNodeWithText("필터 적용").assertIsDisplayed().assertIsEnabled()
+        maximum.assertIsNotFocused()
+        assertBodyEndsAboveFooter()
+        compose.runOnIdle { assertNull(applied) }
+        minimum.performScrollTo().assertTextContains("2")
+        maximum.performScrollTo().assertTextContains("1").performClick()
+        // The same error must be revealed on a repeated invalid attempt too.
+        compose.onNodeWithText("필터 적용").performClick()
+        compose.onNodeWithText("파일 크기: 최소값이 최대값보다 클 수 없습니다.").assertIsDisplayed()
+        compose.runOnIdle { assertNull(applied) }
     }
 
     @Test fun enteringMbUsesTheSameBinaryBytesAsTheAppsSizeLabels() {
@@ -156,12 +205,13 @@ class AdaptiveFilterTest {
         height: Int,
         fontScale: Float = 1f,
         current: MediaFilter = MediaFilter(),
+        windowHeight: State<Int>? = null,
         onApply: (MediaFilter) -> Unit = {},
     ) {
         compose.setContent {
             GalliPickTheme {
                 CompositionLocalProvider(LocalDensity provides Density(.6f, fontScale = fontScale)) {
-                    Box(Modifier.requiredSize(width.dp, height.dp)) {
+                    Box(Modifier.requiredSize(width.dp, (windowHeight?.value ?: height).dp)) {
                         FilterDialogContent(current, emptyList(), onApply, {}, Modifier.fillMaxSize())
                     }
                 }
@@ -174,5 +224,19 @@ class AdaptiveFilterTest {
         val footer = compose.onNodeWithContentDescription("필터 작업").fetchSemanticsNode().boundsInRoot
         assertTrue("The form must retain scrollable height", body.height > 0f)
         assertTrue("The form viewport must end before its separate footer", body.bottom <= footer.top)
+    }
+
+    private fun assertFocusedFieldAndActionsFit(field: SemanticsNodeInteraction) {
+        assertBodyEndsAboveFooter()
+        val body = compose.onNodeWithContentDescription("필터 조건").fetchSemanticsNode().boundsInRoot
+        val fieldBounds = field.fetchSemanticsNode().boundsInRoot
+        val footer = compose.onNodeWithContentDescription("필터 작업").fetchSemanticsNode().boundsInRoot
+        assertTrue("A complete text field needs at least 56dp after the keyboard opens", fieldBounds.height >= 56f * .6f - 1f)
+        assertTrue("The focused field must remain inside the clipped body", fieldBounds.top >= body.top && fieldBounds.bottom <= body.bottom)
+        assertTrue("The focused field must end above the actions", fieldBounds.bottom <= footer.top)
+        listOf("초기화", "취소", "필터 적용").forEach { label ->
+            val action = compose.onNodeWithText(label).assertIsDisplayed().assertIsEnabled()
+            assertTrue("Each action must retain a 48dp touch target", action.fetchSemanticsNode().boundsInRoot.height >= 48f * .6f - 1f)
+        }
     }
 }

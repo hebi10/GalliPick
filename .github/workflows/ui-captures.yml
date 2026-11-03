@@ -53,6 +53,26 @@ jobs:
             size: 1080x2400
             density: 420
             font_scale: 1.0
+          - name: phone-landscape
+            kind: phone
+            size: 2400x1080
+            density: 420
+            font_scale: 1.0
+          - name: phone-large-text
+            kind: phone
+            size: 1080x2400
+            density: 420
+            font_scale: 1.6
+          - name: tablet-portrait
+            kind: tablet
+            size: 1600x2560
+            density: 240
+            font_scale: 1.0
+          - name: tablet-landscape
+            kind: tablet
+            size: 2560x1600
+            density: 240
+            font_scale: 1.0
     steps:
       - uses: actions/checkout@v4
         with:
@@ -107,7 +127,7 @@ jobs:
             adb shell am force-stop com.android.launcher3
             adb install -r capture-apks/debug/app-debug.apk
             adb install -r capture-apks/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.AdaptiveMediaReviewTest#pendingNoticeStaysVisibleWhenLargeTextComparisonActionsScroll com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > adaptive-instrumentation.txt || echo failed > adaptive-failed.txt
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.AdaptiveNavigationTest,com.hebi.gallipick.ui.AdaptiveFilesTest,com.hebi.gallipick.ui.AdaptiveFilterTest,com.hebi.gallipick.ui.AdaptiveOverviewTest,com.hebi.gallipick.ui.AdaptiveMediaReviewTest,com.hebi.gallipick.ui.DuplicateClarityTest com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > adaptive-instrumentation.txt || echo failed > adaptive-failed.txt
             cat adaptive-instrumentation.txt
             adb shell am instrument -w -r -e class com.hebi.gallipick.NativeScreenCaptureTest -e captureProfile ${{ matrix.name }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > capture-instrumentation.txt || echo failed > capture-failed.txt
             cat capture-instrumentation.txt

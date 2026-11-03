@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -44,6 +45,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -74,6 +77,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 private const val BYTES_PER_MB = 1_048_576.0
 
@@ -88,16 +92,21 @@ fun FilterDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        Box(
+        BoxWithConstraints(
             Modifier.fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime))
-                .padding(12.dp),
+                .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)),
             contentAlignment = Alignment.Center,
         ) {
-            FilterDialogContent(
-                current, items, onApply, onDismiss,
-                Modifier.widthIn(max = 920.dp).fillMaxWidth().fillMaxHeight(.96f),
-            )
+            val compactChrome = maxHeight < 200.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+            Box(
+                Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = if (compactChrome) 0.dp else 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                FilterDialogContent(
+                    current, items, onApply, onDismiss,
+                    Modifier.widthIn(max = 920.dp).fillMaxWidth().fillMaxHeight(if (compactChrome) 1f else .96f),
+                )
+            }
         }
     }
 }
@@ -130,6 +139,10 @@ internal fun FilterDialogContent(
     var sortField by remember(current) { mutableStateOf(current.sortField) }
     var sortDirection by remember(current) { mutableStateOf(current.sortDirection) }
     var error by remember { mutableStateOf<String?>(null) }
+    val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var sizeHelpExpanded by remember { mutableStateOf(false) }
     var advancedExpanded by remember(current) {
         mutableStateOf(
@@ -240,17 +253,27 @@ internal fun FilterDialogContent(
             val wide = maxWidth >= 680.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
             val roomyFooter = maxWidth >= 500.dp
             val compact = maxHeight < 360.dp
+            val compactChrome = maxHeight < 200.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
             Column(Modifier.fillMaxSize()) {
-                Text(
-                    "파일 필터", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = if (compact) 8.dp else 16.dp),
-                )
+                if (!compactChrome) {
+                    Text(
+                        "파일 필터", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = if (compact) 8.dp else 16.dp),
+                    )
+                }
                 // Clip the entire viewport: scrolling and focused fields cannot paint under the footer.
                 Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().semantics { contentDescription = "필터 조건" }) {
                     Column(
-                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
+                        Modifier.fillMaxSize().verticalScroll(scrollState)
+                            .padding(horizontal = 20.dp, vertical = if (compactChrome) 0.dp else 8.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp),
                     ) {
+                        // In a keyboard-height window, validation must not consume the field viewport.
+                        if (compactChrome) {
+                            error?.let {
+                                Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
                         if (wide) {
                             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                                 Column(Modifier.weight(1f).semantics { contentDescription = "기본 필터 조건" },
@@ -280,10 +303,16 @@ internal fun FilterDialogContent(
                 }
                 Column(Modifier.fillMaxWidth().semantics { contentDescription = "필터 작업" }) {
                     HorizontalDivider(color = Line)
-                    Column(Modifier.padding(horizontal = 12.dp, vertical = if (compact) 8.dp else 12.dp),
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = when {
+                        compactChrome -> 2.dp
+                        compact -> 8.dp
+                        else -> 12.dp
+                    }),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        error?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                        if (!compactChrome) {
+                            error?.let {
+                                Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
                             TextAction("초기화", onClick = { onApply(MediaFilter()); onDismiss() }, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
@@ -313,6 +342,11 @@ internal fun FilterDialogContent(
                                         onDismiss()
                                     } catch (invalid: IllegalArgumentException) {
                                         error = invalid.message ?: "입력한 조건을 확인해 주세요."
+                                        if (compactChrome) {
+                                            focusManager.clearFocus()
+                                            keyboardController?.hide()
+                                            scope.launch { scrollState.scrollTo(0) }
+                                        }
                                     }
                                 },
                             )
