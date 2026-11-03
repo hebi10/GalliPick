@@ -31,6 +31,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.TimeZone
 
 @RunWith(AndroidJUnit4::class)
 class AdaptiveMediaReviewTest {
@@ -50,7 +51,7 @@ class AdaptiveMediaReviewTest {
         assertTrue(a.right <= b.left)
         compose.onNodeWithContentDescription("A 영상 표시 영역").assertHeightIsAtLeast(80.dp)
         compose.onNodeWithContentDescription("B 영상 표시 영역").assertHeightIsAtLeast(80.dp)
-        compose.onNodeWithText("B · 남길 파일 · 보호됨").assertIsDisplayed()
+        compose.onNodeWithText("남길 파일 · 보호됨").assertIsDisplayed()
         compose.onNodeWithContentDescription("B 정리 후보 선택").assertDoesNotExist()
         saveScreenshot("duplicate-compare-wide-dark")
     }
@@ -68,7 +69,7 @@ class AdaptiveMediaReviewTest {
         compose.onNodeWithContentDescription("B 남길 파일로 지정").performScrollTo().performClick()
         compose.onNode(hasText("first.mp4") and hasAnyAncestor(hasContentDescription("A 파일 비교 패널"))).assertIsDisplayed()
         compose.onNode(hasText("second.mp4") and hasAnyAncestor(hasContentDescription("B 파일 비교 패널"))).assertIsDisplayed()
-        compose.onNodeWithText("B · 남길 파일 · 직접 지정").assertIsDisplayed()
+        compose.onNodeWithText("남길 파일 · 직접 지정").assertIsDisplayed()
         compose.onNodeWithContentDescription("B 정리 후보 선택").assertDoesNotExist()
         compose.onNodeWithContentDescription("A 정리 후보 선택").performScrollTo().assertIsEnabled()
     }
@@ -84,19 +85,20 @@ class AdaptiveMediaReviewTest {
         } }
         compose.onNodeWithContentDescription("A 파일 비교 패널").assertIsDisplayed()
         compose.onNodeWithContentDescription("B 파일 비교 패널").assertDoesNotExist()
-        compose.onNodeWithText("B").performClick()
+        compose.onNodeWithTag("B 비교 탭").assert(hasText("B · 정리 후보")).performClick()
         compose.onNodeWithContentDescription("B 파일 비교 패널").assertIsDisplayed()
         compose.onNodeWithContentDescription("A 파일 비교 패널").assertDoesNotExist()
     }
 
     @Test fun comparisonCanBrowseAllCopiesWithoutShowingTheSameFileTwice() {
         val group = DuplicateGroup("three", listOf(media(1, "first.mp4"), media(2, "second.mp4"), media(3, "third.mp4")))
+        var chosenKeeper: String? = null
         compose.setContent { GalliPickTheme {
             CompositionLocalProvider(LocalDensity provides Density(.6f)) {
-                Surface(Modifier.requiredSize(1000.dp, 640.dp)) { DuplicateCompareContent(group, group.items.first().uri, emptySet(), emptySet(), {}, {}, { _, _ -> }, {}, { _, _ -> }) }
+                Surface(Modifier.requiredSize(1000.dp, 640.dp)) { DuplicateCompareContent(group, group.items.first().uri, emptySet(), emptySet(), {}, {}, { _, uri -> chosenKeeper = uri }, {}, { _, _ -> }) }
             }
         } }
-        compose.onNodeWithContentDescription("B 비교 파일 변경").performClick()
+        compose.onNodeWithContentDescription("B 비교 파일 변경").assert(hasText("비교 대상 변경")).performClick()
         compose.onNodeWithText("third.mp4").performClick()
         compose.onNodeWithText("third.mp4").assertIsDisplayed()
         compose.onNodeWithText("second.mp4").assertDoesNotExist()
@@ -104,6 +106,117 @@ class AdaptiveMediaReviewTest {
         compose.onAllNodesWithText("first.mp4").onLast().performClick()
         compose.onAllNodesWithText("first.mp4").assertCountEquals(1)
         compose.onAllNodesWithText("third.mp4").assertCountEquals(1)
+        compose.runOnIdle { assertNull("Browsing another copy must not choose a keeper", chosenKeeper) }
+    }
+
+    @Test fun roleTabsFollowTheDisplayedFilesAfterChoosingANewKeeper() {
+        val group = DuplicateGroup("role-tabs", listOf(media(1, "first.mp4"), media(2, "second.mp4")))
+        val keeper = mutableStateOf(group.items.first().uri)
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                Surface(Modifier.requiredSize(400.dp, 800.dp)) {
+                    DuplicateCompareContent(group, keeper.value, emptySet(), emptySet(), {}, {}, { _, uri -> keeper.value = uri }, {}, { _, _ -> })
+                }
+            }
+        } }
+        compose.onNodeWithTag("A 비교 탭").assert(hasText("A · 남길 파일"))
+        compose.onNodeWithTag("B 비교 탭").assert(hasText("B · 정리 후보")).performClick()
+        compose.onNodeWithContentDescription("B 남길 파일로 지정").performScrollTo().performClick()
+        compose.onNodeWithTag("B 비교 탭").assert(hasText("B · 남길 파일"))
+        compose.onNodeWithTag("A 비교 탭").assert(hasText("A · 정리 후보")).performClick()
+        compose.onNodeWithText("first.mp4").assertIsDisplayed()
+        compose.onNodeWithContentDescription("A 정리 후보 선택").performScrollTo().assertIsEnabled()
+    }
+
+    @Test fun protectedCopiesHaveDistinctRoleTabsThatOpenTheirOwnFile() {
+        val group = DuplicateGroup("protected-tabs", listOf(
+            media(1, "first-protected.mp4").copy(isProtected = true),
+            media(2, "second-protected.mp4").copy(isProtected = true),
+        ))
+        var chosenKeeper: String? = null
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                Surface(Modifier.requiredSize(400.dp, 800.dp)) {
+                    DuplicateCompareContent(group, group.items.first().uri, emptySet(), emptySet(), {}, {}, { _, uri -> chosenKeeper = uri }, {}, { _, _ -> })
+                }
+            }
+        } }
+        compose.onNodeWithTag("A 비교 탭").assert(hasText("A · 남길 파일"))
+        compose.onNodeWithTag("B 비교 탭").assert(hasText("B · 남길 파일"))
+        compose.onNodeWithText("B · 남길 파일").performClick()
+        compose.onNodeWithText("second-protected.mp4").assertIsDisplayed()
+        compose.onNodeWithText("first-protected.mp4").assertDoesNotExist()
+        compose.onNodeWithContentDescription("B 정리 후보 선택").assertDoesNotExist()
+        compose.onNodeWithText("A · 남길 파일").performClick()
+        compose.onNodeWithText("first-protected.mp4").assertIsDisplayed()
+        compose.onNodeWithText("second-protected.mp4").assertDoesNotExist()
+        compose.runOnIdle { assertNull("Switching between protected copies must not choose a keeper", chosenKeeper) }
+    }
+
+    @Test fun tabletPortraitCapsPreviewAndKeepsTheKeeperDecisionNearMetadata() {
+        val group = DuplicateGroup("portrait", listOf(media(1, "first.mp4"), media(2, "second.mp4")))
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.5f)) {
+                Surface(Modifier.requiredSize(800.dp, 1100.dp)) {
+                    DuplicateCompareContent(group, group.items.first().uri, emptySet(), emptySet(), {}, {}, { _, _ -> }, {}, { _, _ -> })
+                }
+            }
+        } }
+        val panel = compose.onNodeWithContentDescription("B 파일 비교 패널").fetchSemanticsNode().boundsInRoot
+        val preview = compose.onNodeWithContentDescription("B 영상 표시 영역").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val decision = compose.onNodeWithContentDescription("B 남길 파일로 지정").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("Portrait preview must leave room for the file decision", preview.height <= 280f * .5f + 1f)
+        assertTrue("Keeper decision must stay close to its preview and metadata", decision.top - panel.top < 600f * .5f)
+        saveScreenshot("duplicate-compare-tablet-portrait")
+    }
+
+    @Test fun bothComparisonFilesShowTheirActualDateBasisAndUnknownFallback() {
+        val previousZone = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+        try {
+            val group = DuplicateGroup("dates", listOf(
+                media(1, "captured.mp4").copy(dateTakenMs = 1_704_067_200_000L),
+                media(2, "stored.mp4").copy(dateTakenMs = 0, dateAddedMs = 1_704_153_600_000L),
+                media(3, "unknown.mp4").copy(dateTakenMs = 0, dateAddedMs = 0),
+            ))
+            compose.setContent { GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(1000.dp, 640.dp)) {
+                        DuplicateCompareContent(group, group.items.first().uri, emptySet(), emptySet(), {}, {}, { _, _ -> }, {}, { _, _ -> })
+                    }
+                }
+            } }
+            compose.onNodeWithText("촬영일 2024.01.01 00:00").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("저장일 2024.01.02 00:00").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("B 비교 파일 변경").performClick()
+            compose.onNodeWithText("unknown.mp4").performClick()
+            compose.onNodeWithText("저장일 정보 없음").performScrollTo().assertIsDisplayed()
+        } finally { TimeZone.setDefault(previousZone) }
+    }
+
+    @Test fun protectingACandidateKeepsItsPanelAndRemovesItsDeletionSelection() {
+        val original = DuplicateGroup("protect", listOf(media(1, "first.mp4"), media(2, "second.mp4")))
+        val group = mutableStateOf(original)
+        var chosenKeeper: String? = null
+        var protectedUri: String? = null
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                Surface(Modifier.requiredSize(1000.dp, 640.dp)) {
+                    DuplicateCompareContent(group.value, original.items.first().uri, setOf(original.items[1].uri), emptySet(), {}, {},
+                        { _, uri -> chosenKeeper = uri }, {}, { item, protect ->
+                            protectedUri = item.uri
+                            group.value = group.value.copy(items = group.value.items.map { if (it.uri == item.uri) it.copy(isProtected = protect) else it })
+                        })
+                }
+            }
+        } }
+        compose.onNodeWithContentDescription("B 정리 후보 선택").performScrollTo().assertIsOn()
+        compose.onNodeWithContentDescription("B 보호").performScrollTo().performClick()
+        compose.onNodeWithText("second.mp4").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("남길 파일 · 보호됨").assertIsDisplayed()
+        compose.onNodeWithContentDescription("B 정리 후보 선택").assertDoesNotExist()
+        compose.onNodeWithContentDescription("B 보호 해제").performScrollTo().assertIsEnabled()
+        compose.runOnIdle { assertEquals(original.items[1].uri, protectedUri); assertNull(chosenKeeper) }
     }
 
     @Test fun shortNarrowLargeTextAllowsRealSwipesToTheCandidateControls() {
@@ -113,7 +226,7 @@ class AdaptiveMediaReviewTest {
                 Surface(Modifier.requiredSize(320.dp, 280.dp)) { DuplicateCompareContent(group, group.items.first().uri, emptySet(), emptySet(), {}, {}, { _, _ -> }, {}, { _, _ -> }) }
             }
         } }
-        compose.onNodeWithText("B").performScrollTo().performClick()
+        compose.onNodeWithTag("B 비교 탭").performScrollTo().performClick()
         compose.onNodeWithContentDescription("B 영상 재생").performScrollTo().assertIsDisplayed()
         val candidate = compose.onNodeWithContentDescription("B 정리 후보 선택").performScrollTo()
         val body = compose.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("B 파일 비교 패널")))
@@ -121,6 +234,32 @@ class AdaptiveMediaReviewTest {
         repeat(6) { if (runCatching { candidate.assertIsDisplayed() }.isFailure) body.performTouchInput { swipeUp() } }
         candidate.assertIsDisplayed().assertIsEnabled()
         saveScreenshot("duplicate-compare-short-after-swipe")
+    }
+
+    @Test fun pendingNoticeStaysVisibleWhenLargeTextComparisonActionsScroll() {
+        val original = DuplicateGroup("pending-large-text", listOf(media(1, "first.mp4"), media(2, "second.mp4")))
+        val group = mutableStateOf(original)
+        val pending = mutableStateOf(false)
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.9f, fontScale = 1.6f)) {
+                Surface(Modifier.requiredSize(320.dp, 280.dp)) {
+                    DuplicateCompareContent(group.value, original.items.first().uri, emptySet(), emptySet(), {}, {}, { _, _ -> }, {},
+                        { item, protect ->
+                            group.value = group.value.copy(items = group.value.items.map { if (it.uri == item.uri) it.copy(isProtected = protect) else it })
+                            pending.value = true
+                        }, actionsEnabled = !pending.value)
+                }
+            }
+        } }
+        compose.onNodeWithTag("B 비교 탭").performScrollTo().performClick()
+        scrollComparisonControlIntoView("B 보호").assertIsEnabled().performClick()
+        compose.runOnIdle { assertTrue("The visible protection control must invoke its callback", pending.value) }
+        compose.onNodeWithContentDescription("비교 닫기").assertIsDisplayed()
+        compose.onNodeWithContentDescription("중복 결과 확인 중").assertIsDisplayed()
+        scrollComparisonControlIntoView("B 보호 해제").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("중복 결과 확인 중").assertIsDisplayed()
+        compose.onNodeWithContentDescription("B 정리 후보 선택").assertDoesNotExist()
+        saveScreenshot("duplicate-compare-pending-short-large-text")
     }
 
     @Test fun shortWideFileDetailsKeepThePreviewActionBesideMetadata() {
@@ -230,6 +369,17 @@ class AdaptiveMediaReviewTest {
     private fun media(id: Long, name: String) = MediaItem("file:///missing-compare-$id.mp4", id, "test", name, MediaKind.VIDEO, "video/mp4", "Download/", 1_234_567, 1920, 1080, 65_000, id, id, id)
     private class TestOwner : LifecycleOwner { val registry = LifecycleRegistry(this).apply { currentState = Lifecycle.State.RESUMED }; override val lifecycle get() = registry }
     private fun videoViews(view: View): List<VideoView> = when (view) { is VideoView -> listOf(view); is ViewGroup -> (0 until view.childCount).flatMap { videoViews(view.getChildAt(it)) }; else -> emptyList() }
+    private fun scrollComparisonControlIntoView(description: String): SemanticsNodeInteraction {
+        val control = compose.onNodeWithContentDescription(description).performScrollTo()
+        val body = compose.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("B 파일 비교 패널")))
+        // performScrollTo only reaches the nearest detail scroller; the outer viewport can still clip it.
+        repeat(10) {
+            if (runCatching { control.assertIsDisplayed() }.isSuccess) return control
+            val aboveBody = control.fetchSemanticsNode().positionInRoot.y < body.fetchSemanticsNode().boundsInRoot.top
+            body.performTouchInput { if (aboveBody) swipeDown() else swipeUp() }
+        }
+        return control.assertIsDisplayed()
+    }
     private fun saveScreenshot(name: String) {
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
         val instrumentation = InstrumentationRegistry.getInstrumentation()

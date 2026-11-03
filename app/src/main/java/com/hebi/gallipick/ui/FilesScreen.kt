@@ -79,32 +79,37 @@ internal fun FilesScreenContent(
                         advanced = { showFilter = true }, save = { showSave = true }, deletePreset = actions.deletePreset)
                 },
             ) {
-                Column(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        val summary = "${filtered.size}개 · ${bytesLabel(filtered.sumOf { it.sizeBytes })}" +
-                            if (state.filter.query.isNotBlank()) " · 검색: ${state.filter.query}" else ""
-                        Text(summary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        if (filtered.any { it.canTrash() }) TextAction("모두 선택", actions.selectAll)
-                        else Spacer(Modifier.height(44.dp))
-                    }
-                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                        val sideDetail = wide && maxWidth >= 840.dp && maxHeight >= 420.dp
-                        when {
-                            state.access == MediaAccess.NONE -> Box(Modifier.fillMaxSize()) {
-                                EmptyState("미디어 접근이 필요합니다", "허용한 파일만 이곳에 표시됩니다.", action = { ActionButton("접근 허용", requestAccess, filled = true) })
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val useSideDetail = wide && maxWidth >= 840.dp && maxHeight >= 420.dp
+                    val sideDetail = useSideDetail && detail != null
+                    val detailWidth = (maxWidth * .32f).coerceIn(280.dp, 360.dp)
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Column(Modifier.weight(1f).fillMaxHeight()) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val summary = "${filtered.size}개 · ${bytesLabel(filtered.sumOf { it.sizeBytes })}" +
+                                    if (state.filter.query.isNotBlank()) " · 검색: ${state.filter.query}" else ""
+                                Text(summary, style = MaterialTheme.typography.bodySmall, maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false).semantics { contentDescription = "파일 목록 요약" })
+                                if (filtered.any { it.canTrash() }) TextAction("모두 선택", actions.selectAll)
+                                else Spacer(Modifier.height(44.dp))
                             }
-                            state.catalogError != null -> Box(Modifier.fillMaxSize()) {
-                                EmptyState("파일을 불러오지 못했습니다", state.catalogError, Icons.Rounded.Info, action = { ActionButton("다시 시도", actions.refresh, filled = true) })
-                            }
-                            state.loading -> Box(Modifier.fillMaxSize()) {
-                                EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.")
-                            }
-                            filtered.isEmpty() -> Box(Modifier.fillMaxSize()) {
-                                EmptyState("조건에 맞는 파일이 없습니다", "접근 범위와 필터 조건을 확인해주세요.", action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) })
-                            }
-                            else -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Adaptive(if (wide) 120.dp else 132.dp), state = gridState,
+                            when {
+                                state.access == MediaAccess.NONE -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                                    EmptyState("미디어 접근이 필요합니다", "허용한 파일만 이곳에 표시됩니다.", action = { ActionButton("접근 허용", requestAccess, filled = true) })
+                                }
+                                state.catalogError != null -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                                    EmptyState("파일을 불러오지 못했습니다", state.catalogError, Icons.Rounded.Info, action = { ActionButton("다시 시도", actions.refresh, filled = true) })
+                                }
+                                state.loading -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                                    EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.")
+                                }
+                                filtered.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                                    EmptyState("조건에 맞는 파일이 없습니다", "접근 범위와 필터 조건을 확인해주세요.", action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) })
+                                }
+                                else -> LazyVerticalGrid(
+                                    columns = GridCells.Adaptive(if (wide) 156.dp else 132.dp), state = gridState,
                                     modifier = Modifier.weight(1f).semantics { contentDescription = "미디어 파일 목록" },
                                     horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
                                     contentPadding = PaddingValues(bottom = 16.dp),
@@ -113,19 +118,24 @@ internal fun FilesScreenContent(
                                         MediaTile(item, item.uri in state.selected, { actions.toggleSelection(item.uri) }, { detailUri = item.uri })
                                     }
                                 }
-                                if (sideDetail) {
-                                    Box(Modifier.width(300.dp).fillMaxHeight().clip(RoundedCornerShape(20.dp))
-                                        .background(MaterialTheme.colorScheme.surface).border(1.dp, Line, RoundedCornerShape(20.dp))) {
-                                        if (detail != null) MediaDetail(detail, open, { actions.setProtected(detail, it) }, folderProtected = detail.hasFolderProtection(state.protectedFolders))
-                                        else EmptyState("파일 정보", "파일을 눌러 상세 정보를 확인하세요.", Icons.Rounded.Info)
-                                    }
-                                }
                             }
                         }
-                        if (!sideDetail && detail != null) MediaDetailDialog(detail, { detailUri = null }, open, { actions.setProtected(detail, it) }, detail.hasFolderProtection(state.protectedFolders))
+                        if (sideDetail && detail != null) {
+                            Column(Modifier.width(detailWidth).fillMaxHeight().clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surface).border(1.dp, Line, RoundedCornerShape(20.dp))
+                                .semantics { contentDescription = "파일 상세 패널" }) {
+                                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("파일 정보", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                    IconAction("파일 상세 닫기", Icons.Rounded.Close) { detailUri = null }
+                                }
+                                MediaDetail(detail, open, { actions.setProtected(detail, it) }, Modifier.weight(1f), detail.hasFolderProtection(state.protectedFolders))
+                            }
+                        }
                     }
+                    if (!useSideDetail && detail != null) MediaDetailDialog(detail, { detailUri = null }, open, { actions.setProtected(detail, it) }, detail.hasFolderProtection(state.protectedFolders))
                 }
             }
+
             SelectionBar(selected, actions.clearSelection, { trash(selected) })
         }
         if (showFilter) FilterDialog(state.filter, visibleItems, {
@@ -145,22 +155,23 @@ private fun MediaTile(item: MediaItem, selected: Boolean, toggle: () -> Unit, de
             if (item.isFavorite || item.isProtected) GalliIcon(if (item.isFavorite) Icons.Rounded.Star else Icons.Rounded.Shield, if (item.isFavorite) "즐겨찾기" else "보호됨", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.align(Alignment.BottomStart).padding(5.dp).background(Ink, RoundedCornerShape(12.dp)).padding(4.dp).size(16.dp))
         }
         Spacer(Modifier.height(6.dp))
-        Text(item.displayName, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.plainClick(action = detail))
+        Text(item.displayName, style = MaterialTheme.typography.bodySmall, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.plainClick(action = detail))
         Text(bytesLabel(item.sizeBytes), color = Muted, style = MaterialTheme.typography.labelSmall)
     }
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 internal fun SelectionBar(selected: List<MediaItem>, clear: () -> Unit, trash: () -> Unit) {
     if (selected.isEmpty()) return
     Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(20.dp)).border(1.dp, Line, RoundedCornerShape(20.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f)) {
+        FlowRow(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f).widthIn(min = 96.dp).align(Alignment.CenterVertically)) {
                 Text("${selected.size}개 선택", style = MaterialTheme.typography.titleSmall)
                 Text(bytesLabel(selected.sumOf { it.sizeBytes }), style = MaterialTheme.typography.bodySmall, color = Muted)
             }
-            TextAction("해제", clear)
-            ActionButton("휴지통으로", trash, filled = true, icon = Icons.Rounded.DeleteOutline)
+            TextAction("해제", clear, Modifier.align(Alignment.CenterVertically))
+            ActionButton("휴지통으로", trash, Modifier.align(Alignment.CenterVertically), filled = true, icon = Icons.Rounded.DeleteOutline)
         }
         Text("즐겨찾기·보호 파일은 선택할 수 없습니다. 이동 전 Android 확인창이 표시됩니다.", color = Muted, style = MaterialTheme.typography.labelSmall)
     }

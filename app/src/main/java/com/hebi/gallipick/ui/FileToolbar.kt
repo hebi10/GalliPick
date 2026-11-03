@@ -42,7 +42,7 @@ internal fun FileToolbar(
     val quickFilters = remember(oneYearAgo) {
         listOf(
             "10분 이상 영상" to MediaFilter(kind = MediaKind.VIDEO, minDurationMs = 600_000, sortField = SortField.DURATION),
-            "1 GiB 이상" to MediaFilter(minSizeBytes = 1_073_741_824, sortField = SortField.SIZE),
+            "1 GB 이상" to MediaFilter(minSizeBytes = 1_073_741_824, sortField = SortField.SIZE),
             "1년 이전 영상" to MediaFilter(kind = MediaKind.VIDEO, toDateMs = oneYearAgo),
         )
     }
@@ -88,7 +88,7 @@ internal fun FileToolbar(
             }
         }
         Box {
-            ToolbarChoice(if (conditionCount == 0) "조건" else "조건 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { menu = "conditions" }
+            ToolbarChoice(if (conditionCount == 0) "필터" else "필터 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { menu = "conditions" }
             DropdownMenu(expanded = menu == "conditions", onDismissRequest = { menu = null }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 420.dp)) {
                 DropdownMenuItem(text = { Text("상세 필터") }, onClick = { menu = null; advanced() }, leadingIcon = { GalliIcon(Icons.Rounded.Tune, null) })
                 if (conditionCount > 0) Text("적용 중: ${filterSummary(filter)}", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = Muted)

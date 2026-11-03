@@ -1,8 +1,16 @@
 package com.hebi.gallipick.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.MediaAccess
@@ -36,9 +44,16 @@ class DuplicateClarityTest {
         for (kept in listOf(keeper, protected, favorite)) {
             list.performScrollToNode(hasText(kept.displayName))
             compose.onNodeWithContentDescription("${kept.displayName}, ${kept.relativePath} 정리 후보 선택").assertDoesNotExist()
+            compose.onNodeWithContentDescription("${kept.displayName} 남김").assertIsDisplayed().assertHasNoClickAction()
+                .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.ToggleableState))
         }
-        list.performScrollToNode(hasContentDescription("${candidate.displayName}, ${candidate.relativePath} 정리 후보 선택"))
-        compose.onNodeWithContentDescription("${candidate.displayName}, ${candidate.relativePath} 정리 후보 선택").performClick().assertIsOn()
+        val candidateDescription = "${candidate.displayName}, ${candidate.relativePath} 정리 후보 선택"
+        list.performScrollToNode(hasContentDescription(candidateDescription))
+        compose.onNodeWithContentDescription(candidateDescription).performClick()
+        compose.runOnIdle { assertEquals(setOf(candidate.uri), state.value.selected) }
+        // The selection bar resizes the lazy list, so reacquire its possibly recreated checkbox.
+        list.performScrollToNode(hasContentDescription(candidateDescription))
+        compose.onNodeWithContentDescription(candidateDescription).assertIsDisplayed().assertIsOn()
         list.performScrollToNode(hasText("이동 대상 · 선택됨"))
         compose.onNodeWithText("이동 대상 · 선택됨").assertIsDisplayed()
         compose.runOnIdle { assertTrue(requested.isEmpty()) }
@@ -57,11 +72,69 @@ class DuplicateClarityTest {
             DuplicatesScreenContent(AppUiState(access = MediaAccess.FULL, items = all, duplicates = listOf(group), duplicateKeepers = mapOf(group.hash to all.first().uri)),
                 { moved = true }, {}, {}, actions(recommended = { selected = true }))
         } }
-        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("정리 후보 500개 선택"))
-        compose.onNodeWithText("정리 후보 500개 선택").performClick()
+        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("전체 후보 500개 선택"))
+        compose.onNodeWithText("전체 후보 500개 선택").performClick()
         compose.onNodeWithText("전체 842개 중 한 번에 최대 500개를 선택합니다.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("추천 선택").assertDoesNotExist()
         compose.runOnIdle { assertTrue(selected); assertFalse(moved) }
+    }
+
+    @Test fun completedScanLeavesBothFilesOfATwoFileGroupVisibleOnAPhone() {
+        val keeper = media(1, "keep.mp4")
+        val candidate = media(2, "copy.mp4")
+        val group = DuplicateGroup("two-files", listOf(keeper, candidate))
+        var rescanned = false
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(1f)) {
+                Box(Modifier.requiredSize(360.dp, 640.dp)) {
+                    DuplicatesScreenContent(AppUiState(access = MediaAccess.FULL, items = group.items, duplicates = listOf(group),
+                        duplicateKeepers = mapOf(group.hash to keeper.uri), scan = ScanState(ScanPhase.COMPLETE, 2, 2, message = "검사를 마쳤습니다")),
+                        {}, {}, {}, actions().copy(startScan = { rescanned = true }))
+                }
+            }
+        } }
+        compose.onNodeWithContentDescription("중복 검사 완료 요약").assertIsDisplayed()
+        compose.onNodeWithContentDescription("중복 검사 진행률").assertDoesNotExist()
+        compose.onNodeWithText(keeper.displayName).assertIsDisplayed()
+        compose.onNodeWithText(candidate.displayName).assertIsDisplayed()
+        compose.onNodeWithContentDescription("${candidate.displayName}, ${candidate.relativePath} 정리 후보 선택").assertIsDisplayed()
+        compose.onNodeWithText("다시 검사").performClick()
+        compose.runOnIdle { assertTrue(rescanned) }
+    }
+
+    @Test fun narrowLargeTextGroupActionsWrapAndKeepTheirOwnSelectionScope() {
+        val groups = (1..2).map { index -> DuplicateGroup("scope-$index", listOf(media(index * 2L, "keep-$index.mp4"), media(index * 2L + 1, "copy-$index.mp4"))) }
+        var selectedGroup: String? = null
+        var selectedAll = false
+        var moved = false
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1.6f)) {
+                Box(Modifier.requiredSize(320.dp, 480.dp)) {
+                    DuplicatesScreenContent(AppUiState(access = MediaAccess.FULL, items = groups.flatMap { it.items }, duplicates = groups),
+                        { moved = true }, {}, {}, actions(recommended = { selectedAll = true }).copy(selectGroupCandidates = { selectedGroup = it.hash }))
+                }
+            }
+        } }
+        val list = compose.onNodeWithContentDescription("중복 파일 목록")
+        list.performScrollToNode(hasContentDescription("중복 묶음 2 후보 선택"))
+        val groupAction = compose.onNodeWithContentDescription("중복 묶음 2 후보 선택").assertIsDisplayed()
+        val listBounds = list.fetchSemanticsNode().boundsInRoot
+        val actionBounds = groupAction.fetchSemanticsNode().boundsInRoot
+        assertTrue("Group selection must fit the narrow list", actionBounds.left >= listBounds.left && actionBounds.right <= listBounds.right)
+        groupAction.performClick()
+        compose.runOnIdle { assertEquals("scope-2", selectedGroup); assertFalse(selectedAll); assertFalse(moved) }
+        list.performScrollToNode(hasText("전체 후보 2개 선택"))
+        compose.onNodeWithText("전체 후보 2개 선택").performClick()
+        compose.runOnIdle { assertTrue(selectedAll); assertFalse(moved) }
+    }
+
+    @Test fun completedScanKeepsRescanDisabledWithoutAccessibleMedia() {
+        compose.setContent { GalliPickTheme {
+            DuplicatesScreenContent(AppUiState(access = MediaAccess.NONE, scan = ScanState(ScanPhase.COMPLETE, 2, 2)),
+                {}, {}, {}, actions())
+        } }
+        compose.onNodeWithText("다시 검사").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("중복 검사 진행률").assertDoesNotExist()
     }
 
     @Test fun deepGroupPositionSurvivesCatalogRevalidation() {
@@ -87,11 +160,12 @@ class DuplicateClarityTest {
         })) } }
         compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasContentDescription("중복 묶음 1 비교"))
         compose.onNodeWithContentDescription("중복 묶음 1 비교").performClick()
-        if (compose.onAllNodesWithText("B").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithText("B").performClick()
-        compose.onNodeWithContentDescription("B 보호").performScrollTo().performClick()
+        if (compose.onAllNodesWithTag("B 비교 탭").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithTag("B 비교 탭").performClick()
+        scrollComparisonControlIntoView("B 보호").assertIsEnabled().performClick()
+        compose.runOnIdle { assertTrue(state.value.items.first { it.uri == copy.uri }.isProtected) }
         compose.onNodeWithContentDescription("비교 닫기").assertIsDisplayed()
         compose.onNodeWithContentDescription("중복 결과 확인 중").assertIsDisplayed()
-        compose.onNodeWithContentDescription("B 보호 해제").performScrollTo().assertIsNotEnabled()
+        scrollComparisonControlIntoView("B 보호 해제").assertIsNotEnabled()
         compose.onNodeWithContentDescription("B 정리 후보 선택").assertDoesNotExist()
         compose.runOnIdle { state.value = state.value.copy(duplicates = listOf(group.copy(items = state.value.items))) }
         compose.onNodeWithContentDescription("중복 결과 확인 중").assertDoesNotExist()
@@ -117,8 +191,9 @@ class DuplicateClarityTest {
         })) } }
         compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasContentDescription("중복 묶음 36 비교"))
         compose.onNodeWithContentDescription("중복 묶음 36 비교").performClick()
-        if (compose.onAllNodesWithText("B").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithText("B").performClick()
-        compose.onNodeWithContentDescription("B 보호").performScrollTo().performClick()
+        if (compose.onAllNodesWithTag("B 비교 탭").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithTag("B 비교 탭").performClick()
+        scrollComparisonControlIntoView("B 보호").assertIsEnabled().performClick()
+        compose.runOnIdle { assertTrue(state.value.items.any { it.isProtected && it.uri in groups[35].items.map { file -> file.uri } }) }
         compose.onNodeWithContentDescription("중복 결과 확인 중").assertIsDisplayed()
         compose.onNodeWithContentDescription("비교 닫기").performClick()
         compose.onNodeWithText("중복 결과를 확인하고 있습니다").assertIsDisplayed()
@@ -127,6 +202,17 @@ class DuplicateClarityTest {
             state.value = state.value.copy(duplicates = groups.map { it.copy(items = it.items.map { old -> live.getValue(old.uri) }) })
         }
         compose.onNodeWithContentDescription("중복 묶음 36 비교").assertIsDisplayed()
+    }
+
+    private fun scrollComparisonControlIntoView(description: String): SemanticsNodeInteraction {
+        val control = compose.onNodeWithContentDescription(description).performScrollTo()
+        val body = compose.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("B 파일 비교 패널")))
+        repeat(10) {
+            if (runCatching { control.assertIsDisplayed() }.isSuccess) return control
+            val aboveBody = control.fetchSemanticsNode().positionInRoot.y < body.fetchSemanticsNode().boundsInRoot.top
+            body.performTouchInput { if (aboveBody) swipeDown() else swipeUp() }
+        }
+        return control.assertIsDisplayed()
     }
 
     private fun actions(recommended: () -> Unit = {}, toggle: (String) -> Unit = {}, clear: () -> Unit = {}, protect: (MediaItem, Boolean) -> Unit = { _, _ -> }) =
