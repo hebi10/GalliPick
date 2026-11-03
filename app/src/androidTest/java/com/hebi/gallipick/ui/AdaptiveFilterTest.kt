@@ -8,6 +8,8 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.InterceptPlatformTextInput
+import kotlinx.coroutines.awaitCancellation
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
@@ -211,9 +213,15 @@ class AdaptiveFilterTest {
     ) {
         compose.setContent {
             GalliPickTheme {
-                CompositionLocalProvider(LocalDensity provides Density(.6f, fontScale = fontScale)) {
-                    Box(Modifier.requiredSize(width.dp, (windowHeight?.value ?: height).dp)) {
-                        FilterDialogContent(current, emptyList(), onApply, {}, Modifier.fillMaxSize())
+                // Resize cases model the available height themselves. Do not also let the real
+                // IME resize/pan the host activity; NativeScreenCaptureTest verifies the real IME.
+                InterceptPlatformTextInput(interceptor = { request, next ->
+                    if (windowHeight == null) next.startInputMethod(request) else awaitCancellation()
+                }) {
+                    CompositionLocalProvider(LocalDensity provides Density(.6f, fontScale = fontScale)) {
+                        Box(Modifier.requiredSize(width.dp, (windowHeight?.value ?: height).dp)) {
+                            FilterDialogContent(current, emptyList(), onApply, {}, Modifier.fillMaxSize())
+                        }
                     }
                 }
             }
