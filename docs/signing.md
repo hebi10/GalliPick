@@ -1,6 +1,6 @@
 # 서명과 업데이트
 
-GalliPick의 일반 debug·release 빌드는 같은 앱 전용 키를 사용합니다. 패키지는 `com.hebi.gallipick`, 이름은 `GalliPick`입니다. v0.1.6은 versionCode 7이며 별도 preview 패키지로 빌드하지 않습니다.
+GalliPick의 일반 debug·release 빌드는 같은 앱 전용 키를 사용합니다. 패키지는 `com.hebi.gallipick`, 이름은 `GalliPick`입니다. 현재 소스 v0.1.7은 versionCode 8이며 별도 preview 패키지로 빌드하지 않습니다. 이전 Play 업로드 v0.1.6은 versionCode 7입니다.
 
 ## 고정 서명 기준
 
@@ -62,3 +62,7 @@ storeType=JKS
 - 앱 데이터 이전이나 서명 키 회전 증명을 수행하는 전환이 아닙니다. 이후 릴리스는 같은 JKS 키·패키지와 더 높은 versionCode를 유지합니다.
 - `com.hebi.gallipick.preview`는 별도 패키지입니다. 그 앱의 설정을 일반 GalliPick으로 자동 이전하지 않습니다.
 - 실제 기기의 설치·업데이트 검증 결과와 빌드 설정상 호환성은 구분해 기록합니다.
+
+## 2026-11-03 AAB 빌드 확인
+
+`Play Store bundle` 실행 [41584050395](https://github.com/hebi10/GalliPick/actions/runs/41584050395)은 서명 복구 단계에서 공개 인증서 지문 불일치를 검출하고 중단했습니다. 기존 Actions secret에 저장된 복구 자료가 현재 고정 인증서와 다릅니다. 현재 사용자 제공 JKS의 실제 인증서와 개인 키 접근, 새 복구 자료 구조는 비공개로 검증했습니다. Actions secret의 값 갱신은 사용자 입력·저장 단계에 대기 중이며, AAB 생성과 Play 업로드는 아직 완료되지 않았습니다.

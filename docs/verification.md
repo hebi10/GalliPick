@@ -201,3 +201,13 @@ SHA-256: 2dd0d4a0ef85505a234dc9286e3221ea81e8104487c9cd225d54f87075e2f55b
 - 화질 판단, 유사 사진/영상, 클라우드 미디어는 이번 구현 범위에 포함하지 않습니다.
 
 이 항목들은 자동 검사 통과 여부와 별개로 실기기 검증이 필요합니다.
+
+## 2026-11-03 — 0.1.7 (8) Play 업로드 준비
+
+- [PR #4](https://github.com/hebi10/GalliPick/pull/4)를 main에 통합했습니다. 검증 소스 `b6812e31264eb03269532c8b21a75731501f1870`와 통합 커밋 `ffd3561aaadcee95d3f74b0ebd079bffe2fddab6`의 tree는 동일합니다.
+- [Android verification](https://github.com/hebi10/GalliPick/actions/runs/41583364590) 성공, 기존 25개와 새 AAB 검증 14개를 합친 Python 검사 39개가 로컬 및 CI에서 통과했습니다.
+- [전체 Android 기기 검사](https://github.com/hebi10/GalliPick/actions/runs/41583364589) 80개 통과. 독립 소스 검토 P1/P2 없음.
+- [고정 키 AAB 빌드](https://github.com/hebi10/GalliPick/actions/runs/41584050395)는 기존 Actions 서명 자료의 공개 인증서 지문 불일치로 복구 단계에서 중단했습니다. AAB 산출물은 생성되지 않았습니다.
+- 원본 사용자 제공 키와 현재 고정 인증서의 일치, 개인 키 접근 및 올바른 복구 ZIP 구조를 비공개로 확인했습니다. 자격 증명 갱신은 사용자 수동 입력·저장 단계에 대기 중입니다.
+- Play 내부 테스트에 출시명 `0.1.7 (8)`과 한국어 변경 설명을 초안으로 저장했습니다. 새 AAB 업로드, 검토 제출 및 출시는 수행되지 않았습니다.
+- 키 변경이 완료되면 실패한 AAB job만 재실행하고, 산출물의 패키지·버전·서명·체크섬을 확인한 뒤 같은 Play 초안에 업로드합니다.
