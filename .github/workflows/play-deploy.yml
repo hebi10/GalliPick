@@ -1,16 +1,22 @@
-name: Play closed testing
-run-name: GalliPick Play ${{ inputs.mode || 'deploy' }} · ${{ github.ref_name }}
+name: Play testing deployment
+run-name: GalliPick Play ${{ inputs.mode || 'deploy' }} · ${{ inputs.target || 'internal' }} · ${{ github.ref_name }}
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Check configuration, build signed files, or deploy to the existing closed track'
+        description: 'Check configuration, build signed files, or deploy to the selected testing track'
         required: true
         default: build
         type: choice
         options: [check, build, deploy]
+      target:
+        description: 'Testing target; closed requires an existing PLAY_CLOSED_TRACK variable'
+        required: true
+        default: internal
+        type: choice
+        options: [internal, closed]
 permissions:
   contents: read
 concurrency:
@@ -23,6 +29,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       mode: ${{ steps.source.outputs.mode }}
+      target: ${{ steps.source.outputs.target }}
+      track: ${{ steps.source.outputs.track }}
       tag: ${{ steps.source.outputs.tag }}
       commit: ${{ steps.source.outputs.commit }}
     steps:
@@ -35,6 +43,8 @@ jobs:
         id: source
         env:
           INPUT_MODE: ${{ inputs.mode }}
+          INPUT_TARGET: ${{ inputs.target }}
+          PLAY_CLOSED_TRACK: ${{ vars.PLAY_CLOSED_TRACK }}
           REF_NAME: ${{ github.ref_name }}
         shell: bash
         run: |
@@ -44,7 +54,8 @@ jobs:
               echo 'Manual Play runs must use main.' >&2
               exit 1
             fi
-            MODE="$INPUT_MODE"
+            MODE="${INPUT_MODE:-build}"
+            TARGET="${INPUT_TARGET:-internal}"
             RELEASE_TAG="$(python3 - <<'PY'
           import sys
           from pathlib import Path
@@ -60,11 +71,28 @@ jobs:
               exit 1
             fi
             MODE=deploy
+            TARGET=internal
             RELEASE_TAG="$REF_NAME"
           fi
           case "$MODE" in
             check|build|deploy) ;;
             *) echo 'Unsupported Play mode.' >&2; exit 1 ;;
+          esac
+          case "$TARGET" in
+            internal) TRACK=internal ;;
+            closed)
+              TRACK="$PLAY_CLOSED_TRACK"
+              if [[ -z "$TRACK" ]]; then
+                if [[ "$MODE" != "build" ]]; then
+                  echo 'Missing repository variable PLAY_CLOSED_TRACK: set the exact existing closed-track API ID.' >&2
+                  exit 1
+                fi
+              elif [[ ! "$TRACK" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ || "${TRACK,,}" =~ ^(production|beta|internal)$ ]]; then
+                echo 'PLAY_CLOSED_TRACK must identify an existing closed track; production, beta, internal and form-factor tracks are forbidden.' >&2
+                exit 1
+              fi
+              ;;
+            *) echo 'Unsupported Play target.' >&2; exit 1 ;;
           esac
           python3 scripts/release/verify_apk.py source --tag "$RELEASE_TAG"
           RELEASE_COMMIT="$(git rev-parse HEAD)"
@@ -80,7 +108,7 @@ jobs:
             echo 'The release source must be an ancestor of current origin/main.' >&2
             exit 1
           fi
-          printf 'mode=%s\ntag=%s\ncommit=%s\n' "$MODE" "$RELEASE_TAG" "$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+          printf 'mode=%s\ntarget=%s\ntrack=%s\ntag=%s\ncommit=%s\n' "$MODE" "$TARGET" "$TRACK" "$RELEASE_TAG" "$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
 
   signing-check:
     needs: prepare
@@ -125,7 +153,7 @@ jobs:
       contents: read
       id-token: write
     env:
-      PLAY_CLOSED_TRACK: ${{ vars.PLAY_CLOSED_TRACK }}
+      PLAY_TRACK: ${{ needs.prepare.outputs.track }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -141,10 +169,6 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          if [[ -z "$PLAY_CLOSED_TRACK" ]]; then
-            echo 'Missing repository variable PLAY_CLOSED_TRACK: set the exact existing closed-track API ID.' >&2
-            missing=1
-          fi
           if [[ -n "$PLAY_WORKLOAD_IDENTITY_PROVIDER" ]]; then
             if [[ -z "$PLAY_SERVICE_ACCOUNT" ]]; then
               echo 'Missing repository variable PLAY_SERVICE_ACCOUNT for Workload Identity Federation.' >&2
@@ -184,10 +208,10 @@ jobs:
           create_credentials_file: false
           export_environment_variables: false
           cleanup_credentials: true
-      - name: Inspect Play access and the existing closed track
+      - name: Inspect Play access and the selected testing track
         env:
           PLAY_ACCESS_TOKEN: ${{ steps.wif.outputs.access_token || steps.json.outputs.access_token }}
-        run: python3 scripts/release/play_publish.py check --track "$PLAY_CLOSED_TRACK" --report play-preflight.json
+        run: python3 scripts/release/play_publish.py check --track "$PLAY_TRACK" --report play-preflight.json
       - name: Save the public Play preflight report
         if: always()
         uses: actions/upload-artifact@v4
@@ -309,7 +333,7 @@ jobs:
       id-token: write
     env:
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-      PLAY_CLOSED_TRACK: ${{ vars.PLAY_CLOSED_TRACK }}
+      PLAY_TRACK: ${{ needs.prepare.outputs.track }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -330,10 +354,6 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          if [[ -z "$PLAY_CLOSED_TRACK" ]]; then
-            echo 'Missing repository variable PLAY_CLOSED_TRACK: set the exact existing closed-track API ID.' >&2
-            missing=1
-          fi
           if [[ -n "$PLAY_WORKLOAD_IDENTITY_PROVIDER" ]]; then
             if [[ -z "$PLAY_SERVICE_ACCOUNT" ]]; then
               echo 'Missing repository variable PLAY_SERVICE_ACCOUNT for Workload Identity Federation.' >&2
@@ -373,10 +393,10 @@ jobs:
           create_credentials_file: false
           export_environment_variables: false
           cleanup_credentials: true
-      - name: Submit only to the existing closed testing track
+      - name: Submit only to the selected testing track
         env:
           PLAY_ACCESS_TOKEN: ${{ steps.wif.outputs.access_token || steps.json.outputs.access_token }}
-        run: python3 scripts/release/play_publish.py deploy --track "$PLAY_CLOSED_TRACK" --bundle "play-dist/GalliPick-${RELEASE_TAG}-release.aab" --manifest play-dist/manifest.json --notes docs/play-store/release-notes-ko.txt --report play-deployment.json
+        run: python3 scripts/release/play_publish.py deploy --track "$PLAY_TRACK" --bundle "play-dist/GalliPick-${RELEASE_TAG}-release.aab" --manifest play-dist/manifest.json --notes docs/play-store/release-notes-ko.txt --report play-deployment.json
       - name: Save the public Play deployment report
         if: always()
         uses: actions/upload-artifact@v4
@@ -388,4 +408,4 @@ jobs:
       - name: Summarize the accepted API commit
         shell: bash
         run: |
-          printf '%s\n' 'The closed-track API commit was accepted and read back. Google review and tester availability must still be checked in Play Console.' >> "$GITHUB_STEP_SUMMARY"
+          printf 'The `%s` testing-track API commit was accepted and read back. Google review and tester availability must still be checked in Play Console.\n' "$PLAY_TRACK" >> "$GITHUB_STEP_SUMMARY"
