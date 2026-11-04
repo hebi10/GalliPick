@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -57,10 +59,21 @@ internal fun FileToolbar(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Box {
-            IconAction("파일 검색", Icons.Rounded.Search,
-                Modifier.background(if (filter.query.isNotBlank()) Mint else MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
-                    .semantics { stateDescription = filter.query.ifBlank { "검색어 없음" } },
-            ) { menu = "search" }
+            Row(
+                Modifier.heightIn(min = 48.dp).background(
+                    if (filter.query.isNotBlank()) Mint else MaterialTheme.colorScheme.surface,
+                    RoundedCornerShape(14.dp),
+                ).semantics {
+                    contentDescription = "파일 검색"
+                    stateDescription = filter.query.ifBlank { "검색어 없음" }
+                    role = Role.Button
+                }.plainClick { menu = "search" }.padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                GalliIcon(Icons.Rounded.Search, null, Modifier.size(20.dp))
+                Text("검색", style = MaterialTheme.typography.labelLarge, color = Ink)
+            }
             DropdownMenu(expanded = menu == "search", onDismissRequest = { menu = null; keyboard?.hide() },
                 modifier = Modifier.widthIn(min = 260.dp, max = 380.dp), properties = PopupProperties(focusable = true)) {
                 OutlinedTextField(
