@@ -125,9 +125,9 @@ class PlayPublishTests(unittest.TestCase):
         self.assertFalse(any(":commit" in url or url.startswith("https://androidpublisher.googleapis.com/upload/")
                              for _, url, _ in self.server.calls))
 
-    def test_deploy_changes_only_target_and_verifies_in_a_fresh_edit(self):
+    def test_explicit_closed_alpha_deploy_changes_only_target_and_verifies_in_a_fresh_edit(self):
         before = json.loads(json.dumps(self.server.tracks))
-        report = self.run_client()
+        report = self.run_client(track="alpha")
         release = {"name": "0.1.7", "versionCodes": ["6"], "status": "completed",
                    "releaseNotes": [{"language": "ko-KR", "text": "사용성을 개선했습니다."}]}
         self.assertEqual(self.server.pending, {"track": "alpha", "releases": [release]})
@@ -140,6 +140,26 @@ class PlayPublishTests(unittest.TestCase):
         self.assertIn("/edit2/tracks/alpha", self.server.calls[-2][1])
         self.assertEqual(self.server.calls[-1][0], "DELETE")
         self.assertEqual(sum(method == "PUT" for method, _, _ in self.server.calls), 1)
+
+    def test_internal_deploy_changes_only_target_and_verifies_in_a_fresh_edit(self):
+        self.server.tracks[2]["releases"][0]["status"] = "completed"
+        before = json.loads(json.dumps(self.server.tracks))
+        report = self.run_client(track="internal")
+        release = {"name": "0.1.7", "versionCodes": ["6"], "status": "completed",
+                   "releaseNotes": [{"language": "ko-KR", "text": "사용성을 개선했습니다."}]}
+        self.assertEqual(self.server.pending, {"track": "internal", "releases": [release]})
+        self.assertEqual(self.server.tracks[:2], before[:2])
+        self.assertTrue(report["api_accepted"])
+        self.assertTrue(report["track_verified"])
+        self.assertEqual(report["play_approval"], "not_confirmed")
+        self.assertEqual(self.server.edit_count, 2)
+        self.assertEqual([(method, urlsplit(url).path) for method, url, _ in self.server.calls
+                          if method == "PUT"],
+                         [("PUT", "/androidpublisher/v3/applications/com.hebi.gallipick/edits/edit1/tracks/internal")])
+        self.assertEqual(urlsplit(self.server.calls[-2][1]).path,
+                         "/androidpublisher/v3/applications/com.hebi.gallipick/edits/edit2/tracks/internal")
+        self.assertEqual(self.server.calls[-2][0], "GET")
+        self.assertEqual(self.server.calls[-1][0], "DELETE")
 
     def test_all_used_codes_including_internal_drafts_and_unassigned_artifacts_block_upload(self):
         for source in ["internal", "bundles", "apks"]:
@@ -156,10 +176,52 @@ class PlayPublishTests(unittest.TestCase):
                 self.assertEqual(self.server.calls[-1][0], "DELETE")
 
     def test_forbidden_unconfigured_and_form_factor_tracks_fail_without_mutation(self):
-        for track in ["", "production", "beta", "internal", "wear:production", "wear:alpha", "unknown", "Beta"]:
+        for track in ["", "production", "beta", "wear:production", "wear:alpha", "wear:internal",
+                      "unknown", "Beta", "Internal", "INTERNAL", "alpha/qa", " alpha", "alpha ", "alpha\n",
+                      ".alpha", "a" * 101, None]:
             with self.subTest(track=track), self.assertRaises(ReleaseError):
                 self.run_client(track=track)
         self.assertFalse(any(method == "PUT" or "/upload/" in url for method, url, _ in self.server.calls))
+
+    def test_internal_case_variants_cannot_be_used_as_custom_closed_tracks(self):
+        self.server.tracks.extend([{"track": "Internal", "releases": []},
+                                   {"track": "INTERNAL", "releases": []}])
+        for track in ["Internal", "INTERNAL"]:
+            with self.subTest(track=track), self.assertRaises(ReleaseError):
+                self.run_client(track=track)
+        self.assertEqual(self.server.calls, [])
+
+    def test_missing_internal_track_rejects_before_upload_and_deletes_edit(self):
+        self.server.tracks = self.server.tracks[:2]
+        with self.assertRaises(ReleaseError):
+            self.run_client(track="internal")
+        self.assertEqual(self.report.get("used_version_codes"), [1, 2, 4, 5])
+        self.assertFalse(any("/upload/" in url for _, url, _ in self.server.calls))
+        self.assertEqual(self.server.calls[-1][0], "DELETE")
+
+    def test_internal_draft_rejects_before_upload_and_deletes_edit(self):
+        with self.assertRaises(ReleaseError):
+            self.run_client(track="internal")
+        self.assertEqual(self.report.get("used_version_codes"), [1, 2, 3, 4, 5])
+        self.assertFalse(any("/upload/" in url for _, url, _ in self.server.calls))
+        self.assertEqual(self.server.calls[-1][0], "DELETE")
+
+    def test_internal_deploy_checks_duplicate_codes_across_all_tracks_and_artifacts(self):
+        for source in ["production", "alpha", "internal", "bundles", "apks"]:
+            with self.subTest(source=source):
+                self.server = PlayServer()
+                self.server.tracks[2]["releases"][0]["status"] = "completed"
+                self.client = play_publish.PlayClient(TOKEN, transport=self.server.open)
+                self.report = {}
+                if source in {"bundles", "apks"}:
+                    setattr(self.server, source, [{"versionCode": 6}])
+                else:
+                    next(item for item in self.server.tracks if item["track"] == source)["releases"][0]["versionCodes"] = ["6"]
+                with self.assertRaises(ReleaseError):
+                    self.run_client(track="internal")
+                self.assertIn(6, self.report.get("used_version_codes", []))
+                self.assertFalse(any("/upload/" in url for _, url, _ in self.server.calls))
+                self.assertEqual(self.server.calls[-1][0], "DELETE")
 
     def test_explicit_existing_custom_closed_track_is_allowed(self):
         self.server.tracks.append({"track": "closed-qa", "releases": []})
@@ -331,6 +393,21 @@ class PlayPublishTests(unittest.TestCase):
             play_publish.main(["check", "--track", "alpha", "--report", str(report_path)])
         self.assertNotIn(TOKEN, output.getvalue() + report_path.read_text())
         self.assertEqual(json.loads(report_path.read_text())["status"], "checked")
+
+    def test_cli_check_defaults_to_internal_without_track_argument(self):
+        output = io.StringIO()
+        report_path = self.directory / "play-status.json"
+        with patch.dict(os.environ, {"PLAY_ACCESS_TOKEN": TOKEN}), \
+                patch("play_publish.PlayClient", return_value=self.client), contextlib.redirect_stdout(output):
+            play_publish.main(["check", "--report", str(report_path)])
+        report = json.loads(report_path.read_text())
+        self.assertEqual(report["track"], "internal")
+        self.assertEqual(report["status"], "checked")
+        self.assertEqual(report["used_version_codes"], [1, 2, 3, 4, 5])
+        self.assertFalse(any(method == "PUT" or "/upload/" in url or ":commit" in url
+                             for method, url, _ in self.server.calls))
+        self.assertEqual(self.server.calls[-1][0], "DELETE")
+        self.assertNotIn(TOKEN, output.getvalue() + report_path.read_text())
 
     def test_missing_token_creates_failure_report_before_any_network_request(self):
         report_path = self.directory / "play-status.json"

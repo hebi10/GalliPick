@@ -4,7 +4,9 @@
 
 ## Google Play 자동 배포
 
-[Play 배포 자동화](docs/play-store/automation.md)는 버전 태그 또는 수동 실행으로 고정 키 APK/AAB 생성·검증과 기존 비공개 테스트 트랙 제출을 연결합니다. `check`로 계정·서명 설정을 점검하고 `build`로 설치·업로드용 파일을 만들 수 있습니다. Play 인증과 올바른 서명 Secret 설정이 완료되어야 `deploy`가 동작하며, API 제출 성공과 Google 심사 승인·테스터 제공은 구분합니다.
+[Play 배포 자동화](docs/play-store/automation.md)의 `Play testing deployment`는 고정 키 APK/AAB 생성·검증 후 기본적으로 내부 테스트(`internal`)에 제출합니다. 버전 태그는 항상 내부 테스트에 배포하며, 비공개 테스트는 main에서 수동 `target=closed`를 선택한 경우에만 사용합니다. 수동 기본값은 `mode=build`·`target=internal`이며, Play 제출에는 `mode=deploy`를 선택합니다. `check`로 계정·서명 설정을 점검하고 `build`로 설치·업로드용 파일을 만듭니다.
+
+[실제 check #2](https://github.com/hebi10/GalliPick/actions/runs/41787678213)에서 WIF·Play 접근·기존 비공개 트랙 조회는 성공했지만, 서명 Secret과 고정 인증서가 달라 전체 실행은 실패했습니다. 첫 실제 배포에는 올바른 서명 Secret과 이미 업로드한 code 8보다 높은 새 versionCode가 필요합니다. 이번 설정 변경으로 Play 출시가 완료된 것은 아니며, API 제출 성공과 Google 심사 승인·테스터 제공도 구분합니다.
 
 ## 공개 APK
 

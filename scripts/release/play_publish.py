@@ -1,4 +1,4 @@
-"""Submit verified GalliPick bundles to one explicitly selected closed track."""
+"""Submit verified GalliPick bundles to internal testing or an explicitly selected closed track."""
 import argparse
 import hashlib
 from http.client import HTTPException
@@ -133,8 +133,9 @@ def run(client, mode, track, *, bundle=None, manifest=None, notes=None, report=N
     report = report if report is not None else {}
     report.update(package=PACKAGE, mode=mode, api_accepted=False, play_approval="not_confirmed", status="started")
     if (not isinstance(track, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", track)
-            or track.casefold() in {"production", "beta", "internal"} or mode not in {"check", "deploy"}):
-        raise ReleaseError("Explicitly select an existing closed track; production, open, internal and form-factor tracks are forbidden.")
+            or (track.casefold() in {"production", "beta", "internal"} and track != "internal")
+            or mode not in {"check", "deploy"}):
+        raise ReleaseError("Select internal or an existing closed track; production, open, form-factor tracks and internal case variants are forbidden.")
     report["track"] = track
     inputs = load_inputs(bundle, manifest, notes) if mode == "deploy" else None
     edit = client.create_edit()
@@ -164,7 +165,7 @@ def run(client, mode, track, *, bundle=None, manifest=None, notes=None, report=N
                 codes.add(version_code(artifact.get("versionCode")))
         report.update(tracks=public_tracks, used_version_codes=sorted(codes))
         if selected is None:
-            raise ReleaseError("The configured closed track does not exist; track creation is disabled.")
+            raise ReleaseError("The configured internal or closed track does not exist; track creation is disabled.")
         if mode == "check":
             report["status"] = "checked"
             return report
@@ -219,7 +220,7 @@ def run(client, mode, track, *, bundle=None, manifest=None, notes=None, report=N
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("check", "deploy"))
-    parser.add_argument("--track", required=True)
+    parser.add_argument("--track", default="internal")
     parser.add_argument("--report", type=Path, required=True)
     for argument in ("bundle", "manifest", "notes"):
         parser.add_argument("--" + argument, type=Path)

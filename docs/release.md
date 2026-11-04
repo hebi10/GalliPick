@@ -1,6 +1,8 @@
 # 공개 APK 릴리스
 
-Google Play 비공개 테스트 자동 제출은 [Play 배포 자동화](play-store/automation.md)의 별도 `Play closed testing` workflow를 사용합니다. 아래 공개 APK·AAB 준비 workflow도 유지하며, Play 자동 배포는 기존 서명키와 앱에 한정한 배포 계정 설정이 필요합니다.
+Google Play 테스트 자동 제출은 [Play 배포 자동화](play-store/automation.md)의 별도 `Play testing deployment` workflow를 사용합니다. `v*` 태그는 항상 내부 테스트(`internal`)에 배포하고, 수동 실행은 `mode=build`·`target=internal`이 기본값입니다. 수동 제출에는 `mode=deploy`를 선택하며 비공개 테스트는 main에서 수동 `target=closed`로 선택한 경우에만 사용합니다. 내부 테스트에는 `PLAY_CLOSED_TRACK`이 필요하지 않습니다. 아래 공개 APK·AAB 준비 workflow도 유지하며, Play 자동 배포는 기존 서명키와 앱에 한정한 배포 계정 설정이 필요합니다.
+
+[실제 check #2](https://github.com/hebi10/GalliPick/actions/runs/41787678213)는 WIF·Play 접근·기존 비공개 트랙 조회에 성공했지만 서명 Secret과 고정 인증서 불일치로 전체 실행은 실패했습니다. 첫 실제 제출 전 올바른 서명 Secret 복구와 이미 업로드한 code 8보다 높은 새 versionCode가 필요합니다. 내부 테스트 기본값 변경은 실제 배포나 Google 승인 완료를 의미하지 않습니다.
 
 `Public APK release`는 검사를 통과한 소스에서 고정 키로 APK를 만들고 GitHub Releases에 게시하는 워크플로입니다. 일반 PR·main 검사에서는 임시 debug 서명만 사용하며 설치용 APK를 배포하지 않습니다.
 
