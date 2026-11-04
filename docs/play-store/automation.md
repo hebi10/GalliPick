@@ -87,10 +87,12 @@ API 클라이언트는 기존 트랙과 이미 업로드한 APK·AAB 버전을 �
 
 ## 현재 설정 상태
 
-2026-11-04 관찰 기준 `PLAY_CLOSED_TRACK=alpha` repository variable은 설정했지만 API 인증 검증은 아직 남아 있습니다. 저장소의 secret은 서명 복구 값만 있고 Play 인증은 준비되지 않았습니다. Play Console 사용자에는 소유자만 있고 배포용 서비스 계정은 등록되지 않았습니다. 기존 서명 secret은 [AAB 실행 41584050395](https://github.com/hebi10/GalliPick/actions/runs/41584050395)에서 현재 고정 지문과 불일치한 이력이 있습니다. 별도로 서명한 AAB의 Console 수락이 Actions secret 갱신을 뜻하지는 않습니다.
+2026-11-04 별도 앱 배포 전용 프로젝트에 GalliPick 전용 서비스 계정을 만들고, 해당 앱의 조회·테스트 출시 권한만 부여했습니다. GitHub 저장소에는 `PLAY_WORKLOAD_IDENTITY_PROVIDER`와 `PLAY_SERVICE_ACCOUNT`를 등록했으며 장기 JSON 개인 키는 생성하지 않았습니다. `PLAY_CLOSED_TRACK=alpha`는 실제 API 조회로 확인했습니다.
 
-먼저 현재 고정 JKS와 일치하는 기존 복구 자료로 signing secret을 갱신하고, 위 서비스 계정 권한·인증·정확한 기존 트랙 ID를 설정한 뒤 `check` 결과를 확인해야 합니다. 이 문서와 workflow 추가만으로 배포가 완료된 것은 아닙니다.
+[실제 check #2](https://github.com/hebi10/GalliPick/actions/runs/41787678213)의 `play-preflight`가 성공했습니다. GitHub OIDC → 서비스 계정 토큰 발급 → Play 접근 → 기존 비공개 트랙 조회와 임시 edit 정리까지 확인했습니다. 동일 실행의 `signing-check`는 **기존 서명 복구 Secret과 고정 공개 인증서 지문 불일치**로 중단했습니다. 따라서 전체 실행은 실패 상태이며 APK·AAB 생성이나 Play 제출은 수행하지 않았습니다.
 
-[실제 check #1](https://github.com/hebi10/GalliPick/actions/runs/41784363190)은 main `9fc243a`에서 소스 검사를 통과한 뒤 **Play 인증 미설정**과 **서명 복구 자료의 인증서 지문 불일치**를 각각 확인했습니다. APK·AAB 생성과 Play 제출은 실행되지 않았습니다. 구현·Android 검사 결과는 [검증 기록](../verification.md#2026-11-04--github-actions-비공개-테스트-자동화)에 기록했습니다.
+현재 남은 GalliPick 배포 차단 사항은 고정 JKS에 맞는 `GALLIPICK_SIGNING_BUNDLE_BASE64` 갱신입니다. 이후 새 업로드에는 이미 사용한 code 8보다 높은 버전 코드가 필요합니다. 새 인증 연결 자체는 서명키 변경이나 기존 설치본의 서명 변경을 뜻하지 않습니다.
+
+[check #1](https://github.com/hebi10/GalliPick/actions/runs/41784363190)의 Play 인증 미설정 문제는 위 새 계정·WIF 연결로 해결했습니다. 구현·Android 검사 결과는 [검증 기록](../verification.md#2026-11-04--github-actions-비공개-테스트-자동화)에 기록했습니다.
 
 참고: [Google Play API 시작](https://developers.google.com/android-publisher/getting_started), [Play Console 앱별 권한](https://support.google.com/googleplay/android-developer/answer/9844686), [Google GitHub 인증 action](https://github.com/google-github-actions/auth), [WIF 설정](https://github.com/google-github-actions/auth#workload-identity-federation-through-a-service-account), [Android Publisher tracks](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.tracks), [edit commit](https://developers.google.com/android-publisher/api-ref/rest/v3/edits/commit).
