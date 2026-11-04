@@ -1,5 +1,7 @@
 # 공개 APK 릴리스
 
+Google Play 비공개 테스트 자동 제출은 [Play 배포 자동화](play-store/automation.md)의 별도 `Play closed testing` workflow를 사용합니다. 아래 공개 APK·AAB 준비 workflow도 유지하며, Play 자동 배포는 기존 서명키와 앱에 한정한 배포 계정 설정이 필요합니다.
+
 `Public APK release`는 검사를 통과한 소스에서 고정 키로 APK를 만들고 GitHub Releases에 게시하는 워크플로입니다. 일반 PR·main 검사에서는 임시 debug 서명만 사용하며 설치용 APK를 배포하지 않습니다.
 
 ## 서명 설정

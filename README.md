@@ -2,6 +2,10 @@
 
 사진·동영상을 조건으로 찾고 완전히 같은 사본을 안전하게 정리하는 Android 앱입니다.
 
+## Google Play 자동 배포
+
+[Play 배포 자동화](docs/play-store/automation.md)는 버전 태그 또는 수동 실행으로 고정 키 APK/AAB 생성·검증과 기존 비공개 테스트 트랙 제출을 연결합니다. `check`로 계정·서명 설정을 점검하고 `build`로 설치·업로드용 파일을 만들 수 있습니다. Play 인증과 올바른 서명 Secret 설정이 완료되어야 `deploy`가 동작하며, API 제출 성공과 Google 심사 승인·테스터 제공은 구분합니다.
+
 ## 공개 APK
 
 v0.1.6의 기능 소스는 [PR #2](https://github.com/hebi10/GalliPick/pull/2)로 main에 반영했습니다. 소스의 서명 기준은 사용자 제공 JKS이며 새 키의 로컬 APK 검증을 완료했습니다. **Actions 서명 설정 갱신은 GitHub의 추가 본인 확인 대기이며 새 기준의 CI 결과·공개 게시는 대기 중입니다.** 게시 완료 후 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 `GalliPick-v0.1.6-release.apk`와 `SHA256SUMS`를 확인합니다.
