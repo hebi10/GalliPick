@@ -91,4 +91,6 @@ API 클라이언트는 기존 트랙과 이미 업로드한 APK·AAB 버전을 �
 
 먼저 현재 고정 JKS와 일치하는 기존 복구 자료로 signing secret을 갱신하고, 위 서비스 계정 권한·인증·정확한 기존 트랙 ID를 설정한 뒤 `check` 결과를 확인해야 합니다. 이 문서와 workflow 추가만으로 배포가 완료된 것은 아닙니다.
 
+[실제 check #1](https://github.com/hebi10/GalliPick/actions/runs/41784363190)은 main `9fc243a`에서 소스 검사를 통과한 뒤 **Play 인증 미설정**과 **서명 복구 자료의 인증서 지문 불일치**를 각각 확인했습니다. APK·AAB 생성과 Play 제출은 실행되지 않았습니다. 구현·Android 검사 결과는 [검증 기록](../verification.md#2026-11-04--github-actions-비공개-테스트-자동화)에 기록했습니다.
+
 참고: [Google Play API 시작](https://developers.google.com/android-publisher/getting_started), [Play Console 앱별 권한](https://support.google.com/googleplay/android-developer/answer/9844686), [Google GitHub 인증 action](https://github.com/google-github-actions/auth), [WIF 설정](https://github.com/google-github-actions/auth#workload-identity-federation-through-a-service-account), [Android Publisher tracks](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.tracks), [edit commit](https://developers.google.com/android-publisher/api-ref/rest/v3/edits/commit).

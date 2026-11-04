@@ -228,3 +228,12 @@ SHA-256: 2dd0d4a0ef85505a234dc9286e3221ea81e8104487c9cd225d54f87075e2f55b
 - 대상은 `com.hebi.gallipick`의 기존 내부 테스트 초안입니다. API30이상/targetSDK36 아티팩트가 수락되었으며, 출시명0.1.7(8)과 한국어 변경 설명을 유지했습니다.
 - `임시보관함에 저장` 실행 후 저장 성공 안내와 비활성 저장 버튼을 확인했습니다. [저장된 Play 초안](https://play.google.com/console/u/0/developers/5537932067090246638/app/4972863093038524623/tracks/4701553322848710324/releases/2/prepare).
 - 이번 요청의 AAB 업로드·초안 저장은 완료했습니다. 검토 제출·테스터 배포·프로덕션 출시는 실행하지 않았습니다.
+
+## 2026-11-04 — GitHub Actions 비공개 테스트 자동화
+
+- [PR #7](https://github.com/hebi10/GalliPick/pull/7)을 main `9fc243a900212f2b3cc1680e2f57b3597b5acc3c`에 통합했습니다. 버전 태그 자동 실행과 수동 check/build/deploy, 고정 서명 APK·AAB 검증, 기존 비공개 트랙 전용 Publisher 클라이언트를 추가했습니다. 앱 기능·버전은 변경하지 않았습니다.
+- JDK17 전체 릴리스 도구 테스트 66개 통과, 생략 0개. actionlint와 shell/source/auth 구성 검사 통과. 독립 코드 검토 및 GitHub 자동 코드 검토의 필수 수정 사항 없음.
+- [Android verification](https://github.com/hebi10/GalliPick/actions/runs/41783449827) 성공. [Android 16 기기 검사](https://github.com/hebi10/GalliPick/actions/runs/41783449822) 80개 완료·빌드 성공.
+- 실제 [Play check #1](https://github.com/hebi10/GalliPick/actions/runs/41784363190)을 main에서 실행했습니다. 정확한 소스·main 포함 관계 검사 성공. `play-preflight`는 Play 인증 미설정으로, `signing-check`는 복구 자료와 고정 공개 인증서 지문 불일치로 각각 중단했습니다.
+- `PLAY_CLOSED_TRACK=alpha` 설정 완료. Play Console의 현재 비공개 제공 버전은 0.1.6/code7이고 내부 초안에 code8이 이미 업로드되어 있습니다. API 트랙 확인은 배포 계정 연결 후 수행하며 다음 새 업로드 코드는 최소9여야 합니다.
+- 이번 점검에서 APK·AAB 생성이나 Play 제출은 수행되지 않았습니다. 현재 JKS에 맞는 서명 Secret 갱신과 GalliPick에 한정한 배포 계정·GitHub 인증 연결이 남아 있습니다.

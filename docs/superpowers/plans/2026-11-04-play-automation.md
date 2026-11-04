@@ -8,10 +8,11 @@
 
 ## Tasks
 
-- [ ] Add a tested Android Publisher client: inspect existing tracks/bundles/APKs; reject an unconfigured/invalid or production/open/internal target; reject reused version codes before upload; verify upload hash/version; update only the selected closed track; validate and commit with `ERROR_IF_IN_REVIEW`; verify committed track via a fresh edit. Never retry an ambiguous commit or fall back to unsubmitted review changes.
-- [ ] Add Actions workflow with `v*` tag automation and manual `check`, `build`, `deploy`. Reuse fixed signing and validators; exact source verification; main ancestry; serialized Play operations; scoped credentials; checked artifacts; cleanup. Support keyless OIDC configuration or a repository service-account JSON secret. Build-only works without Play credentials.
-- [ ] Document exact setup, permissions, triggers, artifact links, review limitations and current account blockers. Test release client and validate workflow syntax. Obtain independent review.
-- [ ] Push/merge implementation and run a concrete configuration check. If account authorization is missing, leave a precise actionable handoff after finishing all independent work.
+- [x] Add a tested Android Publisher client: inspect existing tracks/bundles/APKs; reject an unconfigured/invalid or production/open/internal target; reject reused version codes before upload; verify upload hash/version; update only the selected closed track; validate and commit with `ERROR_IF_IN_REVIEW`; verify committed track via a fresh edit. Never retry an ambiguous commit or fall back to unsubmitted review changes.
+- [x] Add Actions workflow with `v*` tag automation and manual `check`, `build`, `deploy`. Reuse fixed signing and validators; exact source verification; main ancestry; serialized Play operations; scoped credentials; checked artifacts; cleanup. Support keyless OIDC configuration or a repository service-account JSON secret. Build-only works without Play credentials.
+- [x] Document exact setup, permissions, triggers, artifact links, review limitations and current account blockers. Test release client and validate workflow syntax. Obtain independent review.
+- [x] Push/merge implementation and run a concrete configuration check. If account authorization is missing, leave a precise actionable handoff after finishing all independent work.
+- [ ] Activate the correct signing secret and a GalliPick-scoped Play deployment identity, then verify the first live upload after account setup. New upload source must use a code greater than the already uploaded code 8.
 
 ## Review focus
 
