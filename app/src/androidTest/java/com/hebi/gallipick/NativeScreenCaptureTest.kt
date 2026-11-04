@@ -229,8 +229,8 @@ class NativeScreenCaptureTest {
         insertExample("EXAMPLE_mascot_original.png", "image/png", mascot)
         insertExample("EXAMPLE_mascot_copy.png", "image/png", mascot)
         insertExample("EXAMPLE_photo_icon.png", "image/png", photoIcon)
-        val video = instrumentation.context.assets.open("preview-baseline.mp4").use { it.readBytes() }
-        insertExample("EXAMPLE_preview_video.mp4", "video/mp4", video)
+        val video = instrumentation.context.assets.open("store-coast-preview.mp4").use { it.readBytes() }
+        insertExample("EXAMPLE_coast_video.mp4", "video/mp4", video)
     }
 
     private fun insertExample(name: String, mimeType: String, bytes: ByteArray) {
@@ -430,7 +430,7 @@ class NativeScreenCaptureTest {
             .put("densityDpi", app.resources.configuration.densityDpi)
             .put("captureMethod", "UiAutomation.takeScreenshot: full Android viewport")
             .put("exampleMedia", JSONArray(listOf("EXAMPLE_mascot_original.png", "EXAMPLE_mascot_copy.png",
-                "EXAMPLE_photo_icon.png", "EXAMPLE_preview_video.mp4")))
+                "EXAMPLE_photo_icon.png", "EXAMPLE_coast_video.mp4")))
             .put("captures", captures)
             .put("detailFailures", detailFailures)
             .put("keyboardObservations", keyboardObservations)
