@@ -254,3 +254,15 @@ SHA-256: 2dd0d4a0ef85505a234dc9286e3221ea81e8104487c9cd225d54f87075e2f55b
 - 올바른 4개 구성 파일로 비공개 복구 ZIP을 다시 만들었습니다. 기존 `signing_bundle.py`의 복원·정리 경로를 통과했고, 복원된 키로 실제 서명 검증을 다시 통과했습니다. 등록용 Base64가 ZIP과 정확히 동일하게 디코딩됨을 독립 검토했습니다.
 - 원본 키를 그대로 사용했습니다. 새 키 생성·업로드키 재설정·공개 인증서 pin 변경은 수행하지 않았습니다. 복구 ZIP과 등록용 파일은 비공개로 보관했고 자격 증명은 저장소나 공개 artifact에 넣지 않았습니다.
 - GitHub Secret은 아직 갱신하지 않았습니다. 연결 브라우저는 요청 출처 컨텍스트 문제로 사용할 수 없었고 대체 브라우저도 연결하지 못했습니다. 따라서 새 CI signing-check·APK/AAB 빌드·Play 업로드·테스터 출시는 아직 확인하지 않았습니다. 다음 단계는 검증된 ZIP의 Base64로 기존 Secret을 교체하고 `check/internal`을 실행하는 것입니다.
+
+
+## 2026-11-04 — 서명 설정 갱신과 내부 테스트 배포 검증
+
+- 사용자가 검증된 원본 복구 자료로 Actions 서명 설정을 갱신했습니다. [내부 테스트 check #3](https://github.com/hebi10/GalliPick/actions/runs/41790941768)의 두 번째 시도에서 소스·실제 개인 키·고정 인증서·WIF·내부 트랙 조회와 임시 edit 정리가 모두 성공했습니다. 같은 실행의 첫 시도 실패 기록과 구분합니다.
+- [서명 build #4](https://github.com/hebi10/GalliPick/actions/runs/41799541269)는 소스 `fb6ee0dcd50ccf6800ae9bb66fcb8e1ff7038c96`에서 0.1.7/code 8 APK·AAB 생성과 검증을 통과했습니다. 단위 검사·release lint·릴리스 도구 테스트 72개, APK 메타데이터·고정 인증서, AAB manifest·전체 payload 서명·bundletool 검증을 완료했습니다.
+- 기존 Play 내부 테스트 0.1.7/code 8 초안을 Console에서 출시했습니다. 2026-11-04에 활성·최신 0.1.7(8)·내부 테스터에게 제공됨 상태를 확인했습니다. 비공개 `alpha`는 0.1.6/code 7을 유지했습니다.
+- 새 제출용 소스 `e2c37ae7c935060eeaf591ea5fc720b9b26ccbea`는 0.1.8/code 9입니다. 앱 변경은 버전 두 줄뿐이며 기능·화면·서명·의존성·검증 기준은 그대로입니다. 독립 검토와 source guard·잘못된 버전 거부·diff 검사를 통과했습니다.
+- [deploy #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)는 소스 `e2c37ae7c935060eeaf591ea5fc720b9b26ccbea`에서 전체 7개 job이 성공했고 총 14분 17초가 걸렸습니다. 릴리스 도구 테스트 72개·Android 16 기기 검사 80개, 단위 검사·lint·고정 서명 APK/AAB 검증을 통과한 뒤 새 AAB를 업로드했습니다.
+- 다운로드해 확인한 배포 보고서는 `status=committed`, `track=internal`, `version_name=0.1.8`, `version_code=9`, `api_accepted=true`, `track_verified=true`입니다. 업로드 응답의 버전·SHA-256 대조, API commit과 별도 edit의 트랙 재조회까지 완료했습니다. AAB SHA-256은 `00af94bffa1f0d6e7a75de46e6dc3fed38e5b38ef169b0575dc22e60045168f2`입니다. APK SHA-256은 `3735f20b96f0190df79c80b38d04adc91720c97cd0592fbd01968f914cac1ab2`이며, 전달한 APK·AAB를 다시 내려받아 원본 SHA-256과 일치함을 확인했습니다.
+- Play Console을 새로 조회하여 2026-11-04에 활성·최신 0.1.8·요약의 버전 코드 9·내부 테스터에게 제공됨을 확인했습니다. API 수락·재조회와 Console 제공 상태를 별도로 확인했습니다. 비공개 `alpha`는 0.1.6/code 7을 유지합니다.
+- code 9가 이미 업로드되었으므로 다음 새 업로드 코드는 최소 10입니다. 이번 실행은 main의 수동 `deploy/internal`이며, 버전 태그 자동 내부 배포와 비공개 테스트 수동 선택 설정을 유지합니다. API commit 수락·별도 API 재조회·Google 심사·테스터 제공을 각각 구분합니다. 비밀 서명 자료·인증 값·비공개 파일 링크는 이 기록에 포함하지 않습니다.

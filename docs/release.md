@@ -2,7 +2,9 @@
 
 Google Play 테스트 자동 제출은 [Play 배포 자동화](play-store/automation.md)의 별도 `Play testing deployment` workflow를 사용합니다. `v*` 태그는 항상 내부 테스트(`internal`)에 배포하고, 수동 실행은 `mode=build`·`target=internal`이 기본값입니다. 수동 제출에는 `mode=deploy`를 선택하며 비공개 테스트는 main에서 수동 `target=closed`로 선택한 경우에만 사용합니다. 내부 테스트에는 `PLAY_CLOSED_TRACK`이 필요하지 않습니다. 아래 공개 APK·AAB 준비 workflow도 유지하며, Play 자동 배포는 기존 서명키와 앱에 한정한 배포 계정 설정이 필요합니다.
 
-[실제 check #2](https://github.com/hebi10/GalliPick/actions/runs/41787678213)는 WIF·Play 접근·기존 비공개 트랙 조회에 성공했지만 서명 Secret과 고정 인증서 불일치로 전체 실행은 실패했습니다. 첫 실제 제출 전 올바른 서명 Secret 복구와 이미 업로드한 code 8보다 높은 새 versionCode가 필요합니다. 내부 테스트 기본값 변경은 실제 배포나 Google 승인 완료를 의미하지 않습니다.
+서명 설정을 갱신한 뒤 [check #3의 두 번째 시도](https://github.com/hebi10/GalliPick/actions/runs/41790941768)에서 실제 개인 키·고정 인증서·WIF·내부 트랙 접근 검사가 모두 성공했습니다. [build #4](https://github.com/hebi10/GalliPick/actions/runs/41799541269)는 0.1.7/code 8의 서명 APK·AAB 생성과 검증을 완료했습니다. 기존 0.1.7/code 8 내부 테스트 초안을 출시 처리하여 이전 초안 차단 사항을 해결했습니다.
+
+소스 `e2c37ae7c935060eeaf591ea5fc720b9b26ccbea`의 0.1.8/code 9는 [deploy #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)에서 전체 검사·서명 APK/AAB 빌드·Play 업로드·API commit·별도 edit 재조회를 완료했습니다. Play Console에서 2026-11-04에 활성·최신 0.1.8/code 9·내부 테스터에게 제공됨을 확인했습니다. 다음 새 업로드는 최소 code 10이 필요합니다. 이번 실행은 main의 수동 `deploy/internal`이며 공개 APK 게시 결과는 별도 GitHub Releases 기록으로 확인합니다. API 제출 수락과 Google 심사·Console 제공 상태는 각각 구분합니다.
 
 `Public APK release`는 검사를 통과한 소스에서 고정 키로 APK를 만들고 GitHub Releases에 게시하는 워크플로입니다. 일반 PR·main 검사에서는 임시 debug 서명만 사용하며 설치용 APK를 배포하지 않습니다.
 
@@ -18,7 +20,7 @@ Google Play 테스트 자동 제출은 [Play 배포 자동화](play-store/automa
 
 1. 버전 변경과 릴리스 문서 `docs/releases/v버전.md`를 main에 반영합니다. versionCode도 기존 버전보다 높입니다.
 2. Actions → Public APK release → Run workflow에서 main을 선택합니다.
-3. `version`에 앱의 versionName과 일치하는 태그를 입력합니다. 예: `v0.1.6`.
+3. `version`에 앱의 versionName과 일치하는 태그를 입력합니다. 예: 소스 버전이 0.1.9인 경우 `v0.1.9`.
 
 실행은 시작 시점의 정확한 소스 커밋을 고정합니다. 단위 검사·lint와 Android 16/API 36 기기 검사가 모두 성공한 뒤 release job이 고정 키로 빌드합니다. APK 메타데이터·서명 검증 후 같은 커밋을 가리키는 태그를 생성합니다. 이미 태그가 있으면 그 대상 커밋이 일치해야 하며 덮어쓰지 않습니다.
 
@@ -37,7 +39,7 @@ Google Play 테스트 자동 제출은 [Play 배포 자동화](play-store/automa
 
 같은 버전의 릴리스가 이미 있으면 공개·초안 여부와 관계없이 자동으로 수정하거나 파일을 교체하지 않습니다. 업로드·검증이 실패하면 공개하지 않고 초안을 남길 수 있으므로 실행 결과와 원격 상태를 확인한 뒤 처리합니다. 이미 공개한 버전의 APK를 교체하는 대신 새 버전을 사용합니다.
 
-현재 JKS의 로컬 APK·복구 검증은 완료했고, 새 지문 원격 반영·Actions secret 갱신·CI·공개 게시는 대기 중입니다. 실제 통과 검사와 게시 링크는 [검증 기록](verification.md) 및 해당 Actions 실행·릴리스에서 확인합니다.
+현재 고정 서명 기준과 실제 키 검증, Actions 서명 설정 갱신, 서명 APK·AAB CI 빌드 검증은 완료했습니다. Play 배포 결과는 해당 실행의 배포 보고서·Console 상태로 확인하고, GitHub Releases 공개 게시 결과는 별도 릴리스에서 확인합니다. 실제 검사·게시 기록은 [검증 기록](verification.md)에 구분하여 남깁니다.
 
 참고: [Actions workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax), [Actions secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets), [GitHub CLI release create](https://cli.github.com/manual/gh_release_create).
 

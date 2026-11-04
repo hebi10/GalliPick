@@ -53,7 +53,9 @@ WIF를 사용할 수 없다면 `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secret을 등�
 
 새 업로드마다 `app/build.gradle.kts`의 `versionCode`를 Play에 사용된 모든 버전보다 높여 main에 반영합니다. 자동화는 버전을 임의로 증가시키지 않습니다. 기존 draft·내부 테스트 업로드도 사용한 코드로 취급하며, 같은 코드를 덮어쓰거나 이미 있는 bundle을 자동으로 재사용하지 않습니다.
 
-2026-11-04 확인 기준 비공개 테스트에는 0.1.6/code 7이 있고, 내부 테스트 초안에는 0.1.7/code 8 AAB가 이미 업로드되어 있습니다. 따라서 **다음 새 업로드는 최소 code 9**가 필요합니다. 그 사이 다른 업로드가 있으면 그보다 높은 코드를 사용합니다. 현재 v0.1.7/code 8 소스는 올바른 서명 설정을 복구하면 `build`로 파일을 만들 수 있지만 같은 코드를 다시 업로드하는 `deploy`는 대상 트랙에 관계없이 중단되어야 합니다.
+2026-11-04 내부 테스트에는 0.1.8/code 9가 배포되어 내부 테스터에게 제공 중이며, 비공개 테스트 `alpha`는 0.1.6/code 7을 유지합니다. 기존 0.1.7/code 8 초안은 먼저 출시 처리하여 해결했습니다. 같은 코드를 이미 업로드한 경우 대상 트랙에 관계없이 다시 업로드하지 않습니다.
+
+[배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)의 code 9 업로드 수락과 별도 edit의 트랙 재조회를 확인했으므로 **다음 새 업로드는 최소 code 10**이 필요합니다. 그 사이 다른 업로드가 있으면 그보다 높은 코드를 사용합니다. 사용한 코드의 소스는 `build`로 파일을 만들 수 있지만 동일 코드를 다시 제출하는 `deploy`는 중단되어야 합니다.
 
 1. 새 버전·사용하지 않은 높은 versionCode와 `docs/play-store/release-notes-ko.txt`를 main에 반영합니다.
 2. 기본 `target=internal`의 `check`로 고정 서명과 내부 테스트 접근을 확인합니다. 파일만 필요하면 기본 `build`를 실행합니다.
@@ -63,8 +65,8 @@ WIF를 사용할 수 없다면 `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secret을 등�
 태그 예시는 다음과 같습니다. 버전은 실제 소스에 맞게 바꿉니다.
 
 ```bash
-git tag v0.1.8
-git push origin v0.1.8
+git tag v0.1.9
+git push origin v0.1.9
 ```
 
 같은 태그 push는 기존 `Public APK release`도 시작합니다. 새 버전의 `docs/releases/v버전.md`도 기존 공개 릴리스 절차에 맞게 준비합니다. Play workflow 자체에는 GitHub Releases나 태그를 쓰는 권한이 없습니다. GitHub Actions 토큰으로 다른 workflow가 생성한 태그는 별도 push workflow를 다시 시작하지 않을 수 있으므로 이 경로에 자동 연쇄 실행을 기대하지 않습니다.
@@ -96,16 +98,14 @@ API 클라이언트는 기존 트랙과 이미 업로드한 APK·AAB 버전을 �
 
 ## 현재 설정 상태
 
-2026-11-04 별도 앱 배포 전용 프로젝트에 GalliPick 전용 서비스 계정을 만들고, 해당 앱의 조회·테스트 출시 권한만 부여했습니다. GitHub 저장소에는 `PLAY_WORKLOAD_IDENTITY_PROVIDER`와 `PLAY_SERVICE_ACCOUNT`를 등록했으며 장기 JSON 개인 키는 생성하지 않았습니다. `PLAY_CLOSED_TRACK=alpha`는 실제 API 조회로 확인했습니다.
+2026-11-04 별도 앱 배포 전용 프로젝트의 GalliPick 서비스 계정을 사용합니다. 해당 앱의 조회·테스트 출시 권한만 부여했으며 장기 JSON 개인 키 없이 WIF로 인증합니다. `PLAY_CLOSED_TRACK=alpha`는 실제 API 조회로 확인한 기존 비공개 트랙 ID입니다. 버전 태그는 내부 테스트, 비공개 테스트는 main 수동 `target=closed` 선택으로만 제출합니다. 수동 실행 기본값은 `mode=build`·`target=internal`입니다.
 
-[실제 check #2](https://github.com/hebi10/GalliPick/actions/runs/41787678213)의 `play-preflight`가 성공했습니다. GitHub OIDC → 서비스 계정 토큰 발급 → Play 접근 → 기존 비공개 트랙 조회와 임시 edit 정리까지 확인했습니다. 동일 실행의 `signing-check`는 **기존 서명 복구 Secret과 고정 공개 인증서 지문 불일치**로 중단했습니다. 따라서 전체 실행은 실패 상태이며 APK·AAB 생성이나 Play 제출은 수행하지 않았습니다.
+기존 원본 키의 고정 인증서 일치와 실제 서명 검증을 확인하고 Actions 서명 설정을 갱신했습니다. [check #3의 두 번째 시도](https://github.com/hebi10/GalliPick/actions/runs/41790941768)는 소스·실제 개인 키·고정 인증서·WIF·내부 테스트 접근 검사를 모두 통과했습니다. [build #4](https://github.com/hebi10/GalliPick/actions/runs/41799541269)는 0.1.7/code 8의 서명 APK·AAB를 생성·검증했고 릴리스 도구 테스트 72개도 통과했습니다. 새 키 생성이나 업로드키 재설정은 필요하지 않았습니다.
 
-[내부 테스트 check #3](https://github.com/hebi10/GalliPick/actions/runs/41790941768)을 변경된 main에서 기본 `target=internal`로 실행했습니다. `prepare`와 `play-preflight`가 성공해 내부 테스트 API ID 선택·WIF 인증·해당 트랙 조회·임시 edit 정리를 확인했습니다. `signing-check`는 같은 인증서 불일치로 실패했고 build·deploy는 실행되지 않았습니다. 내부 테스트 기본값과 비공개 테스트 수동 선택은 [PR #8](https://github.com/hebi10/GalliPick/pull/8)로 반영했습니다.
+기존 내부 테스트 초안 0.1.7/code 8은 Play Console에서 출시 처리했습니다. 2026-11-04에 활성·최신 0.1.7(8)·내부 테스터에게 제공됨 상태를 확인했습니다. 이어 새 제출용 0.1.8/code 9를 소스 `e2c37ae7c935060eeaf591ea5fc720b9b26ccbea`에 반영했습니다. 앱 기능·화면은 0.1.7과 같습니다.
 
-2026-11-04 원본 키를 비공개 백업에서 찾아 현재 고정 인증서와 일치함을 확인했습니다. 과거 사용자가 전달한 설정으로 JKS·개인 키를 열고 실제 전자서명·공개키 검증을 통과했습니다. 새 복구 ZIP은 기존 `signing_bundle.py`로 복원한 뒤 같은 검증을 다시 통과했고 독립 검토도 완료했습니다. 새 키는 만들지 않았으므로 업로드키 재설정이 필요하지 않습니다. 현재 GitHub Secret 값은 아직 갱신하지 않았으며, 마지막 Actions check #3의 실패 상태는 유지됩니다. 검증된 복구 ZIP 전체의 Base64로 Secret을 교체한 뒤 새 `check`를 실행해야 합니다. 복구 파일·비밀번호·개인키·Base64는 저장소에 포함하지 않습니다.
+[실제 내부 테스트 배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)는 14분 17초에 전체 7개 job을 통과했습니다. 릴리스 도구 테스트 72개·Android 16 기기 검사 80개와 서명 APK/AAB 검증 후 새 code 9 AAB를 업로드했습니다. 배포 보고서의 `status=committed`, `api_accepted=true`, `track_verified=true`와 별도 edit 재조회를 확인했습니다. Play Console에서도 2026-11-04에 활성·최신 0.1.8·버전 코드 9·내부 테스터에게 제공됨을 확인했습니다. 사전 검사 보고서의 `alpha`는 `completed` code 7이었고 비공개 테스트는 유지했습니다. 제출 중에는 Console에서 같은 릴리스를 수정하지 않습니다.
 
-현재 남은 GalliPick 배포 차단 사항은 고정 JKS에 맞는 `GALLIPICK_SIGNING_BUNDLE_BASE64` 갱신, Console의 기존 내부 테스트 초안 처리, 이미 사용한 code 8보다 높은 새 버전 코드 준비입니다. 대상 트랙에 초안이 남아 있으면 새 코드여도 자동화는 제출을 중단하며 초안을 자동으로 덮어쓰지 않습니다. check #2는 기존 비공개 트랙, check #3은 내부 트랙 접근을 검증했습니다. 두 실행 모두 실제 서명 빌드·배포 성공 기록은 아닙니다. 새 인증 연결 자체는 서명키 변경이나 기존 설치본의 서명 변경을 뜻하지 않습니다.
-
-[check #1](https://github.com/hebi10/GalliPick/actions/runs/41784363190)의 Play 인증 미설정 문제는 위 새 계정·WIF 연결로 해결했습니다. 구현·Android 검사 결과는 [검증 기록](../verification.md#2026-11-04--github-actions-비공개-테스트-자동화)에 기록했습니다.
+초기 check #1·#2와 check #3 첫 시도의 실패 원인·복구 과정은 [검증 기록](../verification.md)에 날짜별로 남겼습니다. 현재 서명 불일치는 해결됐으며 실제 배포 결과와 테스터 제공 상태는 각각 확인합니다. 비공개 서명 자료와 자격 증명은 저장소·공개 artifact에 포함하지 않습니다.
 
 참고: [Google Play API 시작](https://developers.google.com/android-publisher/getting_started), [Play Console 앱별 권한](https://support.google.com/googleplay/android-developer/answer/9844686), [Google GitHub 인증 action](https://github.com/google-github-actions/auth), [WIF 설정](https://github.com/google-github-actions/auth#workload-identity-federation-through-a-service-account), [Android Publisher tracks](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.tracks), [edit commit](https://developers.google.com/android-publisher/api-ref/rest/v3/edits/commit).

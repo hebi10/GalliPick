@@ -6,11 +6,13 @@
 
 [Play 배포 자동화](docs/play-store/automation.md)의 `Play testing deployment`는 고정 키 APK/AAB 생성·검증 후 기본적으로 내부 테스트(`internal`)에 제출합니다. 버전 태그는 항상 내부 테스트에 배포하며, 비공개 테스트는 main에서 수동 `target=closed`를 선택한 경우에만 사용합니다. 수동 기본값은 `mode=build`·`target=internal`이며, Play 제출에는 `mode=deploy`를 선택합니다. `check`로 계정·서명 설정을 점검하고 `build`로 설치·업로드용 파일을 만듭니다.
 
-[실제 check #2](https://github.com/hebi10/GalliPick/actions/runs/41787678213)에서 WIF·Play 접근·기존 비공개 트랙 조회는 성공했지만, 서명 Secret과 고정 인증서가 달라 전체 실행은 실패했습니다. 첫 실제 배포에는 올바른 서명 Secret과 이미 업로드한 code 8보다 높은 새 versionCode가 필요합니다. 이번 설정 변경으로 Play 출시가 완료된 것은 아니며, API 제출 성공과 Google 심사 승인·테스터 제공도 구분합니다.
+서명 설정 갱신 후 [내부 테스트 check #3의 두 번째 시도](https://github.com/hebi10/GalliPick/actions/runs/41790941768)가 성공했습니다. [서명 빌드 #4](https://github.com/hebi10/GalliPick/actions/runs/41799541269)에서 APK·AAB 생성과 검증도 통과했습니다. 기존 0.1.7/code 8 초안을 출시 처리한 뒤 새 0.1.8/code 9를 내부 테스트에 배포했습니다.
 
-## 공개 APK
+[내부 테스트 배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)는 같은 소스의 검사·서명 APK/AAB 빌드·새 AAB 업로드·API commit과 재조회를 모두 통과했습니다. Play Console에서도 2026-11-04에 활성·최신 0.1.8/code 9·내부 테스터에게 제공됨을 확인했습니다. 다음 새 업로드는 최소 versionCode 10이 필요합니다. API 제출 수락과 Google 심사 승인·테스터 제공 상태는 구분합니다.
 
-v0.1.6의 기능 소스는 [PR #2](https://github.com/hebi10/GalliPick/pull/2)로 main에 반영했습니다. 소스의 서명 기준은 사용자 제공 JKS이며 새 키의 로컬 APK 검증을 완료했습니다. **Actions 서명 설정 갱신은 GitHub의 추가 본인 확인 대기이며 새 기준의 CI 결과·공개 게시는 대기 중입니다.** 게시 완료 후 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 `GalliPick-v0.1.6-release.apk`와 `SHA256SUMS`를 확인합니다.
+## 서명 APK·AAB
+
+검증된 v0.1.8 설치·업로드 파일은 [배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)의 **Artifacts**에서 내려받습니다. 이후 버전은 해당 [Play testing deployment 실행](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)의 산출물을 사용합니다. APK artifact에는 APK·체크섬, AAB artifact에는 AAB·체크섬·공개 빌드 근거가 포함되며 보관 기간은 14일입니다. 버전 태그 또는 별도 `Public APK release` 실행으로 게시하는 공개 APK는 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 확인합니다.
 
 ## 중복 정리 개선 · v0.1.6
 
@@ -71,9 +73,9 @@ Windows PowerShell에서는 다음을 사용합니다.
 .\gradlew.bat testDebugUnitTest lintDebug lintRelease assembleRelease
 ```
 
-릴리스 APK 경로는 `app/build/outputs/apk/release/app-release.apk`입니다. 패키지 `com.hebi.gallipick`, 앱 이름 `GalliPick`, v0.1.6/versionCode 7을 사용합니다. `.preview` 구분은 없습니다.
+릴리스 APK 경로는 `app/build/outputs/apk/release/app-release.apk`입니다. 패키지 `com.hebi.gallipick`, 앱 이름 `GalliPick`, v0.1.8/versionCode 9를 사용합니다. `.preview` 구분은 없습니다.
 
-이번 공개 릴리스는 사용자 제공 JKS 키로 서명합니다. 기존 개발 키로 설치한 v0.1.5 또는 이전 v0.1.6 시험 APK는 서명이 달라 **새 APK 공개 후 한 번 삭제·재설치해야 합니다.** 로컬 필터·보호·분석 설정은 초기화될 수 있습니다. 이번 전환에 앱 데이터 이전이나 서명 키 회전 증명은 포함하지 않습니다. 이후에는 같은 JKS 키·패키지와 더 높은 versionCode로 업데이트합니다. 별도 preview 앱의 설정도 자동 이전되지 않습니다.
+현재 릴리스는 기존 사용자 제공 JKS 키로 서명합니다. 기존 개발 키로 설치한 v0.1.5 또는 이전 v0.1.6 시험 APK는 서명이 달라 **새 APK 공개 후 한 번 삭제·재설치해야 합니다.** 로컬 필터·보호·분석 설정은 초기화될 수 있습니다. 이번 전환에 앱 데이터 이전이나 서명 키 회전 증명은 포함하지 않습니다. 이후에는 같은 JKS 키·패키지와 더 높은 versionCode로 업데이트합니다. 별도 preview 앱의 설정도 자동 이전되지 않습니다.
 
 일반 CI는 `-PgallipickTestSigning=true`를 명시한 debug 검사를 수행하고 보고서를 보관합니다. [공개 APK 릴리스](docs/release.md)는 같은 커밋의 단위 검사·lint·Android 기기 검사 통과 후 고정 키로 release APK를 서명하고 GitHub Releases에 게시하도록 구성했습니다. 전환 전 기능 검증 기록과 새 JKS 기준의 검증·게시 상태는 [검증 기록](docs/verification.md)에서 구분해 확인합니다.
 
