@@ -115,7 +115,7 @@ internal fun FilesScreenContent(
                                     contentPadding = PaddingValues(bottom = 16.dp),
                                 ) {
                                     items(filtered, key = { it.uri }) { item ->
-                                        MediaTile(item, item.uri in state.selected, { actions.toggleSelection(item.uri) }, { detailUri = item.uri })
+                                        MediaTile(item, item.uri in state.selected, { actions.toggleSelection(item.uri) }, { detailUri = item.uri }, state.filter.sortField)
                                     }
                                 }
                             }
@@ -146,9 +146,11 @@ internal fun FilesScreenContent(
 }
 
 @Composable
-private fun MediaTile(item: MediaItem, selected: Boolean, toggle: () -> Unit, detail: () -> Unit) {
+private fun MediaTile(item: MediaItem, selected: Boolean, toggle: () -> Unit, detail: () -> Unit, sortField: SortField) {
     Column(Modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)).plainClick(action = detail)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp))
+            .border(if (selected) 2.dp else 0.dp, if (selected) Ink else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(12.dp))
+            .plainClick(action = detail)) {
             MediaThumbnail(item, Modifier.fillMaxSize())
             SelectBox(selected, item.canTrash(), if (item.canTrash()) "${item.displayName} 선택" else "${item.displayName} 즐겨찾기 또는 보호 파일", toggle, Modifier.align(Alignment.TopEnd))
             if (item.kind == MediaKind.VIDEO) Text(durationLabel(item.durationMs), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp).background(Ink, RoundedCornerShape(12.dp)).padding(horizontal = 7.dp, vertical = 3.dp))
@@ -157,6 +159,16 @@ private fun MediaTile(item: MediaItem, selected: Boolean, toggle: () -> Unit, de
         Spacer(Modifier.height(6.dp))
         Text(item.displayName, style = MaterialTheme.typography.bodySmall, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.plainClick(action = detail))
         Text(bytesLabel(item.sizeBytes), color = Muted, style = MaterialTheme.typography.labelSmall)
+        val sortDetail = when (sortField) {
+            SortField.CAPTURED -> dateLabel(item.capturedAt).substringBefore(" ")
+            SortField.ADDED -> dateLabel(item.dateAddedMs).substringBefore(" ")
+            SortField.MODIFIED -> dateLabel(item.dateModifiedMs).substringBefore(" ")
+            SortField.DURATION -> if (item.kind == MediaKind.VIDEO) durationLabel(item.durationMs) else null
+            SortField.PIXELS -> "${item.width} × ${item.height}"
+            else -> null
+        }
+        if (sortDetail != null) Text(sortDetail, color = Muted, style = MaterialTheme.typography.labelSmall,
+            maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

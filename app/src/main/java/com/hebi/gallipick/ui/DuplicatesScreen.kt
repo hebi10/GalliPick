@@ -155,7 +155,12 @@ internal fun DuplicatesScreenContent(
                             val roles = rolesByHash.getValue(group.hash)
                             val selectedInGroup = roles.candidates.count { it.uri in state.selected }
                             item("group:${group.hash}", span = { GridItemSpan(maxLineSpan) }) {
-                                FlowRow(Modifier.fillMaxWidth().padding(top = if (shortResults) 0.dp else 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                FlowRow(
+                                    Modifier.fillMaxWidth().padding(top = if (shortResults) 0.dp else 6.dp)
+                                        .background(Panel, RoundedCornerShape(14.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
                                     Column(Modifier.weight(1f).widthIn(min = 140.dp).align(Alignment.CenterVertically)) {
                                         Text("묶음 ${index + 1} · ${if (group.items.all { it.kind == MediaKind.VIDEO }) "영상" else "파일"} ${group.items.size}개", style = MaterialTheme.typography.titleSmall)
                                         Text("남김 ${roles.kept.size}개 · 정리 후보 ${roles.candidates.size}개", style = MaterialTheme.typography.bodySmall, color = Muted)

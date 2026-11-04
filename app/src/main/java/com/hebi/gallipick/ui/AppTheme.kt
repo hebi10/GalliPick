@@ -24,7 +24,7 @@ internal val LightPalette = GalliPalette(
     ink = Color(0xFF25483F), muted = Color(0xFF597267), line = Color(0xFFDCE6DF),
     panel = Color(0xFFEEF4EE), background = Color(0xFFFAF9F5), surface = Color.White,
     mint = Color(0xFFCDE6D8), peach = Color(0xFFF5D6BD),
-    primary = Color(0xFF25483F), onPrimary = Color.White,
+    primary = Color(0xFF236448), onPrimary = Color.White,
 )
 
 internal val DarkPalette = GalliPalette(
@@ -85,7 +85,7 @@ fun GalliPickTheme(themeMode: AppThemeMode = AppThemeMode.SYSTEM, content: @Comp
         errorContainer = Color(0xFFF9E7DC), onErrorContainer = Color(0xFF753B2D),
     )
     val typography = Typography()
-    CompositionLocalProvider(LocalGalliPalette provides palette, LocalRippleConfiguration provides null) {
+    CompositionLocalProvider(LocalGalliPalette provides palette) {
         MaterialTheme(
             colorScheme = colors,
             shapes = Shapes(RoundedCornerShape(10.dp), RoundedCornerShape(14.dp), RoundedCornerShape(18.dp), RoundedCornerShape(24.dp), RoundedCornerShape(28.dp)),

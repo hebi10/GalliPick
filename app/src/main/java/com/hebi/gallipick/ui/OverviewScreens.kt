@@ -39,12 +39,16 @@ internal fun HomeScreen(state: AppUiState, requestAccess: () -> Unit, browse: (M
         val wide = maxWidth >= 700.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(20.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                GalliMascot(Modifier.size(44.dp))
-                Text("사진·동영상을 한곳에서 정리", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("사진·동영상을 한곳에서 정리", style = MaterialTheme.typography.titleMedium)
+                    Text("분석은 기기 안에서만 진행됩니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+                GalliIllustration(GalliScene.ORGANIZE, Modifier.size(88.dp))
             }
             if (state.access == MediaAccess.NONE) {
                 Column(
@@ -53,7 +57,7 @@ internal fun HomeScreen(state: AppUiState, requestAccess: () -> Unit, browse: (M
                 ) {
                     Text("먼저 사진·동영상 접근을 허용해주세요", style = MaterialTheme.typography.titleMedium)
                     Text("기기의 미디어를 읽어 용량과 중복 파일을 보여드립니다. 삭제할 때는 Android 확인창이 열립니다.", style = MaterialTheme.typography.bodyMedium, color = Muted)
-                    Text("원본 사진의 정확한 중복 검사를 위해 사진에 포함된 위치 메타데이터 접근을 요청할 수 있습니다. GPS 위치 추적은 사용하지 않습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("정확한 중복 검사를 위해 사진의 위치 메타데이터 접근 권한을 요청할 수 있습니다. 현재 위치는 추적하지 않습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
                     ActionButton("사진·동영상 선택", requestAccess, Modifier.fillMaxWidth(), filled = true)
                 }
             }
@@ -231,7 +235,7 @@ private fun CleanupEmptyRow(suggestion: CleanupSuggestion, open: () -> Unit) {
         CleanupCategoryIcon(suggestion, Modifier.size(36.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(suggestion.title, style = MaterialTheme.typography.titleMedium)
-            Text("현재 후보 없음", style = MaterialTheme.typography.bodySmall, color = Muted)
+            Text("현재 후보 없음 · 조건 보기", style = MaterialTheme.typography.bodySmall, color = Muted)
         }
         GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(20.dp))
     }
@@ -249,6 +253,7 @@ private fun CleanupCategoryIcon(suggestion: CleanupSuggestion, modifier: Modifie
 internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: () -> Unit, openSettings: () -> Unit, openTrash: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     var confirmClear by remember { mutableStateOf(false) }
+    var showProtectedFolders by remember { mutableStateOf(false) }
     val folders = remember(state.items, state.protectedFolders) {
         val observed = state.items.groupBy { normalizeUiFolder(it.relativePath) }
         (observed.keys + state.protectedFolders).associateWith { observed[it].orEmpty() }.toSortedMap()
@@ -294,7 +299,12 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
             SettingsSection("보호 폴더") {
                 Text("폴더를 보호하면 해당 파일의 정리 선택이 차단됩니다. 즐겨찾기도 기본으로 보호합니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 if (folders.isEmpty()) Text("미디어를 불러오면 폴더가 표시됩니다.", color = Muted)
-                folders.forEach { (path, items) ->
+                else ActionButton(
+                    if (showProtectedFolders) "폴더 목록 접기" else "보호 폴더 관리 · ${folders.size}개",
+                    { showProtectedFolders = !showProtectedFolders },
+                    Modifier.fillMaxWidth(),
+                )
+                if (showProtectedFolders) folders.forEach { (path, items) ->
                     val protected = path in state.protectedFolders
                     val inherited = state.protectedFolders.firstOrNull { it.isNotEmpty() && it != path && path.startsWith(it) }
                     Row(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -171,7 +171,7 @@ private fun NavItem(destination: Destination, selected: Boolean, onClick: () -> 
                 .background(if (selected) Mint else Color.Transparent, RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            GalliIcon(destination.icon, contentDescription = null, tint = if (selected) Ink else Muted, modifier = Modifier.size(if (compact) 22.dp else 27.dp))
+            GalliNavigationIcon(destination.icon, modifier = Modifier.size(if (compact) 22.dp else 29.dp))
         }
         Text(destination.title, color = if (selected) Ink else Muted, style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
@@ -180,7 +180,7 @@ private fun NavItem(destination: Destination, selected: Boolean, onClick: () -> 
 
 @Composable
 internal fun Modifier.plainClick(enabled: Boolean = true, action: () -> Unit): Modifier = clickable(
-    interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = enabled, onClick = action,
+    interactionSource = remember { MutableInteractionSource() }, indication = ripple(), enabled = enabled, onClick = action,
 )
 
 @Composable
@@ -226,7 +226,7 @@ internal fun SectionTitle(title: String, subtitle: String? = null) {
 internal fun EmptyState(title: String, body: String, icon: ImageVector = Icons.Rounded.PhotoLibrary, action: @Composable (() -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
-            GalliMascot(Modifier.size(92.dp))
+            GalliIllustration(GalliScene.EMPTY, Modifier.size(92.dp))
             Box(Modifier.align(Alignment.BottomEnd).size(36.dp).background(Mint, CircleShape).border(2.dp, AppBackground, CircleShape), contentAlignment = Alignment.Center) {
                 GalliIcon(icon, null, Modifier.size(23.dp), tint = Ink)
             }
