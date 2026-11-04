@@ -22,3 +22,7 @@
 ## Verification result
 
 PR #8 merged to main `3299a9a00588c502360abb798fe58c12842f1855`; tested and merged trees match. All 72 release-tool tests, actionlint and shell routing checks pass. Android verification and all 80 device tests pass. Live internal check #3 (run `41790941768`) passed source/WIF/Play preflight and failed the unchanged signing recovery certificate pin. Build and deploy did not run. Original signing recovery, internal draft resolution and a fresh versionCode remain prerequisites for an actual release.
+
+## Original key recovery
+
+The original JKS has now been recovered from a private backup. Its existing certificate pin, private-key access and an actual signature roundtrip all pass. A corrected four-file recovery ZIP passes the existing restore path and an independent review. No new key or upload-key reset is needed. The GitHub Secret is still unchanged because browser access is unavailable; a new CI check and any live build/release remain pending. Private artifacts are not committed to this repository.

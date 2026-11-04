@@ -246,3 +246,11 @@ SHA-256: 2dd0d4a0ef85505a234dc9286e3221ea81e8104487c9cd225d54f87075e2f55b
 - [Android verification](https://github.com/hebi10/GalliPick/actions/runs/41789941988) 성공. [Android 16 기기 검사](https://github.com/hebi10/GalliPick/actions/runs/41789942220) 80개 완료·빌드 성공.
 - 실제 [내부 테스트 check #3](https://github.com/hebi10/GalliPick/actions/runs/41790941768)을 main에서 실행했습니다. `PLAY_TRACK=internal`, 정확한 소스·main 포함 관계 검사, WIF 인증, Play 트랙 조회·임시 edit 정리가 성공했습니다. `signing-check`는 기존 복구 Secret과 고정 인증서 지문 불일치로 실패했습니다. 전체 실행은 실패이며 build·deploy는 생략됐습니다.
 - 배포 전 원본 업로드키에 맞는 서명 복구 Secret 갱신, Console의 기존 내부 초안 처리, 이미 업로드한 code8보다 높은 새 코드가 필요합니다. 대상 초안·사용한 버전의 자동 덮어쓰기나 새 키 생성은 수행하지 않습니다. 이번 변경으로 새 APK·AAB 생성·Play 업로드·테스터 출시는 완료되지 않았습니다.
+
+
+## 2026-11-04 — 원본 서명키 복구
+
+- 보관된 원본 JKS의 공개 인증서가 현재 고정 pin 및 기존 GalliPick AAB와 일치함을 확인했습니다. 과거 사용자가 직접 전달한 설정으로 키스토어와 개인 키를 열고 실제 전자서명·공개키 검증에 성공했습니다.
+- 올바른 4개 구성 파일로 비공개 복구 ZIP을 다시 만들었습니다. 기존 `signing_bundle.py`의 복원·정리 경로를 통과했고, 복원된 키로 실제 서명 검증을 다시 통과했습니다. 등록용 Base64가 ZIP과 정확히 동일하게 디코딩됨을 독립 검토했습니다.
+- 원본 키를 그대로 사용했습니다. 새 키 생성·업로드키 재설정·공개 인증서 pin 변경은 수행하지 않았습니다. 복구 ZIP과 등록용 파일은 비공개로 보관했고 자격 증명은 저장소나 공개 artifact에 넣지 않았습니다.
+- GitHub Secret은 아직 갱신하지 않았습니다. 연결 브라우저는 요청 출처 컨텍스트 문제로 사용할 수 없었고 대체 브라우저도 연결하지 못했습니다. 따라서 새 CI signing-check·APK/AAB 빌드·Play 업로드·테스터 출시는 아직 확인하지 않았습니다. 다음 단계는 검증된 ZIP의 Base64로 기존 Secret을 교체하고 `check/internal`을 실행하는 것입니다.
