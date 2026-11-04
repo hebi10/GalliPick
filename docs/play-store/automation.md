@@ -100,7 +100,9 @@ API 클라이언트는 기존 트랙과 이미 업로드한 APK·AAB 버전을 �
 
 [실제 check #2](https://github.com/hebi10/GalliPick/actions/runs/41787678213)의 `play-preflight`가 성공했습니다. GitHub OIDC → 서비스 계정 토큰 발급 → Play 접근 → 기존 비공개 트랙 조회와 임시 edit 정리까지 확인했습니다. 동일 실행의 `signing-check`는 **기존 서명 복구 Secret과 고정 공개 인증서 지문 불일치**로 중단했습니다. 따라서 전체 실행은 실패 상태이며 APK·AAB 생성이나 Play 제출은 수행하지 않았습니다.
 
-현재 남은 GalliPick 배포 차단 사항은 고정 JKS에 맞는 `GALLIPICK_SIGNING_BUNDLE_BASE64` 갱신, Console의 기존 내부 테스트 초안 처리, 이미 사용한 code 8보다 높은 새 버전 코드 준비입니다. 대상 트랙에 초안이 남아 있으면 새 코드여도 자동화는 제출을 중단하며 초안을 자동으로 덮어쓰지 않습니다. 위 check는 기존 비공개 트랙 접근을 검증한 실행이며, 이번 내부 테스트 기본값 변경에 따른 실제 배포 성공 기록은 아닙니다. 새 인증 연결 자체는 서명키 변경이나 기존 설치본의 서명 변경을 뜻하지 않습니다.
+[내부 테스트 check #3](https://github.com/hebi10/GalliPick/actions/runs/41790941768)을 변경된 main에서 기본 `target=internal`로 실행했습니다. `prepare`와 `play-preflight`가 성공해 내부 테스트 API ID 선택·WIF 인증·해당 트랙 조회·임시 edit 정리를 확인했습니다. `signing-check`는 같은 인증서 불일치로 실패했고 build·deploy는 실행되지 않았습니다. 내부 테스트 기본값과 비공개 테스트 수동 선택은 [PR #8](https://github.com/hebi10/GalliPick/pull/8)로 반영했습니다.
+
+현재 남은 GalliPick 배포 차단 사항은 고정 JKS에 맞는 `GALLIPICK_SIGNING_BUNDLE_BASE64` 갱신, Console의 기존 내부 테스트 초안 처리, 이미 사용한 code 8보다 높은 새 버전 코드 준비입니다. 대상 트랙에 초안이 남아 있으면 새 코드여도 자동화는 제출을 중단하며 초안을 자동으로 덮어쓰지 않습니다. check #2는 기존 비공개 트랙, check #3은 내부 트랙 접근을 검증했습니다. 두 실행 모두 실제 서명 빌드·배포 성공 기록은 아닙니다. 새 인증 연결 자체는 서명키 변경이나 기존 설치본의 서명 변경을 뜻하지 않습니다.
 
 [check #1](https://github.com/hebi10/GalliPick/actions/runs/41784363190)의 Play 인증 미설정 문제는 위 새 계정·WIF 연결로 해결했습니다. 구현·Android 검사 결과는 [검증 기록](../verification.md#2026-11-04--github-actions-비공개-테스트-자동화)에 기록했습니다.
 

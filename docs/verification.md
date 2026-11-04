@@ -237,3 +237,12 @@ SHA-256: 2dd0d4a0ef85505a234dc9286e3221ea81e8104487c9cd225d54f87075e2f55b
 - 실제 [Play check #1](https://github.com/hebi10/GalliPick/actions/runs/41784363190)을 main에서 실행했습니다. 정확한 소스·main 포함 관계 검사 성공. `play-preflight`는 Play 인증 미설정으로, `signing-check`는 복구 자료와 고정 공개 인증서 지문 불일치로 각각 중단했습니다.
 - `PLAY_CLOSED_TRACK=alpha` 설정 완료. Play Console의 현재 비공개 제공 버전은 0.1.6/code7이고 내부 초안에 code8이 이미 업로드되어 있습니다. API 트랙 확인은 배포 계정 연결 후 수행하며 다음 새 업로드 코드는 최소9여야 합니다.
 - 이번 점검에서 APK·AAB 생성이나 Play 제출은 수행되지 않았습니다. 현재 JKS에 맞는 서명 Secret 갱신과 GalliPick에 한정한 배포 계정·GitHub 인증 연결이 남아 있습니다.
+
+
+## 2026-11-04 — 내부 테스트 기본 배포
+
+- [PR #8](https://github.com/hebi10/GalliPick/pull/8)을 main `3299a9a00588c502360abb798fe58c12842f1855`에 통합했습니다. 검증한 소스와 통합 커밋의 tree `726d3a3eed5d0fcad38479dc8bfcd593696141a6`는 동일합니다. 버전 태그는 항상 내부 테스트, 수동 실행은 내부 테스트 기본값과 명시적인 비공개 테스트 선택을 사용합니다. 앱 기능·버전·서명 기준은 변경하지 않았습니다.
+- JDK17 릴리스 도구 테스트 72개 통과·생략 0개. actionlint, 셸 문법·분기 검사와 diff 검사 통과. 독립 검토에서 필수 수정 사항 없음; 기존 내부 초안 처리에 대한 문서 설명을 보완했습니다.
+- [Android verification](https://github.com/hebi10/GalliPick/actions/runs/41789941988) 성공. [Android 16 기기 검사](https://github.com/hebi10/GalliPick/actions/runs/41789942220) 80개 완료·빌드 성공.
+- 실제 [내부 테스트 check #3](https://github.com/hebi10/GalliPick/actions/runs/41790941768)을 main에서 실행했습니다. `PLAY_TRACK=internal`, 정확한 소스·main 포함 관계 검사, WIF 인증, Play 트랙 조회·임시 edit 정리가 성공했습니다. `signing-check`는 기존 복구 Secret과 고정 인증서 지문 불일치로 실패했습니다. 전체 실행은 실패이며 build·deploy는 생략됐습니다.
+- 배포 전 원본 업로드키에 맞는 서명 복구 Secret 갱신, Console의 기존 내부 초안 처리, 이미 업로드한 code8보다 높은 새 코드가 필요합니다. 대상 초안·사용한 버전의 자동 덮어쓰기나 새 키 생성은 수행하지 않습니다. 이번 변경으로 새 APK·AAB 생성·Play 업로드·테스터 출시는 완료되지 않았습니다.
