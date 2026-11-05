@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
@@ -187,7 +188,7 @@ private fun cleanupSuggestions(items: List<MediaItem>): List<CleanupSuggestion> 
 }
 
 @Composable
-internal fun CleanupScreen(state: AppUiState, browse: (MediaFilter) -> Unit) {
+internal fun CleanupScreen(state: AppUiState, onOpenDuplicates: (() -> Unit)? = null, browse: (MediaFilter) -> Unit) {
     val suggestions = remember(state.items) { cleanupSuggestions(state.items) }
     val populated = suggestions.filter { it.items.isNotEmpty() }
     val empty = suggestions.filter { it.items.isEmpty() }
@@ -195,6 +196,27 @@ internal fun CleanupScreen(state: AppUiState, browse: (MediaFilter) -> Unit) {
         val columns = if (maxWidth >= 700.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) 2 else 1
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             SectionTitle("정리 후보", "파일을 확인하고 직접 선택해야 휴지통으로 이동할 수 있습니다.")
+            if (onOpenDuplicates != null) {
+                Row(
+                    Modifier.fillMaxWidth().galliCardSurface(Panel)
+                        .semantics {
+                            contentDescription = "중복 파일 검사 열기"
+                            role = Role.Button
+                        }
+                        .plainClick(action = onOpenDuplicates)
+                        .padding(GalliUiMetrics.cardPadding),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    GalliIcon(Icons.Rounded.CopyAll, null, Modifier.size(28.dp), tint = Primary)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("완전히 같은 파일 찾기", style = MaterialTheme.typography.titleMedium)
+                        Text("같은 내용의 사본을 검사하고 남길 파일을 비교하세요.",
+                            style = MaterialTheme.typography.bodySmall, color = Muted)
+                    }
+                    GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(22.dp))
+                }
+            }
             Text("후보 ${populated.sumOf { it.items.size }}개 · ${bytesLabel(populated.sumOf { group -> group.items.sumOf { it.sizeBytes } })} · 조건 ${suggestions.size}개 중 ${populated.size}개 해당", style = MaterialTheme.typography.bodyMedium, color = Muted)
             if (populated.isEmpty()) EmptyState("현재 정리 후보가 없습니다", "지금 적용된 조건에서 정리할 파일을 찾지 못했습니다. 아래에서 각 조건을 확인할 수 있습니다.", Icons.Rounded.CheckCircle, scene = GalliScene.COMPLETE)
             populated.chunked(columns).forEach { row ->

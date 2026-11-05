@@ -25,6 +25,8 @@ class AdaptiveNavigationTest {
         var opened: Destination? = null
         showRail(height = 280.dp, onNavigate = { opened = it })
 
+        assertEquals(listOf("홈", "파일", "정리", "설정"), Destination.entries.map { it.title })
+        compose.onNode(hasText("중복") and hasClickAction()).assertDoesNotExist()
         val rail = compose.onNodeWithTag("destination-rail").fetchSemanticsNode().boundsInRoot
         Destination.entries.forEach { destination ->
             val tab = tab(destination).assertIsDisplayed().assertHeightIsAtLeast(48.dp).assertWidthIsAtLeast(48.dp)

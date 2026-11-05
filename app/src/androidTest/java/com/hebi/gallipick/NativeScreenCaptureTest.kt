@@ -127,10 +127,12 @@ class NativeScreenCaptureTest {
             navigate("파일")
             compose.onNodeWithContentDescription("파일 조건 선택").assertIsDisplayed()
             saveViewport("02-files")
-            navigate("중복")
+            navigate("정리")
+            compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("정리로 돌아가기").assertIsDisplayed()
             compose.onNodeWithText("중복 정리").assertIsDisplayed()
             saveViewport("03-duplicates-before-scan")
-            navigate("정리")
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             compose.onNodeWithText("정리 후보").assertIsDisplayed()
             saveViewport("04-cleanup")
             navigate("설정")
@@ -160,7 +162,8 @@ class NativeScreenCaptureTest {
             dismissDialogIfPresent("취소")
 
             captureDetail("09-duplicates-scanned") {
-                navigate("중복")
+                navigate("정리")
+                compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
                 compose.onNodeWithText("검사 시작").performScrollTo().performClick()
                 compose.waitUntil(timeoutMillis = 90_000) {
                     compose.onAllNodesWithContentDescription("중복 묶음 1 비교")

@@ -80,12 +80,14 @@ class GalliDesignSystemTest {
         }
     }
 
-    @Test fun darkNavigationRetainsFiveReachableTabSemantics() {
+    @Test fun darkNavigationRetainsFourReferenceTabSemantics() {
         compose.setContent {
             GalliPickTheme(AppThemeMode.DARK) {
                 AppDestinationRail(Destination.FILES, {}, Modifier.requiredSize(100.dp, 280.dp))
             }
         }
+        assertEquals(listOf("홈", "파일", "정리", "설정"), Destination.entries.map { it.title })
+        compose.onNode(hasText("중복") and hasClickAction()).assertDoesNotExist()
         Destination.entries.forEach { destination ->
             compose.onNode(hasText(destination.title) and hasClickAction())
                 .performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp)

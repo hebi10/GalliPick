@@ -38,9 +38,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// The reference design has four top-level destinations. Duplicate analysis
+// remains available as a child of CLEANUP and is never discarded.
 internal enum class Destination(val title: String, val icon: ImageVector) {
     HOME("홈", Icons.Rounded.Home), FILES("파일", Icons.Rounded.GridView),
-    DUPLICATES("중복", Icons.Rounded.CopyAll), CLEANUP("정리", Icons.Rounded.CleaningServices),
+    CLEANUP("정리", Icons.Rounded.CleaningServices),
     SETTINGS("설정", Icons.Rounded.Settings),
 }
 
@@ -58,17 +60,28 @@ fun GalliPickApp(
     val state by vm.ui.collectAsState()
     var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
+    var showDuplicates by rememberSaveable { mutableStateOf(false) }
     fun navigate(destinationValue: Destination) {
-        if (destinationValue == Destination.DUPLICATES) vm.prepareDuplicateReview()
         showTrash = false
+        showDuplicates = false
         destination = destinationValue
     }
-    BackHandler(enabled = showTrash || destination != Destination.HOME) {
-        if (showTrash) showTrash = false else destination = Destination.HOME
+    fun openDuplicates() {
+        vm.prepareDuplicateReview()
+        showTrash = false
+        destination = Destination.CLEANUP
+        showDuplicates = true
+    }
+    BackHandler(enabled = showTrash || showDuplicates || destination != Destination.HOME) {
+        when {
+            showTrash -> showTrash = false
+            showDuplicates -> showDuplicates = false
+            else -> destination = Destination.HOME
+        }
     }
     val navigateFiles: (com.hebi.gallipick.domain.MediaFilter) -> Unit = {
         vm.setFilter(it)
-        destination = Destination.FILES
+        navigate(Destination.FILES)
     }
     Surface(Modifier.fillMaxSize(), color = AppBackground) {
         BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -76,7 +89,7 @@ fun GalliPickApp(
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    resetKey = Triple(destination, showTrash, state.filter),
+                    resetKey = Triple(destination, showTrash to showDuplicates, state.filter),
                     header = {
                         GalliAppHeader(state.loading, vm::refresh)
                     },
@@ -124,13 +137,29 @@ fun GalliPickApp(
                                 AppDestinationRail(destination, ::navigate)
                             }
                             Box(Modifier.weight(1f).fillMaxHeight()) {
-                                if (showTrash) TrashScreen(state.trashed, onRestore, { showTrash = false })
-                                else when (destination) {
-                                    Destination.HOME -> HomeScreen(state, onRequestPermission, navigateFiles, { navigate(Destination.DUPLICATES) }, { navigate(Destination.CLEANUP) })
-                                    Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission)
-                                    Destination.DUPLICATES -> DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission)
-                                    Destination.CLEANUP -> CleanupScreen(state, navigateFiles)
-                                    Destination.SETTINGS -> SettingsScreen(state, vm, onRequestPermission, onOpenSettings, { showTrash = true })
+                                when {
+                                    showTrash -> TrashScreen(state.trashed, onRestore, { showTrash = false })
+                                    showDuplicates -> Column(Modifier.fillMaxSize()) {
+                                        Row(
+                                            Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.touchTarget)
+                                                .padding(horizontal = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            IconAction("정리로 돌아가기", Icons.Rounded.ArrowBack,
+                                                onClick = { showDuplicates = false })
+                                            Text("정리 / 중복 파일", style = MaterialTheme.typography.titleSmall)
+                                        }
+                                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                                            DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission)
+                                        }
+                                    }
+                                    else -> when (destination) {
+                                        Destination.HOME -> HomeScreen(state, onRequestPermission, navigateFiles, ::openDuplicates, { navigate(Destination.CLEANUP) })
+                                        Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission)
+                                        Destination.CLEANUP -> CleanupScreen(state, ::openDuplicates, navigateFiles)
+                                        Destination.SETTINGS -> SettingsScreen(state, vm, onRequestPermission, onOpenSettings, { showTrash = true })
+                                    }
                                 }
                             }
                         }
@@ -210,8 +239,8 @@ internal fun GalliCard(
 internal fun AppDestinationRail(current: Destination, onNavigate: (Destination) -> Unit, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier.width(100.dp).fillMaxHeight()) {
         // Base the rail on its remaining height after app banners/header, including text scaling.
-        // The compact layout fits five 48 dp tabs in 272 dp; scrolling covers smaller windows.
-        val compact = maxHeight < 420.dp * LocalDensity.current.fontScale
+        // Four reference tabs still allow 48 dp targets in short landscape windows.
+        val compact = maxHeight < 360.dp * LocalDensity.current.fontScale
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).selectableGroup()
                 .padding(start = 12.dp, top = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp),
