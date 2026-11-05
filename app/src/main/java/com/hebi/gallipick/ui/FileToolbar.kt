@@ -40,6 +40,8 @@ internal fun FileToolbar(
     advanced: () -> Unit,
     save: () -> Unit,
     deletePreset: (String) -> Unit,
+    gridView: Boolean = true,
+    onGridViewChange: (Boolean) -> Unit = {},
 ) {
     var menu by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
@@ -68,10 +70,6 @@ internal fun FileToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            IconAction("파일 검색", Icons.Rounded.Search) {
-                focus.requestFocus()
-                keyboard?.show()
-            }
             OutlinedTextField(
                 value = filter.query,
                 onValueChange = { change(filter.copy(query = it)) },
@@ -82,6 +80,12 @@ internal fun FileToolbar(
                 singleLine = true,
                 shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
                 textStyle = MaterialTheme.typography.bodyMedium,
+                leadingIcon = {
+                    IconAction("파일 검색", Icons.Rounded.Search) {
+                        focus.requestFocus()
+                        keyboard?.show()
+                    }
+                },
                 trailingIcon = {
                     if (filter.query.isNotEmpty()) {
                         IconAction("검색어 지우기", Icons.Rounded.Close) {
@@ -114,8 +118,13 @@ internal fun FileToolbar(
                     change(MediaFilterActions.kind(filter, kind))
                 }
             }
+        }
+        Row(
+            Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
         Box {
-            ToolbarChoice(if (conditionCount == 0) "필터" else "필터 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { menu = "conditions" }
+            ToolbarChoice(if (conditionCount == 0) "필터" else "필터 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { advanced() }
             DropdownMenu(expanded = menu == "conditions", onDismissRequest = { menu = null }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 420.dp)) {
                 DropdownMenuItem(text = { Text("상세 필터") }, onClick = { menu = null; advanced() }, leadingIcon = { GalliIcon(Icons.Rounded.Tune, null) })
                 if (conditionCount > 0) Text("적용 중: ${filterSummary(filter)}", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -149,6 +158,10 @@ internal fun FileToolbar(
                 }
             }
         }
+        Spacer(Modifier.weight(1f))
+        IconAction(if (gridView) "목록 보기" else "그리드 보기",
+            if (gridView) Icons.Rounded.ViewList else Icons.Rounded.GridView
+        ) { onGridViewChange(!gridView) }
         Box {
             IconAction("파일 추가 작업", Icons.Rounded.MoreVert) { menu = "more" }
             DropdownMenu(expanded = menu == "more", onDismissRequest = { menu = null }) {
@@ -171,14 +184,14 @@ private fun FileKindChip(label: String, isSelected: Boolean, onClick: () -> Unit
                 contentDescription = "파일 유형: $label"
             }
             .clip(shape)
-            .background(if (isSelected) Mint else AppSurface)
+            .background(if (isSelected) Primary else AppSurface)
             .border(1.dp, if (isSelected) Primary else Line, shape)
             .plainClick(action = onClick)
             .padding(horizontal = 13.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            label, color = Ink, style = MaterialTheme.typography.labelLarge,
+            label, color = if (isSelected) OnPrimary else Ink, style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
         )
     }
