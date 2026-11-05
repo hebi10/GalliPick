@@ -1,15 +1,20 @@
 package com.hebi.gallipick.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
@@ -86,6 +91,61 @@ class GalliDesignSystemTest {
             .performScrollTo().assertIsSelected()
         compose.onNode(hasText(Destination.HOME.title) and hasClickAction())
             .performScrollTo().assertIsNotSelected()
+    }
+
+    @Test fun darkNavigationAndUtilityIconsAreActualGlyphsNotFlatBitmaps() {
+        compose.setContent {
+            GalliPickTheme(AppThemeMode.DARK) {
+                Column {
+                    Row {
+                        Destination.entries.forEach { destination ->
+                            GalliNavigationIcon(
+                                destination.icon,
+                                modifier = Modifier.size(36.dp).testTag("dark-nav-${destination.title}"),
+                                selected = destination == Destination.SETTINGS,
+                            )
+                        }
+                    }
+                    GalliIcon(
+                        Icons.Rounded.Shield,
+                        contentDescription = null,
+                        modifier = Modifier.size(36.dp).testTag("dark-utility-shield"),
+                    )
+                }
+            }
+        }
+        val activeGlyph = 0x00E6F2E8
+        val inactiveGlyph = 0x00B6CDB9
+        for (destination in Destination.entries) {
+            val node = compose.onNodeWithTag("dark-nav-${destination.title}").assertIsDisplayed()
+            val bitmap = node.captureToImage().asAndroidBitmap()
+            try {
+                val expected = if (destination == Destination.SETTINGS) activeGlyph else inactiveGlyph
+                val colored = countExactPixels(bitmap, expected)
+                val total = bitmap.width * bitmap.height
+                assertTrue("${destination.title} dark nav glyph is invisible", colored > 12)
+                assertTrue("${destination.title} dark nav glyph became an opaque tile", colored < total * .72)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+        val shield = compose.onNodeWithTag("dark-utility-shield").captureToImage().asAndroidBitmap()
+        try {
+            assertTrue("Dark utility icon is invisible", countExactPixels(shield, activeGlyph) > 12)
+            assertTrue("Dark utility icon became an opaque tile", countExactPixels(shield, activeGlyph) < shield.width * shield.height * .72)
+        } finally {
+            shield.recycle()
+        }
+    }
+
+    private fun countExactPixels(bitmap: android.graphics.Bitmap, colorRgb: Int): Int {
+        var count = 0
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                if ((bitmap.getPixel(x, y) and 0x00FFFFFF) == colorRgb) count++
+            }
+        }
+        return count
     }
 
     private fun contrast(a: Color, b: Color): Float {
