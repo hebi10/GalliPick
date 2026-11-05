@@ -18,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -91,13 +90,15 @@ internal fun GalliIcon(
     tint: Color = Ink,
 ) {
     val drawable = brandDrawable(imageVector)
-    if (drawable != null && tint != OnPrimary) {
+    // Opaque illustrated assets cannot be safely tinted as a single bitmap:
+    // the full image becomes a flat rectangle, hiding its icon details.
+    // Use Material vectors whenever an actual tint is needed.
+    if (drawable != null && !IsGalliDark && tint == Ink) {
         Image(
             painter = painterResource(drawable),
             contentDescription = contentDescription,
             modifier = modifier,
             contentScale = ContentScale.Fit,
-            colorFilter = if (IsGalliDark || tint != Ink) ColorFilter.tint(tint) else null,
         )
     } else {
         NativeIcon(imageVector, contentDescription = contentDescription, modifier = modifier, tint = tint)
