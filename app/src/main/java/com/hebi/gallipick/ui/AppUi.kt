@@ -75,24 +75,14 @@ fun GalliPickApp(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     resetKey = Triple(destination, showTrash, state.filter),
                     header = {
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 16.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            GalliMascot(Modifier.size(32.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("GalliPick", style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.weight(1f))
-                            if (state.loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
-                            IconAction("새로고침", Icons.Rounded.Refresh, onClick = vm::refresh)
-                        }
+                        GalliAppHeader(state.loading, vm::refresh)
                     },
                 ) {
                     Column(Modifier.fillMaxSize()) {
                         if (state.message != null) {
                             Row(
                                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
-                                    .background(AppSurface, RoundedCornerShape(16.dp)).border(1.dp, Line, RoundedCornerShape(16.dp))
-                                    .padding(start = 14.dp),
+                                    .galliCardSurface().padding(start = 14.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(state.message.orEmpty(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
@@ -102,7 +92,7 @@ fun GalliPickApp(
                         if (state.access == MediaAccess.PARTIAL) {
                             Row(
                                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
-                                    .background(Panel, RoundedCornerShape(16.dp)).padding(start = 14.dp, end = 4.dp),
+                                    .galliCardSurface(backgroundColor = Panel).padding(start = 14.dp, end = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("허용된 사진·동영상만 표시 중", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
@@ -128,7 +118,9 @@ fun GalliPickApp(
                 }
                 if (!wide) {
                     Row(
-                        Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                        Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(
+                            topStart = GalliUiMetrics.navigationCorner, topEnd = GalliUiMetrics.navigationCorner,
+                        ))
                             .padding(horizontal = 8.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
@@ -138,6 +130,43 @@ fun GalliPickApp(
             }
         }
     }
+}
+
+@Composable
+internal fun GalliAppHeader(loading: Boolean, onRefresh: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.headerHeight)
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        GalliMascot(Modifier.size(34.dp))
+        Text(
+            "GalliPick", style = MaterialTheme.typography.titleLarge, color = Ink,
+            maxLines = 1, modifier = Modifier.weight(1f),
+        )
+        if (loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
+        IconAction("새로고침", Icons.Rounded.Refresh, onClick = onRefresh)
+    }
+}
+
+@Composable
+internal fun Modifier.galliCardSurface(backgroundColor: Color = AppSurface): Modifier {
+    val shape = RoundedCornerShape(GalliUiMetrics.cardCorner)
+    return clip(shape).background(backgroundColor).border(1.dp, Line, shape)
+}
+
+@Composable
+internal fun GalliCard(
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = AppSurface,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier.galliCardSurface(backgroundColor).padding(GalliUiMetrics.cardPadding),
+        verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing),
+        content = content,
+    )
 }
 
 @Composable
@@ -161,17 +190,21 @@ internal fun AppDestinationRail(current: Destination, onNavigate: (Destination) 
 @Composable
 private fun NavItem(destination: Destination, selected: Boolean, onClick: () -> Unit, modifier: Modifier, compact: Boolean = false) {
     Column(
-        modifier.heightIn(min = 48.dp).semantics { this.selected = selected; role = Role.Tab }.clip(RoundedCornerShape(20.dp))
+        modifier.heightIn(min = GalliUiMetrics.touchTarget)
+            .semantics { this.selected = selected; role = Role.Tab }
+            .clip(RoundedCornerShape(GalliUiMetrics.navigationCorner))
             .plainClick(action = onClick).padding(vertical = if (compact) 2.dp else 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp, Alignment.CenterVertically),
     ) {
         Box(
             Modifier.size(width = 54.dp, height = if (compact) 24.dp else 34.dp)
-                .background(if (selected) Mint else Color.Transparent, RoundedCornerShape(18.dp)),
+                .background(if (selected) Mint else Color.Transparent, RoundedCornerShape(GalliUiMetrics.navigationCorner)),
             contentAlignment = Alignment.Center,
         ) {
-            GalliNavigationIcon(destination.icon, modifier = Modifier.size(if (compact) 22.dp else 29.dp))
+            GalliNavigationIcon(destination.icon, modifier = Modifier.size(
+                if (compact) 22.dp else GalliUiMetrics.navigationIcon,
+            ), selected = selected)
         }
         Text(destination.title, color = if (selected) Ink else Muted, style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
@@ -187,9 +220,9 @@ internal fun Modifier.plainClick(enabled: Boolean = true, action: () -> Unit): M
 internal fun ActionButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, filled: Boolean = false, enabled: Boolean = true, icon: ImageVector? = null) {
     val background = if (filled && enabled) Primary else if (!enabled) Panel else AppSurface
     val foreground = if (filled && enabled) OnPrimary else if (!enabled) Muted else Ink
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(GalliUiMetrics.buttonCorner)
     Row(
-        modifier.heightIn(min = 48.dp).clip(shape).background(background)
+        modifier.heightIn(min = GalliUiMetrics.touchTarget).clip(shape).background(background)
             .border(BorderStroke(1.dp, if (filled && enabled) Primary else Line), shape)
             .semantics { role = Role.Button }.plainClick(enabled, onClick).padding(horizontal = 15.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.Center,
@@ -202,14 +235,17 @@ internal fun ActionButton(label: String, onClick: () -> Unit, modifier: Modifier
 
 @Composable
 internal fun TextAction(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp)).semantics { role = Role.Button }.plainClick(action = onClick).padding(horizontal = 10.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
+    Box(modifier.heightIn(min = GalliUiMetrics.touchTarget)
+        .clip(RoundedCornerShape(GalliUiMetrics.buttonCorner)).semantics { role = Role.Button }
+        .plainClick(action = onClick).padding(horizontal = 10.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
         Text(label, color = Ink, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
     }
 }
 
 @Composable
 internal fun IconAction(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(modifier.size(48.dp).clip(CircleShape).semantics { role = Role.Button }.plainClick(action = onClick), contentAlignment = Alignment.Center) {
+    Box(modifier.size(GalliUiMetrics.touchTarget).clip(CircleShape)
+        .semantics { role = Role.Button }.plainClick(action = onClick), contentAlignment = Alignment.Center) {
         GalliIcon(icon, label, modifier = Modifier.size(23.dp))
     }
 }
@@ -224,7 +260,9 @@ internal fun SectionTitle(title: String, subtitle: String? = null) {
 
 @Composable
 internal fun EmptyState(title: String, body: String, icon: ImageVector = Icons.Rounded.PhotoLibrary, action: @Composable (() -> Unit)? = null, scene: GalliScene = GalliScene.EMPTY) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = GalliUiMetrics.cardPadding, vertical = 30.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing)) {
         Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
             GalliIllustration(scene, Modifier.size(92.dp))
             Box(Modifier.align(Alignment.BottomEnd).size(36.dp).background(Mint, CircleShape).border(2.dp, AppBackground, CircleShape), contentAlignment = Alignment.Center) {
