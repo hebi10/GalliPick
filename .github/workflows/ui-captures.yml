@@ -1,7 +1,7 @@
 name: Adaptive UI verification and native captures
 on:
   push:
-    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*']
+    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*']
   workflow_dispatch:
 permissions:
   contents: read
