@@ -338,13 +338,21 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
             }
         }
     }
-    if (confirmClear) AlertDialog(
-        onDismissRequest = { confirmClear = false }, shape = RoundedCornerShape(20.dp),
+    if (confirmClear) ClearAnalysisCacheDialog(
+        onConfirm = { vm.clearAnalysisCache(); confirmClear = false },
+        onDismiss = { confirmClear = false },
+    )
+}
+
+@Composable
+internal fun ClearAnalysisCacheDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss, shape = RoundedCornerShape(20.dp),
         containerColor = AppSurface, titleContentColor = Ink, textContentColor = Muted,
         title = { Text("분석 캐시를 비울까요?") },
         text = { Text("다음 중복 검사에서 파일을 다시 분석합니다. 원본 파일은 삭제하지 않습니다.") },
-        confirmButton = { ActionButton("비우기", { vm.clearAnalysisCache(); confirmClear = false }, filled = true) },
-        dismissButton = { TextAction("취소", { confirmClear = false }) },
+        confirmButton = { ActionButton("비우기", onConfirm, filled = true) },
+        dismissButton = { TextAction("취소", onDismiss) },
     )
 }
 
