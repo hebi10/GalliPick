@@ -83,10 +83,13 @@ internal fun SelectBox(checked: Boolean, enabled: Boolean = true, description: S
 @Composable
 internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit, onOpen: (MediaItem) -> Unit, onProtect: (Boolean) -> Unit, folderProtected: Boolean = false) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.widthIn(max = 1100.dp).fillMaxWidth(.96f).fillMaxHeight(.94f), shape = RoundedCornerShape(24.dp)) {
+        Surface(Modifier.safeDrawingPadding().widthIn(max = 1100.dp).fillMaxWidth(.96f).fillMaxHeight(.94f), shape = RoundedCornerShape(20.dp)) {
             Column {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("파일 정보", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    Column(Modifier.weight(1f)) {
+                        Text("파일 상세", style = MaterialTheme.typography.titleLarge)
+                        Text(if (item.kind == MediaKind.VIDEO) "동영상 정보" else "사진 정보", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    }
                     IconAction("닫기", Icons.Rounded.Close, onClick = onDismiss)
                 }
                 MediaDetail(item, onOpen, onProtect, Modifier.weight(1f), folderProtected)
@@ -109,6 +112,7 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
         val metadata: @Composable (Modifier) -> Unit = { detailModifier ->
             Column(detailModifier.then(if (beside) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(item.displayName, style = MaterialTheme.typography.titleMedium)
+                Text("${if (item.kind == MediaKind.VIDEO) "동영상" else "사진"} · ${bytesLabel(item.sizeBytes)}", color = Muted, style = MaterialTheme.typography.bodySmall)
                 if (!beside) previewAction(Modifier.fillMaxWidth())
                 ActionButton("파일 열기", { onOpen(item) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.OpenInNew)
                 ActionButton(if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호", { onProtect(!item.isProtected) }, Modifier.fillMaxWidth(), enabled = !folderProtected, icon = Icons.Rounded.Shield)
@@ -128,7 +132,7 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
                 DetailRow("용량", bytesLabel(item.sizeBytes))
                 DetailRow("해상도", "${item.width} × ${item.height} · %.1f MP".format(item.pixels / 1_000_000.0))
                 if (item.kind == MediaKind.VIDEO) DetailRow("재생 시간", durationLabel(item.durationMs))
-                DetailRow("촬영일", dateLabel(item.capturedAt))
+                DetailRow(if (item.dateTakenMs > 0) "촬영일" else "저장일", dateLabel(item.capturedAt))
                 DetailRow("추가일", dateLabel(item.dateAddedMs))
                 DetailRow("수정일", dateLabel(item.dateModifiedMs))
                 DetailRow("파일 형식", item.mimeType.ifEmpty { "정보 없음" })
