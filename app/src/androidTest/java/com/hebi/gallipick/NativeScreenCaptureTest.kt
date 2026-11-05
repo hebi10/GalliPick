@@ -294,7 +294,7 @@ class NativeScreenCaptureTest {
     }
 
     private fun chooseSort(label: String) {
-        compose.onNodeWithContentDescription("정렬 기준 선택").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("정렬 기준 선택").performClick()
         compose.onNodeWithText(label).performScrollTo().performClick()
         compose.waitForIdle()
     }
