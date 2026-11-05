@@ -158,6 +158,7 @@ internal fun FileToolbar(
         }
         }
     }
+}
 
 @Composable
 private fun FileKindChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
