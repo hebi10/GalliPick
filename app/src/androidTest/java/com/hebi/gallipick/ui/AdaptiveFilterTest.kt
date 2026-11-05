@@ -52,7 +52,7 @@ class AdaptiveFilterTest {
         var applied: MediaFilter? = null
         showFilter(width = 320, height = 520, onApply = { applied = it })
 
-        compose.onNodeWithText("시작일").assertDoesNotExist()
+        compose.onNodeWithText("시작일").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("고급 조건 열기").performScrollTo().performClick()
         compose.onNodeWithText("시작일").performScrollTo().performTextReplacement("2026-11-01")
         compose.onNodeWithText("촬영일  ▾").performScrollTo().performClick()
