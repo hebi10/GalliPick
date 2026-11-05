@@ -2,11 +2,11 @@ package com.hebi.gallipick.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CleaningServices
+import androidx.compose.material.icons.outlined.CleaningServices as OutlinedCleaningServices
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Home as OutlinedHome
 import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Settings as OutlinedSettings
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.CopyAll
 import androidx.compose.material.icons.rounded.GridView
@@ -64,11 +64,11 @@ internal fun GalliMascot(modifier: Modifier = Modifier) {
 @Composable
 internal fun GalliNavigationIcon(icon: ImageVector, modifier: Modifier = Modifier, selected: Boolean = false) {
     val referenceIcon = when (icon) {
-        Icons.Rounded.Home -> Icons.Outlined.Home
+        Icons.Rounded.Home -> Icons.Outlined.OutlinedHome
         Icons.Rounded.GridView -> Icons.Outlined.PhotoLibrary
         Icons.Rounded.CopyAll -> Icons.Outlined.ContentCopy
-        Icons.Rounded.CleaningServices -> Icons.Outlined.CleaningServices
-        Icons.Rounded.Settings -> Icons.Outlined.Settings
+        Icons.Rounded.CleaningServices -> Icons.Outlined.OutlinedCleaningServices
+        Icons.Rounded.Settings -> Icons.Outlined.OutlinedSettings
         else -> icon
     }
     NativeIcon(
