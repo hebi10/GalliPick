@@ -1,3 +1,3 @@
-<inset xmlns:android="http://schemas.android.com/apk/res/android" android:inset="15%">
-    <bitmap android:src="@drawable/gp_mascot" android:gravity="fill" android:filter="true" android:antialias="true" />
+<inset xmlns:android="http://schemas.android.com/apk/res/android" android:inset="6%">
+    <bitmap android:src="@drawable/gp_cat_organize" android:gravity="fill" android:filter="true" android:antialias="true" />
 </inset>
