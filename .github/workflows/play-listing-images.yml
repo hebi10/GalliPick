@@ -1,0 +1,94 @@
+name: GalliPick Korean Play listing images
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'assets/play-store/ko-KR/0*.png'
+      - 'assets/play-store/ko-KR/feature-graphic.png'
+      - 'assets/play-store/ko-KR/manifest.json'
+      - 'scripts/release/play_listing_images.py'
+      - '.github/workflows/play-listing-images.yml'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Validate files or upload images to Google Play
+        type: choice
+        required: true
+        default: check
+        options: [check, upload]
+permissions:
+  contents: read
+concurrency:
+  group: gallipick-play-listing
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate only GalliPick Korean screenshot assets
+        run: python3 scripts/release/play_listing_images.py
+  upload:
+    needs: validate
+    if: github.event_name == 'push' || inputs.mode == 'upload'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check configured Play authentication
+        id: config
+        env:
+          PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          PLAY_SERVICE_ACCOUNT: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$PLAY_WORKLOAD_IDENTITY_PROVIDER" ]]; then
+            [[ -n "$PLAY_SERVICE_ACCOUNT" ]] || { echo 'PLAY_SERVICE_ACCOUNT is missing.' >&2; exit 1; }
+            echo 'method=wif' >> "$GITHUB_OUTPUT"
+          elif [[ -n "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]]; then
+            echo 'method=json' >> "$GITHUB_OUTPUT"
+          else
+            echo 'GalliPick Play authentication not configured.' >&2
+            exit 1
+          fi
+      - name: Authenticate with Workload Identity Federation
+        if: steps.config.outputs.method == 'wif'
+        id: wif
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Authenticate with service account JSON
+        if: steps.config.outputs.method == 'json'
+        id: json
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Replace GalliPick ko-KR screenshots and feature graphic only
+        env:
+          PLAY_ACCESS_TOKEN: ${{ steps.wif.outputs.access_token || steps.json.outputs.access_token }}
+        run: python3 scripts/release/play_listing_images.py --apply
+      - name: Record submission status
+        if: success()
+        shell: bash
+        run: |
+          echo 'Google Play accepted the GalliPick ko-KR listing image update.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Review and published visibility must be confirmed in Play Console.' >> "$GITHUB_STEP_SUMMARY"
