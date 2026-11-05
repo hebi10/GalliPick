@@ -20,6 +20,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.contentDescription
@@ -107,7 +108,7 @@ internal fun FileToolbar(
                 })
             }
         }
-        Row(
+        if (LocalConfiguration.current.screenHeightDp >= 480) Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                 .semantics { contentDescription = "파일 도구 모음" },
             verticalAlignment = Alignment.CenterVertically,
