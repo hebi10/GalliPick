@@ -31,6 +31,7 @@ import com.hebi.gallipick.domain.SelectionPolicy
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.TrashIdentity
 import com.hebi.gallipick.domain.TrashOutcome
+import com.hebi.gallipick.ui.CleanupOperationResult
 import com.hebi.gallipick.ui.GalliPickApp
 import com.hebi.gallipick.ui.GalliPickTheme
 import com.hebi.gallipick.ui.TrashReviewDialog
@@ -59,6 +60,7 @@ class MainActivity : ComponentActivity() {
             var pending by remember { mutableStateOf<TrashReview?>(null) }
             var restored by rememberSaveable { mutableStateOf(false) }
             var submitted by rememberSaveable { mutableStateOf("") }
+            var operationResult by remember { mutableStateOf<CleanupOperationResult?>(null) }
             var reviewChecking by remember { mutableStateOf(false) }
             var reviewGeneration by remember { mutableLongStateOf(0L) }
             val catalogReady by vm.repository.catalogReady.collectAsState()
@@ -87,22 +89,40 @@ class MainActivity : ComponentActivity() {
             val trashLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
                 val identities = decodeTrashRequest(submitted)
                 val wasRestore = restored
+                val requestBytes = identities.fold(0L) { total, item ->
+                    val size = item.sizeBytes.coerceAtLeast(0L)
+                    if (size > Long.MAX_VALUE - total) Long.MAX_VALUE else total + size
+                }
                 submitted = ""
                 if (result.resultCode == Activity.RESULT_OK) {
                     vm.clearSelection()
                     reviewChecking = true
+                    operationResult = null
                     vm.showMessage("Android 승인을 받았습니다. 실제 파일 상태를 확인하고 있습니다.")
                     lifecycleScope.launch {
+                        var checked: CleanupOperationResult? = null
                         try {
-                            if (identities.isEmpty()) vm.showMessage("요청이 승인되었습니다. 파일 목록에서 결과를 확인해 주세요.")
-                            else vm.showMessage(trashOutcomeMessage(vm.repository.inspectTrashOutcome(identities, wasRestore), wasRestore))
+                            checked = if (identities.isEmpty()) {
+                                CleanupOperationResult.unknown(wasRestore, 0, requestBytes)
+                            } else {
+                                val outcome = vm.repository.inspectTrashOutcome(identities, wasRestore)
+                                CleanupOperationResult.verified(outcome, wasRestore, identities.size, requestBytes)
+                            }
+                            vm.dismissMessage()
                         } catch (e: CancellationException) { throw e
-                        } catch (_: Exception) { vm.showMessage("요청은 승인되었으나 결과를 확인하지 못했습니다. 파일 목록과 접근 권한을 확인해 주세요.")
-                        } finally { reviewChecking = false; vm.refresh() }
+                        } catch (_: Exception) {
+                            checked = CleanupOperationResult.unknown(wasRestore, identities.size, requestBytes)
+                            vm.showMessage("요청은 승인되었으나 결과를 확인하지 못했습니다. 파일 목록과 접근 권한을 확인해 주세요.")
+                        } finally {
+                            reviewChecking = false
+                            vm.refresh()
+                            operationResult = checked
+                        }
                     }
                 } else {
                     reviewChecking = false
-                    vm.showMessage(if (wasRestore) "복원을 취소했습니다. 파일 상태를 다시 확인합니다." else "휴지통 이동을 취소했습니다. 파일 상태를 다시 확인합니다.")
+                    operationResult = CleanupOperationResult.cancelled(wasRestore, identities.size, requestBytes)
+                    vm.dismissMessage()
                     vm.refresh()
                 }
             }
@@ -117,6 +137,7 @@ class MainActivity : ComponentActivity() {
                     vm.showMessage("한 번에 최대 500개까지 처리할 수 있습니다. 선택 수를 줄여 주세요.")
                     return
                 }
+                operationResult = null
                 val requested = if (restore) items else vm.selectedItemsForReview(items)
                 val safetyGroups = if (restore) emptyList() else vm.selectionSafetyGroups(requested)
                 val generation = reviewGeneration
@@ -166,6 +187,8 @@ class MainActivity : ComponentActivity() {
                     } catch (_: Exception) { vm.showMessage("이 파일을 열 수 있는 앱이 없거나 파일 접근 권한이 없습니다.") }
                 },
                 onRestore = { review(it, true) },
+                result = operationResult,
+                onDismissResult = { operationResult = null },
             )
 
             pending?.let { request ->
@@ -205,6 +228,11 @@ class MainActivity : ComponentActivity() {
                                 } catch (_: Exception) {
                                     submitted = ""
                                     vm.showMessage("Android 휴지통 요청을 시작하지 못했습니다. 파일과 접근 권한을 확인해 주세요.")
+                                    val totalBytes = request.items.fold(0L) { sum, item ->
+                                        val size = item.sizeBytes.coerceAtLeast(0L)
+                                        if (size > Long.MAX_VALUE - sum) Long.MAX_VALUE else sum + size
+                                    }
+                                    operationResult = CleanupOperationResult.failed(request.restore, request.items.size, totalBytes)
                                 } finally { reviewChecking = false }
                             }
                     },
