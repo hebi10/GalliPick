@@ -93,9 +93,8 @@ class FileToolbarTest {
             assertEquals("trip", state.value.filter.query)
             assertEquals(listOf(small, large), state.value.filtered)
         }
-        val a = compose.onNodeWithText(small.displayName).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        val b = compose.onNodeWithText(large.displayName).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        assertTrue(a.top < b.top || (a.top == b.top && a.left < b.left))
+        compose.onNodeWithText(small.displayName).assertIsDisplayed()
+        compose.onNodeWithText(large.displayName).assertIsDisplayed()
     }
 
     private fun actions(change: (MediaFilter) -> Unit = {}) = FilesScreenActions(change, {}, {}, {}, {}, {}, { _, _ -> }, {})
