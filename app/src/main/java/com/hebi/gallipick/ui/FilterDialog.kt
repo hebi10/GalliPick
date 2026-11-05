@@ -110,7 +110,7 @@ fun FilterDialog(
     ) {
         Box(
             Modifier.fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)),
+                .windowInsetsPadding(WindowInsets.safeDrawing),
             contentAlignment = Alignment.Center,
         ) {
             FilterDialogContent(current, items, onApply, onDismiss, Modifier.fillMaxSize())
@@ -349,7 +349,7 @@ internal fun FilterDialogContent(
     }
     BackHandler(enabled = calendarField != null) { calendarField = null }
     Surface(
-        modifier = modifier,
+        modifier = modifier.windowInsetsPadding(WindowInsets.ime),
         shape = RoundedCornerShape(0.dp),
         color = AppBackground,
         border = null,
