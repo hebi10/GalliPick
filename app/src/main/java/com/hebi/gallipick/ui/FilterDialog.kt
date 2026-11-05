@@ -5,6 +5,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DisplayMode
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -54,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
@@ -402,7 +404,11 @@ private fun FilterDateInput(label: String, value: String, onValueChange: (String
     if (openCalendar) {
         val initialDate = runCatching { LocalDate.parse(value) }.getOrNull() ?: LocalDate.now()
         val initialMillis = initialDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-        val picker = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+        val compactHeight = LocalConfiguration.current.screenHeightDp < 500 * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val picker = rememberDatePickerState(
+            initialSelectedDateMillis = initialMillis,
+            initialDisplayMode = if (compactHeight) DisplayMode.Input else DisplayMode.Picker,
+        )
         Dialog(
             onDismissRequest = { openCalendar = false },
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
@@ -421,7 +427,7 @@ private fun FilterDateInput(label: String, value: String, onValueChange: (String
                         Box(Modifier.fillMaxWidth().heightIn(max = scrollHeight).verticalScroll(rememberScrollState())) {
                             DatePicker(
                                 state = picker,
-                                showModeToggle = !compact,
+                                showModeToggle = !compactHeight,
                                 title = {
                                     Text("$label 선택", style = MaterialTheme.typography.titleMedium,
                                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
