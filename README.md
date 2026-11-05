@@ -75,7 +75,7 @@ Windows PowerShell에서는 다음을 사용합니다.
 .\gradlew.bat testDebugUnitTest lintDebug lintRelease assembleRelease
 ```
 
-릴리스 APK 경로는 `app/build/outputs/apk/release/app-release.apk`입니다. 패키지 `com.hebi.gallipick`, 앱 이름 `GalliPick`, v0.1.8/versionCode 9를 사용합니다. `.preview` 구분은 없습니다.
+릴리스 APK 경로는 `app/build/outputs/apk/release/app-release.apk`입니다. 패키지 `com.hebi.gallipick`, 앱 이름 `GalliPick`, v0.1.9/versionCode 10을 사용합니다. `.preview` 구분은 없습니다.
 
 현재 릴리스는 기존 사용자 제공 JKS 키로 서명합니다. 기존 개발 키로 설치한 v0.1.5 또는 이전 v0.1.6 시험 APK는 서명이 달라 **새 APK 공개 후 한 번 삭제·재설치해야 합니다.** 로컬 필터·보호·분석 설정은 초기화될 수 있습니다. 이번 전환에 앱 데이터 이전이나 서명 키 회전 증명은 포함하지 않습니다. 이후에는 같은 JKS 키·패키지와 더 높은 versionCode로 업데이트합니다. 별도 preview 앱의 설정도 자동 이전되지 않습니다.
 
