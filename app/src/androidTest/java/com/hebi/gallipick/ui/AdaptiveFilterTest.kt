@@ -84,6 +84,15 @@ class AdaptiveFilterTest {
         }
     }
 
+    @Test fun datePickerUsesAppDialogAndKeepsTheSelectedLocalDay() {
+        var applied: MediaFilter? = null
+        showFilter(width = 900, height = 620, onApply = { applied = it })
+        compose.onNodeWithContentDescription("시작일 달력에서 선택").performScrollTo().performClick()
+        compose.onNodeWithText("날짜 선택").assertIsDisplayed().performClick()
+        compose.onNodeWithText("필터 적용").performClick()
+        compose.runOnIdle { assertNotNull("Calendar selection must update the filter", applied?.fromDateMs) }
+    }
+
     @Test fun shortNarrowLargeTextKeepsTheFinalDateFieldAndApplyReachable() {
         var applied: MediaFilter? = null
         // The reduced height also covers the body constraints left by an on-screen keyboard.
