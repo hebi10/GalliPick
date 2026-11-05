@@ -39,8 +39,8 @@ class DuplicateClarityTest {
             ))
         } }
         val list = compose.onNodeWithContentDescription("중복 파일 목록")
-        list.performScrollToNode(hasText("남길 파일 3개 · 정리 후보 1개 · 선택 0개"))
-        compose.onNodeWithText("남길 파일 3개 · 정리 후보 1개 · 선택 0개").assertIsDisplayed()
+        list.performScrollToNode(hasText("남김 3 · 후보 1 · 선택 0"))
+        compose.onNodeWithText("남김 3 · 후보 1 · 선택 0").assertIsDisplayed()
         for (kept in listOf(keeper, protected, favorite)) {
             list.performScrollToNode(hasText(kept.displayName))
             compose.onNodeWithContentDescription("${kept.displayName}, ${kept.relativePath} 정리 후보 선택").assertDoesNotExist()
@@ -140,12 +140,14 @@ class DuplicateClarityTest {
             DuplicatesScreenContent(state.value, {}, {}, {},
                 actions().copy(resumeScan = { resumed = true }, startScan = { restarted = true }))
         } }
+        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("일시정지 중입니다. 계속 검사를 눌러 재개할 수 있습니다."))
         compose.onNodeWithText("일시정지 중입니다. 계속 검사를 눌러 재개할 수 있습니다.").assertIsDisplayed()
         compose.onNodeWithText("계속 검사").performClick()
         compose.runOnIdle {
             assertTrue(resumed)
             state.value = state.value.copy(scan = ScanState(ScanPhase.FAILED, 1, 2))
         }
+        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("기존 검사 결과는 확인 후 사용하세요. 다시 검사할 수 있습니다."))
         compose.onNodeWithText("기존 검사 결과는 확인 후 사용하세요. 다시 검사할 수 있습니다.").assertIsDisplayed()
         compose.onNodeWithText("검사 시작").performClick()
         compose.runOnIdle { assertTrue(restarted) }
