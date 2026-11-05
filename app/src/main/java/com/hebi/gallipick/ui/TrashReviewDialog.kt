@@ -1,5 +1,8 @@
 package com.hebi.gallipick.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,7 +24,8 @@ import com.hebi.gallipick.domain.MediaItem
 internal fun TrashReviewDialog(moving: List<MediaItem>, kept: List<MediaItem>, restore: Boolean, excluded: Int, onDismiss: () -> Unit, onProceed: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp), contentAlignment = Alignment.Center) {
-            Surface(Modifier.widthIn(max = 760.dp).fillMaxWidth().heightIn(max = maxHeight)) {
+            Surface(Modifier.widthIn(max = 760.dp).fillMaxWidth().heightIn(max = maxHeight),
+                shape = RoundedCornerShape(20.dp), color = AppSurface, border = BorderStroke(1.dp, Line)) {
                 TrashReviewContent(moving, kept, restore, excluded, onDismiss, onProceed)
             }
         }
@@ -56,10 +60,26 @@ internal fun TrashReviewContent(moving: List<MediaItem>, kept: List<MediaItem>, 
                 }
             }
             items(displayed, key = { it.uri }) { file ->
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(if (showKept && showTabs) "남길 파일" else if (restore) "복원 대상" else "이동 대상으로 선택됨", style = MaterialTheme.typography.labelMedium, color = Muted)
-                    Text(file.displayName, style = MaterialTheme.typography.bodyMedium)
-                    Text(file.relativePath.ifBlank { "기본 폴더" }, color = Muted, style = MaterialTheme.typography.bodySmall)
+                Row(
+                    Modifier.fillMaxWidth().border(1.dp, Line, RoundedCornerShape(14.dp)).padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    MediaThumbnail(file, Modifier.size(64.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            if (showKept && showTabs) "남길 파일 · 유지" else if (restore) "복원 대상" else "휴지통 이동 대상",
+                            style = MaterialTheme.typography.labelMedium, color = Ink,
+                        )
+                        Text(file.displayName, style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            "${if (file.kind == com.hebi.gallipick.domain.MediaKind.VIDEO) "동영상" else "사진"} · ${bytesLabel(file.sizeBytes)}",
+                            style = MaterialTheme.typography.bodySmall, color = Muted,
+                        )
+                        Text(file.relativePath.ifBlank { "기본 폴더" },
+                            style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
