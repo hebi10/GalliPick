@@ -276,7 +276,7 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
         (observed.keys + state.protectedFolders).associateWith { observed[it].orEmpty() }.toSortedMap()
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(Modifier.widthIn(max = 720.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(Modifier.widthIn(max = 600.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             SectionTitle("설정", "화면·권한·정리 안전 설정을 한곳에서 관리합니다.")
             SettingsSection("화면 테마") {
                 Text("현재 설정 · " + when (state.themeMode) {
