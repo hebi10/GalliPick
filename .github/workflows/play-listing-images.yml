@@ -19,7 +19,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: gallipick-play-listing
+  group: gallipick-play-publish
   cancel-in-progress: false
 jobs:
   validate:
