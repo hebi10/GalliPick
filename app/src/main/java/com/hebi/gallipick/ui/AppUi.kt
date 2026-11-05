@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -289,7 +290,7 @@ internal fun IconAction(label: String, icon: ImageVector, modifier: Modifier = M
 @Composable
 internal fun SectionTitle(title: String, subtitle: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineMedium)
+        Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
         if (subtitle != null) Text(subtitle, color = Muted, style = MaterialTheme.typography.bodyMedium)
     }
 }
@@ -305,7 +306,7 @@ internal fun EmptyState(title: String, body: String, icon: ImageVector = Icons.R
                 GalliIcon(icon, null, Modifier.size(23.dp), tint = Ink)
             }
         }
-        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center, modifier = Modifier.semantics { heading() })
         Text(body, style = MaterialTheme.typography.bodyMedium, color = Muted, textAlign = TextAlign.Center)
         action?.invoke()
     }
