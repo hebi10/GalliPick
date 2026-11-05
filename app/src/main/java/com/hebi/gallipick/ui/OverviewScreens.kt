@@ -119,7 +119,7 @@ private fun HomeWelcome(cleanup: () -> Unit) {
             ActionButton(
                 "정리 시작하기",
                 cleanup,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.widthIn(max = 240.dp).fillMaxWidth(),
                 filled = true,
                 icon = Icons.Rounded.ArrowForward,
             )
