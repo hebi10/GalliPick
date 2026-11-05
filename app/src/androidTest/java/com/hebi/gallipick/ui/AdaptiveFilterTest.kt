@@ -65,6 +65,25 @@ class AdaptiveFilterTest {
         }
     }
 
+    @Test fun recentDateShortcutsAndCalendarButtonsStayReachable() {
+        var applied: MediaFilter? = null
+        showFilter(width = 320, height = 520, onApply = { applied = it })
+
+        compose.onNodeWithText("고급 조건 열기").performScrollTo().performClick()
+        compose.onNodeWithText("최근 7일").performScrollTo().performClick()
+        compose.onNodeWithText("시작일").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("시작일 달력에서 선택").assertExists()
+        compose.onNodeWithContentDescription("종료일 달력에서 선택").assertExists()
+        compose.onNodeWithText("필터 적용").performClick()
+
+        compose.runOnIdle {
+            val start = requireNotNull(applied?.fromDateMs)
+            val end = requireNotNull(applied?.toDateMs)
+            val days = (end - start + 1) / 86_400_000
+            assertTrue("Recent 7 days must include the whole final day", days in 7L..8L)
+        }
+    }
+
     @Test fun shortNarrowLargeTextKeepsTheFinalDateFieldAndApplyReachable() {
         var applied: MediaFilter? = null
         // The reduced height also covers the body constraints left by an on-screen keyboard.
