@@ -5,7 +5,6 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -404,19 +403,47 @@ private fun FilterDateInput(label: String, value: String, onValueChange: (String
         val initialDate = runCatching { LocalDate.parse(value) }.getOrNull() ?: LocalDate.now()
         val initialMillis = initialDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
         val picker = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
-        DatePickerDialog(
+        Dialog(
             onDismissRequest = { openCalendar = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    picker.selectedDateMillis?.let { utcMillis ->
-                        onValueChange(Instant.ofEpochMilli(utcMillis).atZone(ZoneOffset.UTC).toLocalDate().toString())
-                    }
-                    openCalendar = false
-                }, enabled = picker.selectedDateMillis != null) { Text("날짜 선택") }
-            },
-            dismissButton = { TextButton(onClick = { openCalendar = false }) { Text("취소") } },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
         ) {
-            DatePicker(state = picker, showModeToggle = true)
+            BoxWithConstraints(
+                Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                val compact = maxHeight < 500.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                val scrollHeight = (maxHeight - 72.dp).coerceAtLeast(100.dp)
+                Surface(
+                    modifier = Modifier.widthIn(max = 440.dp).fillMaxWidth().heightIn(max = maxHeight),
+                    color = AppSurface, shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, Line),
+                ) {
+                    Column(Modifier.fillMaxWidth()) {
+                        Box(Modifier.fillMaxWidth().heightIn(max = scrollHeight).verticalScroll(rememberScrollState())) {
+                            DatePicker(
+                                state = picker,
+                                showModeToggle = !compact,
+                                title = {
+                                    Text("$label 선택", style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                                },
+                            )
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(onClick = { openCalendar = false }) { Text("취소") }
+                            TextButton(onClick = {
+                                picker.selectedDateMillis?.let { utcMillis ->
+                                    onValueChange(Instant.ofEpochMilli(utcMillis).atZone(ZoneOffset.UTC).toLocalDate().toString())
+                                }
+                                openCalendar = false
+                            }, enabled = picker.selectedDateMillis != null) { Text("날짜 선택") }
+                        }
+                    }
+                }
+            }
         }
     }
 }
