@@ -3,6 +3,7 @@ package com.hebi.gallipick.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DatePicker
@@ -112,16 +113,7 @@ fun FilterDialog(
                 .windowInsetsPadding(WindowInsets.safeDrawing.union(WindowInsets.ime)),
             contentAlignment = Alignment.Center,
         ) {
-            val compactChrome = maxHeight < 200.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
-            Box(
-                Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = if (compactChrome) 0.dp else 12.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                FilterDialogContent(
-                    current, items, onApply, onDismiss,
-                    Modifier.widthIn(max = 920.dp).fillMaxWidth().fillMaxHeight(if (compactChrome) 1f else .96f),
-                )
-            }
+            FilterDialogContent(current, items, onApply, onDismiss, Modifier.fillMaxSize())
         }
     }
 }
@@ -163,7 +155,7 @@ internal fun FilterDialogContent(
     var sizeHelpExpanded by remember { mutableStateOf(false) }
     var advancedExpanded by remember(current) {
         mutableStateOf(
-            current.mimeType.isNotBlank() || current.fromDateMs != null || current.toDateMs != null ||
+            current.mimeType.isNotBlank() ||
                 current.dateField != DateField.CAPTURED || current.orientation != null || current.minPixels != null ||
                 current.favoritesOnly || current.protectedOnly || current.sortField != SortField.CAPTURED ||
                 current.sortDirection != SortDirection.DESCENDING,
@@ -187,6 +179,69 @@ internal fun FilterDialogContent(
                 FilterChoice("사진", kind == MediaKind.PHOTO) { kind = MediaKind.PHOTO }
                 FilterChoice("동영상", kind == MediaKind.VIDEO) { kind = MediaKind.VIDEO }
             }
+        }
+        FilterGroup("날짜 범위") {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DateField.entries.forEach { field ->
+                    FilterChoice(dateFieldLabel(field), dateField == field) { dateField = field }
+                }
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChoice("최근 7일", quickDateSelection == "7") {
+                    val end = Calendar.getInstance()
+                    toDate = dateText(end.timeInMillis)
+                    end.add(Calendar.DAY_OF_MONTH, -6)
+                    fromDate = dateText(end.timeInMillis)
+                    quickDateSelection = "7"
+                }
+                FilterChoice("최근 30일", quickDateSelection == "30") {
+                    val end = Calendar.getInstance()
+                    toDate = dateText(end.timeInMillis)
+                    end.add(Calendar.DAY_OF_MONTH, -29)
+                    fromDate = dateText(end.timeInMillis)
+                    quickDateSelection = "30"
+                }
+                FilterChoice("전체 기간", fromDate.isBlank() && toDate.isBlank()) {
+                    fromDate = ""
+                    toDate = ""
+                    quickDateSelection = null
+                }
+                FilterChoice("이번 달", quickDateSelection == "month") {
+                    val today = Calendar.getInstance()
+                    toDate = dateText(today.timeInMillis)
+                    today.set(Calendar.DAY_OF_MONTH, 1)
+                    fromDate = dateText(today.timeInMillis)
+                    quickDateSelection = "month"
+                }
+                FilterChoice("지난 달", quickDateSelection == "previous") {
+                    val previous = Calendar.getInstance().apply {
+                        set(Calendar.DAY_OF_MONTH, 1)
+                        add(Calendar.MONTH, -1)
+                    }
+                    fromDate = dateText(previous.timeInMillis)
+                    previous.set(Calendar.DAY_OF_MONTH, previous.getActualMaximum(Calendar.DAY_OF_MONTH))
+                    toDate = dateText(previous.timeInMillis)
+                    quickDateSelection = "previous"
+                }
+            }
+            FilterFieldPair(
+                first = { fieldModifier ->
+                    FilterDateInput("시작일", fromDate, { fromDate = it; quickDateSelection = null }, fieldModifier) { calendarField = "start" }
+                },
+                second = { fieldModifier ->
+                    FilterDateInput("종료일", toDate, { toDate = it; quickDateSelection = null }, fieldModifier) { calendarField = "end" }
+                },
+            )
+            Text(
+                "달력에서 날짜를 선택하거나 직접 입력하세요. 종료일은 해당 날짜 전체를 포함합니다.",
+                color = Muted, style = MaterialTheme.typography.bodySmall,
+            )
         }
         FilterGroup("검색과 폴더") {
             OutlinedTextField(
@@ -223,52 +278,6 @@ internal fun FilterDialogContent(
         }
     }
     val advancedContent: @Composable ColumnScope.() -> Unit = {
-        FilterGroup("날짜 범위") {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                DateField.entries.forEach { field ->
-                    FilterChoice(dateFieldLabel(field), dateField == field) { dateField = field }
-                }
-            }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChoice("최근 7일", quickDateSelection == "7") {
-                    val end = Calendar.getInstance()
-                    toDate = dateText(end.timeInMillis)
-                    end.add(Calendar.DAY_OF_MONTH, -6)
-                    fromDate = dateText(end.timeInMillis)
-                    quickDateSelection = "7"
-                }
-                FilterChoice("최근 30일", quickDateSelection == "30") {
-                    val end = Calendar.getInstance()
-                    toDate = dateText(end.timeInMillis)
-                    end.add(Calendar.DAY_OF_MONTH, -29)
-                    fromDate = dateText(end.timeInMillis)
-                    quickDateSelection = "30"
-                }
-                FilterChoice("기간 해제", fromDate.isBlank() && toDate.isBlank()) {
-                    fromDate = ""
-                    toDate = ""
-                    quickDateSelection = null
-                }
-            }
-            FilterFieldPair(
-                first = { fieldModifier ->
-                    FilterDateInput("시작일", fromDate, { fromDate = it; quickDateSelection = null }, fieldModifier) { calendarField = "start" }
-                },
-                second = { fieldModifier ->
-                    FilterDateInput("종료일", toDate, { toDate = it; quickDateSelection = null }, fieldModifier) { calendarField = "end" }
-                },
-            )
-            Text(
-                "달력에서 날짜를 선택하거나 직접 입력하세요. 종료일은 해당 날짜 전체를 포함합니다.",
-                color = Muted, style = MaterialTheme.typography.bodySmall,
-            )
-        }
         FilterGroup("파일 형식") {
             FilterDropdown(
                 "파일 형식", mimeType.ifBlank { "모든 형식" },
@@ -341,9 +350,9 @@ internal fun FilterDialogContent(
     BackHandler(enabled = calendarField != null) { calendarField = null }
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(GalliUiMetrics.cardCorner),
+        shape = RoundedCornerShape(0.dp),
         color = AppBackground,
-        border = BorderStroke(1.dp, Line),
+        border = null,
         shadowElevation = 0.dp,
         tonalElevation = 0.dp,
     ) {
@@ -368,14 +377,13 @@ internal fun FilterDialogContent(
             Column(Modifier.fillMaxSize()) {
                 if (!compactChrome) {
                     Row(
-                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = if (compact) 2.dp else 6.dp, bottom = 4.dp),
+                        Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = if (compact) 2.dp else 8.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(
-                            "파일 필터", style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
-                        )
+                        IconAction("필터 닫기", Icons.Rounded.ArrowBack, onClick = onDismiss)
+                        Text("필터", style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         TextAction("기간 선택", onClick = { calendarField = "start" })
                     }
                 }
@@ -554,11 +562,12 @@ private fun FilterCalendarPanel(
 @Composable
 private fun FilterGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        Modifier.fillMaxWidth().galliCardSurface().padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         FilterSection(title)
         content()
+        HorizontalDivider(color = Line)
     }
 }
 
