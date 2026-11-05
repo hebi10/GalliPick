@@ -8,13 +8,15 @@
 
 서명 설정 갱신 후 [내부 테스트 check #3의 두 번째 시도](https://github.com/hebi10/GalliPick/actions/runs/41790941768)가 성공했습니다. [서명 빌드 #4](https://github.com/hebi10/GalliPick/actions/runs/41799541269)에서 APK·AAB 생성과 검증도 통과했습니다. 기존 0.1.7/code 8 초안을 출시 처리한 뒤 새 0.1.8/code 9를 내부 테스트에 배포했습니다.
 
-[내부 테스트 배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)는 같은 소스의 검사·서명 APK/AAB 빌드·새 AAB 업로드·API commit과 재조회를 모두 통과했습니다. Play Console에서도 2026-11-04에 활성·최신 0.1.8/code 9·내부 테스터에게 제공됨을 확인했습니다. 다음 새 업로드는 최소 versionCode 10이 필요합니다. API 제출 수락과 Google 심사 승인·테스터 제공 상태는 구분합니다.
+[내부 테스트 배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)는 같은 소스의 검사·서명 APK/AAB 빌드·새 AAB 업로드·API commit과 재조회를 모두 통과했습니다. Play Console에서도 2026-11-04에 활성·최신 0.1.8/code 9·내부 테스터에게 제공됨을 확인했습니다. 당시 다음 업로드의 최소 versionCode는 10이었습니다. API 제출 수락과 Google 심사 승인·테스터 제공 상태는 구분합니다.
 
 고양이 런처와 Google Play 등록용 아이콘은 [전용 아이콘 생성·업로드 자동화](.github/workflows/play-store-icon.yml)를 통해 일치시킵니다. 버전 증가 커밋에 `[deploy-internal]`이 포함되면 **내부 테스트에만** 자동 배포되며, 비공개 테스트는 수동 선택을 유지합니다.
 
+2026-11-05 [아이콘 업로드](https://github.com/hebi10/GalliPick/actions/runs/41964686350)는 한국어 스토어 아이콘 한 장의 API 수정·별도 조회를 통과했습니다. 이어 [내부 테스트 v0.1.9/code 10 배포](https://github.com/hebi10/GalliPick/actions/runs/41965227662)에서는 기존 서명키 검사·Android 테스트·서명 APK/AAB 검증·Google Play 내부 테스트 제출이 모두 성공했습니다. 배포 보고서 `status=committed`, `api_accepted=true`, `track_verified=true`를 확인했으며, Google 심사 승인·Play Console 게시 상태·테스터 설치 가능 여부는 별도로 확인해야 합니다.
+
 ## 서명 APK·AAB
 
-검증된 v0.1.8 설치·업로드 파일은 [배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)의 **Artifacts**에서 내려받습니다. 이후 버전은 해당 [Play testing deployment 실행](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)의 산출물을 사용합니다. APK artifact에는 APK·체크섬, AAB artifact에는 AAB·체크섬·공개 빌드 근거가 포함되며 보관 기간은 14일입니다. 버전 태그 또는 별도 `Public APK release` 실행으로 게시하는 공개 APK는 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 확인합니다.
+검증된 v0.1.9 설치·업로드 파일은 [배포 실행](https://github.com/hebi10/GalliPick/actions/runs/41965227662)의 **Artifacts**에서 내려받습니다. 이후 버전은 해당 [Play testing deployment 실행](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)의 산출물을 사용합니다. APK artifact에는 APK·체크섬, AAB artifact에는 AAB·체크섬·공개 빌드 근거가 포함되며 보관 기간은 14일입니다. 버전 태그 또는 별도 `Public APK release` 실행으로 게시하는 공개 APK는 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 확인합니다.
 
 ## 중복 정리 개선 · v0.1.6
 
