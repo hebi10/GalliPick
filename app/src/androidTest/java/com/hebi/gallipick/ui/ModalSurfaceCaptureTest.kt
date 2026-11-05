@@ -71,9 +71,10 @@ class ModalSurfaceCaptureTest {
                 }
             }
             screenshot(output, "01-filter")
-            compose.onNodeWithContentDescription("시작일 달력에서 선택").performScrollTo().performClick()
-            screenshot(output, "02-calendar-dark")
+            compose.onNodeWithText("기간 선택").assertIsDisplayed().performClick()
+            compose.onNodeWithText("시작일 선택").assertIsDisplayed()
             compose.onNodeWithText("날짜 선택").assertIsDisplayed()
+            screenshot(output, "02-calendar-dark")
             compose.runOnIdle { dark = false; current = Screen.DETAIL }
             compose.onNodeWithText("정리에서 보호 중").assertIsDisplayed()
             screenshot(output, "03-file-detail")
