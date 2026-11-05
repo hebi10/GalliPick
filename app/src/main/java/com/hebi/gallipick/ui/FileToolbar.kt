@@ -167,6 +167,7 @@ internal fun FileToolbar(
             DropdownMenu(expanded = menu == "more", onDismissRequest = { menu = null }) {
                 DropdownMenuItem(text = { Text("현재 조건 저장") }, onClick = { menu = null; save() })
                 DropdownMenuItem(text = { Text("조건 초기화") }, onClick = { change(MediaFilter()); menu = null })
+                DropdownMenuItem(text = { Text("빠른 조건·저장한 조건") }, onClick = { menu = "conditions" })
             }
         }
         }
