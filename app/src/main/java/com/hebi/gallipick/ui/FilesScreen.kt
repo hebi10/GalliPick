@@ -92,7 +92,7 @@ internal fun FilesScreenContent(
                                 val summary = "${filtered.size}개 · ${bytesLabel(filtered.sumOf { it.sizeBytes })}" +
                                     if (state.filter.query.isNotBlank()) " · 검색: ${state.filter.query}" else ""
                                 Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text("사진·동영상", style = MaterialTheme.typography.titleMedium)
+                                    Text("파일", style = MaterialTheme.typography.titleMedium)
                                     Text(summary, style = MaterialTheme.typography.bodySmall, color = Muted,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.semantics { contentDescription = "파일 목록 요약" })
