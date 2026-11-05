@@ -1,5 +1,6 @@
 package com.hebi.gallipick.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material3.Icon
@@ -337,6 +338,7 @@ internal fun FilterDialogContent(
             }
         }
     }
+    BackHandler(enabled = calendarField != null) { calendarField = null }
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(GalliUiMetrics.cardCorner),
@@ -345,7 +347,20 @@ internal fun FilterDialogContent(
         shadowElevation = 0.dp,
         tonalElevation = 0.dp,
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (calendarField != null) {
+            val field = calendarField!!
+            FilterCalendarPanel(
+                label = if (field == "start") "시작일" else "종료일",
+                value = if (field == "start") fromDate else toDate,
+                onDismiss = { calendarField = null },
+                onSelect = { selected ->
+                    if (field == "start") fromDate = selected else toDate = selected
+                    quickDateSelection = null
+                    calendarField = null
+                },
+            )
+        } else {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 680.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
             val roomyFooter = maxWidth >= 500.dp
             val compact = maxHeight < 360.dp
@@ -451,18 +466,7 @@ internal fun FilterDialogContent(
                 }
             }
         }
-    }
-    calendarField?.let { field ->
-        FilterCalendarDialog(
-            label = if (field == "start") "시작일" else "종료일",
-            value = if (field == "start") fromDate else toDate,
-            onDismiss = { calendarField = null },
-            onSelect = { selected ->
-                if (field == "start") fromDate = selected else toDate = selected
-                quickDateSelection = null
-                calendarField = null
-            },
-        )
+        }
     }
 }
 
@@ -493,63 +497,49 @@ private fun FilterDateInput(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FilterCalendarDialog(
+private fun FilterCalendarPanel(
     label: String,
     value: String,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
 ) {
-    val initialDate = runCatching { LocalDate.parse(value) }.getOrNull() ?: LocalDate.now()
-    val initialMillis = initialDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-    val compactHeight = LocalConfiguration.current.screenHeightDp <
-        500 * LocalDensity.current.fontScale.coerceAtLeast(1f)
-    val picker = rememberDatePickerState(
-        initialSelectedDateMillis = initialMillis,
-        initialDisplayMode = if (compactHeight) DisplayMode.Input else DisplayMode.Picker,
-    )
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        BoxWithConstraints(
-            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(12.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(
-                modifier = Modifier.widthIn(max = 440.dp).fillMaxWidth().heightIn(max = maxHeight),
-                color = AppSurface, shape = RoundedCornerShape(GalliUiMetrics.cardCorner),
-                border = BorderStroke(1.dp, Line),
-            ) {
-                Column(Modifier.fillMaxWidth().heightIn(max = maxHeight)) {
-                    Box(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState())) {
-                        DatePicker(
-                            state = picker,
-                            showModeToggle = !compactHeight,
-                            title = {
-                                Text(
-                                    "$label 선택", style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                                )
-                            },
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compactHeight = maxHeight < 500.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val initialDate = runCatching { LocalDate.parse(value) }.getOrNull() ?: LocalDate.now()
+        val initialMillis = initialDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val picker = rememberDatePickerState(
+            initialSelectedDateMillis = initialMillis,
+            initialDisplayMode = if (compactHeight) DisplayMode.Input else DisplayMode.Picker,
+        )
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                DatePicker(
+                    state = picker,
+                    showModeToggle = !compactHeight,
+                    title = {
+                        Text(
+                            "$label 선택", style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                         )
-                    }
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextButton(onClick = onDismiss) { Text("취소") }
-                        TextButton(
-                            onClick = {
-                                picker.selectedDateMillis?.let { millis ->
-                                    onSelect(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
-                                }
-                            },
-                            enabled = picker.selectedDateMillis != null,
-                        ) {
-                            Text("날짜 선택")
+                    },
+                )
+            }
+            HorizontalDivider(color = Line)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onDismiss) { Text("취소") }
+                TextButton(
+                    onClick = {
+                        picker.selectedDateMillis?.let { millis ->
+                            onSelect(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
                         }
-                    }
+                    },
+                    enabled = picker.selectedDateMillis != null,
+                ) {
+                    Text("날짜 선택")
                 }
             }
         }
