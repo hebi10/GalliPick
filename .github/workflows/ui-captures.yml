@@ -1,7 +1,7 @@
 name: Adaptive UI verification and native captures
 on:
   push:
-    branches: ['codex/ui-captures-*']
+    branches: ['codex/ui-captures-*', 'codex/modal-design-*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -140,6 +140,12 @@ jobs:
             tar -xf adaptive-screenshots.tar -C adaptive-screenshots || true
             python3 -c "import pathlib,re; t=pathlib.Path('adaptive-instrumentation.txt').read_text(); assert not pathlib.Path('adaptive-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Adaptive UI regression tests did not pass'"
             python3 -c "import pathlib,re; t=pathlib.Path('capture-instrumentation.txt').read_text(); assert not pathlib.Path('capture-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Native capture instrumentation did not pass'; assert len(list(pathlib.Path('captures').glob('*.png'))) >= 5, 'Expected native screenshots are missing'"
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.ModalSurfaceCaptureTest com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > modal-instrumentation.txt || echo failed > modal-failed.txt
+            cat modal-instrumentation.txt
+            adb exec-out run-as com.hebi.gallipick tar -C files/modal-screen-captures -cf - . > modal-payload.tar || true
+            mkdir -p modal-captures
+            tar -xf modal-payload.tar -C modal-captures || true
+            python3 -c "import pathlib,re; t=pathlib.Path('modal-instrumentation.txt').read_text(); assert not pathlib.Path('modal-failed.txt').exists() and re.search(r'OK \\(\\d+ tests?\\)',t), 'Modal capture instrumentation did not pass'; assert len(list(pathlib.Path('modal-captures').glob('*.png'))) == 11, 'Expected 11 modal/detail screenshots'"
       - name: Upload fresh native captures and execution record
         if: always()
         uses: actions/upload-artifact@v4
@@ -153,4 +159,7 @@ jobs:
             adaptive-instrumentation.txt
             adaptive-failed.txt
             adaptive-screenshots/
+            modal-captures/
+            modal-instrumentation.txt
+            modal-failed.txt
           retention-days: 14
