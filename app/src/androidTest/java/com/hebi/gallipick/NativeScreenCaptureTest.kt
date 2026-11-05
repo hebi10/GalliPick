@@ -151,7 +151,7 @@ class NativeScreenCaptureTest {
             captureDetail("08-files-filter-dialog") {
                 navigate("파일")
                 compose.onNodeWithContentDescription("파일 조건 선택").performScrollTo().performClick()
-                compose.onNodeWithText("필터").assertIsDisplayed()
+                compose.onNodeWithContentDescription("필터 닫기").assertIsDisplayed()
                 compose.onNodeWithText("날짜 범위").assertIsDisplayed()
             }
             captureDetail("08b-filter-with-keyboard") {
