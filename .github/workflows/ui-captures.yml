@@ -1,7 +1,7 @@
 name: Adaptive UI verification and native captures
 on:
   push:
-    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*', 'design-details-trash-stage4-*', 'design-settings-results-stage5-*', 'design-visual-verification-stage6-*', 'design-reference-system-stage1-*', 'design-reference-navigation-stage2-*', 'design-reference-home-stage3-*']
+    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*', 'design-details-trash-stage4-*', 'design-settings-results-stage5-*', 'design-visual-verification-stage6-*', 'design-reference-system-stage1-*', 'design-reference-navigation-stage2-*', 'design-reference-home-stage3-*', 'design-reference-files-filter-stage4-*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -127,7 +127,7 @@ jobs:
             adb shell am force-stop com.android.launcher3
             adb install -r capture-apks/debug/app-debug.apk
             adb install -r capture-apks/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.GalliDesignSystemTest,com.hebi.gallipick.ui.ShortDuplicateResultsTest,com.hebi.gallipick.ui.AdaptiveNavigationTest,com.hebi.gallipick.ui.AdaptiveFilesTest,com.hebi.gallipick.ui.AdaptiveFilterTest,com.hebi.gallipick.ui.AdaptiveOverviewTest,com.hebi.gallipick.ui.AdaptiveMediaReviewTest,com.hebi.gallipick.ui.DuplicateClarityTest,com.hebi.gallipick.ui.CleanupResultDialogTest,com.hebi.gallipick.ui.Stage6AccessibilityTest,com.hebi.gallipick.ui.ReferenceNavigationFlowTest,com.hebi.gallipick.ui.ReferenceHomeScreenTest com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > adaptive-instrumentation.txt || echo failed > adaptive-failed.txt
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.GalliDesignSystemTest,com.hebi.gallipick.ui.ShortDuplicateResultsTest,com.hebi.gallipick.ui.AdaptiveNavigationTest,com.hebi.gallipick.ui.AdaptiveFilesTest,com.hebi.gallipick.ui.AdaptiveFilterTest,com.hebi.gallipick.ui.AdaptiveOverviewTest,com.hebi.gallipick.ui.AdaptiveMediaReviewTest,com.hebi.gallipick.ui.DuplicateClarityTest,com.hebi.gallipick.ui.CleanupResultDialogTest,com.hebi.gallipick.ui.Stage6AccessibilityTest,com.hebi.gallipick.ui.ReferenceNavigationFlowTest,com.hebi.gallipick.ui.ReferenceHomeScreenTest,com.hebi.gallipick.ui.ReferenceFilesFilterTest com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > adaptive-instrumentation.txt || echo failed > adaptive-failed.txt
             cat adaptive-instrumentation.txt
             adb shell am instrument -w -r -e class com.hebi.gallipick.NativeScreenCaptureTest -e captureProfile ${{ matrix.name }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > capture-instrumentation.txt || echo failed > capture-failed.txt
             cat capture-instrumentation.txt
