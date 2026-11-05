@@ -1,5 +1,11 @@
 package com.hebi.gallipick.ui
 
+import android.app.DatePickerDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -194,23 +201,33 @@ internal fun FilterDialogContent(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             DateField.entries.forEach { field -> FilterChoice(dateFieldLabel(field), dateField == field) { dateField = field } }
         }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChoice("최근 7일", false) {
+                val end = Calendar.getInstance()
+                toDate = dateText(end.timeInMillis)
+                end.add(Calendar.DAY_OF_MONTH, -6)
+                fromDate = dateText(end.timeInMillis)
+            }
+            FilterChoice("최근 30일", false) {
+                val end = Calendar.getInstance()
+                toDate = dateText(end.timeInMillis)
+                end.add(Calendar.DAY_OF_MONTH, -29)
+                fromDate = dateText(end.timeInMillis)
+            }
+            FilterChoice("기간 해제", fromDate.isBlank() && toDate.isBlank()) {
+                fromDate = ""
+                toDate = ""
+            }
+        }
         FilterFieldPair(
             first = { fieldModifier ->
-                OutlinedTextField(
-                    value = fromDate, onValueChange = { fromDate = it }, label = { Text("시작일") },
-                    placeholder = { Text("yyyy-MM-dd") }, singleLine = true, shape = RoundedCornerShape(16.dp),
-                    modifier = fieldModifier, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-                )
+                FilterDateInput("시작일", fromDate, { fromDate = it }, fieldModifier)
             },
             second = { fieldModifier ->
-                OutlinedTextField(
-                    value = toDate, onValueChange = { toDate = it }, label = { Text("종료일") },
-                    placeholder = { Text("yyyy-MM-dd") }, singleLine = true, shape = RoundedCornerShape(16.dp),
-                    modifier = fieldModifier, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-                )
+                FilterDateInput("종료일", toDate, { toDate = it }, fieldModifier)
             },
         )
-        Text("날짜는 yyyy-MM-dd 형식이며, 종료일 전체를 포함합니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        Text("달력에서 날짜를 선택하거나 직접 입력하세요. 종료일은 해당 날짜 전체를 포함합니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
         FilterSection("화면 방향")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChoice("전체", orientation == null) { orientation = null }
@@ -356,6 +373,38 @@ internal fun FilterDialogContent(
             }
         }
     }
+}
+
+@Composable
+private fun FilterDateInput(label: String, value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        placeholder = { Text("yyyy-MM-dd") },
+        singleLine = true,
+        shape = RoundedCornerShape(16.dp),
+        modifier = modifier,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+        trailingIcon = {
+            IconButton(onClick = {
+                val calendar = Calendar.getInstance()
+                runCatching { parseDateBound(value, false) }.getOrNull()?.let { calendar.timeInMillis = it }
+                DatePickerDialog(
+                    context,
+                    { _, year, month, day ->
+                        onValueChange(String.format(Locale.ROOT, "%04d-%02d-%02d", year, month + 1, day))
+                    },
+                    calendar.get(Calendar.YEAR),
+                    calendar.get(Calendar.MONTH),
+                    calendar.get(Calendar.DAY_OF_MONTH),
+                ).show()
+            }) {
+                Icon(Icons.Rounded.CalendarMonth, contentDescription = "$label 달력에서 선택")
+            }
+        },
+    )
 }
 
 @Composable

@@ -1,70 +1,81 @@
 {
   "app": "GalliPick",
   "locale": "ko-KR",
-  "source_commit": "1b06758c895ae30f394d49ea35ada93207246c40",
-  "feature_graphic": {
-    "generator": "built-in image_gen",
-    "reference": "assets/brand/source/gp_mascot.png",
-    "prompt_summary": "Cream, sage-mint, forest-green and apricot Play feature graphic using the established smiling photo-card mascot. Text: GalliPick / 사진과 동영상을 / 쉽게 찾고 안전하게 정리 / 길이·용량 정렬 | 중복 검사. No fake app UI, rankings, badges or prices.",
-    "packaging": "Resized generated artwork to required 1024x500 RGB PNG."
-  },
-  "app_icon": {
-    "source": "assets/brand/source/gp_mascot.png",
-    "packaging": "Existing generated mascot placed on an opaque mint square; 512x512 RGBA (32-bit PNG) with fully opaque alpha; no new illustration."
-  },
-  "screenshots": {
-    "origin": "API 36 native instrumentation captures from CI run 41395177884 on source_commit; not image-generated UI.",
-    "packaging": "Original full UI proportions preserved inside a 1350x2400 opaque canvas; no interface text or values changed.",
-    "data_notice": "04-duplicates uses test fixtures, not a real user library; the test thumbnails are placeholders."
-  },
-  "files": [
+  "source_commit": "aa695aeea24f395b8802cf3202de3916d45fc3f9",
+  "source_run": "41947414464",
+  "created_utc": "2026-11-05T01:25:44.271315+00:00",
+  "provenance": "Genuine Android emulator UI screenshots. Test media, not a user gallery.",
+  "screenshots": [
     {
       "file": "01-home.png",
+      "source": "native-example-media-phone-portrait-1793841860716-01-home.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "2928691779bf7d4f59a4dd0a7284717953c30d23f69b1186c853093b3c4b9cec"
+      "sha256": "032578b46a6424f5725749daf6216abea82a23350134cdf39432ecd17cbbad06"
     },
     {
-      "file": "02-filters.png",
+      "file": "02-files.png",
+      "source": "native-example-media-phone-portrait-1793841860716-02-files.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "579ac94ed28ef64a84f976d8d0c8867324cef83d58d483de55e704c482c4e9c9"
+      "sha256": "45f9bf80349e99f91430e0e4ca95d91dd055fa8c97f19f9bbdc53db130817f2b"
     },
     {
-      "file": "03-dark-mode.png",
+      "file": "03-filters.png",
+      "source": "native-example-media-phone-portrait-1793841860716-08-files-filter-dialog.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "50875e32aa2fbbc7a759e70a7dbd88d791f75318bbc3271eb2085e0d490197f6"
+      "sha256": "536a18182c9b8b8e5dc5040d1db76f31684c2c45ea84f7550016d9dd4c96fb08"
     },
     {
       "file": "04-duplicates.png",
+      "source": "native-example-media-phone-portrait-1793841860716-09-duplicates-scanned.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "e180d8fc564a783c13e76e44d520f1ab154ec5c5ee005784641a0659c7c200fc"
+      "sha256": "2b9f041fea8f1138747caa34974dbbb910888711b93a38fc4b0b0c16d67643ce"
     },
     {
-      "file": "app-icon.png",
+      "file": "05-comparison.png",
+      "source": "native-example-media-phone-portrait-1793841860716-10-duplicate-comparison.png",
       "dimensions": [
-        512,
-        512
+        1350,
+        2400
       ],
-      "sha256": "a81e0fc6b47d24913772643de333da0258cf5a471197c198698e47d42e6d57b9"
+      "sha256": "64c6da4c40f63f5b48a60eeec879513c96f554951a187f5dfca944781229cd0b"
     },
     {
-      "file": "feature-graphic.png",
+      "file": "06-cleanup.png",
+      "source": "native-example-media-phone-portrait-1793841860716-04-cleanup.png",
       "dimensions": [
-        1024,
-        500
+        1350,
+        2400
       ],
-      "sha256": "7c5ebb5895dba00db914b1a7f5f555a8256494f19ac2aba960c68b9fd0bc677b"
+      "sha256": "c4d78b3aabf0ed77557ca71ef514622544e937548ff9fe5e092830a24e774ec0"
+    },
+    {
+      "file": "07-dark-mode.png",
+      "source": "native-example-media-phone-portrait-1793841860716-05-settings-dark.png",
+      "dimensions": [
+        1350,
+        2400
+      ],
+      "sha256": "681c73c10f72f8b7d204295a618907b206e0b77f29c006026bd0ee62b420e4a9"
     }
-  ]
+  ],
+  "feature_graphic": {
+    "file": "feature-graphic.png",
+    "dimensions": [
+      1024,
+      500
+    ],
+    "sha256": "79d6af7bdda2ed92608438aa98ec1977b052530c7fa17360c8407e9de823017b"
+  }
 }
