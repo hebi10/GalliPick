@@ -57,15 +57,22 @@ internal fun GalliNavigationIcon(icon: ImageVector, modifier: Modifier = Modifie
         Icons.Rounded.Settings -> R.drawable.gp_nav_settings
         else -> null
     }
-    if (drawable == null) {
-        NativeIcon(icon, contentDescription = null, modifier = modifier, tint = if (selected) Primary else Muted)
+    // The brand PNGs have opaque backgrounds; tinting the entire bitmap makes each
+    // dark-mode navigation glyph appear as a solid square. Use clear vector glyphs
+    // on dark surfaces and preserve the branded PNG artwork in light mode.
+    if (IsGalliDark || drawable == null) {
+        NativeIcon(
+            icon,
+            contentDescription = null,
+            modifier = modifier,
+            tint = if (selected) Ink else Muted,
+        )
     } else {
         Image(
             painter = painterResource(drawable),
             contentDescription = null,
             modifier = modifier.alpha(if (selected) 1f else .82f),
             contentScale = ContentScale.Fit,
-            colorFilter = if (IsGalliDark) ColorFilter.tint(if (selected) Primary else Muted) else null,
         )
     }
 }
