@@ -22,7 +22,8 @@ class PlayListingImagesTest(unittest.TestCase):
                 feature = {'file': filename, 'sha256': checksum}
             else:
                 screens.append({'file': filename, 'sha256': checksum})
-        (directory / 'manifest.json').write_text(json.dumps({'screenshots': screens, 'feature_graphic': feature}), encoding='utf-8')
+        (directory / 'manifest.json').write_text(json.dumps({'screenshots': screens, 'feature_graphic': feature,
+            'primary_tabs': ['01-home', '02-files', '09-duplicates-scanned', '04-cleanup', '05-settings-dark']}), encoding='utf-8')
         return directory
 
     def test_validates_exact_scoped_assets(self):
@@ -39,6 +40,19 @@ class PlayListingImagesTest(unittest.TestCase):
             directory = self.make_assets(temp)
             (directory / listing.SCREENSHOTS[0]).write_bytes(b'changed')
             with self.assertRaisesRegex(ValueError, 'SHA-256'):
+                listing.validate(directory)
+
+    def test_navigation_tabs_precede_modal_screens(self):
+        self.assertEqual(
+            listing.SCREENSHOTS[:5],
+            ['01-home.png', '02-files.png', '03-duplicates.png', '04-cleanup.png', '05-settings-dark.png'],
+        )
+
+    def test_refuses_old_unlisted_screenshots(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = self.make_assets(temp)
+            (directory / '03-filters.png').write_bytes(b'old image')
+            with self.assertRaisesRegex(ValueError, 'Unlisted legacy'):
                 listing.validate(directory)
 
     def test_does_not_use_unapproved_package_name(self):
