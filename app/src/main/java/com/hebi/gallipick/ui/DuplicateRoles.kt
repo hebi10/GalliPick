@@ -64,7 +64,7 @@ internal fun duplicateRoles(group: DuplicateGroup, preferredUri: String?, protec
 }
 
 internal fun duplicateSelectionLabel(candidateCount: Int): String = if (candidateCount == 0) "전체 후보 없음"
-    else "전체 후보 ${candidateCount.coerceAtMost(SelectionPolicy.MAX_SELECTION_SIZE)}개 선택"
+    else "정리 후보 ${candidateCount.coerceAtMost(SelectionPolicy.MAX_SELECTION_SIZE)}개 선택"
 
 internal fun duplicateGroupSelectionLabel(candidateCount: Int, selectedInGroup: Int, totalSelected: Int): String {
     if (candidateCount == 0) return "정리 가능한 사본 없음"
