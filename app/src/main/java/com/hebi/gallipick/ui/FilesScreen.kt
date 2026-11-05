@@ -89,9 +89,12 @@ internal fun FilesScreenContent(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val summary = "${filtered.size}개 · ${bytesLabel(filtered.sumOf { it.sizeBytes })}" +
                                     if (state.filter.query.isNotBlank()) " · 검색: ${state.filter.query}" else ""
-                                Text(summary, style = MaterialTheme.typography.bodySmall, maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false).semantics { contentDescription = "파일 목록 요약" })
+                                Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text("사진·동영상", style = MaterialTheme.typography.titleMedium)
+                                    Text(summary, style = MaterialTheme.typography.bodySmall, color = Muted,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.semantics { contentDescription = "파일 목록 요약" })
+                                }
                                 if (filtered.any { it.canTrash() }) TextAction("모두 선택", actions.selectAll)
                                 else Spacer(Modifier.height(44.dp))
                             }
@@ -109,9 +112,9 @@ internal fun FilesScreenContent(
                                     EmptyState("조건에 맞는 파일이 없습니다", "접근 범위와 필터 조건을 확인해주세요.", action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) }, scene = GalliScene.SEARCH)
                                 }
                                 else -> LazyVerticalGrid(
-                                    columns = GridCells.Adaptive(if (wide) 156.dp else 132.dp), state = gridState,
+                                    columns = GridCells.Adaptive(if (wide) 148.dp else 128.dp), state = gridState,
                                     modifier = Modifier.weight(1f).semantics { contentDescription = "미디어 파일 목록" },
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                                     contentPadding = PaddingValues(bottom = 16.dp),
                                 ) {
                                     items(filtered, key = { it.uri }) { item ->
@@ -147,7 +150,7 @@ internal fun FilesScreenContent(
 
 @Composable
 private fun MediaTile(item: MediaItem, selected: Boolean, toggle: () -> Unit, detail: () -> Unit, sortField: SortField) {
-    Column(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxWidth().galliCardSurface().padding(7.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp))
             .border(if (selected) 2.dp else 0.dp, if (selected) Ink else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(12.dp))
             .plainClick(action = detail)) {
@@ -176,7 +179,8 @@ private fun MediaTile(item: MediaItem, selected: Boolean, toggle: () -> Unit, de
 @OptIn(ExperimentalLayoutApi::class)
 internal fun SelectionBar(selected: List<MediaItem>, clear: () -> Unit, trash: () -> Unit) {
     if (selected.isEmpty()) return
-    Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(20.dp)).border(1.dp, Line, RoundedCornerShape(20.dp)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().galliCardSurface(backgroundColor = Panel).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FlowRow(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f).widthIn(min = 96.dp).align(Alignment.CenterVertically)) {
                 Text("${selected.size}개 선택", style = MaterialTheme.typography.titleSmall)

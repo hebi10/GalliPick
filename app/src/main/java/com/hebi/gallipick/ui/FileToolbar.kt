@@ -1,10 +1,12 @@
 package com.hebi.gallipick.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -15,16 +17,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.PopupProperties
 import com.hebi.gallipick.domain.*
 import java.util.Calendar
 
@@ -53,53 +57,63 @@ internal fun FileToolbar(
         filter.minDurationMs != null || filter.maxDurationMs != null, filter.fromDateMs != null || filter.toDateMs != null,
         filter.minPixels != null, filter.orientation != null, filter.favoritesOnly, filter.protectedOnly,
     ).count { it }
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).semantics { contentDescription = "파일 도구 모음" },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    var searchFocused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box {
-            Row(
-                Modifier.heightIn(min = 48.dp).background(
-                    if (filter.query.isNotBlank()) Mint else MaterialTheme.colorScheme.surface,
-                    RoundedCornerShape(14.dp),
-                ).semantics {
-                    contentDescription = "파일 검색"
-                    stateDescription = filter.query.ifBlank { "검색어 없음" }
-                    role = Role.Button
-                }.plainClick { menu = "search" }.padding(horizontal = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                GalliIcon(Icons.Rounded.Search, null, Modifier.size(20.dp))
-                Text("검색", style = MaterialTheme.typography.labelLarge, color = Ink)
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            IconAction("파일 검색", Icons.Rounded.Search) {
+                focus.requestFocus()
+                keyboard?.show()
             }
-            DropdownMenu(expanded = menu == "search", onDismissRequest = { menu = null; keyboard?.hide() },
-                modifier = Modifier.widthIn(min = 260.dp, max = 380.dp), properties = PopupProperties(focusable = true)) {
-                OutlinedTextField(
-                    value = filter.query, onValueChange = { change(filter.copy(query = it)) },
-                    label = { Text("파일 이름 또는 폴더 검색") },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).width(280.dp).focusRequester(focus)
-                        .semantics { contentDescription = "파일 이름 또는 폴더 검색" },
-                    singleLine = true,
-                    trailingIcon = { if (filter.query.isNotEmpty()) IconAction("검색어 지우기", Icons.Rounded.Close) { change(filter.copy(query = "")) } },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { menu = null; keyboard?.hide() }),
-                )
-                TextAction("검색 완료", { menu = null; keyboard?.hide() }, Modifier.align(Alignment.End))
-                LaunchedEffect(Unit) { focus.requestFocus() }
+            OutlinedTextField(
+                value = filter.query,
+                onValueChange = { change(filter.copy(query = it)) },
+                modifier = Modifier.weight(1f).focusRequester(focus)
+                    .onFocusChanged { searchFocused = it.isFocused }
+                    .semantics { contentDescription = "파일 이름 또는 폴더 검색" },
+                placeholder = { Text("파일 이름 또는 폴더 검색") },
+                singleLine = true,
+                shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
+                textStyle = MaterialTheme.typography.bodyMedium,
+                trailingIcon = {
+                    if (filter.query.isNotEmpty()) {
+                        IconAction("검색어 지우기", Icons.Rounded.Close) {
+                            change(filter.copy(query = ""))
+                            focus.requestFocus()
+                        }
+                    }
+                },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = {
+                    focusManager.clearFocus()
+                    keyboard?.hide()
+                }),
+            )
+            if (searchFocused || filter.query.isNotBlank()) {
+                TextAction("검색 완료", {
+                    focusManager.clearFocus()
+                    keyboard?.hide()
+                })
             }
         }
-        Box {
-            ToolbarChoice(kindLabel(filter.kind), "파일 유형 선택", kindLabel(filter.kind), filter.kind != null) { menu = "kind" }
-            DropdownMenu(expanded = menu == "kind", onDismissRequest = { menu = null }) {
-                listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
-                    DropdownMenuItem(text = { Text(kindLabel(kind)) }, onClick = {
-                        change(MediaFilterActions.kind(filter, kind)); menu = null
-                    }, trailingIcon = { if (filter.kind == kind) GalliIcon(Icons.Rounded.Check, null) })
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                .semantics { contentDescription = "파일 도구 모음" },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
+                FileKindChip(kindLabel(kind), filter.kind == kind) {
+                    change(MediaFilterActions.kind(filter, kind))
                 }
             }
-        }
         Box {
             ToolbarChoice(if (conditionCount == 0) "필터" else "필터 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { menu = "conditions" }
             DropdownMenu(expanded = menu == "conditions", onDismissRequest = { menu = null }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 420.dp)) {
@@ -142,6 +156,31 @@ internal fun FileToolbar(
                 DropdownMenuItem(text = { Text("조건 초기화") }, onClick = { change(MediaFilter()); menu = null })
             }
         }
+        }
+    }
+}
+
+@Composable
+private fun FileKindChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        Modifier.heightIn(min = GalliUiMetrics.touchTarget)
+            .semantics {
+                selected = isSelected
+                role = Role.RadioButton
+                contentDescription = "파일 유형: $label"
+            }
+            .clip(shape)
+            .background(if (isSelected) Mint else AppSurface)
+            .border(1.dp, if (isSelected) Primary else Line, shape)
+            .plainClick(action = onClick)
+            .padding(horizontal = 13.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label, color = Ink, style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+        )
     }
 }
 

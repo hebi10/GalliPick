@@ -1,5 +1,6 @@
 package com.hebi.gallipick.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material3.Icon
@@ -153,6 +154,8 @@ internal fun FilterDialogContent(
     var sortField by remember(current) { mutableStateOf(current.sortField) }
     var sortDirection by remember(current) { mutableStateOf(current.sortDirection) }
     var error by remember { mutableStateOf<String?>(null) }
+    var quickDateSelection by remember(current) { mutableStateOf<String?>(null) }
+    var calendarField by remember { mutableStateOf<String?>(null) }
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
@@ -175,122 +178,213 @@ internal fun FilterDialogContent(
             .filter { it.isNotBlank() }.distinct().sorted()
     }
     val basicContent: @Composable ColumnScope.() -> Unit = {
-        FilterSection("미디어 유형")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChoice("전체", kind == null) { kind = null }
-            FilterChoice("사진", kind == MediaKind.PHOTO) { kind = MediaKind.PHOTO }
-            FilterChoice("동영상", kind == MediaKind.VIDEO) { kind = MediaKind.VIDEO }
+        FilterGroup("미디어 유형") {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChoice("전체", kind == null) { kind = null }
+                FilterChoice("사진", kind == MediaKind.PHOTO) { kind = MediaKind.PHOTO }
+                FilterChoice("동영상", kind == MediaKind.VIDEO) { kind = MediaKind.VIDEO }
+            }
         }
-        OutlinedTextField(
-            value = query, onValueChange = { query = it }, label = { Text("파일 이름 검색") },
-            singleLine = true, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
-        )
-        FilterDropdown("폴더", folder.ifBlank { "모든 폴더" }, listOf("" to "모든 폴더") + folders.map { it to it }) { folder = it }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            FilterSection("파일 크기 · MB", Modifier.weight(1f))
-            TextAction("용량 단위 안내", onClick = { sizeHelpExpanded = !sizeHelpExpanded },
-                modifier = Modifier.semantics { stateDescription = if (sizeHelpExpanded) "펼쳐짐" else "접힘" })
+        FilterGroup("검색과 폴더") {
+            OutlinedTextField(
+                value = query, onValueChange = { query = it },
+                label = { Text("파일 이름 검색") },
+                singleLine = true, shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            FilterDropdown(
+                "폴더", folder.ifBlank { "모든 폴더" },
+                listOf("" to "모든 폴더") + folders.map { it to it },
+            ) { folder = it }
         }
-        FilterBounds(minSize, { minSize = it }, maxSize, { maxSize = it }, "최소 MB", "최대 MB")
-        if (sizeHelpExpanded) {
-            Text("앱의 용량 표기와 같은 기준입니다. 1 MB = 1,048,576바이트.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        FilterGroup("파일 크기 · MB") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("최소·최대 파일 크기", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.weight(1f))
+                TextAction("용량 단위 안내", onClick = { sizeHelpExpanded = !sizeHelpExpanded },
+                    modifier = Modifier.semantics { stateDescription = if (sizeHelpExpanded) "펼쳐짐" else "접힘" })
+            }
+            FilterBounds(minSize, { minSize = it }, maxSize, { maxSize = it }, "최소 MB", "최대 MB")
+            if (sizeHelpExpanded) {
+                Text(
+                    "앱의 용량 표기와 같은 기준입니다. 1 MB = 1,048,576바이트.",
+                    color = Muted, style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
         if (kind == MediaKind.VIDEO) {
-            FilterSection("동영상 길이 · 분")
-            FilterBounds(minDuration, { minDuration = it }, maxDuration, { maxDuration = it }, "최소 분", "최대 분")
+            FilterGroup("동영상 길이 · 분") {
+                FilterBounds(minDuration, { minDuration = it }, maxDuration, { maxDuration = it }, "최소 분", "최대 분")
+            }
         } else {
             Text("길이 조건은 동영상 유형에서 설정할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
         }
     }
     val advancedContent: @Composable ColumnScope.() -> Unit = {
-        FilterDropdown("파일 형식", mimeType.ifBlank { "모든 형식" }, listOf("" to "모든 형식") + mimeTypes.map { it to it }) { mimeType = it }
-        FilterSection("날짜")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            DateField.entries.forEach { field -> FilterChoice(dateFieldLabel(field), dateField == field) { dateField = field } }
+        FilterGroup("날짜 범위") {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DateField.entries.forEach { field ->
+                    FilterChoice(dateFieldLabel(field), dateField == field) { dateField = field }
+                }
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChoice("최근 7일", quickDateSelection == "7") {
+                    val end = Calendar.getInstance()
+                    toDate = dateText(end.timeInMillis)
+                    end.add(Calendar.DAY_OF_MONTH, -6)
+                    fromDate = dateText(end.timeInMillis)
+                    quickDateSelection = "7"
+                }
+                FilterChoice("최근 30일", quickDateSelection == "30") {
+                    val end = Calendar.getInstance()
+                    toDate = dateText(end.timeInMillis)
+                    end.add(Calendar.DAY_OF_MONTH, -29)
+                    fromDate = dateText(end.timeInMillis)
+                    quickDateSelection = "30"
+                }
+                FilterChoice("기간 해제", fromDate.isBlank() && toDate.isBlank()) {
+                    fromDate = ""
+                    toDate = ""
+                    quickDateSelection = null
+                }
+            }
+            FilterFieldPair(
+                first = { fieldModifier ->
+                    FilterDateInput("시작일", fromDate, { fromDate = it; quickDateSelection = null }, fieldModifier) { calendarField = "start" }
+                },
+                second = { fieldModifier ->
+                    FilterDateInput("종료일", toDate, { toDate = it; quickDateSelection = null }, fieldModifier) { calendarField = "end" }
+                },
+            )
+            Text(
+                "달력에서 날짜를 선택하거나 직접 입력하세요. 종료일은 해당 날짜 전체를 포함합니다.",
+                color = Muted, style = MaterialTheme.typography.bodySmall,
+            )
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChoice("최근 7일", false) {
-                val end = Calendar.getInstance()
-                toDate = dateText(end.timeInMillis)
-                end.add(Calendar.DAY_OF_MONTH, -6)
-                fromDate = dateText(end.timeInMillis)
-            }
-            FilterChoice("최근 30일", false) {
-                val end = Calendar.getInstance()
-                toDate = dateText(end.timeInMillis)
-                end.add(Calendar.DAY_OF_MONTH, -29)
-                fromDate = dateText(end.timeInMillis)
-            }
-            FilterChoice("기간 해제", fromDate.isBlank() && toDate.isBlank()) {
-                fromDate = ""
-                toDate = ""
+        FilterGroup("파일 형식") {
+            FilterDropdown(
+                "파일 형식", mimeType.ifBlank { "모든 형식" },
+                listOf("" to "모든 형식") + mimeTypes.map { it to it },
+            ) { mimeType = it }
+        }
+        FilterGroup("화면 방향") {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChoice("전체", orientation == null) { orientation = null }
+                Orientation.entries.forEach { value ->
+                    FilterChoice(orientationLabel(value), orientation == value) { orientation = value }
+                }
             }
         }
-        FilterFieldPair(
-            first = { fieldModifier ->
-                FilterDateInput("시작일", fromDate, { fromDate = it }, fieldModifier)
-            },
-            second = { fieldModifier ->
-                FilterDateInput("종료일", toDate, { toDate = it }, fieldModifier)
-            },
-        )
-        Text("달력에서 날짜를 선택하거나 직접 입력하세요. 종료일은 해당 날짜 전체를 포함합니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
-        FilterSection("화면 방향")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChoice("전체", orientation == null) { orientation = null }
-            Orientation.entries.forEach { value -> FilterChoice(orientationLabel(value), orientation == value) { orientation = value } }
-        }
-        FilterSection("최소 해상도")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(null to "전체", 921_600L to "HD", 2_073_600L to "FHD", 3_686_400L to "QHD", 8_294_400L to "4K", 33_177_600L to "8K", 1_000_000L to "1 MP", 4_000_000L to "4 MP", 8_000_000L to "8 MP", 12_000_000L to "12 MP").forEach { (pixels, label) ->
-                FilterChoice(label, minPixels == pixels) { minPixels = pixels }
-            }
-            if (minPixels != null && minPixels !in listOf(921_600L, 2_073_600L, 3_686_400L, 8_294_400L, 33_177_600L, 1_000_000L, 4_000_000L, 8_000_000L, 12_000_000L)) {
-                FilterChoice("${numberText(minPixels, 1_000_000.0)} MP", true) { }
+        FilterGroup("최소 해상도") {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(
+                    null to "전체", 921_600L to "HD", 2_073_600L to "FHD", 3_686_400L to "QHD",
+                    8_294_400L to "4K", 33_177_600L to "8K",
+                    1_000_000L to "1 MP", 4_000_000L to "4 MP", 8_000_000L to "8 MP", 12_000_000L to "12 MP",
+                ).forEach { (pixels, label) ->
+                    FilterChoice(label, minPixels == pixels) { minPixels = pixels }
+                }
+                if (minPixels != null && minPixels !in listOf(
+                    921_600L, 2_073_600L, 3_686_400L, 8_294_400L, 33_177_600L,
+                    1_000_000L, 4_000_000L, 8_000_000L, 12_000_000L,
+                )) {
+                    FilterChoice("${numberText(minPixels, 1_000_000.0)} MP", true) {}
+                }
             }
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.plainClick { favoritesOnly = !favoritesOnly }, verticalAlignment = Alignment.CenterVertically) {
-                SelectBox(checked = favoritesOnly, description = "즐겨찾기만", onClick = { favoritesOnly = !favoritesOnly })
-                Text("즐겨찾기만", Modifier.weight(1f, fill = false))
-            }
-            Row(Modifier.plainClick { protectedOnly = !protectedOnly }, verticalAlignment = Alignment.CenterVertically) {
-                SelectBox(checked = protectedOnly, description = "보호된 파일만", onClick = { protectedOnly = !protectedOnly })
-                Text("보호된 파일만", Modifier.weight(1f, fill = false))
+        FilterGroup("추가 조건") {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(Modifier.plainClick { favoritesOnly = !favoritesOnly }, verticalAlignment = Alignment.CenterVertically) {
+                    SelectBox(checked = favoritesOnly, description = "즐겨찾기만", onClick = { favoritesOnly = !favoritesOnly })
+                    Text("즐겨찾기만", Modifier.weight(1f, fill = false))
+                }
+                Row(Modifier.plainClick { protectedOnly = !protectedOnly }, verticalAlignment = Alignment.CenterVertically) {
+                    SelectBox(checked = protectedOnly, description = "보호된 파일만", onClick = { protectedOnly = !protectedOnly })
+                    Text("보호된 파일만", Modifier.weight(1f, fill = false))
+                }
             }
         }
-        FilterSection("정렬")
-        FilterDropdown("정렬 기준", sortFieldLabel(sortField), SortField.entries.map { it to sortFieldLabel(it) }) { sortField = it }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChoice("내림차순", sortDirection == SortDirection.DESCENDING) { sortDirection = SortDirection.DESCENDING }
-            FilterChoice("오름차순", sortDirection == SortDirection.ASCENDING) { sortDirection = SortDirection.ASCENDING }
+        FilterGroup("정렬") {
+            FilterDropdown("정렬 기준", sortFieldLabel(sortField), SortField.entries.map { it to sortFieldLabel(it) }) {
+                sortField = it
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChoice("내림차순", sortDirection == SortDirection.DESCENDING) {
+                    sortDirection = SortDirection.DESCENDING
+                }
+                FilterChoice("오름차순", sortDirection == SortDirection.ASCENDING) {
+                    sortDirection = SortDirection.ASCENDING
+                }
+            }
         }
     }
+    BackHandler(enabled = calendarField != null) { calendarField = null }
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(GalliUiMetrics.cardCorner),
+        color = AppBackground,
         border = BorderStroke(1.dp, Line),
         shadowElevation = 0.dp,
         tonalElevation = 0.dp,
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (calendarField != null) {
+            val field = calendarField!!
+            FilterCalendarPanel(
+                label = if (field == "start") "시작일" else "종료일",
+                value = if (field == "start") fromDate else toDate,
+                onDismiss = { calendarField = null },
+                onSelect = { selected ->
+                    if (field == "start") fromDate = selected else toDate = selected
+                    quickDateSelection = null
+                    calendarField = null
+                },
+            )
+        } else {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 680.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
             val roomyFooter = maxWidth >= 500.dp
             val compact = maxHeight < 360.dp
             val compactChrome = maxHeight < 200.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
             Column(Modifier.fillMaxSize()) {
                 if (!compactChrome) {
-                    Text(
-                        "파일 필터", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = if (compact) 8.dp else 16.dp),
-                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = if (compact) 2.dp else 6.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "파일 필터", style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
+                        )
+                        TextAction("기간 선택", onClick = { calendarField = "start" })
+                    }
                 }
                 // Clip the entire viewport: scrolling and focused fields cannot paint under the footer.
                 Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().semantics { contentDescription = "필터 조건" }) {
                     Column(
                         Modifier.fillMaxSize().verticalScroll(scrollState)
                             .padding(horizontal = 20.dp, vertical = if (compactChrome) 0.dp else 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         // In a keyboard-height window, validation must not consume the field viewport.
                         if (compactChrome) {
@@ -379,78 +473,92 @@ internal fun FilterDialogContent(
                 }
             }
         }
+        }
+    }
+}
+
+@Composable
+private fun FilterDateInput(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    onOpenCalendar: () -> Unit,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            placeholder = { Text("yyyy-MM-dd") },
+            singleLine = true,
+            shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
+            modifier = Modifier.weight(1f),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+        )
+        IconAction("$label 달력에서 선택", Icons.Rounded.CalendarMonth, onClick = onOpenCalendar)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FilterDateInput(label: String, value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier) {
-    var openCalendar by remember { mutableStateOf(false) }
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        placeholder = { Text("yyyy-MM-dd") },
-        singleLine = true,
-        shape = RoundedCornerShape(16.dp),
-        modifier = modifier,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-        trailingIcon = {
-            IconButton(onClick = { openCalendar = true }) {
-                Icon(Icons.Rounded.CalendarMonth, contentDescription = "$label 달력에서 선택")
-            }
-        },
-    )
-    if (openCalendar) {
+private fun FilterCalendarPanel(
+    label: String,
+    value: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compactHeight = maxHeight < 500.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
         val initialDate = runCatching { LocalDate.parse(value) }.getOrNull() ?: LocalDate.now()
         val initialMillis = initialDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-        val compactHeight = LocalConfiguration.current.screenHeightDp < 500 * LocalDensity.current.fontScale.coerceAtLeast(1f)
         val picker = rememberDatePickerState(
             initialSelectedDateMillis = initialMillis,
             initialDisplayMode = if (compactHeight) DisplayMode.Input else DisplayMode.Picker,
         )
-        Dialog(
-            onDismissRequest = { openCalendar = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-        ) {
-            BoxWithConstraints(
-                Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(12.dp),
-                contentAlignment = Alignment.Center,
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                DatePicker(
+                    state = picker,
+                    showModeToggle = !compactHeight,
+                    title = {
+                        Text(
+                            "$label 선택", style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                        )
+                    },
+                )
+            }
+            HorizontalDivider(color = Line)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                val compact = maxHeight < 500.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
-                val scrollHeight = (maxHeight - 72.dp).coerceAtLeast(100.dp)
-                Surface(
-                    modifier = Modifier.widthIn(max = 440.dp).fillMaxWidth().heightIn(max = maxHeight),
-                    color = AppSurface, shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, Line),
+                TextButton(onClick = onDismiss) { Text("취소") }
+                TextButton(
+                    onClick = {
+                        picker.selectedDateMillis?.let { millis ->
+                            onSelect(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString())
+                        }
+                    },
+                    enabled = picker.selectedDateMillis != null,
                 ) {
-                    Column(Modifier.fillMaxWidth()) {
-                        Box(Modifier.fillMaxWidth().heightIn(max = scrollHeight).verticalScroll(rememberScrollState())) {
-                            DatePicker(
-                                state = picker,
-                                showModeToggle = !compactHeight,
-                                title = {
-                                    Text("$label 선택", style = MaterialTheme.typography.titleMedium,
-                                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
-                                },
-                            )
-                        }
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            TextButton(onClick = { openCalendar = false }) { Text("취소") }
-                            TextButton(onClick = {
-                                picker.selectedDateMillis?.let { utcMillis ->
-                                    onValueChange(Instant.ofEpochMilli(utcMillis).atZone(ZoneOffset.UTC).toLocalDate().toString())
-                                }
-                                openCalendar = false
-                            }, enabled = picker.selectedDateMillis != null) { Text("날짜 선택") }
-                        }
-                    }
+                    Text("날짜 선택")
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FilterGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().galliCardSurface().padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        FilterSection(title)
+        content()
     }
 }
 
@@ -462,15 +570,16 @@ private fun FilterSection(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun FilterChoice(label: String, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(GalliUiMetrics.buttonCorner)
     Text(
         text = label,
         color = if (selected) colors.onPrimary else colors.onSurface,
         style = MaterialTheme.typography.labelLarge,
-        modifier = Modifier.sizeIn(minHeight = 44.dp)
+        modifier = Modifier.sizeIn(minHeight = GalliUiMetrics.touchTarget)
             .semantics { this.selected = selected; role = Role.RadioButton }
-            .clip(RoundedCornerShape(24.dp))
+            .clip(shape)
             .background(if (selected) colors.primary else colors.surface)
-            .border(1.dp, if (selected) colors.primary else Line, RoundedCornerShape(24.dp))
+            .border(1.dp, if (selected) colors.primary else Line, shape)
             .plainClick(action = onClick).padding(horizontal = 14.dp, vertical = 13.dp),
     )
 }

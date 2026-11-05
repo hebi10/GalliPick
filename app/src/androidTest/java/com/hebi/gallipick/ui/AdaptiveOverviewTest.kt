@@ -28,7 +28,7 @@ import org.junit.runner.RunWith
 class AdaptiveOverviewTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun shortHomeWindowShowsBothPrimaryActionsBeforeScrolling() {
+    @Test fun shortHomeWindowShowsPrimaryCtaAndKeepsShortcutsReachable() {
         compose.setContent {
             GalliPickTheme {
                 CompositionLocalProvider(LocalDensity provides Density(.6f)) {
@@ -38,8 +38,9 @@ class AdaptiveOverviewTest {
                 }
             }
         }
-        compose.onNodeWithText("완전히 같은 파일 찾기").assertIsDisplayed()
-        compose.onNodeWithText("용량을 줄일 후보 살펴보기").assertIsDisplayed()
+        compose.onNodeWithText("정리 시작하기").assertIsDisplayed()
+        compose.onNodeWithText("완전히 같은 파일 찾기").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("용량을 줄일 후보 살펴보기").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun homeReflowsWithTheWindowRatherThanDeviceConfiguration() {

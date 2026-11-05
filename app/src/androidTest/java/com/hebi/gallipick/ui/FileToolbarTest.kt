@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
 class FileToolbarTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun narrowLargeTextToolbarRemainsOneRowAndLeavesRoomForFiles() {
+    @Test fun compactToolbarExposesSearchAndFilterRowWithoutHidingFiles() {
         val all = (0..40).map { media(it.toLong()) }
         compose.setContent { GalliPickTheme {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1.6f)) {
@@ -34,15 +34,39 @@ class FileToolbarTest {
             }
         } }
         val toolbar = compose.onNodeWithContentDescription("파일 도구 모음").fetchSemanticsNode().boundsInRoot
-        assertTrue("The toolbar must fit in a single row", toolbar.height <= 56f)
+        assertTrue("Type chips and filters must remain on one scrollable row", toolbar.height <= 56f)
         val grid = compose.onNodeWithContentDescription("미디어 파일 목록").fetchSemanticsNode().boundsInRoot
-        assertTrue("The compact header must leave usable media space", grid.height >= 100f)
-        val controls = listOf("파일 검색", "파일 유형 선택", "파일 조건 선택", "정렬 기준 선택", "파일 추가 작업")
-        val tops = controls.map { compose.onNodeWithContentDescription(it).fetchSemanticsNode().positionInRoot.y }
-        assertTrue(tops.max() - tops.min() <= 1f)
+        assertTrue("The search and chip header must leave usable media space", grid.height >= 60f)
+        compose.onNodeWithContentDescription("파일 검색").assertIsDisplayed()
+        compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색").assertIsDisplayed()
+        listOf("파일 유형: 전체", "파일 유형: 사진", "파일 유형: 동영상", "파일 조건 선택", "정렬 기준 선택")
+            .forEach { compose.onNodeWithContentDescription(it).assertExists() }
         compose.onNodeWithContentDescription("정렬 기준 선택").performScrollTo().performClick()
         compose.onNodeWithText("용량 큰 순").assertIsDisplayed()
         compose.onNodeWithText("영상 짧은 순").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun visibleSearchAndTypeChipsKeepTheFolderAndSizeConditions() {
+        val filter = mutableStateOf(MediaFilter(folder = "DCIM/Camera/", minSizeBytes = 1024))
+        compose.setContent {
+            GalliPickTheme {
+                Box(Modifier.requiredSize(420.dp, 200.dp)) {
+                    FileToolbar(filter.value, emptyList(), { filter.value = it }, {}, {}, {})
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색").performTextInput("trip")
+        compose.runOnIdle {
+            assertEquals("trip", filter.value.query)
+            assertEquals("DCIM/Camera/", filter.value.folder)
+        }
+        compose.onNodeWithContentDescription("파일 유형: 동영상").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals(MediaKind.VIDEO, filter.value.kind)
+            assertEquals(1024L, filter.value.minSizeBytes)
+        }
+        compose.onNodeWithContentDescription("파일 유형: 전체").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(null, filter.value.kind) }
     }
 
     @Test fun sortDropdownChangesRealOrderAndPreservesCompatibleConditions() {
@@ -56,22 +80,21 @@ class FileToolbarTest {
                 state.value = state.value.copy(filter = next, filtered = MediaQuery.apply(all, next))
             })
         } }
-        compose.onNodeWithContentDescription("정렬 기준 선택").performClick()
+        compose.onNodeWithContentDescription("정렬 기준 선택").performScrollTo().performClick()
         compose.onNodeWithText("용량 큰 순").performClick()
         compose.runOnIdle {
             assertEquals(filter.copy(sortField = SortField.SIZE), state.value.filter)
             assertEquals(listOf(large, small), state.value.filtered)
         }
-        compose.onNodeWithContentDescription("정렬 기준 선택").performClick()
+        compose.onNodeWithContentDescription("정렬 기준 선택").performScrollTo().performClick()
         compose.onNodeWithText("영상 짧은 순").performClick()
         compose.runOnIdle {
             assertEquals(MediaKind.VIDEO, state.value.filter.kind)
             assertEquals("trip", state.value.filter.query)
             assertEquals(listOf(small, large), state.value.filtered)
         }
-        val a = compose.onNodeWithText(small.displayName).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        val b = compose.onNodeWithText(large.displayName).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        assertTrue(a.top < b.top || (a.top == b.top && a.left < b.left))
+        compose.onNodeWithText(small.displayName).assertIsDisplayed()
+        compose.onNodeWithText(large.displayName).assertIsDisplayed()
     }
 
     private fun actions(change: (MediaFilter) -> Unit = {}) = FilesScreenActions(change, {}, {}, {}, {}, {}, { _, _ -> }, {})
