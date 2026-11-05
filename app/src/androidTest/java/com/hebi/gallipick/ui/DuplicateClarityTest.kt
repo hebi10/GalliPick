@@ -39,8 +39,8 @@ class DuplicateClarityTest {
             ))
         } }
         val list = compose.onNodeWithContentDescription("중복 파일 목록")
-        list.performScrollToNode(hasText("남김 3개 · 정리 후보 1개"))
-        compose.onNodeWithText("남김 3개 · 정리 후보 1개").assertIsDisplayed()
+        list.performScrollToNode(hasText("남길 파일 3개 · 정리 후보 1개 · 선택 0개"))
+        compose.onNodeWithText("남길 파일 3개 · 정리 후보 1개 · 선택 0개").assertIsDisplayed()
         for (kept in listOf(keeper, protected, favorite)) {
             list.performScrollToNode(hasText(kept.displayName))
             compose.onNodeWithContentDescription("${kept.displayName}, ${kept.relativePath} 정리 후보 선택").assertDoesNotExist()
@@ -72,8 +72,8 @@ class DuplicateClarityTest {
             DuplicatesScreenContent(AppUiState(access = MediaAccess.FULL, items = all, duplicates = listOf(group), duplicateKeepers = mapOf(group.hash to all.first().uri)),
                 { moved = true }, {}, {}, actions(recommended = { selected = true }))
         } }
-        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("전체 후보 500개 선택"))
-        compose.onNodeWithText("전체 후보 500개 선택").performClick()
+        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("정리 후보 500개 선택"))
+        compose.onNodeWithText("정리 후보 500개 선택").performClick()
         compose.onNodeWithText("전체 842개 중 한 번에 최대 500개를 선택합니다.").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("추천 선택").assertDoesNotExist()
         compose.runOnIdle { assertTrue(selected); assertFalse(moved) }
@@ -123,8 +123,8 @@ class DuplicateClarityTest {
         assertTrue("Group selection must fit the narrow list", actionBounds.left >= listBounds.left && actionBounds.right <= listBounds.right)
         groupAction.performClick()
         compose.runOnIdle { assertEquals("scope-2", selectedGroup); assertFalse(selectedAll); assertFalse(moved) }
-        list.performScrollToNode(hasText("전체 후보 2개 선택"))
-        compose.onNodeWithText("전체 후보 2개 선택").performClick()
+        list.performScrollToNode(hasText("정리 후보 2개 선택"))
+        compose.onNodeWithText("정리 후보 2개 선택").performClick()
         compose.runOnIdle { assertTrue(selectedAll); assertFalse(moved) }
     }
 
