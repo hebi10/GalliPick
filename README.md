@@ -10,6 +10,8 @@
 
 [내부 테스트 배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)는 같은 소스의 검사·서명 APK/AAB 빌드·새 AAB 업로드·API commit과 재조회를 모두 통과했습니다. Play Console에서도 2026-11-04에 활성·최신 0.1.8/code 9·내부 테스터에게 제공됨을 확인했습니다. 다음 새 업로드는 최소 versionCode 10이 필요합니다. API 제출 수락과 Google 심사 승인·테스터 제공 상태는 구분합니다.
 
+고양이 런처와 Google Play 등록용 아이콘은 [전용 아이콘 생성·업로드 자동화](.github/workflows/play-store-icon.yml)를 통해 일치시킵니다. 버전 증가 커밋에 `[deploy-internal]`이 포함되면 **내부 테스트에만** 자동 배포되며, 비공개 테스트는 수동 선택을 유지합니다.
+
 ## 서명 APK·AAB
 
 검증된 v0.1.8 설치·업로드 파일은 [배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)의 **Artifacts**에서 내려받습니다. 이후 버전은 해당 [Play testing deployment 실행](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)의 산출물을 사용합니다. APK artifact에는 APK·체크섬, AAB artifact에는 AAB·체크섬·공개 빌드 근거가 포함되며 보관 기간은 14일입니다. 버전 태그 또는 별도 `Public APK release` 실행으로 게시하는 공개 APK는 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 확인합니다.
@@ -43,7 +45,7 @@
 
 ## 디자인 · 픽이
 
-사진 카드 캐릭터 **픽이**와 크림·민트·복숭아색을 사용합니다. 앱 아이콘과 주요 탐색·미디어 아이콘은 이미지 생성으로 제작했으며, 작은 조작 기호는 Material Rounded 아이콘으로 구성합니다. 다크 모드에서는 같은 브랜드 계열의 어두운 표면과 밝은 본문을 사용합니다. 안내 문구는 파일 상태와 작업 결과를 직접 설명합니다.
+초록 모자를 쓴 고양이 캐릭터와 크림·민트·복숭아색을 사용합니다. 런처 아이콘·테마 아이콘·홈 일러스트는 동일한 고양이 에셋을 기준으로 구성하고, 주요 탐색·미디어 아이콘은 생성된 이미지와 Material Rounded 아이콘을 혼합합니다. 다크 모드에서는 같은 브랜드 계열의 어두운 표면과 밝은 본문을 사용합니다. 안내 문구는 파일 상태와 작업 결과를 직접 설명합니다.
 
 생성 원본과 프롬프트 기록은 `assets/brand/`, 최적화된 Android 비트맵은 `app/src/main/res/drawable-nodpi/`에 있습니다. Android 13 이상의 테마 앱 아이콘용 단색 이미지도 제공합니다.
 
