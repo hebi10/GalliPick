@@ -1,73 +1,73 @@
 {
   "app": "GalliPick",
   "locale": "ko-KR",
-  "source_commit": "aa695aeea24f395b8802cf3202de3916d45fc3f9",
-  "source_run": "41947414464",
-  "created_utc": "2026-11-05T01:25:44.271315+00:00",
+  "source_commit": "1a5f61b7b0e6d2f217f793ac31a60654180b24f4",
+  "source_run": "42009167309",
+  "created_utc": "2026-11-05T10:36:40.931048+00:00",
   "provenance": "Genuine Android emulator UI screenshots. Test media, not a user gallery.",
   "screenshots": [
     {
       "file": "01-home.png",
-      "source": "native-example-media-phone-portrait-1793841860716-01-home.png",
+      "source": "native-example-media-phone-portrait-1793874140109-01-home.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "032578b46a6424f5725749daf6216abea82a23350134cdf39432ecd17cbbad06"
+      "sha256": "5d4c1b81f3330b5536ef861ed077f249f8b1623038393072e78bcb3abe991c86"
     },
     {
       "file": "02-files.png",
-      "source": "native-example-media-phone-portrait-1793841860716-02-files.png",
+      "source": "native-example-media-phone-portrait-1793874140109-02-files.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "45f9bf80349e99f91430e0e4ca95d91dd055fa8c97f19f9bbdc53db130817f2b"
+      "sha256": "49bbe6e0571b60a698b910d97cb4623b5c835f6538bfb3c8b04590cc43fd5e88"
     },
     {
       "file": "03-filters.png",
-      "source": "native-example-media-phone-portrait-1793841860716-08-files-filter-dialog.png",
+      "source": "native-example-media-phone-portrait-1793874140109-08-files-filter-dialog.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "536a18182c9b8b8e5dc5040d1db76f31684c2c45ea84f7550016d9dd4c96fb08"
+      "sha256": "bc9f6276c02bd2edd26641d101004f6947d45a160698cc7603c0b5ff5e17f722"
     },
     {
       "file": "04-duplicates.png",
-      "source": "native-example-media-phone-portrait-1793841860716-09-duplicates-scanned.png",
+      "source": "native-example-media-phone-portrait-1793874140109-09-duplicates-scanned.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "2b9f041fea8f1138747caa34974dbbb910888711b93a38fc4b0b0c16d67643ce"
+      "sha256": "2dae8ca15b18381af1e7922a944d8906475f2e800f71e1301434cfeda42a4072"
     },
     {
       "file": "05-comparison.png",
-      "source": "native-example-media-phone-portrait-1793841860716-10-duplicate-comparison.png",
+      "source": "native-example-media-phone-portrait-1793874140109-10-duplicate-comparison.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "64c6da4c40f63f5b48a60eeec879513c96f554951a187f5dfca944781229cd0b"
+      "sha256": "03cc3bce19dfb99ebe3898989659cd2fe7dabe7adb2112d748dd7c921c5b4bd4"
     },
     {
       "file": "06-cleanup.png",
-      "source": "native-example-media-phone-portrait-1793841860716-04-cleanup.png",
+      "source": "native-example-media-phone-portrait-1793874140109-04-cleanup.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "c4d78b3aabf0ed77557ca71ef514622544e937548ff9fe5e092830a24e774ec0"
+      "sha256": "2f7612c86cd94b13e8d455108b314d4b09182fd2b2450ee09b4f93e8d6fccfd5"
     },
     {
       "file": "07-dark-mode.png",
-      "source": "native-example-media-phone-portrait-1793841860716-05-settings-dark.png",
+      "source": "native-example-media-phone-portrait-1793874140109-05-settings-dark.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "681c73c10f72f8b7d204295a618907b206e0b77f29c006026bd0ee62b420e4a9"
+      "sha256": "0a9d34988c59e04cf3208208d3b0a16dfbb4a91f0ac8a7faec33ffa575cee35b"
     }
   ],
   "feature_graphic": {
