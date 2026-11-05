@@ -104,14 +104,17 @@ internal fun MediaPreviewDialog(item: MediaItem, onDismiss: () -> Unit, onOpen: 
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(item.displayName, Modifier.weight(1f), maxLines = 2, style = MaterialTheme.typography.titleMedium)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(item.displayName, maxLines = 1, style = MaterialTheme.typography.titleMedium)
+                        Text("${if (item.kind == MediaKind.VIDEO) "동영상" else "사진"} · ${bytesLabel(item.sizeBytes)}", maxLines = 1, style = MaterialTheme.typography.bodySmall, color = Muted)
+                    }
                     IconAction("미리보기 닫기", Icons.Rounded.Close, onClick = onDismiss)
                 }
                 key(item.uri, item.fingerprint, item.volumeVersion) {
                     if (item.kind == MediaKind.PHOTO) PhotoPreview(item, Modifier.weight(1f))
                     else VideoPreview(item, Modifier.weight(1f))
                 }
-                TextButton(onClick = { onDismiss(); onOpen(item) }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                TextButton(onClick = { onDismiss(); onOpen(item) }, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
                     GalliIcon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("외부 앱에서 원본 열기")

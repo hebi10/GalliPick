@@ -77,12 +77,12 @@ internal fun TrashScreen(
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text("휴지통", style = MaterialTheme.typography.headlineMedium)
-                    Text("${items.size}개 · ${bytesLabel(items.sumOf { it.sizeBytes })}", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("보관 파일 ${items.size}개 · 파일 용량 ${bytesLabel(items.sumOf { it.sizeBytes })}", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                "휴지통은 Android가 관리합니다. 보관 기간이 지나면 파일이 자동 삭제될 수 있으며, 복원할 때 시스템 확인이 표시됩니다.",
+                "휴지통은 Android가 관리합니다. 보관 기간이 지나면 파일이 자동 삭제될 수 있습니다. 복원은 파일 선택 후 Android 시스템에서 최종 확인합니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Muted,
                 modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).border(1.dp, Line, RoundedCornerShape(16.dp)).padding(14.dp),
@@ -102,7 +102,7 @@ internal fun TrashScreen(
                         },
                     )
                     Text(if (items.size > SelectionPolicy.MAX_SELECTION_SIZE) "앞 ${SelectionPolicy.MAX_SELECTION_SIZE}개 선택" else "전체 선택", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                    Text("${selectedItems.size}개 선택", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("${selectedItems.size}개 선택 · ${bytesLabel(selectedItems.sumOf { it.sizeBytes })}", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
                 Text(
                     limitMessage ?: "한 번에 최대 ${SelectionPolicy.MAX_SELECTION_SIZE}개까지 복원할 수 있습니다.",
@@ -124,11 +124,11 @@ internal fun TrashScreen(
                     verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
                     Text(
-                        if (selectedItems.isEmpty()) "복원할 파일을 선택하세요." else "선택한 ${selectedItems.size}개 · ${bytesLabel(selectedItems.sumOf { it.sizeBytes })}",
+                        if (selectedItems.isEmpty()) "복원할 파일을 선택하세요." else "복원 예정 ${selectedItems.size}개 · 파일 용량 ${bytesLabel(selectedItems.sumOf { it.sizeBytes })}",
                         color = Muted, style = MaterialTheme.typography.bodySmall,
                     )
                     ActionButton(
-                        "선택한 파일 복원", onClick = { onRestore(selectedItems) },
+                        "선택한 ${selectedItems.size}개 복원", onClick = { onRestore(selectedItems) },
                         modifier = Modifier.fillMaxWidth(), filled = true,
                         enabled = selectedItems.isNotEmpty(), icon = Icons.Rounded.RestoreFromTrash,
                     )

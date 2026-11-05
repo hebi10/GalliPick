@@ -34,7 +34,7 @@ class TrashReviewDialogTest {
         compose.onNodeWithText("keep.mp4").assertIsDisplayed()
         compose.onNodeWithText("move.mp4").assertDoesNotExist()
         assertEquals(0, proceeded)
-        compose.onNodeWithText("Android 확인").performClick()
+        compose.onNodeWithText("휴지통 이동 요청").performClick()
         assertEquals(1, proceeded)
     }
 
@@ -43,7 +43,7 @@ class TrashReviewDialogTest {
             Box(Modifier.requiredSize(320.dp, 280.dp)) { TrashReviewContent(listOf(item(1, "move.mp4")), listOf(item(2, "keep.mp4")), false, 2, {}, {}) }
         } } }
         compose.onNodeWithText("취소").assertIsDisplayed()
-        compose.onNodeWithText("Android 확인").assertIsDisplayed()
+        compose.onNodeWithText("휴지통 이동 요청").assertIsDisplayed()
         compose.onNodeWithContentDescription("이동할 파일 확인 목록").performScrollToNode(hasText("move.mp4"))
         compose.onNodeWithText("move.mp4").assertIsDisplayed()
     }
