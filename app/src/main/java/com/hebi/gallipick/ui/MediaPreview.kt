@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.ColorSpace
 import android.graphics.ImageDecoder
 import android.net.Uri
-import android.widget.MediaController
 import android.widget.VideoView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -222,7 +221,6 @@ private fun ZoomablePhoto(bitmap: Bitmap, name: String, compact: Boolean = false
 
 /** A session is never resumed automatically after the app leaves the foreground. */
 private class VideoSession(val view: VideoView) {
-    var controller: MediaController? = null
     var released = false
         private set
 
@@ -230,8 +228,6 @@ private class VideoSession(val view: VideoView) {
         if (released) return 0
         val position = runCatching { view.currentPosition }.getOrDefault(0)
         released = true
-        controller?.hide()
-        controller = null
         view.setOnPreparedListener(null)
         view.setOnCompletionListener(null)
         view.setOnErrorListener(null)
@@ -333,11 +329,8 @@ private fun VideoPreviewContent(item: MediaItem, modifier: Modifier, createView:
                         createView(context).also { view ->
                             val current = VideoSession(view)
                             session = current
-                            if (coordinator == null) {
-                                val controller = MediaController(context).apply { setAnchorView(view) }
-                                current.controller = controller
-                                view.setMediaController(controller)
-                            } else view.setMediaController(null)
+                            // Use the same Compose playback controls in standalone and comparison previews.
+                            view.setMediaController(null)
                             view.setOnPreparedListener { player ->
                                 if (!current.released && started) {
                                     duration = player.duration.coerceAtLeast(0)
