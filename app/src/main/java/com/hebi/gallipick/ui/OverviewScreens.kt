@@ -297,7 +297,11 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
                 ActionButton("휴지통 열기", openTrash, icon = Icons.Rounded.RestoreFromTrash)
             }
             SettingsSection("보호 폴더") {
-                Text("폴더를 보호하면 해당 파일의 정리 선택이 차단됩니다. 즐겨찾기도 기본으로 보호합니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    GalliIllustration(GalliScene.PROTECT, Modifier.size(64.dp))
+                    Text("폴더를 보호하면 해당 파일의 정리 선택이 차단됩니다. 즐겨찾기도 기본으로 보호합니다.", color = Muted,
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                }
                 if (folders.isEmpty()) Text("미디어를 불러오면 폴더가 표시됩니다.", color = Muted)
                 else ActionButton(
                     if (showProtectedFolders) "폴더 목록 접기" else "보호 폴더 관리 · ${folders.size}개",
@@ -335,9 +339,11 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
         }
     }
     if (confirmClear) AlertDialog(
-        onDismissRequest = { confirmClear = false }, title = { Text("분석 캐시를 비울까요?") },
+        onDismissRequest = { confirmClear = false }, shape = RoundedCornerShape(20.dp),
+        containerColor = AppSurface, titleContentColor = Ink, textContentColor = Muted,
+        title = { Text("분석 캐시를 비울까요?") },
         text = { Text("다음 중복 검사에서 파일을 다시 분석합니다. 원본 파일은 삭제하지 않습니다.") },
-        confirmButton = { TextAction("비우기", { vm.clearAnalysisCache(); confirmClear = false }) },
+        confirmButton = { ActionButton("비우기", { vm.clearAnalysisCache(); confirmClear = false }, filled = true) },
         dismissButton = { TextAction("취소", { confirmClear = false }) },
     )
 }
