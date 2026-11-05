@@ -190,7 +190,7 @@ internal fun SelectionBar(selected: List<MediaItem>, clear: () -> Unit, trash: (
 }
 
 @Composable
-private fun SavePresetDialog(save: (String) -> Unit, dismiss: () -> Unit) {
+internal fun SavePresetDialog(save: (String) -> Unit, dismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
     AlertDialog(onDismissRequest = dismiss, shape = RoundedCornerShape(20.dp), containerColor = AppSurface,
         titleContentColor = Ink, textContentColor = Muted, title = { Text("현재 필터 저장") }, text = {
