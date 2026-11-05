@@ -1,73 +1,73 @@
 {
   "app": "GalliPick",
   "locale": "ko-KR",
-  "source_commit": "1a5f61b7b0e6d2f217f793ac31a60654180b24f4",
-  "source_run": "42009167309",
-  "created_utc": "2026-11-05T10:36:40.931048+00:00",
+  "source_commit": "2d3cf757a934d4588984b644ebe246ee64e9a37a",
+  "source_run": "42023456154",
+  "created_utc": "2026-11-05T12:11:52.262941+00:00",
   "provenance": "Genuine Android emulator UI screenshots. Test media, not a user gallery.",
   "screenshots": [
     {
       "file": "01-home.png",
-      "source": "native-example-media-phone-portrait-1793874140109-01-home.png",
+      "source": "native-example-media-phone-portrait-1793880310198-01-home.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "5d4c1b81f3330b5536ef861ed077f249f8b1623038393072e78bcb3abe991c86"
+      "sha256": "96bc124dc84453dffa5739b231b685bfc0c7417b774647d68bc398ae39d6be5c"
     },
     {
       "file": "02-files.png",
-      "source": "native-example-media-phone-portrait-1793874140109-02-files.png",
+      "source": "native-example-media-phone-portrait-1793880310198-02-files.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "49bbe6e0571b60a698b910d97cb4623b5c835f6538bfb3c8b04590cc43fd5e88"
+      "sha256": "5eb06765af40ba5d6fd05b84647cd817c17b3c244a3a587d0a807e4fee7317ba"
     },
     {
-      "file": "03-filters.png",
-      "source": "native-example-media-phone-portrait-1793874140109-08-files-filter-dialog.png",
+      "file": "03-duplicates.png",
+      "source": "native-example-media-phone-portrait-1793880310198-09-duplicates-scanned.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "bc9f6276c02bd2edd26641d101004f6947d45a160698cc7603c0b5ff5e17f722"
+      "sha256": "8fb14ee5ff520ee54a1249a16bb8f9987f76821b6e264f553f684ac73b81c3b8"
     },
     {
-      "file": "04-duplicates.png",
-      "source": "native-example-media-phone-portrait-1793874140109-09-duplicates-scanned.png",
+      "file": "04-cleanup.png",
+      "source": "native-example-media-phone-portrait-1793880310198-04-cleanup.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "2dae8ca15b18381af1e7922a944d8906475f2e800f71e1301434cfeda42a4072"
+      "sha256": "e444e9ac09280dc4aae8a6457400f33e15bbc777ddc502347b3b7774a2dc886b"
     },
     {
-      "file": "05-comparison.png",
-      "source": "native-example-media-phone-portrait-1793874140109-10-duplicate-comparison.png",
+      "file": "05-settings-dark.png",
+      "source": "native-example-media-phone-portrait-1793880310198-05-settings-dark.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "03cc3bce19dfb99ebe3898989659cd2fe7dabe7adb2112d748dd7c921c5b4bd4"
+      "sha256": "a71cd32a56f2e01784f5eb6706315585fb606e08eef8801534691a3a89b0ba7a"
     },
     {
-      "file": "06-cleanup.png",
-      "source": "native-example-media-phone-portrait-1793874140109-04-cleanup.png",
+      "file": "06-filters.png",
+      "source": "native-example-media-phone-portrait-1793880310198-08-files-filter-dialog.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "2f7612c86cd94b13e8d455108b314d4b09182fd2b2450ee09b4f93e8d6fccfd5"
+      "sha256": "2b8595c4256cc4e016d6a7d9d9e1be3c75b9109b54badc7d9fd1c6f7d604d08f"
     },
     {
-      "file": "07-dark-mode.png",
-      "source": "native-example-media-phone-portrait-1793874140109-05-settings-dark.png",
+      "file": "07-comparison.png",
+      "source": "native-example-media-phone-portrait-1793880310198-10-duplicate-comparison.png",
       "dimensions": [
         1350,
         2400
       ],
-      "sha256": "0a9d34988c59e04cf3208208d3b0a16dfbb4a91f0ac8a7faec33ffa575cee35b"
+      "sha256": "5f9ecc3a99354deebb9123f3409ca435f62f37c4277eb2146e17e9db614067a8"
     }
   ],
   "feature_graphic": {
@@ -77,5 +77,12 @@
       500
     ],
     "sha256": "79d6af7bdda2ed92608438aa98ec1977b052530c7fa17360c8407e9de823017b"
-  }
+  },
+  "primary_tabs": [
+    "01-home",
+    "02-files",
+    "09-duplicates-scanned",
+    "04-cleanup",
+    "05-settings-dark"
+  ]
 }

@@ -14,14 +14,17 @@ MUTED = '#597267'
 LINE = '#DCE6DF'
 
 SCREENS = (
-    ('01-home.png', '01-home', '사진과 동영상을 한눈에', '기기 안에서 저장공간과 미디어 확인'),
-    ('02-files.png', '02-files', '원하는 파일을 빠르게', '사진과 동영상을 검색하고 정렬'),
-    ('03-filters.png', '08-files-filter-dialog', '원하는 조건만 골라서', '날짜·용량·길이 등 상세 필터'),
-    ('04-duplicates.png', '09-duplicates-scanned', '같은 내용의 파일 찾기', '완전히 일치하는 파일의 중복 검사'),
-    ('05-comparison.png', '10-duplicate-comparison', '남길 파일 직접 선택', '원본을 비교하고 안전하게 정리'),
-    ('06-cleanup.png', '04-cleanup', '정리 후보부터 살펴보기', '대용량 동영상과 오래된 파일 확인'),
-    ('07-dark-mode.png', '05-settings-dark', '눈에 편안한 화면', '라이트·다크 모드를 선택'),
+    ('01-home.png', '01-home', '사진과 동영상을 한눈에', '홈 · 저장공간과 빠른 정리'),
+    ('02-files.png', '02-files', '파일을 원하는 순서로', '파일 · 검색과 정렬'),
+    ('03-duplicates.png', '09-duplicates-scanned', '같은 파일을 정확하게', '중복 · 완전히 일치하는 파일만 확인'),
+    ('04-cleanup.png', '04-cleanup', '정리할 항목을 찾아보기', '정리 · 대용량 및 오래된 파일 살펴보기'),
+    ('05-settings-dark.png', '05-settings-dark', '어두운 화면도 선명하게', '설정 · 라이트·다크 모드 지원'),
+    ('06-filters.png', '08-files-filter-dialog', '조건을 세밀하게 선택', '파일 · 날짜·용량·길이 필터'),
+    ('07-comparison.png', '10-duplicate-comparison', '남길 사본은 직접 선택', '중복 · 파일을 비교하고 보호'),
 )
+
+# The five real top-level destinations must lead the Play image sequence.
+PRIMARY_DESTINATIONS = ('01-home', '02-files', '09-duplicates-scanned', '04-cleanup', '05-settings-dark')
 
 
 def font(size, bold=False):
@@ -75,10 +78,15 @@ def main():
     parser.add_argument('--source-run', default='')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
+    targets = {item[0] for item in SCREENS}
+    # Remove screenshots from the previous ordering without touching the feature graphic.
+    for stale in args.output.glob('[0-9][0-9]-*.png'):
+        if stale.name not in targets:
+            stale.unlink()
     manifest = {'app': 'GalliPick', 'locale': 'ko-KR', 'source_commit': args.source_commit,
                 'source_run': args.source_run, 'created_utc': datetime.now(timezone.utc).isoformat(),
                 'provenance': 'Genuine Android emulator UI screenshots. Test media, not a user gallery.',
-                'screenshots': [], 'feature_graphic': {}}
+                'screenshots': [], 'feature_graphic': {}, 'primary_tabs': list(PRIMARY_DESTINATIONS)}
     for target, name, title, subtitle in SCREENS:
         candidates = list(args.captures.rglob('*-' + name + '.png'))
         if len(candidates) != 1:

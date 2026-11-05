@@ -18,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -57,15 +56,22 @@ internal fun GalliNavigationIcon(icon: ImageVector, modifier: Modifier = Modifie
         Icons.Rounded.Settings -> R.drawable.gp_nav_settings
         else -> null
     }
-    if (drawable == null) {
-        NativeIcon(icon, contentDescription = null, modifier = modifier, tint = if (selected) Primary else Muted)
+    // The brand PNGs have opaque backgrounds; tinting the entire bitmap makes each
+    // dark-mode navigation glyph appear as a solid square. Use clear vector glyphs
+    // on dark surfaces and preserve the branded PNG artwork in light mode.
+    if (IsGalliDark || drawable == null) {
+        NativeIcon(
+            icon,
+            contentDescription = null,
+            modifier = modifier,
+            tint = if (selected) Ink else Muted,
+        )
     } else {
         Image(
             painter = painterResource(drawable),
             contentDescription = null,
             modifier = modifier.alpha(if (selected) 1f else .82f),
             contentScale = ContentScale.Fit,
-            colorFilter = if (IsGalliDark) ColorFilter.tint(if (selected) Primary else Muted) else null,
         )
     }
 }
@@ -84,13 +90,15 @@ internal fun GalliIcon(
     tint: Color = Ink,
 ) {
     val drawable = brandDrawable(imageVector)
-    if (drawable != null && tint != OnPrimary) {
+    // Opaque illustrated assets cannot be safely tinted as a single bitmap:
+    // the full image becomes a flat rectangle, hiding its icon details.
+    // Use Material vectors whenever an actual tint is needed.
+    if (drawable != null && !IsGalliDark && tint == Ink) {
         Image(
             painter = painterResource(drawable),
             contentDescription = contentDescription,
             modifier = modifier,
             contentScale = ContentScale.Fit,
-            colorFilter = if (IsGalliDark || tint != Ink) ColorFilter.tint(tint) else null,
         )
     } else {
         NativeIcon(imageVector, contentDescription = contentDescription, modifier = modifier, tint = tint)
