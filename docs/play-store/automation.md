@@ -49,6 +49,10 @@ WIF를 사용할 수 없다면 `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secret을 등�
 
 내부 테스트 API ID는 `internal`로 고정합니다. 비공개 테스트는 Console 표시 이름으로 ID를 추정하지 않으며, 현재 repository variable `PLAY_CLOSED_TRACK=alpha`는 실제 API 조회로 확인한 기존 ID입니다. 비공개 대상을 사용할 때는 `mode=check`·`target=closed`로 확인합니다. 두 대상 모두 기존 트랙만 사용하며 새 트랙을 만들지 않습니다. `production`·공개 테스트(`beta`)와 form-factor 트랙은 제출 대상이 아닙니다. CLI에서도 `--track`을 생략하면 `internal`, 명시하면 `--track alpha` 등 기존 비공개 트랙을 선택합니다.
 
+## 고양이 런처·스토어 아이콘
+
+앱 런처의 컬러 전경과 Android 13 이상 단색 테마 아이콘은 동일한 고양이 에셋 `gp_cat_organize.png`를 사용합니다. Google Play 등록용 아이콘은 `scripts/design/GenerateStoreIcon.java`가 해당 고양이 이미지를 512 × 512 불투명 RGBA PNG로 합성합니다. `.github/workflows/play-store-icon.yml`은 아이콘 변경이 `main`에 반영되면 **GalliPick 한국어 스토어 아이콘 한 장만** API로 교체하고, 나머지 소개 이미지와 테스트 트랙은 수정하지 않습니다. 생성 PNG는 해당 GitHub Actions 실행의 artifact로 보관합니다. 새 서명키를 만들지 않습니다.
+
 ## 버전과 릴리스 순서
 
 새 업로드마다 `app/build.gradle.kts`의 `versionCode`를 Play에 사용된 모든 버전보다 높여 main에 반영합니다. 자동화는 버전을 임의로 증가시키지 않습니다. 기존 draft·내부 테스트 업로드도 사용한 코드로 취급하며, 같은 코드를 덮어쓰거나 이미 있는 bundle을 자동으로 재사용하지 않습니다.
@@ -59,7 +63,7 @@ WIF를 사용할 수 없다면 `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secret을 등�
 
 1. 새 버전·사용하지 않은 높은 versionCode와 `docs/play-store/release-notes-ko.txt`를 main에 반영합니다.
 2. 기본 `target=internal`의 `check`로 고정 서명과 내부 테스트 접근을 확인합니다. 파일만 필요하면 기본 `build`를 실행합니다.
-3. 내부 테스트 자동 제출은 해당 커밋에 소스 버전과 같은 태그를 push합니다. 또는 main에서 수동 `mode=deploy`·`target=internal`을 실행합니다. 비공개 테스트 제출은 main에서 수동 `mode=deploy`·`target=closed`를 선택합니다.
+3. **기본 내부 테스트 자동 제출:** `app/build.gradle.kts`의 `versionCode`가 직전 `main` 커밋보다 증가한 버전을 병합하면서 커밋 메시지에 `[deploy-internal]`을 포함하면 자동으로 내부 테스트에만 제출합니다. 버전 태그를 push하거나 main에서 수동 `mode=deploy`·`target=internal`을 실행하는 기존 경로도 유지합니다. 비공개 테스트 제출은 main에서 수동 `mode=deploy`·`target=closed`를 선택합니다.
 4. Actions의 배포 보고서와 Play Console의 검토·게시 상태를 확인합니다.
 
 태그 예시는 다음과 같습니다. 버전은 실제 소스에 맞게 바꿉니다.

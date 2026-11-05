@@ -1,0 +1,112 @@
+name: GalliPick Play icon
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/src/main/res/drawable/ic_launcher_foreground.xml'
+      - 'app/src/main/res/drawable/ic_launcher_monochrome.xml'
+      - 'scripts/design/GenerateStoreIcon.java'
+      - 'scripts/release/play_store_icon.py'
+      - '.github/workflows/play-store-icon.yml'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Validate the generated icon or submit to the Korean store listing'
+        type: choice
+        required: true
+        default: check
+        options: [check, upload]
+permissions:
+  contents: read
+concurrency:
+  group: gallipick-play-listing
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.repository == 'hebi10/GalliPick'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Render GalliPick icon from the checked-in cat illustration
+        run: |
+          java scripts/design/GenerateStoreIcon.java \
+            app/src/main/res/drawable-nodpi/gp_cat_organize.png \
+            icon-out/app-icon.png
+          python3 scripts/release/play_store_icon.py --icon icon-out/app-icon.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GalliPick-generated-store-icon
+          path: icon-out/app-icon.png
+          retention-days: 14
+          if-no-files-found: error
+  upload:
+    needs: validate
+    if: github.repository == 'hebi10/GalliPick' && (github.event_name == 'push' || inputs.mode == 'upload')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: GalliPick-generated-store-icon
+          path: icon-out
+      - name: Check Play authentication
+        id: config
+        env:
+          PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          PLAY_SERVICE_ACCOUNT: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$PLAY_WORKLOAD_IDENTITY_PROVIDER" ]]; then
+            [[ -n "$PLAY_SERVICE_ACCOUNT" ]] || { echo 'PLAY_SERVICE_ACCOUNT is missing.' >&2; exit 1; }
+            echo 'method=wif' >> "$GITHUB_OUTPUT"
+          elif [[ -n "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" ]]; then
+            echo 'method=json' >> "$GITHUB_OUTPUT"
+          else
+            echo 'GalliPick Play authentication not configured.' >&2
+            exit 1
+          fi
+      - name: Authenticate with Workload Identity Federation
+        if: steps.config.outputs.method == 'wif'
+        id: wif
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Authenticate with service account JSON
+        if: steps.config.outputs.method == 'json'
+        id: json
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Submit only GalliPick ko-KR store icon
+        env:
+          PLAY_ACCESS_TOKEN: ${{ steps.wif.outputs.access_token || steps.json.outputs.access_token }}
+        run: python3 scripts/release/play_store_icon.py --icon icon-out/app-icon.png --apply
+      - name: Clarify submission state
+        if: success()
+        run: |
+          echo 'Google Play accepted and read back the GalliPick Korean icon edit.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Google review and published visibility are separate and require Play Console confirmation.' >> "$GITHUB_STEP_SUMMARY"
