@@ -142,13 +142,13 @@ internal fun DuplicatesScreenContent(
                             Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Column(Modifier.weight(1f).widthIn(min = 130.dp).align(Alignment.CenterVertically)) {
-                                        Text("${groups.size}개 묶음 · 후보 ${candidates.size}개", style = MaterialTheme.typography.titleSmall)
+                                        Text("중복 ${groups.size}묶음 · 후보 ${candidates.size}개", style = MaterialTheme.typography.titleSmall)
                                         Text(bytesLabel(duplicateBytes(candidates)), style = MaterialTheme.typography.bodySmall, color = Muted)
                                     }
                                     ActionButton(duplicateSelectionLabel(candidates.size), actions.selectRecommended,
                                         Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 정리 후보 선택" }, enabled = candidates.isNotEmpty())
                                 }
-                                Text("남길 파일·보호 파일·즐겨찾기 제외", style = MaterialTheme.typography.bodySmall, color = Muted)
+                                Text("선택: 정리 후보만 · 보호/즐겨찾기 제외", style = MaterialTheme.typography.bodySmall, color = Muted)
                                 if (candidates.size > SelectionPolicy.MAX_SELECTION_SIZE) Text("전체 ${candidates.size}개 중 한 번에 최대 500개를 선택합니다.", style = MaterialTheme.typography.labelMedium, color = Muted)
                             }
                         }
@@ -164,7 +164,7 @@ internal fun DuplicatesScreenContent(
                                 ) {
                                     Column(Modifier.weight(1f).widthIn(min = 140.dp).align(Alignment.CenterVertically)) {
                                         Text("묶음 ${index + 1} · ${if (group.items.all { it.kind == MediaKind.VIDEO }) "영상" else "파일"} ${group.items.size}개", style = MaterialTheme.typography.titleSmall)
-                                        Text("남김 ${roles.kept.size}개 · 정리 후보 ${roles.candidates.size}개", style = MaterialTheme.typography.bodySmall, color = Muted)
+                                        Text("남김 ${roles.kept.size} · 후보 ${roles.candidates.size} · 선택 ${selectedInGroup}", style = MaterialTheme.typography.bodySmall, color = Muted)
                                     }
                                     ActionButton(duplicateGroupSelectionLabel(roles.candidates.size, selectedInGroup, selected.size),
                                         { actions.selectGroupCandidates(group) }, Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 묶음 ${index + 1} 후보 선택" },
@@ -217,7 +217,7 @@ internal fun DuplicatesScreenContent(
 private fun DuplicateIntro() {
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text("중복 정리", style = MaterialTheme.typography.titleLarge)
-        Text("내용이 같은 사본입니다. 남길 파일을 확인하고 나머지를 선택하세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
+        Text("SHA-256 완전 일치 사본입니다. 남길 파일을 확인하고 정리 후보만 선택하세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
     }
 }
 
@@ -232,7 +232,7 @@ private fun CompactDuplicateSummary(scan: ScanState, groupCount: Int, candidates
             }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("중복 정리", style = MaterialTheme.typography.titleSmall)
-                    Text("${groupCount}개 묶음 · 후보 ${candidates.size}개", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${groupCount}개 묶음 · 정리 후보 ${candidates.size}개", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 val status = if (scan.phase == ScanPhase.COMPLETE) "검사 완료 · ${scan.completed}개 확인" + if (scan.skipped > 0) " · ${scan.skipped}개 건너뜀" else ""
                     else scanTitle(scan) + if (scan.total > 0) " · ${scan.completed} / ${scan.total}개" else ""
@@ -249,6 +249,7 @@ private fun CompactDuplicateSummary(scan: ScanState, groupCount: Int, candidates
             }
         }
         if (scan.phase != ScanPhase.COMPLETE) {
+            Text("상태 · ${scanTitle(scan)}", Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.labelMedium, color = Muted)
             DuplicateScanProgress(scan)
             if (scan.message.isNotBlank()) Text(scan.message, Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
         }
@@ -261,7 +262,7 @@ private fun CompactDuplicateSummary(scan: ScanState, groupCount: Int, candidates
 @OptIn(ExperimentalLayoutApi::class)
 private fun DuplicateScanSummary(scan: ScanState, canScan: Boolean, actions: DuplicatesScreenActions) {
     if (scan.phase == ScanPhase.COMPLETE) {
-        FlowRow(Modifier.fillMaxWidth().semantics { contentDescription = "중복 검사 완료 요약" },
+        FlowRow(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp).semantics { contentDescription = "중복 검사 완료 요약" },
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("검사 완료 · ${scan.completed}개 확인" + if (scan.skipped > 0) " · ${scan.skipped}개 건너뜀" else "",
                 Modifier.weight(1f).widthIn(min = 130.dp).align(Alignment.CenterVertically).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -269,11 +270,13 @@ private fun DuplicateScanSummary(scan: ScanState, canScan: Boolean, actions: Dup
         }
         return
     }
-    Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(scanTitle(scan), style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 if (scan.total > 0) Text("${scan.completed} / ${scan.total}개 · 건너뜀 ${scan.skipped}개", style = MaterialTheme.typography.bodySmall, color = Muted)
+                if (scan.phase == ScanPhase.FAILED) Text("기존 검사 결과는 확인 후 사용하세요. 다시 검사할 수 있습니다.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                if (scan.phase == ScanPhase.PAUSED) Text("일시정지 중입니다. 계속 검사를 눌러 재개할 수 있습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             when (scan.phase) {
                 ScanPhase.RUNNING, ScanPhase.QUEUED -> ActionButton("일시정지", actions.pauseScan, icon = Icons.Rounded.Pause)
@@ -282,7 +285,7 @@ private fun DuplicateScanSummary(scan: ScanState, canScan: Boolean, actions: Dup
             }
         }
         DuplicateScanProgress(scan)
-        if (scan.message.isNotBlank()) Text(scan.message, style = MaterialTheme.typography.bodySmall, color = Muted)
+        if (scan.message.isNotBlank()) Text(scan.message, style = MaterialTheme.typography.bodySmall, color = if (scan.phase == ScanPhase.FAILED) MaterialTheme.colorScheme.error else Muted)
     }
 }
 
