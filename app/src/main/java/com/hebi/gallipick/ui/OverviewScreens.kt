@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -416,7 +417,7 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
             Box(Modifier.size(40.dp).background(Panel, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                 GalliIcon(icon, null, Modifier.size(26.dp))
             }
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
         }
         content()
     }
