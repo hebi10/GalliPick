@@ -276,9 +276,14 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
         (observed.keys + state.protectedFolders).associateWith { observed[it].orEmpty() }.toSortedMap()
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(Modifier.widthIn(max = 720.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            SectionTitle("설정", "화면 테마와 파일 접근·보호 설정")
+        Column(Modifier.widthIn(max = 600.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            SectionTitle("설정", "화면·권한·정리 안전 설정을 한곳에서 관리합니다.")
             SettingsSection("화면 테마") {
+                Text("현재 설정 · " + when (state.themeMode) {
+                    AppThemeMode.SYSTEM -> "기기 설정 따르기"
+                    AppThemeMode.LIGHT -> "라이트 모드"
+                    AppThemeMode.DARK -> "다크 모드"
+                }, style = MaterialTheme.typography.bodyMedium)
                 Text("기기 설정을 따르거나 사용할 모드를 직접 선택하세요.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     AppThemeMode.entries.forEach { mode ->
@@ -303,17 +308,40 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
                 }
             }
             SettingsSection("미디어 접근") {
-                Text(when (state.access) { MediaAccess.NONE -> "접근 권한 없음"; MediaAccess.PARTIAL -> "일부 사진·동영상 접근 허용"; MediaAccess.FULL -> "전체 사진·동영상 접근 허용" }, style = MaterialTheme.typography.bodyMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ActionButton("접근 범위 변경", requestAccess, Modifier.weight(1f))
-                    ActionButton("앱 권한 설정", openSettings, Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GalliIcon(Icons.Rounded.Shield, null, Modifier.size(26.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(when (state.access) {
+                            MediaAccess.NONE -> "접근 권한 없음"
+                            MediaAccess.PARTIAL -> "일부 사진·동영상 접근 허용"
+                            MediaAccess.FULL -> "전체 사진·동영상 접근 허용"
+                        }, style = MaterialTheme.typography.bodyMedium)
+                        Text("허용한 미디어만 분석하며 서버에 업로드하지 않습니다.",
+                            color = Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    if (maxWidth < 440.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ActionButton("접근 범위 변경", requestAccess, Modifier.fillMaxWidth())
+                            ActionButton("앱 권한 설정", openSettings, Modifier.fillMaxWidth())
+                        }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ActionButton("접근 범위 변경", requestAccess, Modifier.weight(1f))
+                            ActionButton("앱 권한 설정", openSettings, Modifier.weight(1f))
+                        }
+                    }
                 }
             }
             SettingsSection("휴지통") {
-                Text("${state.trashed.size}개 · ${bytesLabel(state.trashed.sumOf { it.sizeBytes })}", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                Text("보관 중 ${state.trashed.size}개 · 파일 용량 ${bytesLabel(state.trashed.sumOf { it.sizeBytes })}", style = MaterialTheme.typography.bodyMedium)
+                Text("복원은 Android 시스템 확인을 거쳐 진행합니다. 영구 삭제 기능은 제공하지 않습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 ActionButton("휴지통 열기", openTrash, icon = Icons.Rounded.RestoreFromTrash)
             }
             SettingsSection("보호 폴더") {
+                Text("직접 보호한 폴더 ${state.protectedFolders.size}개", style = MaterialTheme.typography.bodyMedium)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GalliIllustration(GalliScene.PROTECT, Modifier.size(64.dp))
                     Text("폴더를 보호하면 해당 파일의 정리 선택이 차단됩니다. 즐겨찾기도 기본으로 보호합니다.", color = Muted,
@@ -367,7 +395,7 @@ internal fun ClearAnalysisCacheDialog(onConfirm: () -> Unit, onDismiss: () -> Un
         onDismissRequest = onDismiss, shape = RoundedCornerShape(20.dp),
         containerColor = AppSurface, titleContentColor = Ink, textContentColor = Muted,
         title = { Text("분석 캐시를 비울까요?") },
-        text = { Text("다음 중복 검사에서 파일을 다시 분석합니다. 원본 파일은 삭제하지 않습니다.") },
+        text = { Text("중복 분석 결과와 해시 캐시를 초기화합니다. 다음 검사에서 다시 분석하며 사진·동영상 원본과 보호 설정은 유지합니다.") },
         confirmButton = { ActionButton("비우기", onConfirm, filled = true) },
         dismissButton = { TextAction("취소", onDismiss) },
     )
@@ -383,12 +411,12 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
         "분석 캐시" -> Icons.Rounded.CleaningServices
         else -> Icons.Rounded.Shield
     }
-    Column(Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(20.dp)).border(1.dp, Line, RoundedCornerShape(20.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(40.dp).background(Panel, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-                GalliIcon(icon, null, Modifier.size(28.dp))
+            Box(Modifier.size(40.dp).background(Panel, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                GalliIcon(icon, null, Modifier.size(26.dp))
             }
-            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(title, style = MaterialTheme.typography.titleMedium)
         }
         content()
     }

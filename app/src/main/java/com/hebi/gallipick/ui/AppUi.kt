@@ -51,6 +51,8 @@ fun GalliPickApp(
     onTrash: (List<MediaItem>) -> Unit,
     onOpenMedia: (MediaItem) -> Unit,
     onRestore: (List<MediaItem>) -> Unit = {},
+    result: CleanupOperationResult? = null,
+    onDismissResult: () -> Unit = {},
 ) {
     val state by vm.ui.collectAsState()
     var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
@@ -79,6 +81,23 @@ fun GalliPickApp(
                     },
                 ) {
                     Column(Modifier.fillMaxSize()) {
+                        if (state.loading) LinearProgressIndicator(
+                            Modifier.fillMaxWidth().height(3.dp),
+                            color = Primary, trackColor = Panel,
+                        )
+                        if (state.catalogError != null && state.catalogError != state.message) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
+                                    .galliCardSurface(Panel).padding(start = 14.dp, end = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                GalliIcon(Icons.Rounded.ErrorOutline, null, Modifier.size(22.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("파일을 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요.",
+                                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                TextAction("다시 시도", vm::refresh)
+                            }
+                        }
                         if (state.message != null) {
                             Row(
                                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
@@ -130,6 +149,23 @@ fun GalliPickApp(
             }
         }
     }
+    if (result != null) CleanupResultDialog(
+        result = result,
+        onDismiss = onDismissResult,
+        onHome = {
+            navigate(Destination.HOME)
+            onDismissResult()
+        },
+        onNext = {
+            if (result.restore) {
+                navigate(Destination.SETTINGS)
+                showTrash = true
+            } else {
+                navigate(Destination.CLEANUP)
+            }
+            onDismissResult()
+        },
+    )
 }
 
 @Composable
