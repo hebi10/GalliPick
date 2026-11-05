@@ -223,10 +223,10 @@ internal fun SectionTitle(title: String, subtitle: String? = null) {
 }
 
 @Composable
-internal fun EmptyState(title: String, body: String, icon: ImageVector = Icons.Rounded.PhotoLibrary, action: @Composable (() -> Unit)? = null) {
+internal fun EmptyState(title: String, body: String, icon: ImageVector = Icons.Rounded.PhotoLibrary, action: @Composable (() -> Unit)? = null, scene: GalliScene = GalliScene.EMPTY) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
-            GalliIllustration(GalliScene.EMPTY, Modifier.size(92.dp))
+            GalliIllustration(scene, Modifier.size(92.dp))
             Box(Modifier.align(Alignment.BottomEnd).size(36.dp).background(Mint, CircleShape).border(2.dp, AppBackground, CircleShape), contentAlignment = Alignment.Center) {
                 GalliIcon(icon, null, Modifier.size(23.dp), tint = Ink)
             }
