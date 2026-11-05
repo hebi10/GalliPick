@@ -80,10 +80,12 @@ class GalliDesignSystemTest {
         }
         Destination.entries.forEach { destination ->
             compose.onNode(hasText(destination.title) and hasClickAction())
-                .assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+                .performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         }
-        compose.onNode(hasText(Destination.FILES.title) and hasClickAction()).assertIsSelected()
-        compose.onNode(hasText(Destination.HOME.title) and hasClickAction()).assertIsNotSelected()
+        compose.onNode(hasText(Destination.FILES.title) and hasClickAction())
+            .performScrollTo().assertIsSelected()
+        compose.onNode(hasText(Destination.HOME.title) and hasClickAction())
+            .performScrollTo().assertIsNotSelected()
     }
 
     private fun contrast(a: Color, b: Color): Float {
