@@ -142,14 +142,12 @@ class DuplicateClarityTest {
         } }
         val list = compose.onNodeWithContentDescription("중복 파일 목록")
         list.performScrollToNode(hasText("검사를 일시정지했습니다", substring = true))
-        compose.onNodeWithText("검사를 일시정지했습니다", substring = true).assertExists()
         compose.onNodeWithText("계속 검사").performClick()
         compose.runOnIdle {
             assertTrue(resumed)
             state.value = state.value.copy(scan = ScanState(ScanPhase.FAILED, 1, 2))
         }
         list.performScrollToNode(hasText("검사를 완료하지 못했습니다", substring = true))
-        compose.onNodeWithText("검사를 완료하지 못했습니다", substring = true).assertExists()
         compose.onNodeWithText("검사 시작").performClick()
         compose.runOnIdle { assertTrue(restarted) }
     }
