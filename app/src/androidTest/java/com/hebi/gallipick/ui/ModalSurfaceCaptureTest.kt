@@ -23,6 +23,7 @@ import com.hebi.gallipick.domain.DuplicateGroup
 import com.hebi.gallipick.domain.MediaFilter
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
+import com.hebi.gallipick.domain.TrashOutcome
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -34,7 +35,7 @@ import java.io.File
 class ModalSurfaceCaptureTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private enum class Screen { FILTER, DETAIL, PHOTO, VIDEO, COMPARE, REVIEW, RESTORE, TRASH, PRESET, CACHE }
+    private enum class Screen { FILTER, DETAIL, PHOTO, VIDEO, COMPARE, REVIEW, RESTORE, TRASH, PRESET, CACHE, RESULT }
 
     @Test fun captureAllDialogAndDetailSurfaces() {
         val photoA = photo("EXAMPLE_original.png", 1)
@@ -66,6 +67,7 @@ class ModalSurfaceCaptureTest {
                             Screen.TRASH -> TrashScreen(listOf(photoB.copy(isTrashed = true)), {}, {})
                             Screen.PRESET -> SavePresetDialog({}, {})
                             Screen.CACHE -> ClearAnalysisCacheDialog({}, {})
+                            Screen.RESULT -> CleanupResultDialog(CleanupOperationResult.verified(TrashOutcome(1, 0, 0), false, 1, photoB.sizeBytes), {}, {}, {})
                         }
                     }
                 }
@@ -105,7 +107,10 @@ class ModalSurfaceCaptureTest {
             compose.runOnIdle { current = Screen.CACHE }
             compose.onNodeWithText("분석 캐시를 비울까요?").assertIsDisplayed()
             screenshot(output, "11-cache-confirm")
-            assertEquals("All modal/detail captures must be saved", 11, output.listFiles { file -> file.extension == "png" }?.size)
+            compose.runOnIdle { current = Screen.RESULT }
+            compose.onNodeWithText("휴지통 이동 완료").assertIsDisplayed()
+            screenshot(output, "12-cleanup-result")
+            assertEquals("All modal/detail captures must be saved", 12, output.listFiles { file -> file.extension == "png" }?.size)
         } finally {
             File(compose.activity.cacheDir, "EXAMPLE_original.png").delete()
             File(compose.activity.cacheDir, "EXAMPLE_copy.png").delete()
