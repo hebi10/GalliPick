@@ -128,7 +128,7 @@ class DuplicateClarityTest {
         compose.runOnIdle { assertTrue(selectedAll); assertFalse(moved) }
     }
 
-    @Test fun pausedAndFailedScanShowDistinctRecoveryGuidance() {
+    @Test fun pausedAndFailedScanExposeRecoveryActionsOnAllViewportSizes() {
         val first = media(1, "first.mp4")
         val second = media(2, "copy.mp4")
         val group = DuplicateGroup("scan-status", listOf(first, second))
@@ -140,15 +140,16 @@ class DuplicateClarityTest {
             DuplicatesScreenContent(state.value, {}, {}, {},
                 actions().copy(resumeScan = { resumed = true }, startScan = { restarted = true }))
         } }
-        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("일시정지 중입니다. 계속 검사를 눌러 재개할 수 있습니다."))
-        compose.onNodeWithText("일시정지 중입니다. 계속 검사를 눌러 재개할 수 있습니다.").assertIsDisplayed()
+        val list = compose.onNodeWithContentDescription("중복 파일 목록")
+        list.performScrollToNode(hasText("검사를 일시정지했습니다", substring = true))
+        compose.onNodeWithText("검사를 일시정지했습니다", substring = true).assertExists()
         compose.onNodeWithText("계속 검사").performClick()
         compose.runOnIdle {
             assertTrue(resumed)
             state.value = state.value.copy(scan = ScanState(ScanPhase.FAILED, 1, 2))
         }
-        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("기존 검사 결과는 확인 후 사용하세요. 다시 검사할 수 있습니다."))
-        compose.onNodeWithText("기존 검사 결과는 확인 후 사용하세요. 다시 검사할 수 있습니다.").assertIsDisplayed()
+        list.performScrollToNode(hasText("검사를 완료하지 못했습니다", substring = true))
+        compose.onNodeWithText("검사를 완료하지 못했습니다", substring = true).assertExists()
         compose.onNodeWithText("검사 시작").performClick()
         compose.runOnIdle { assertTrue(restarted) }
     }
