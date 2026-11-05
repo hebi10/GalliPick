@@ -36,7 +36,7 @@ class TrashReviewFlowTest {
     @Test fun changingSelectionClosesTheReviewBeforeAnySystemRequest() = runBlocking {
         withReviewedFile { vm, _ ->
             compose.runOnIdle { vm.clearSelection() }
-            compose.onNodeWithText("Android 확인").assertDoesNotExist()
+            compose.onNodeWithText("휴지통 이동 요청").assertDoesNotExist()
             compose.onNodeWithText("선택이 변경되어 확인창을 닫았습니다. 이동할 파일을 다시 확인해 주세요.").assertIsDisplayed()
         }
     }
@@ -55,12 +55,12 @@ class TrashReviewFlowTest {
                 compose.activity.contentResolver.update(uri, ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, changedName)
                 }, null, null)
-                compose.onNodeWithText("Android 확인").performClick()
+                compose.onNodeWithText("휴지통 이동 요청").performClick()
                 compose.waitUntil(15_000) { messages.any { it.contains("확인 중 파일 상태가 변경되었습니다") } }
                 withTimeout(15_000) { vm.ui.first { state ->
                     !state.loading && state.items.any { it.uri == uri.toString() && it.displayName == changedName }
                 } }
-                compose.onNodeWithText("Android 확인").assertDoesNotExist()
+                compose.onNodeWithText("휴지통 이동 요청").assertDoesNotExist()
                 saveReviewDiagnostics(pauses.get())
                 compose.onNodeWithText("확인 중 파일 상태가 변경되었습니다. 새로고침 후 다시 선택해 주세요.").assertIsDisplayed()
                 assertFalse(vm.repository.reader.current(uri.toString())!!.isTrashed)
@@ -129,8 +129,8 @@ class TrashReviewFlowTest {
             compose.onAllNodesWithText("파일").onFirst().performClick()
             compose.runOnIdle { vm.toggleSelection(uri.toString()) }
             compose.onNodeWithText("휴지통으로").performClick()
-            compose.waitUntil(15_000) { compose.onAllNodesWithText("Android 확인").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("Android 확인").assertIsDisplayed()
+            compose.waitUntil(15_000) { compose.onAllNodesWithText("휴지통 이동 요청").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("휴지통 이동 요청").assertIsDisplayed()
             check(vm, uri)
         } finally {
             app.contentResolver.delete(uri, null, null)
