@@ -48,7 +48,7 @@ class ModalSurfaceCaptureTest {
             "video/mp4", "Movies/GalliPick_EXAMPLE/", videoFile.length(), 1920, 1080, 30_000, 0, 0, 0)
         val group = DuplicateGroup("example", listOf(photoA, photoB))
         var current by mutableStateOf(Screen.FILTER)
-        var dark by mutableStateOf(false)
+        var dark by mutableStateOf(true)
         val filter = MediaFilter(fromDateMs = System.currentTimeMillis() - 6L * 86_400_000)
 
         try {
@@ -71,7 +71,6 @@ class ModalSurfaceCaptureTest {
                 }
             }
             screenshot(output, "01-filter")
-            compose.runOnIdle { dark = true }
             compose.onNodeWithContentDescription("시작일 달력에서 선택").performScrollTo().performClick()
             screenshot(output, "02-calendar-dark")
             compose.onNodeWithText("날짜 선택").assertIsDisplayed()
