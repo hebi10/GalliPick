@@ -142,13 +142,13 @@ internal fun DuplicatesScreenContent(
                             Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Column(Modifier.weight(1f).widthIn(min = 130.dp).align(Alignment.CenterVertically)) {
-                                        Text("${groups.size}개 중복 묶음 · 정리 후보 ${candidates.size}개", style = MaterialTheme.typography.titleSmall)
+                                        Text("중복 ${groups.size}묶음 · 후보 ${candidates.size}개", style = MaterialTheme.typography.titleSmall)
                                         Text(bytesLabel(duplicateBytes(candidates)), style = MaterialTheme.typography.bodySmall, color = Muted)
                                     }
                                     ActionButton(duplicateSelectionLabel(candidates.size), actions.selectRecommended,
                                         Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 정리 후보 선택" }, enabled = candidates.isNotEmpty())
                                 }
-                                Text("선택 범위: 정리 후보만 · 남길 파일/보호/즐겨찾기 제외 · 선택 즉시 이동되지 않음", style = MaterialTheme.typography.bodySmall, color = Muted)
+                                Text("선택: 정리 후보만 · 보호/즐겨찾기 제외", style = MaterialTheme.typography.bodySmall, color = Muted)
                                 if (candidates.size > SelectionPolicy.MAX_SELECTION_SIZE) Text("전체 ${candidates.size}개 중 한 번에 최대 500개를 선택합니다.", style = MaterialTheme.typography.labelMedium, color = Muted)
                             }
                         }
@@ -164,7 +164,7 @@ internal fun DuplicatesScreenContent(
                                 ) {
                                     Column(Modifier.weight(1f).widthIn(min = 140.dp).align(Alignment.CenterVertically)) {
                                         Text("묶음 ${index + 1} · ${if (group.items.all { it.kind == MediaKind.VIDEO }) "영상" else "파일"} ${group.items.size}개", style = MaterialTheme.typography.titleSmall)
-                                        Text("남길 파일 ${roles.kept.size}개 · 정리 후보 ${roles.candidates.size}개 · 선택 ${selectedInGroup}개", style = MaterialTheme.typography.bodySmall, color = Muted)
+                                        Text("남김 ${roles.kept.size} · 후보 ${roles.candidates.size} · 선택 ${selectedInGroup}", style = MaterialTheme.typography.bodySmall, color = Muted)
                                     }
                                     ActionButton(duplicateGroupSelectionLabel(roles.candidates.size, selectedInGroup, selected.size),
                                         { actions.selectGroupCandidates(group) }, Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 묶음 ${index + 1} 후보 선택" },
