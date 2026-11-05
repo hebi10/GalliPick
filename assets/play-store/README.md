@@ -1,24 +1,24 @@
 # GalliPick Google Play preview assets
 
-## Current Korean store visuals — 2026-11-05
+## Final redesign screenshots — 2026-11-05, stage 7
 
-`ko-KR/` contains seven 1350 × 2400 RGB PNG screenshots and a 1024 × 500 RGB PNG feature graphic, and the previous store icon has been retired. The current 512 × 512 icon is generated on demand from the checked-in cat artwork. The screenshot names follow the intended viewing order:
+The seven `ko-KR/01-home.png` through `07-dark-mode.png` store screenshots and the 1024 × 500 `feature-graphic.png` are regenerated from **verified, genuine Android API 36 screen captures**. They replace screenshots made before the full stage 1–6 redesign.
 
-1. `01-home.png` — home overview and local storage information
-2. `02-files.png` — file browsing
-3. `03-filters.png` — file filter dialog
-4. `04-duplicates.png` — verified exact-duplicate groups
-5. `05-comparison.png` — choose which matching file to keep
-6. `06-cleanup.png` — potential cleanup categories
-7. `07-dark-mode.png` — theme settings
+- **Capture source commit:** `1a5f61b7b0e6d2f217f793ac31a60654180b24f4` (stage 6 verified)
+- **Capture workflow:** [Run #42009167309](https://github.com/hebi10/GalliPick/actions/runs/42009167309), phone-portrait profile
+- **Store image renderer:** `scripts/design/package_store_assets.py`; only genuine on-device UI pixels are pasted within a cream marketing frame and caption, never re-generated as fake app UI
+- **Source media:** Test-owned EXAMPLE fixtures, not user photos
+- **Provenance and hashes:** `ko-KR/manifest.json`; `source_commit` and `source_run` identify the approved screenshot run
 
-All screenshots use actual Android API 36 instrumentation captures from [native verification run 41947414464](https://github.com/hebi10/GalliPick/actions/runs/41947414464) at commit `aa695aeea24f395b8802cf3202de3916d45fc3f9`. Each is framed against a cream background with a short caption; the UI contents are not generated or altered. Test/example media and storage figures are not a user's personal files. This is not a claim that every screen is visible in the currently published Play version.
+The seven screenshots show the implemented home, file browsing, advanced filters, exact SHA-256 duplicate scan, A/B comparison, cleanup suggestions, and dark-mode settings. The feature graphic uses the same checked-in GalliPick illustrated cat as the launcher.
 
-The feature graphic is a separate marketing composition using the newly integrated GalliPick cat illustration. It avoids promising AI, similar-image detection, automatic deletion or immediate storage reclamation. The Play icon uses the same green-hatted cat as the Android launcher. The Java 17 source-file tool `scripts/design/GenerateStoreIcon.java` generates an opaque 512 × 512 sRGB RGBA PNG from `app/src/main/res/drawable-nodpi/gp_cat_organize.png` without network access or new art assets. The resulting PNG is attached to the `GalliPick Play icon` workflow as an artifact.
+### Publishing behavior
 
-The checksums and provenance are in `ko-KR/manifest.json`. Rebuild the store images from genuine native captures with `scripts/design/package_store_assets.py`. Validate and upload these files only through `scripts/release/play_listing_images.py`. The workflow `.github/workflows/play-listing-images.yml` reuses the existing GalliPick Play authentication and updates only the `com.hebi.gallipick` `ko-KR` phone screenshots and feature graphic after the merged asset change on `main`.
+`.github/workflows/play-listing-images.yml` validates all image hashes, RGB dimensions, and the seven screenshot order, then uses the existing GalliPick Google Play authentication to submit **only** the `ko-KR` `phoneScreenshots` and `featureGraphic` types for `com.hebi.gallipick` when store assets change on `main`. It does not edit other apps, tracks, the store icon, or published binaries.
 
-**Submission and publication are separate**: passing image validation or a successful API edit commit does not prove that Google has approved or published the new listing assets. Check Play Console's publishing overview after the workflow run.
+`.github/workflows/play-deploy.yml` separately prepares the fixed-key release AAB/APK and, for the intentional `[deploy-internal]` version-bump merge, targets only the internal testing track. Both Play workflows share a concurrency group to prevent concurrent Google Play edit sessions.
+
+**API submission is not publication.** Successful GitHub Actions or edits do not guarantee store visibility or that testers can install the updated version. The user has requested that Play Console actual availability not be checked during this stage.
 
 ## Store icon updates
 
