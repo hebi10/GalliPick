@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,7 +25,11 @@ import com.hebi.gallipick.domain.MediaItem
 internal fun TrashReviewDialog(moving: List<MediaItem>, kept: List<MediaItem>, restore: Boolean, excluded: Int, onDismiss: () -> Unit, onProceed: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp), contentAlignment = Alignment.Center) {
-            Surface(Modifier.widthIn(max = 760.dp).fillMaxWidth().heightIn(max = maxHeight),
+            val rows = minOf(maxOf(moving.size, kept.size, 1), 4)
+            val baseHeight = if (!restore && kept.isNotEmpty()) 278.dp else 242.dp
+            val desiredHeight = (baseHeight + (rows * 104).dp) * LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
+            val dialogHeight = desiredHeight.coerceAtMost(maxHeight)
+            Surface(Modifier.widthIn(max = 760.dp).fillMaxWidth().height(dialogHeight),
                 shape = RoundedCornerShape(20.dp), color = AppSurface, border = BorderStroke(1.dp, Line)) {
                 TrashReviewContent(moving, kept, restore, excluded, onDismiss, onProceed)
             }
