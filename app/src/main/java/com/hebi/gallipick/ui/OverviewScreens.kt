@@ -1,5 +1,9 @@
 package com.hebi.gallipick.ui
 
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -27,6 +31,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.hebi.gallipick.R
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.AppThemeMode
 import com.hebi.gallipick.AppViewModel
@@ -34,45 +39,46 @@ import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.*
 
 @Composable
-internal fun HomeScreen(state: AppUiState, requestAccess: () -> Unit, browse: (MediaFilter) -> Unit, duplicates: () -> Unit, cleanup: () -> Unit) {
-    val photos = state.items.filter { it.kind == MediaKind.PHOTO }
-    val videos = state.items.filter { it.kind == MediaKind.VIDEO }
+internal fun HomeScreen(
+    state: AppUiState,
+    requestAccess: () -> Unit,
+    browse: (MediaFilter) -> Unit,
+    duplicates: () -> Unit,
+    cleanup: () -> Unit,
+) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide = maxWidth >= 700.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val wide = maxWidth >= 720.dp * fontScale
+        val twoColumns = maxWidth >= 330.dp * fontScale
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             HomeWelcome(cleanup)
             if (state.access == MediaAccess.NONE) {
                 GalliCard(Modifier.fillMaxWidth()) {
-                    Text("먼저 사진·동영상 접근을 허용해주세요", style = MaterialTheme.typography.titleMedium)
+                    Text("사진·동영상 접근이 필요합니다", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "기기의 미디어를 읽어 용량과 중복 파일을 보여드립니다. 삭제할 때는 Android 확인창이 열립니다.",
-                        style = MaterialTheme.typography.bodyMedium, color = Muted,
-                    )
-                    Text(
-                        "중복 검사를 위해 원본 사진의 위치 메타데이터 권한이 필요할 수 있습니다. 현재 위치를 추적하지 않습니다.",
-                        color = Muted, style = MaterialTheme.typography.bodySmall,
+                        "기기 안의 파일을 살펴보려면 접근을 허용해 주세요. 파일 이동 전에는 Android 확인창에서 다시 승인합니다.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Muted,
                     )
                     ActionButton("사진·동영상 선택", requestAccess, Modifier.fillMaxWidth(), filled = true)
                 }
             }
             if (wide) {
                 Row(
-                    Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    HomeActions(duplicates, cleanup, Modifier.weight(1f))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        HomeStorageSummary(state)
-                        HomeMediaStats(photos, videos, browse)
-                    }
+                    HomeStorageSummary(state, Modifier.weight(1f))
+                    HomeQuickActions(browse, duplicates, Modifier.weight(1f), twoColumns = true)
                 }
             } else {
-                HomeActions(duplicates, cleanup)
                 HomeStorageSummary(state)
-                HomeMediaStats(photos, videos, browse)
+                HomeQuickActions(browse, duplicates, twoColumns = twoColumns)
             }
         }
     }
@@ -80,93 +86,178 @@ internal fun HomeScreen(state: AppUiState, requestAccess: () -> Unit, browse: (M
 
 @Composable
 private fun HomeWelcome(cleanup: () -> Unit) {
+    val largeText = LocalDensity.current.fontScale >= 1.5f
     Row(
-        Modifier.fillMaxWidth().galliCardSurface(Panel).padding(12.dp),
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(GalliUiMetrics.cardCorner))
+            .background(if (IsGalliDark) Panel else Color(0xFFF0F7EB))
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text("사진·동영상을 더 가볍게", style = MaterialTheme.typography.titleMedium)
-            Text("정리는 내 기기에서 안전하게", style = MaterialTheme.typography.bodySmall, color = Muted)
-            ActionButton("정리 시작하기", cleanup, filled = true, icon = Icons.Rounded.ArrowForward)
+        Image(
+            painter = painterResource(R.drawable.gp_mascot),
+            contentDescription = null,
+            modifier = Modifier.size(if (largeText) 88.dp else 116.dp),
+            contentScale = ContentScale.Fit,
+        )
+        Column(
+            Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Text(
+                "사진과 영상을\n더 가볍고,\n더 깔끔하게!",
+                style = MaterialTheme.typography.titleMedium,
+                color = Ink,
+                modifier = Modifier.semantics { heading() },
+            )
+            Text(
+                "필요한 파일만 직접 확인하세요",
+                style = MaterialTheme.typography.bodySmall,
+                color = Muted,
+            )
+            ActionButton(
+                "정리 시작하기",
+                cleanup,
+                modifier = Modifier.fillMaxWidth(),
+                filled = true,
+                icon = Icons.Rounded.ArrowForward,
+            )
         }
-        GalliIllustration(GalliScene.ORGANIZE, Modifier.size(82.dp))
     }
 }
 
 @Composable
-private fun HomeActions(duplicates: () -> Unit, cleanup: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("빠른 정리", style = MaterialTheme.typography.titleLarge)
-        OverviewAction("완전히 같은 파일 찾기", "파일 내용을 비교해 중복 사본을 확인합니다", Icons.Rounded.CopyAll, duplicates)
-        OverviewAction("용량을 줄일 후보 살펴보기", "큰 동영상과 오래된 스크린샷부터 확인하세요", Icons.Rounded.CleaningServices, cleanup)
-    }
-}
-
-@Composable
-private fun HomeStorageSummary(state: AppUiState) {
-    GalliCard(Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GalliIcon(Icons.Rounded.Folder, null, Modifier.size(24.dp))
-            Text("기기 저장공간", style = MaterialTheme.typography.titleMedium)
+private fun HomeStorageSummary(state: AppUiState, modifier: Modifier = Modifier) {
+    val total = state.totalStorageBytes.coerceAtLeast(0L)
+    val used = (total - state.freeStorageBytes).coerceIn(0L, total)
+    val usedFraction = if (total > 0L) (used.toFloat() / total).coerceIn(0f, 1f) else 0f
+    val usedPercent = (usedFraction * 100f).toInt()
+    Column(
+        modifier.galliCardSurface(if (IsGalliDark) AppSurface else Color.White)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                Modifier.size(46.dp).background(Panel, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                GalliIcon(Icons.Rounded.Storage, null, Modifier.size(28.dp), tint = Primary)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("저장공간 사용량", style = MaterialTheme.typography.titleSmall)
+                if (total > 0L) {
+                    Text(
+                        bytesLabel(used) + " / " + bytesLabel(total) + " (" + usedPercent + "%)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Muted,
+                    )
+                } else {
+                    Text("기기 저장공간 확인 중", style = MaterialTheme.typography.bodyMedium, color = Muted)
+                }
+            }
+        }
+        Box(
+            Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(Panel),
+        ) {
+            if (usedFraction > 0f) {
+                Box(Modifier.fillMaxWidth(usedFraction).fillMaxHeight().background(Primary, CircleShape))
+            }
         }
         Text(
-            if (state.totalStorageBytes > 0) "${bytesLabel(state.freeStorageBytes)} 사용 가능" else "저장공간 확인 중",
-            style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+            when (state.access) {
+                MediaAccess.NONE -> "접근을 허용하면 관리할 파일을 확인할 수 있습니다."
+                MediaAccess.PARTIAL -> "선택해 허용한 미디어 " + state.items.size + "개"
+                else -> "접근 가능한 미디어 " + state.items.size + "개"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted,
         )
-        if (state.totalStorageBytes > 0) {
-            val used = ((state.totalStorageBytes - state.freeStorageBytes).toFloat() / state.totalStorageBytes).coerceIn(0f, 1f)
-            Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(Panel)) {
-                if (used > 0) Box(Modifier.fillMaxWidth(used).fillMaxHeight().background(Primary, CircleShape))
+    }
+}
+
+private data class HomeShortcut(
+    val title: String,
+    val imageRes: Int? = null,
+    val vectorIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun HomeQuickActions(
+    browse: (MediaFilter) -> Unit,
+    duplicates: () -> Unit,
+    modifier: Modifier = Modifier,
+    twoColumns: Boolean,
+) {
+    val oneYearAgo = System.currentTimeMillis() - 365L * 24 * 60 * 60 * 1000
+    val shortcuts = listOf(
+        HomeShortcut("사진·영상 정리", imageRes = R.drawable.gp_photo, onClick = { browse(MediaFilter()) }),
+        HomeShortcut("중복 파일 찾기", imageRes = R.drawable.gp_duplicates, onClick = duplicates),
+        HomeShortcut("용량 큰 파일", imageRes = R.drawable.gp_video, onClick = {
+            browse(MediaFilter(minSizeBytes = 100L * 1024 * 1024, sortField = SortField.SIZE))
+        }),
+        HomeShortcut("오래된 파일", vectorIcon = Icons.Rounded.DateRange, onClick = {
+            browse(MediaFilter(
+                fromDateMs = 1L, toDateMs = oneYearAgo,
+                sortField = SortField.CAPTURED, sortDirection = SortDirection.ASCENDING,
+            ))
+        }),
+    )
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (twoColumns) {
+            shortcuts.chunked(2).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row.forEach { shortcut ->
+                        HomeShortcutCard(shortcut, Modifier.weight(1f))
+                    }
+                }
             }
-            Text("전체 ${bytesLabel(state.totalStorageBytes)} · 사용 중 ${bytesLabel(state.totalStorageBytes - state.freeStorageBytes)}", color = Muted, style = MaterialTheme.typography.bodySmall)
-        }
-        Text("${if (state.access == MediaAccess.PARTIAL) "허용한" else "접근 가능한"} 미디어 ${state.items.size}개 · ${bytesLabel(state.items.sumOf { it.sizeBytes })}", style = MaterialTheme.typography.bodyMedium)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GalliIcon(Icons.Rounded.Shield, null, Modifier.size(22.dp))
-            Text("모든 분석은 이 기기에서 이루어집니다.", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.weight(1f))
+        } else {
+            shortcuts.forEach { shortcut ->
+                HomeShortcutCard(shortcut, Modifier.fillMaxWidth(), compact = true)
+            }
         }
     }
 }
 
 @Composable
-private fun HomeMediaStats(photos: List<MediaItem>, videos: List<MediaItem>, browse: (MediaFilter) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        MediaStat("사진", photos.size, photos.sumOf { it.sizeBytes }, Icons.Rounded.Image, Modifier.weight(1f), Mint) { browse(MediaFilter(kind = MediaKind.PHOTO)) }
-        MediaStat("동영상", videos.size, videos.sumOf { it.sizeBytes }, Icons.Rounded.Videocam, Modifier.weight(1f), Peach) { browse(MediaFilter(kind = MediaKind.VIDEO)) }
-    }
-}
-
-@Composable
-private fun MediaStat(title: String, count: Int, size: Long, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier, accent: Color, onClick: () -> Unit) {
+private fun HomeShortcutCard(shortcut: HomeShortcut, modifier: Modifier = Modifier, compact: Boolean = false) {
     Column(
-        modifier.galliCardSurface().plainClick(action = onClick).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier.heightIn(min = if (compact) 86.dp else 120.dp)
+            .galliCardSurface(if (IsGalliDark) AppSurface else Color.White)
+            .semantics { role = Role.Button }
+            .plainClick(action = shortcut.onClick)
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.size(44.dp).background(accent, RoundedCornerShape(15.dp)), contentAlignment = Alignment.Center) {
-            GalliIcon(icon, null, Modifier.size(30.dp))
+        if (shortcut.imageRes != null) {
+            Image(
+                painter = painterResource(shortcut.imageRes),
+                contentDescription = null,
+                modifier = Modifier.size(if (compact) 48.dp else 60.dp),
+                contentScale = ContentScale.Fit,
+            )
+        } else if (shortcut.vectorIcon != null) {
+            Box(
+                Modifier.size(if (compact) 48.dp else 60.dp)
+                    .background(Panel, RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                GalliIcon(shortcut.vectorIcon, null, Modifier.size(34.dp), tint = Primary)
+            }
         }
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        Text("${count}개", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(bytesLabel(size), color = Muted, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-@Composable
-private fun OverviewAction(title: String, body: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().galliCardSurface().plainClick(action = onClick).padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(Modifier.size(44.dp).background(Panel, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-            GalliIcon(icon, null, Modifier.size(32.dp))
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(body, color = Muted, style = MaterialTheme.typography.bodySmall)
-        }
-        GalliIcon(Icons.Rounded.ChevronRight, "열기", Modifier.size(20.dp))
+        Text(
+            shortcut.title,
+            style = MaterialTheme.typography.titleSmall,
+            color = Ink,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
