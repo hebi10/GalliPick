@@ -21,20 +21,32 @@ internal data class GalliPalette(
 )
 
 internal val LightPalette = GalliPalette(
-    ink = Color(0xFF25483F), muted = Color(0xFF597267), line = Color(0xFFDCE6DF),
-    panel = Color(0xFFEEF4EE), background = Color(0xFFFAF9F5), surface = Color.White,
-    mint = Color(0xFFCDE6D8), peach = Color(0xFFF5D6BD),
-    primary = Color(0xFF236448), onPrimary = Color.White,
+    ink = Color(0xFF214637), muted = Color(0xFF536D5A), line = Color(0xFFD9E5D9),
+    panel = Color(0xFFEDF5EC), background = Color(0xFFFAF9F5), surface = Color.White,
+    mint = Color(0xFFD0EACE), peach = Color(0xFFF5D9BC),
+    primary = Color(0xFF147C31), onPrimary = Color.White,
 )
 
 internal val DarkPalette = GalliPalette(
-    ink = Color(0xFFE4F0E8), muted = Color(0xFFB1C7BB), line = Color(0xFF3B5147),
-    panel = Color(0xFF22372F), background = Color(0xFF101A17), surface = Color(0xFF192820),
-    mint = Color(0xFF315E49), peach = Color(0xFF654936),
-    primary = Color(0xFFB2DAC4), onPrimary = Color(0xFF173C2E),
+    ink = Color(0xFFE6F2E8), muted = Color(0xFFB6CDB9), line = Color(0xFF405949),
+    panel = Color(0xFF273E30), background = Color(0xFF101A17), surface = Color(0xFF1A2A20),
+    mint = Color(0xFF345C3E), peach = Color(0xFF654936),
+    primary = Color(0xFFB0E2B7), onPrimary = Color(0xFF173B21),
 )
 
+internal object GalliUiMetrics {
+    val touchTarget = 48.dp
+    val headerHeight = 56.dp
+    val buttonCorner = 14.dp
+    val cardCorner = 20.dp
+    val navigationCorner = 16.dp
+    val cardPadding = 16.dp
+    val cardSpacing = 12.dp
+    val navigationIcon = 27.dp
+}
+
 private val LocalGalliPalette = staticCompositionLocalOf { LightPalette }
+internal val IsGalliDark: Boolean @Composable get() = LocalGalliPalette.current == DarkPalette
 internal val Ink: Color @Composable get() = LocalGalliPalette.current.ink
 internal val Muted: Color @Composable get() = LocalGalliPalette.current.muted
 internal val Line: Color @Composable get() = LocalGalliPalette.current.line
@@ -88,14 +100,23 @@ fun GalliPickTheme(themeMode: AppThemeMode = AppThemeMode.SYSTEM, content: @Comp
     CompositionLocalProvider(LocalGalliPalette provides palette) {
         MaterialTheme(
             colorScheme = colors,
-            shapes = Shapes(RoundedCornerShape(10.dp), RoundedCornerShape(14.dp), RoundedCornerShape(18.dp), RoundedCornerShape(24.dp), RoundedCornerShape(28.dp)),
+            shapes = Shapes(
+                RoundedCornerShape(10.dp), RoundedCornerShape(GalliUiMetrics.buttonCorner),
+                RoundedCornerShape(16.dp), RoundedCornerShape(GalliUiMetrics.cardCorner),
+                RoundedCornerShape(24.dp),
+            ),
             typography = typography.copy(
-                headlineLarge = typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                headlineMedium = typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                titleLarge = typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                titleMedium = typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                bodyLarge = typography.bodyLarge.copy(lineHeight = 25.sp),
-                bodyMedium = typography.bodyMedium.copy(lineHeight = 22.sp),
+                headlineLarge = typography.headlineLarge.copy(fontWeight = FontWeight.Bold, lineHeight = 38.sp),
+                headlineMedium = typography.headlineMedium.copy(fontWeight = FontWeight.Bold, lineHeight = 34.sp),
+                titleLarge = typography.titleLarge.copy(fontWeight = FontWeight.Bold, lineHeight = 28.sp),
+                titleMedium = typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, lineHeight = 24.sp),
+                titleSmall = typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, lineHeight = 21.sp),
+                bodyLarge = typography.bodyLarge.copy(lineHeight = 24.sp),
+                bodyMedium = typography.bodyMedium.copy(lineHeight = 21.sp),
+                bodySmall = typography.bodySmall.copy(lineHeight = 18.sp),
+                labelLarge = typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, lineHeight = 20.sp),
+                labelMedium = typography.labelMedium.copy(lineHeight = 18.sp),
+                labelSmall = typography.labelSmall.copy(lineHeight = 16.sp),
             ),
             content = content,
         )
