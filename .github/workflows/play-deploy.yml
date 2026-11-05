@@ -2,7 +2,9 @@ name: Play testing deployment
 run-name: GalliPick Play ${{ inputs.mode || 'deploy' }} · ${{ inputs.target || 'internal' }} · ${{ github.ref_name }}
 on:
   push:
+    branches: [main]
     tags: ['v*']
+    paths: ['app/build.gradle.kts']
   workflow_dispatch:
     inputs:
       mode:
@@ -24,7 +26,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   prepare:
-    if: github.repository == 'hebi10/GalliPick'
+    if: >-
+      github.repository == 'hebi10/GalliPick' &&
+      (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') ||
+      (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[deploy-internal]')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -65,14 +70,41 @@ jobs:
           print('v' + version)
           PY
           )"
-          else
-            if [[ "$GITHUB_EVENT_NAME" != "push" || "$GITHUB_REF" != refs/tags/v* ]]; then
-              echo 'Automatic Play runs require a version tag.' >&2
-              exit 1
-            fi
+          elif [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == refs/tags/v* ]]; then
             MODE=deploy
             TARGET=internal
             RELEASE_TAG="$REF_NAME"
+          elif [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
+            # Main pushes deploy only on an explicit release-intent commit and a
+            # source versionCode increase. Unrelated Gradle edits never publish.
+            MODE=deploy
+            TARGET=internal
+            RELEASE_TAG="$(python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts/release')
+          from verify_apk import parse_source_version
+          version, _ = parse_source_version(Path('app/build.gradle.kts').read_text(encoding='utf-8'))
+          print('v' + version)
+          PY
+          )"
+            python3 - <<'PY'
+          import subprocess
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts/release')
+          from verify_apk import parse_source_version
+          previous_source = subprocess.check_output(
+              ['git', 'show', 'HEAD^:app/build.gradle.kts'], text=True)
+          _, previous_code = parse_source_version(previous_source)
+          _, next_code = parse_source_version(Path('app/build.gradle.kts').read_text(encoding='utf-8'))
+          if next_code <= previous_code:
+              raise SystemExit('Internal release requires a higher versionCode than the previous main commit.')
+          print(f'Intentional internal release versionCode: {previous_code} -> {next_code}')
+          PY
+          else
+            echo 'Automatic Play runs require a version tag or an intentional main release commit.' >&2
+            exit 1
           fi
           case "$MODE" in
             check|build|deploy) ;;
@@ -96,7 +128,7 @@ jobs:
           esac
           python3 scripts/release/verify_apk.py source --tag "$RELEASE_TAG"
           RELEASE_COMMIT="$(git rev-parse HEAD)"
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG_COMMIT="$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")"
             if [[ "$TAG_COMMIT" != "$RELEASE_COMMIT" ]]; then
               echo 'The release tag does not identify the checked-out source.' >&2
