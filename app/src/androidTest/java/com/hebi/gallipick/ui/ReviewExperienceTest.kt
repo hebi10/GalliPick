@@ -174,25 +174,25 @@ class ReviewExperienceTest {
             GalliPickTheme { TrashScreen(catalog.value, { requested = it }, {}) }
         }
         compose.onNodeWithContentDescription("휴지통 전체 선택").performClick()
-        compose.onNodeWithText("500개 선택", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("500개 선택 · ${bytesLabel(500L * 1024L)}").assertIsDisplayed()
         compose.onNodeWithText("선택한 ${if (requested.isEmpty()) 500 else 498}개 복원").performClick()
         compose.runOnIdle {
             assertEquals(500, requested.size)
             assertFalse(requested.any { it.uri == all.last().uri })
         }
         // Requesting approval alone does not clear a selection; the user may cancel Android's dialog.
-        compose.onNodeWithText("500개 선택", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("500개 선택 · ${bytesLabel(500L * 1024L)}").assertIsDisplayed()
         compose.onNodeWithContentDescription("휴지통 파일 목록").performScrollToIndex(500)
         compose.onNodeWithContentDescription("${all.last().displayName} 복원 선택").performClick()
         compose.onNodeWithText("한 번에 최대 500개까지 복원할 수 있습니다. 선택을 해제한 뒤 다시 선택해 주세요.").assertIsDisplayed()
-        compose.onNodeWithText("500개 선택", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("500개 선택 · ${bytesLabel(500L * 1024L)}").assertIsDisplayed()
         saveScreenshot("review-trash-selection-limit")
         // A changed fingerprint is no longer the version that the user selected.
         compose.runOnIdle { catalog.value = all.mapIndexed { index, item -> if (index == 0) item.copy(generationModified = 1) else item } }
-        compose.onNodeWithText("499개 선택", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("499개 선택 · ${bytesLabel(499L * 1024L)}").assertIsDisplayed()
         // A volume reset can reuse a URI and fingerprint for a different physical file.
         compose.runOnIdle { catalog.value = catalog.value.mapIndexed { index, item -> if (index == 1) item.copy(volumeVersion = "reset-epoch") else item } }
-        compose.onNodeWithText("498개 선택", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("498개 선택 · ${bytesLabel(498L * 1024L)}").assertIsDisplayed()
         compose.onNodeWithText("선택한 ${if (requested.isEmpty()) 500 else 498}개 복원").performClick()
         compose.runOnIdle {
             assertEquals(498, requested.size)
@@ -200,7 +200,7 @@ class ReviewExperienceTest {
         }
         // Successful restored rows leave the trash catalog and disappear from the selection.
         compose.runOnIdle { catalog.value = listOf(all.last()) }
-        compose.onNodeWithText("0개 선택", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("0개 선택 · ${bytesLabel(0L * 1024L)}").assertIsDisplayed()
         compose.onNodeWithText("선택한 0개 복원").assertIsNotEnabled()
     }
 
