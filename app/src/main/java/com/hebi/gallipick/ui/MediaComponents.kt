@@ -112,11 +112,19 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
                 if (!beside) previewAction(Modifier.fillMaxWidth())
                 ActionButton("파일 열기", { onOpen(item) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.OpenInNew)
                 ActionButton(if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호", { onProtect(!item.isProtected) }, Modifier.fillMaxWidth(), enabled = !folderProtected, icon = Icons.Rounded.Shield)
-                if (folderProtected) Text("폴더 보호는 설정의 보호 폴더에서 해제할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
-                if (item.isFavorite || item.isProtected) Text(
-                    if (item.isFavorite) "즐겨찾기 파일은 정리에서 제외됩니다. 즐겨찾기 변경은 갤러리에서 해주세요." else "보호한 파일은 정리에서 제외됩니다.",
-                    color = Muted, style = MaterialTheme.typography.bodySmall,
-                )
+                if (folderProtected || item.isProtected) {
+                    Row(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        GalliIllustration(GalliScene.PROTECT, Modifier.size(60.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("정리에서 보호 중", style = MaterialTheme.typography.titleSmall, color = Ink)
+                            Text(if (folderProtected) "폴더 보호는 설정의 보호 폴더에서 해제할 수 있습니다." else "이 파일은 정리 선택에서 제외됩니다.",
+                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+                if (item.isFavorite) Text("즐겨찾기 파일은 정리에서 제외됩니다. 즐겨찾기 변경은 갤러리에서 해주세요.",
+                    color = Muted, style = MaterialTheme.typography.bodySmall)
                 DetailRow("용량", bytesLabel(item.sizeBytes))
                 DetailRow("해상도", "${item.width} × ${item.height} · %.1f MP".format(item.pixels / 1_000_000.0))
                 if (item.kind == MediaKind.VIDEO) DetailRow("재생 시간", durationLabel(item.durationMs))

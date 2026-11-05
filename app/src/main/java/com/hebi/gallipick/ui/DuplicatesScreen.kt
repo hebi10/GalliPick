@@ -135,6 +135,7 @@ internal fun DuplicatesScreenContent(
                         item("empty", span = { GridItemSpan(maxLineSpan) }) { EmptyState(
                             if (state.scan.phase == ScanPhase.COMPLETE) "확인된 중복 파일이 없습니다" else "중복 사본을 찾아보세요",
                             if (state.scan.phase == ScanPhase.COMPLETE) "접근이 허용된 미디어에서 검사한 결과입니다." else "검사를 시작하면 같은 내용의 파일이 묶여 표시됩니다.", Icons.Rounded.CopyAll,
+                            scene = if (state.scan.phase == ScanPhase.COMPLETE) GalliScene.COMPLETE else GalliScene.SEARCH,
                         ) }
                     } else {
                         if (!shortResults) item("selection", span = { GridItemSpan(maxLineSpan) }) {

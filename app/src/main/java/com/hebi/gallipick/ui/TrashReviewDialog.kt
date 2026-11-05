@@ -1,5 +1,8 @@
 package com.hebi.gallipick.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -21,7 +25,12 @@ import com.hebi.gallipick.domain.MediaItem
 internal fun TrashReviewDialog(moving: List<MediaItem>, kept: List<MediaItem>, restore: Boolean, excluded: Int, onDismiss: () -> Unit, onProceed: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp), contentAlignment = Alignment.Center) {
-            Surface(Modifier.widthIn(max = 760.dp).fillMaxWidth().heightIn(max = maxHeight)) {
+            val rows = minOf(maxOf(moving.size, kept.size, 1), 4)
+            val baseHeight = if (!restore && kept.isNotEmpty()) 278.dp else 242.dp
+            val desiredHeight = (baseHeight + (rows * 104).dp) * LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
+            val dialogHeight = desiredHeight.coerceAtMost(maxHeight)
+            Surface(Modifier.widthIn(max = 760.dp).fillMaxWidth().height(dialogHeight),
+                shape = RoundedCornerShape(20.dp), color = AppSurface, border = BorderStroke(1.dp, Line)) {
                 TrashReviewContent(moving, kept, restore, excluded, onDismiss, onProceed)
             }
         }
@@ -56,10 +65,26 @@ internal fun TrashReviewContent(moving: List<MediaItem>, kept: List<MediaItem>, 
                 }
             }
             items(displayed, key = { it.uri }) { file ->
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(if (showKept && showTabs) "남길 파일" else if (restore) "복원 대상" else "이동 대상으로 선택됨", style = MaterialTheme.typography.labelMedium, color = Muted)
-                    Text(file.displayName, style = MaterialTheme.typography.bodyMedium)
-                    Text(file.relativePath.ifBlank { "기본 폴더" }, color = Muted, style = MaterialTheme.typography.bodySmall)
+                Row(
+                    Modifier.fillMaxWidth().border(1.dp, Line, RoundedCornerShape(14.dp)).padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    MediaThumbnail(file, Modifier.size(64.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            if (showKept && showTabs) "남길 파일 · 유지" else if (restore) "복원 대상" else "휴지통 이동 대상",
+                            style = MaterialTheme.typography.labelMedium, color = Ink,
+                        )
+                        Text(file.displayName, style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            "${if (file.kind == com.hebi.gallipick.domain.MediaKind.VIDEO) "동영상" else "사진"} · ${bytesLabel(file.sizeBytes)}",
+                            style = MaterialTheme.typography.bodySmall, color = Muted,
+                        )
+                        Text(file.relativePath.ifBlank { "기본 폴더" },
+                            style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }

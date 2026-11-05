@@ -106,7 +106,7 @@ internal fun FilesScreenContent(
                                     EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.")
                                 }
                                 filtered.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth()) {
-                                    EmptyState("조건에 맞는 파일이 없습니다", "접근 범위와 필터 조건을 확인해주세요.", action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) })
+                                    EmptyState("조건에 맞는 파일이 없습니다", "접근 범위와 필터 조건을 확인해주세요.", action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) }, scene = GalliScene.SEARCH)
                                 }
                                 else -> LazyVerticalGrid(
                                     columns = GridCells.Adaptive(if (wide) 156.dp else 132.dp), state = gridState,
@@ -190,9 +190,10 @@ internal fun SelectionBar(selected: List<MediaItem>, clear: () -> Unit, trash: (
 }
 
 @Composable
-private fun SavePresetDialog(save: (String) -> Unit, dismiss: () -> Unit) {
+internal fun SavePresetDialog(save: (String) -> Unit, dismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = dismiss, shape = RoundedCornerShape(24.dp), title = { Text("현재 필터 저장") }, text = {
+    AlertDialog(onDismissRequest = dismiss, shape = RoundedCornerShape(20.dp), containerColor = AppSurface,
+        titleContentColor = Ink, textContentColor = Muted, title = { Text("현재 필터 저장") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("검색어, 조건, 정렬을 함께 저장합니다.")
             OutlinedTextField(name, { name = it.take(40) }, label = { Text("필터 이름") }, singleLine = true, shape = RoundedCornerShape(16.dp))
