@@ -39,8 +39,9 @@ class AdaptiveOverviewTest {
             }
         }
         compose.onNodeWithText("정리 시작하기").assertIsDisplayed()
-        compose.onNodeWithText("완전히 같은 파일 찾기").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("용량을 줄일 후보 살펴보기").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("중복 파일 찾기").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("용량 큰 파일").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("오래된 파일").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun homeReflowsWithTheWindowRatherThanDeviceConfiguration() {
@@ -54,14 +55,14 @@ class AdaptiveOverviewTest {
                 }
             }
         }
-        val wideAction = compose.onNodeWithText("완전히 같은 파일 찾기").fetchSemanticsNode().boundsInRoot
-        val wideStorage = compose.onNodeWithText("기기 저장공간").fetchSemanticsNode().boundsInRoot
-        assertTrue("A wide home should place actions beside the summary", wideAction.right <= wideStorage.left)
+        val wideAction = compose.onNodeWithText("중복 파일 찾기").fetchSemanticsNode().boundsInRoot
+        val wideStorage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
+        assertTrue("A wide home should place storage beside the quick grid", wideStorage.right <= wideAction.left)
 
         compose.runOnIdle { width.value = 360.dp }
-        val narrowAction = compose.onNodeWithText("완전히 같은 파일 찾기").fetchSemanticsNode().boundsInRoot
-        val narrowStorage = compose.onNodeWithText("기기 저장공간").fetchSemanticsNode().boundsInRoot
-        assertTrue("A narrow home should put actions before the summary", narrowAction.bottom < narrowStorage.top)
+        val narrowAction = compose.onNodeWithText("중복 파일 찾기").fetchSemanticsNode().boundsInRoot
+        val narrowStorage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
+        assertTrue("A narrow home should show storage before the shortcut grid", narrowStorage.bottom < narrowAction.top)
     }
 
     @Test fun cleanupPrioritizesResultsAndKeepsEmptyCategoriesCompactAndNavigable() {
