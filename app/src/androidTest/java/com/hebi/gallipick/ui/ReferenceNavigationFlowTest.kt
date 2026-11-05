@@ -57,7 +57,7 @@ class ReferenceNavigationFlowTest {
             }
         }
 
-        compose.onNode(hasText("완전히 같은 파일 찾기") and hasClickAction())
+        compose.onNode(hasText("중복 파일 찾기") and hasClickAction())
             .performScrollTo().performClick()
         tab("정리").assertIsSelected()
         compose.onNodeWithContentDescription("정리로 돌아가기").assertIsDisplayed()
