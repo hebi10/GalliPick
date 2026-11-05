@@ -75,7 +75,7 @@ class GalliDesignSystemTest {
     @Test fun darkNavigationRetainsFiveReachableTabSemantics() {
         compose.setContent {
             GalliPickTheme(AppThemeMode.DARK) {
-                AppDestinationRail(Destination.FILES, {}, Modifier.requiredSize(100.dp, 700.dp))
+                AppDestinationRail(Destination.FILES, {}, Modifier.requiredSize(100.dp, 280.dp))
             }
         }
         Destination.entries.forEach { destination ->
