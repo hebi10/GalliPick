@@ -77,59 +77,74 @@ fun CleanupResultDialog(
 ) {
     val action = if (result.restore) "복원" else "이동"
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(
+            Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+            val dialogHeight = minOf(maxHeight, 600.dp * fontScale.coerceAtMost(1.6f))
             Surface(
-                Modifier.widthIn(max = 640.dp).fillMaxWidth().heightIn(max = maxHeight),
+                Modifier.widthIn(max = 640.dp).fillMaxWidth().height(dialogHeight),
                 shape = RoundedCornerShape(20.dp),
                 color = AppSurface,
                 tonalElevation = 0.dp,
             ) {
-                Column(
-                    Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text("정리 작업 결과", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         IconAction("결과 닫기", Icons.Rounded.Close, onClick = onDismiss)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        GalliIllustration(
-                            if (result.status == CleanupResultStatus.SUCCESS) GalliScene.COMPLETE else GalliScene.SEARCH,
-                            Modifier.size(72.dp),
-                        )
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(result.title, style = MaterialTheme.typography.titleLarge)
-                            Text(result.description, style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Column(
+                        Modifier.weight(1f).verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            GalliIllustration(
+                                if (result.status == CleanupResultStatus.SUCCESS) GalliScene.COMPLETE else GalliScene.SEARCH,
+                                Modifier.size(72.dp),
+                            )
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(result.title, style = MaterialTheme.typography.titleLarge)
+                                Text(result.description, style = MaterialTheme.typography.bodySmall, color = Muted)
+                            }
+                        }
+                        Surface(shape = RoundedCornerShape(12.dp), color = Panel) {
+                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("요청 ${result.requestedCount}개 · 확인 완료 ${result.completedCount}개", style = MaterialTheme.typography.titleSmall)
+                                if (result.unchangedCount > 0) Text("미${action} ${result.unchangedCount}개", style = MaterialTheme.typography.bodySmall)
+                                if (result.unknownCount > 0) Text("확인 불가 ${result.unknownCount}개", style = MaterialTheme.typography.bodySmall)
+                                Text("요청한 파일의 용량 ${bytesLabel(result.requestedBytes)}", style = MaterialTheme.typography.bodySmall, color = Muted)
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            GalliIcon(Icons.Rounded.Info, null, Modifier.size(22.dp))
+                            Text(
+                                "표시된 용량은 요청한 파일 크기의 합계이며 실제 확보된 저장공간이 아닙니다. 휴지통 이동만으로 공간이 즉시 늘어나지는 않을 수 있습니다.",
+                                style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.weight(1f),
+                            )
                         }
                     }
-                    Surface(shape = RoundedCornerShape(12.dp), color = Panel) {
-                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("요청 ${result.requestedCount}개 · 확인 완료 ${result.completedCount}개", style = MaterialTheme.typography.titleSmall)
-                            if (result.unchangedCount > 0) Text("미${action} ${result.unchangedCount}개", style = MaterialTheme.typography.bodySmall)
-                            if (result.unknownCount > 0) Text("확인 불가 ${result.unknownCount}개", style = MaterialTheme.typography.bodySmall)
-                            Text("요청한 파일의 용량 ${bytesLabel(result.requestedBytes)}", style = MaterialTheme.typography.bodySmall, color = Muted)
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GalliIcon(Icons.Rounded.Info, null, Modifier.size(22.dp))
-                        Text(
-                            "표시된 용량은 요청한 파일 크기의 합계이며 실제 확보된 저장공간이 아닙니다. 휴지통 이동만으로 공간이 즉시 늘어나지는 않을 수 있습니다.",
-                            style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.weight(1f),
-                        )
-                    }
-                    BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        val stacked = maxWidth < 420.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        val stacked = maxWidth < 420.dp * fontScale
                         if (stacked) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 ActionButton("홈으로", onHome, Modifier.fillMaxWidth())
-                                ActionButton(if (result.restore) "휴지통 확인" else "다음 정리 후보 확인",
-                                    onNext, Modifier.fillMaxWidth(), filled = true)
+                                ActionButton(
+                                    if (result.restore) "휴지통 확인" else "다음 정리 후보 확인",
+                                    onNext, Modifier.fillMaxWidth(), filled = true,
+                                )
                             }
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 ActionButton("홈으로", onHome, Modifier.weight(1f))
-                                ActionButton(if (result.restore) "휴지통 확인" else "다음 정리 후보 확인",
-                                    onNext, Modifier.weight(1f), filled = true)
+                                ActionButton(
+                                    if (result.restore) "휴지통 확인" else "다음 정리 후보 확인",
+                                    onNext, Modifier.weight(1f), filled = true,
+                                )
                             }
                         }
                     }
