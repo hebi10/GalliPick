@@ -478,21 +478,19 @@ private fun FilterDateInput(
     modifier: Modifier = Modifier,
     onOpenCalendar: () -> Unit,
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        placeholder = { Text("yyyy-MM-dd") },
-        singleLine = true,
-        shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
-        modifier = modifier,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-        trailingIcon = {
-            IconButton(onClick = onOpenCalendar) {
-                Icon(Icons.Rounded.CalendarMonth, contentDescription = "$label 달력에서 선택")
-            }
-        },
-    )
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            placeholder = { Text("yyyy-MM-dd") },
+            singleLine = true,
+            shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
+            modifier = Modifier.weight(1f),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+        )
+        IconAction("$label 달력에서 선택", Icons.Rounded.CalendarMonth, onClick = onOpenCalendar)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
