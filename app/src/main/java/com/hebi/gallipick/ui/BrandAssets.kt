@@ -16,7 +16,9 @@ import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Icon as NativeIcon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -46,7 +48,7 @@ internal fun GalliIllustration(scene: GalliScene, modifier: Modifier = Modifier)
 
 /** Dedicated 256x256 PNG icons avoid magnifying the former 48px atlas cells. */
 @Composable
-internal fun GalliNavigationIcon(icon: ImageVector, modifier: Modifier = Modifier) {
+internal fun GalliNavigationIcon(icon: ImageVector, modifier: Modifier = Modifier, selected: Boolean = false) {
     val drawable = when (icon) {
         Icons.Rounded.Home -> R.drawable.gp_nav_home
         Icons.Rounded.GridView -> R.drawable.gp_nav_files
@@ -56,13 +58,14 @@ internal fun GalliNavigationIcon(icon: ImageVector, modifier: Modifier = Modifie
         else -> null
     }
     if (drawable == null) {
-        NativeIcon(icon, contentDescription = null, modifier = modifier, tint = Ink)
+        NativeIcon(icon, contentDescription = null, modifier = modifier, tint = if (selected) Primary else Muted)
     } else {
         Image(
             painter = painterResource(drawable),
             contentDescription = null,
-            modifier = modifier,
+            modifier = modifier.alpha(if (selected) 1f else .82f),
             contentScale = ContentScale.Fit,
+            colorFilter = if (IsGalliDark) ColorFilter.tint(if (selected) Primary else Muted) else null,
         )
     }
 }
@@ -87,6 +90,7 @@ internal fun GalliIcon(
             contentDescription = contentDescription,
             modifier = modifier,
             contentScale = ContentScale.Fit,
+            colorFilter = if (IsGalliDark || tint != Ink) ColorFilter.tint(tint) else null,
         )
     } else {
         NativeIcon(imageVector, contentDescription = contentDescription, modifier = modifier, tint = tint)
