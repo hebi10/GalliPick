@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -79,12 +80,14 @@ class ModalSurfaceCaptureTest {
             screenshot(output, "03-file-detail")
             compose.runOnIdle { current = Screen.PHOTO }
             compose.onNodeWithText("외부 앱에서 원본 열기").assertIsDisplayed()
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("사진 미리보기: ${photoA.displayName}").fetchSemanticsNodes().isNotEmpty() }
             screenshot(output, "04-photo-preview")
             compose.runOnIdle { current = Screen.VIDEO }
             compose.onNodeWithText("재생").assertIsDisplayed()
             screenshot(output, "05-video-preview")
             compose.runOnIdle { current = Screen.COMPARE }
             compose.onNodeWithContentDescription("A 파일 비교 패널").assertIsDisplayed()
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("사진 미리보기: ${photoA.displayName}").fetchSemanticsNodes().isNotEmpty() }
             screenshot(output, "06-duplicate-compare")
             compose.runOnIdle { current = Screen.REVIEW }
             compose.onNodeWithText("휴지통 이동 대상").assertIsDisplayed()
@@ -94,6 +97,7 @@ class ModalSurfaceCaptureTest {
             screenshot(output, "08-restore-review")
             compose.runOnIdle { current = Screen.TRASH }
             compose.onNodeWithText("휴지통").assertIsDisplayed()
+            compose.onNodeWithText("EXAMPLE_copy.png").assertIsDisplayed()
             screenshot(output, "09-trash-list")
             compose.runOnIdle { current = Screen.PRESET }
             compose.onNodeWithText("현재 필터 저장").assertIsDisplayed()
@@ -124,6 +128,8 @@ class ModalSurfaceCaptureTest {
 
     private fun screenshot(output: File, name: String) {
         compose.waitForIdle()
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        android.os.SystemClock.sleep(240)
         val bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
             "Android did not provide a full-viewport screenshot: $name"
         }
