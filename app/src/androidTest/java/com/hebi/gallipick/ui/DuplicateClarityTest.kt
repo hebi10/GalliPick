@@ -128,6 +128,29 @@ class DuplicateClarityTest {
         compose.runOnIdle { assertTrue(selectedAll); assertFalse(moved) }
     }
 
+    @Test fun pausedAndFailedScanShowDistinctRecoveryGuidance() {
+        val first = media(1, "first.mp4")
+        val second = media(2, "copy.mp4")
+        val group = DuplicateGroup("scan-status", listOf(first, second))
+        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, items = group.items,
+            duplicates = listOf(group), scan = ScanState(ScanPhase.PAUSED, 1, 2)))
+        var resumed = false
+        var restarted = false
+        compose.setContent { GalliPickTheme {
+            DuplicatesScreenContent(state.value, {}, {}, {},
+                actions().copy(resumeScan = { resumed = true }, startScan = { restarted = true }))
+        } }
+        compose.onNodeWithText("일시정지 중입니다. 계속 검사를 눌러 재개할 수 있습니다.").assertIsDisplayed()
+        compose.onNodeWithText("계속 검사").performClick()
+        compose.runOnIdle {
+            assertTrue(resumed)
+            state.value = state.value.copy(scan = ScanState(ScanPhase.FAILED, 1, 2))
+        }
+        compose.onNodeWithText("기존 검사 결과는 확인 후 사용하세요. 다시 검사할 수 있습니다.").assertIsDisplayed()
+        compose.onNodeWithText("검사 시작").performClick()
+        compose.runOnIdle { assertTrue(restarted) }
+    }
+
     @Test fun completedScanKeepsRescanDisabledWithoutAccessibleMedia() {
         compose.setContent { GalliPickTheme {
             DuplicatesScreenContent(AppUiState(access = MediaAccess.NONE, scan = ScanState(ScanPhase.COMPLETE, 2, 2)),
