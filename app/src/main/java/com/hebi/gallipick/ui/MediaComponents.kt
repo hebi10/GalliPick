@@ -68,9 +68,9 @@ internal fun MediaThumbnail(item: MediaItem, modifier: Modifier = Modifier) {
 
 @Composable
 internal fun SelectBox(checked: Boolean, enabled: Boolean = true, description: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.size(44.dp).semantics { contentDescription = description }.toggleable(
+    Box(modifier.size(48.dp).semantics { contentDescription = description }.toggleable(
         value = checked, enabled = enabled, role = Role.Checkbox,
-        interactionSource = remember { MutableInteractionSource() }, indication = ripple(bounded = false, radius = 22.dp),
+        interactionSource = remember { MutableInteractionSource() }, indication = ripple(bounded = false, radius = 24.dp),
         onValueChange = { onClick() },
     ), contentAlignment = Alignment.Center) {
         Box(Modifier.size(24.dp).background(if (checked) Ink else MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).border(1.dp, if (enabled) Ink else Line, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
