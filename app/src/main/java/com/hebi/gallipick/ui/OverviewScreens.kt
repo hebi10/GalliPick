@@ -193,7 +193,9 @@ internal fun CleanupScreen(state: AppUiState, browse: (MediaFilter) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val columns = if (maxWidth >= 700.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) 2 else 1
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            SectionTitle("정리 후보", "필요한 파일인지 확인한 뒤 직접 선택해주세요.")
+            SectionTitle("정리 후보", "파일을 확인하고 직접 선택해야 휴지통으로 이동할 수 있습니다.")
+            Text("후보 ${populated.sumOf { it.items.size }}개 · ${bytesLabel(populated.sumOf { group -> group.items.sumOf { it.sizeBytes } })} · 조건 ${suggestions.size}개 중 ${populated.size}개 해당", style = MaterialTheme.typography.bodyMedium, color = Muted)
+            if (populated.isEmpty()) EmptyState("현재 정리 후보가 없습니다", "지금 적용된 조건에서 정리할 파일을 찾지 못했습니다. 아래에서 각 조건을 확인할 수 있습니다.", Icons.Rounded.CheckCircle, scene = GalliScene.COMPLETE)
             populated.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                     row.forEach { suggestion ->
@@ -226,6 +228,7 @@ private fun CleanupResultCard(suggestion: CleanupSuggestion, open: () -> Unit, m
             Text(suggestion.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
         }
         Text("${suggestion.items.size}개 · ${bytesLabel(suggestion.items.sumOf { it.sizeBytes })}", style = MaterialTheme.typography.headlineSmall)
+        Text("정리 가능 ${deletable.size}개 · ${bytesLabel(deletable.sumOf { it.sizeBytes })}", style = MaterialTheme.typography.bodyMedium, color = Muted)
         Text(suggestion.description, style = MaterialTheme.typography.bodySmall, color = Muted)
         if (excludedCount > 0) {
             Text(
