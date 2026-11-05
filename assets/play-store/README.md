@@ -2,15 +2,17 @@
 
 ## Final redesign screenshots — 2026-11-05, stage 7
 
-The seven `ko-KR/01-home.png` through `07-dark-mode.png` store screenshots and the 1024 × 500 `feature-graphic.png` are regenerated from **verified, genuine Android API 36 screen captures**. They replace screenshots made before the full stage 1–6 redesign.
+The seven ordered `ko-KR/01-home.png` through `07-comparison.png` store screenshots and the 1024 × 500 `feature-graphic.png` are regenerated from **verified, genuine Android API 36 screen captures**. They replace screenshots made before the full stage 1–6 redesign.
 
-- **Capture source commit:** `1a5f61b7b0e6d2f217f793ac31a60654180b24f4` (stage 6 verified)
-- **Capture workflow:** [Run #42009167309](https://github.com/hebi10/GalliPick/actions/runs/42009167309), phone-portrait profile
+- **Capture source commit:** `2d3cf757a934d4588984b644ebe246ee64e9a37a` (navigation and dark utility icon corrections verified)
+- **Capture workflow:** [Run #42023456154](https://github.com/hebi10/GalliPick/actions/runs/42023456154), phone-portrait profile (all five device profiles passed)
 - **Store image renderer:** `scripts/design/package_store_assets.py`; only genuine on-device UI pixels are pasted within a cream marketing frame and caption, never re-generated as fake app UI
 - **Source media:** Test-owned EXAMPLE fixtures, not user photos
 - **Provenance and hashes:** `ko-KR/manifest.json`; `source_commit` and `source_run` identify the approved screenshot run
 
-The seven screenshots show the implemented home, file browsing, advanced filters, exact SHA-256 duplicate scan, A/B comparison, cleanup suggestions, and dark-mode settings. The feature graphic uses the same checked-in GalliPick illustrated cat as the launcher.
+**Navigation-first viewing order:** 01 home, 02 files, 03 complete-duplicate scan, 04 cleanup, 05 dark settings, followed by 06 advanced filter dialog and 07 A/B duplicate comparison. The first five are real top-level Android screens with the complete five-tab bar; the last two intentionally show overlays and are not presented as independent navigation tabs. The feature graphic uses the checked-in GalliPick cat asset.
+
+The actual Android screenshots are the only source of app UI pixels. AI-generated design-study boards are not app screenshots and must never be included in the Play uploads. The dark-mode solid-square icon defect was corrected before these images were regenerated. No similar-photo detection, automatic deletion, notification scheduling, or backup features are advertised.
 
 ### Publishing behavior
 
