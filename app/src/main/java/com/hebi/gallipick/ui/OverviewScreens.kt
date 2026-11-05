@@ -96,7 +96,7 @@ private fun HomeWelcome(cleanup: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Image(
-            painter = painterResource(R.drawable.gp_mascot),
+            painter = painterResource(R.drawable.gp_cat_organize),
             contentDescription = null,
             modifier = Modifier.size(if (largeText) 88.dp else 116.dp),
             contentScale = ContentScale.Fit,
