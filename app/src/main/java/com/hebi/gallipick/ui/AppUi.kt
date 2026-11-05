@@ -177,7 +177,7 @@ internal fun GalliAppHeader(loading: Boolean, onRefresh: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        GalliMascot(Modifier.size(34.dp))
+        GalliBrandMark(Modifier.size(34.dp))
         Text(
             "GalliPick", style = MaterialTheme.typography.titleLarge, color = Ink,
             maxLines = 1, modifier = Modifier.weight(1f),
@@ -236,14 +236,14 @@ private fun NavItem(destination: Destination, selected: Boolean, onClick: () -> 
     ) {
         Box(
             Modifier.size(width = 54.dp, height = if (compact) 24.dp else 34.dp)
-                .background(if (selected) Mint else Color.Transparent, RoundedCornerShape(GalliUiMetrics.navigationCorner)),
+                .background(if (selected) (if (IsGalliDark) Mint else Panel) else Color.Transparent, RoundedCornerShape(GalliUiMetrics.navigationCorner)),
             contentAlignment = Alignment.Center,
         ) {
             GalliNavigationIcon(destination.icon, modifier = Modifier.size(
                 if (compact) 22.dp else GalliUiMetrics.navigationIcon,
             ), selected = selected)
         }
-        Text(destination.title, color = if (selected) Ink else Muted, style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+        Text(destination.title, color = if (selected) (if (IsGalliDark) Ink else Primary) else Muted, style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
