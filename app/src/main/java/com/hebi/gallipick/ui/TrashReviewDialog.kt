@@ -44,7 +44,7 @@ internal fun TrashReviewContent(moving: List<MediaItem>, kept: List<MediaItem>, 
     val showTabs = !restore && kept.isNotEmpty()
     Column(modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (restore) "파일 복원" else "휴지통 이동", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
+            Text(if (restore) "복원할 파일 확인" else "휴지통 이동 확인", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             IconAction("확인창 닫기", Icons.Rounded.Close, onClick = onDismiss)
         }
@@ -58,7 +58,7 @@ internal fun TrashReviewContent(moving: List<MediaItem>, kept: List<MediaItem>, 
             item("summary") {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(if (showKept && showTabs) "각 묶음에서 확인한 남길 사본입니다. 선택하지 않은 다른 파일도 그대로 남습니다."
-                        else "${moving.size}개 · 파일 용량 ${bytesLabel(duplicateBytes(moving))}", style = MaterialTheme.typography.bodyMedium)
+                        else "${if (restore) "복원 대상" else "휴지통 이동 대상"} ${moving.size}개 · 파일 용량 ${bytesLabel(duplicateBytes(moving))}", style = MaterialTheme.typography.bodyMedium)
                     if (excluded > 0) Text("변경되었거나 보호된 ${excluded}개는 제외했습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
                     Text(if (restore) "다음 단계에서 Android 확인 후 원래 위치로 복원을 요청합니다."
                         else "다음 단계에서 Android 확인창이 열립니다. 휴지통 이동만으로 즉시 여유 공간이 늘어나지는 않을 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -90,7 +90,7 @@ internal fun TrashReviewContent(moving: List<MediaItem>, kept: List<MediaItem>, 
         }
         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ActionButton("취소", onDismiss, Modifier.weight(1f))
-            ActionButton("Android 확인", onProceed, Modifier.weight(1f), filled = true)
+            ActionButton(if (restore) "복원 요청" else "휴지통 이동 요청", onProceed, Modifier.weight(1f), filled = true)
         }
     }
 }
