@@ -37,34 +37,32 @@ internal fun HomeScreen(state: AppUiState, requestAccess: () -> Unit, browse: (M
     val videos = state.items.filter { it.kind == MediaKind.VIDEO }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 700.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Row(
-                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(20.dp))
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("사진·동영상을 한곳에서 정리", style = MaterialTheme.typography.titleMedium)
-                    Text("분석은 기기 안에서만 진행됩니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
-                }
-                GalliIllustration(GalliScene.ORGANIZE, Modifier.size(88.dp))
-            }
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            HomeWelcome(cleanup)
             if (state.access == MediaAccess.NONE) {
-                Column(
-                    Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
+                GalliCard(Modifier.fillMaxWidth()) {
                     Text("먼저 사진·동영상 접근을 허용해주세요", style = MaterialTheme.typography.titleMedium)
-                    Text("기기의 미디어를 읽어 용량과 중복 파일을 보여드립니다. 삭제할 때는 Android 확인창이 열립니다.", style = MaterialTheme.typography.bodyMedium, color = Muted)
-                    Text("정확한 중복 검사를 위해 사진의 위치 메타데이터 접근 권한을 요청할 수 있습니다. 현재 위치는 추적하지 않습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "기기의 미디어를 읽어 용량과 중복 파일을 보여드립니다. 삭제할 때는 Android 확인창이 열립니다.",
+                        style = MaterialTheme.typography.bodyMedium, color = Muted,
+                    )
+                    Text(
+                        "중복 검사를 위해 원본 사진의 위치 메타데이터 권한이 필요할 수 있습니다. 현재 위치를 추적하지 않습니다.",
+                        color = Muted, style = MaterialTheme.typography.bodySmall,
+                    )
                     ActionButton("사진·동영상 선택", requestAccess, Modifier.fillMaxWidth(), filled = true)
                 }
             }
             if (wide) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.Top) {
+                Row(
+                    Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
                     HomeActions(duplicates, cleanup, Modifier.weight(1f))
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         HomeStorageSummary(state)
                         HomeMediaStats(photos, videos, browse)
                     }
@@ -79,9 +77,25 @@ internal fun HomeScreen(state: AppUiState, requestAccess: () -> Unit, browse: (M
 }
 
 @Composable
+private fun HomeWelcome(cleanup: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().galliCardSurface(Panel).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("사진·동영상을 더 가볍게", style = MaterialTheme.typography.titleMedium)
+            Text("정리는 내 기기에서 안전하게", style = MaterialTheme.typography.bodySmall, color = Muted)
+            ActionButton("정리 시작하기", cleanup, filled = true, icon = Icons.Rounded.ArrowForward)
+        }
+        GalliIllustration(GalliScene.ORGANIZE, Modifier.size(82.dp))
+    }
+}
+
+@Composable
 private fun HomeActions(duplicates: () -> Unit, cleanup: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("정리 시작하기", style = MaterialTheme.typography.titleLarge)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("빠른 정리", style = MaterialTheme.typography.titleLarge)
         OverviewAction("완전히 같은 파일 찾기", "파일 내용을 비교해 중복 사본을 확인합니다", Icons.Rounded.CopyAll, duplicates)
         OverviewAction("용량을 줄일 후보 살펴보기", "큰 동영상과 오래된 스크린샷부터 확인하세요", Icons.Rounded.CleaningServices, cleanup)
     }
@@ -89,19 +103,19 @@ private fun HomeActions(duplicates: () -> Unit, cleanup: () -> Unit, modifier: M
 
 @Composable
 private fun HomeStorageSummary(state: AppUiState) {
-    Column(
-        Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(24.dp)).border(1.dp, Line, RoundedCornerShape(24.dp)).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    GalliCard(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GalliIcon(Icons.Rounded.Folder, null, Modifier.size(24.dp))
             Text("기기 저장공간", style = MaterialTheme.typography.titleMedium)
         }
-        Text(if (state.totalStorageBytes > 0) "${bytesLabel(state.freeStorageBytes)} 사용 가능" else "저장공간 확인 중", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(
+            if (state.totalStorageBytes > 0) "${bytesLabel(state.freeStorageBytes)} 사용 가능" else "저장공간 확인 중",
+            style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+        )
         if (state.totalStorageBytes > 0) {
             val used = ((state.totalStorageBytes - state.freeStorageBytes).toFloat() / state.totalStorageBytes).coerceIn(0f, 1f)
             Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(Panel)) {
-                if (used > 0) Box(Modifier.fillMaxWidth(used).fillMaxHeight().background(Ink, CircleShape))
+                if (used > 0) Box(Modifier.fillMaxWidth(used).fillMaxHeight().background(Primary, CircleShape))
             }
             Text("전체 ${bytesLabel(state.totalStorageBytes)} · 사용 중 ${bytesLabel(state.totalStorageBytes - state.freeStorageBytes)}", color = Muted, style = MaterialTheme.typography.bodySmall)
         }
@@ -124,7 +138,7 @@ private fun HomeMediaStats(photos: List<MediaItem>, videos: List<MediaItem>, bro
 @Composable
 private fun MediaStat(title: String, count: Int, size: Long, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier, accent: Color, onClick: () -> Unit) {
     Column(
-        modifier.clip(RoundedCornerShape(24.dp)).background(AppSurface).border(1.dp, Line, RoundedCornerShape(24.dp)).plainClick(action = onClick).padding(16.dp),
+        modifier.galliCardSurface().plainClick(action = onClick).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.size(44.dp).background(accent, RoundedCornerShape(15.dp)), contentAlignment = Alignment.Center) {
@@ -139,11 +153,11 @@ private fun MediaStat(title: String, count: Int, size: Long, icon: androidx.comp
 @Composable
 private fun OverviewAction(title: String, body: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(AppSurface).border(1.dp, Line, RoundedCornerShape(20.dp)).plainClick(action = onClick).padding(16.dp),
+        Modifier.fillMaxWidth().galliCardSurface().plainClick(action = onClick).padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(Modifier.size(46.dp).background(Panel, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(44.dp).background(Panel, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
             GalliIcon(icon, null, Modifier.size(32.dp))
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
