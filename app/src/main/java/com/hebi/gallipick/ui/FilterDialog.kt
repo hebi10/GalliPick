@@ -367,10 +367,17 @@ internal fun FilterDialogContent(
             val compactChrome = maxHeight < 200.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
             Column(Modifier.fillMaxSize()) {
                 if (!compactChrome) {
-                    Text(
-                        "파일 필터", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = if (compact) 8.dp else 16.dp),
-                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = if (compact) 2.dp else 6.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "파일 필터", style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
+                        )
+                        TextAction("기간 선택", onClick = { calendarField = "start" })
+                    }
                 }
                 // Clip the entire viewport: scrolling and focused fields cannot paint under the footer.
                 Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().semantics { contentDescription = "필터 조건" }) {
