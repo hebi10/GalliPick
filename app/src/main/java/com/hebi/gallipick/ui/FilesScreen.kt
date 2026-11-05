@@ -3,6 +3,8 @@ package com.hebi.gallipick.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -99,16 +101,16 @@ internal fun FilesScreenContent(
                                 else Spacer(Modifier.height(44.dp))
                             }
                             when {
-                                state.access == MediaAccess.NONE -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                                state.access == MediaAccess.NONE -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("미디어 접근이 필요합니다", "허용한 파일만 이곳에 표시됩니다.", action = { ActionButton("접근 허용", requestAccess, filled = true) })
                                 }
-                                state.catalogError != null -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                                state.catalogError != null -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("파일을 불러오지 못했습니다", state.catalogError, Icons.Rounded.Info, action = { ActionButton("다시 시도", actions.refresh, filled = true) })
                                 }
-                                state.loading -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                                state.loading -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.")
                                 }
-                                filtered.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth()) {
+                                filtered.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("조건에 맞는 파일이 없습니다", "접근 범위와 필터 조건을 확인해주세요.", action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) }, scene = GalliScene.SEARCH)
                                 }
                                 else -> LazyVerticalGrid(
