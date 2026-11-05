@@ -24,4 +24,4 @@ The checksums and provenance are in `ko-KR/manifest.json`. Rebuild the store ima
 
 The former `ko-KR/app-icon.png` was a legacy photo-card icon and is intentionally removed to prevent accidental reuse. On a main-branch change to the icon or its generator, [the dedicated icon workflow](../../.github/workflows/play-store-icon.yml) builds and validates the single 32-bit 512 px image, then submits **only** the `com.hebi.gallipick` `ko-KR` `icon` image type. It does not touch screenshots, feature graphics, testing tracks, or other apps.
 
-Submission is not Google approval. Check the Play Console publishing overview for the final store-visible image.
+[2026-11-05 GalliPick icon update](https://github.com/hebi10/GalliPick/actions/runs/41964686350) completed: the Google Play API accepted the new `ko-KR` icon edit, and a new edit confirmed that one icon is present. Submission is not Google approval. Check the Play Console publishing overview for the final store-visible image.
