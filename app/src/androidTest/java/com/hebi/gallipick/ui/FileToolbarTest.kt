@@ -80,13 +80,13 @@ class FileToolbarTest {
                 state.value = state.value.copy(filter = next, filtered = MediaQuery.apply(all, next))
             })
         } }
-        compose.onNodeWithContentDescription("정렬 기준 선택").performClick()
+        compose.onNodeWithContentDescription("정렬 기준 선택").performScrollTo().performClick()
         compose.onNodeWithText("용량 큰 순").performClick()
         compose.runOnIdle {
             assertEquals(filter.copy(sortField = SortField.SIZE), state.value.filter)
             assertEquals(listOf(large, small), state.value.filtered)
         }
-        compose.onNodeWithContentDescription("정렬 기준 선택").performClick()
+        compose.onNodeWithContentDescription("정렬 기준 선택").performScrollTo().performClick()
         compose.onNodeWithText("영상 짧은 순").performClick()
         compose.runOnIdle {
             assertEquals(MediaKind.VIDEO, state.value.filter.kind)
