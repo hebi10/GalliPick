@@ -8,6 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -19,6 +21,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hebi.gallipick.AppThemeMode
 import org.junit.Assert.assertEquals
@@ -135,6 +138,47 @@ class GalliDesignSystemTest {
             assertTrue("Dark utility icon became an opaque tile", countExactPixels(shield, activeGlyph) < shield.width * shield.height * .72)
         } finally {
             shield.recycle()
+        }
+    }
+
+    @Test fun referenceTypographyBrandMarkAndOutlineTabIconsRender() {
+        lateinit var type: Typography
+        compose.setContent {
+            GalliPickTheme(AppThemeMode.LIGHT) {
+                type = MaterialTheme.typography
+                Column {
+                    GalliBrandMark(Modifier.size(40.dp).testTag("reference-brand-mark"))
+                    Row {
+                        Destination.entries.forEach { destination ->
+                            GalliNavigationIcon(
+                                destination.icon,
+                                Modifier.size(36.dp).testTag("reference-tab-${destination.title}"),
+                                selected = destination == Destination.HOME,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("reference-brand-mark").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(24.sp, type.titleLarge.fontSize)
+            assertEquals(20.sp, type.titleMedium.fontSize)
+            assertEquals(16.sp, type.bodyLarge.fontSize)
+            assertEquals(14.sp, type.bodyMedium.fontSize)
+            assertEquals(12.sp, type.labelMedium.fontSize)
+        }
+        for (destination in Destination.entries) {
+            val bitmap = compose.onNodeWithTag("reference-tab-${destination.title}")
+                .assertIsDisplayed().captureToImage().asAndroidBitmap()
+            try {
+                val expected = if (destination == Destination.HOME) 0x001F6F54 else 0x00616874
+                val painted = countExactPixels(bitmap, expected)
+                assertTrue("${destination.title} light icon not visible", painted > 12)
+                assertTrue("${destination.title} light icon is a flat tile", painted < bitmap.width * bitmap.height * .72)
+            } finally {
+                bitmap.recycle()
+            }
         }
     }
 
