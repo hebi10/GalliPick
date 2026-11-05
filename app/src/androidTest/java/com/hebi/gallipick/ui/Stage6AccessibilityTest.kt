@@ -1,5 +1,6 @@
 package com.hebi.gallipick.ui
 
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -23,6 +25,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class Stage6AccessibilityTest {
@@ -46,15 +49,21 @@ class Stage6AccessibilityTest {
             }
         }
 
-        compose.onNodeWithText("접근 허용").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText("접근 허용").performScrollTo().assertIsDisplayed()
+        screenshot("stage6-files-permission-large-text")
+        compose.onNodeWithText("접근 허용").performClick()
         compose.runOnIdle { assertEquals(1, requestedAccess) }
 
         compose.runOnIdle { state.value = AppUiState(access = MediaAccess.FULL, catalogError = "읽기 오류") }
-        compose.onNodeWithText("다시 시도").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText("다시 시도").performScrollTo().assertIsDisplayed()
+        screenshot("stage6-files-error-large-text")
+        compose.onNodeWithText("다시 시도").performClick()
         compose.runOnIdle { assertEquals(1, retried) }
 
         compose.runOnIdle { state.value = AppUiState(access = MediaAccess.FULL) }
-        compose.onNodeWithText("필터 초기화").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText("필터 초기화").performScrollTo().assertIsDisplayed()
+        screenshot("stage6-files-empty-large-text")
+        compose.onNodeWithText("필터 초기화").performClick()
         compose.runOnIdle { assertEquals(MediaFilter(), resetFilter) }
     }
 
@@ -95,6 +104,7 @@ class Stage6AccessibilityTest {
         }
         compose.onNodeWithText("접근 범위 변경").performScrollTo()
             .assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
+        screenshot("stage6-settings-permissions-large-text")
         compose.onNodeWithText("앱 권한 설정").performScrollTo()
             .assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
         compose.runOnIdle {
@@ -102,5 +112,13 @@ class Stage6AccessibilityTest {
             assertEquals(1, settingsClicks)
         }
         assertTrue("Device permission settings must be represented in the UI", settingsClicks > 0)
+    }
+
+    private fun screenshot(name: String) {
+        val directory = File(compose.activity.filesDir, "test-screenshots").apply { mkdirs() }
+        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+        try {
+            File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        } finally { bitmap.recycle() }
     }
 }
