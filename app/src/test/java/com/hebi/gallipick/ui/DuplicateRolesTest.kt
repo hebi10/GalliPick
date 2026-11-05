@@ -37,8 +37,8 @@ class DuplicateRolesTest {
     }
 
     @Test fun selectionCountTextNeverClaimsEveryCandidateWhenOnlyFiveHundredCanBeSelected() {
-        assertEquals("전체 후보 24개 선택", duplicateSelectionLabel(24))
-        assertEquals("전체 후보 500개 선택", duplicateSelectionLabel(842))
+        assertEquals("정리 후보 24개 선택", duplicateSelectionLabel(24))
+        assertEquals("정리 후보 500개 선택", duplicateSelectionLabel(842))
         assertEquals("전체 후보 없음", duplicateSelectionLabel(0))
     }
 

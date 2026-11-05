@@ -89,7 +89,7 @@ internal fun DuplicateCompareContent(
                 style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.semantics { contentDescription = "중복 결과 확인 중" })
             Column(Modifier.weight(1f).fillMaxWidth().then(if (scrollBody) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
                 Text(if (short) "파일 전체 내용이 같은 사본" else "파일 이름이 아니라 파일 전체의 SHA-256 값이 같은 사본입니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
-                if (!short) Text("선택만으로 이동하지 않습니다. 소리는 한 영상씩 재생합니다.", style = MaterialTheme.typography.bodySmall, color = Muted,
+                if (!short) Text("정리 후보 ${roles.candidates.size}개 · 선택 ${roles.candidates.count { it.uri in selectedUris }}개. 선택만으로 이동하지 않습니다. 소리는 한 영상씩 재생합니다.", style = MaterialTheme.typography.bodySmall, color = Muted,
                     modifier = Modifier.padding(top = 3.dp, bottom = 6.dp))
                 if (!sideBySide) PrimaryTabRow(selectedTabIndex = activeSlot) {
                     Tab(selected = activeSlot == 0, onClick = { activeSlot = 0 }, modifier = Modifier.testTag("A 비교 탭"),
@@ -176,7 +176,7 @@ private fun DuplicateComparePanel(
                     Text("${item.width} × ${item.height}" + if (item.kind == MediaKind.VIDEO) " · ${durationLabel(item.durationMs)}" else "", style = MaterialTheme.typography.bodySmall)
                     Text("${if (item.dateTakenMs > 0) "촬영일" else "저장일"} ${dateLabel(item.capturedAt)}", style = MaterialTheme.typography.bodySmall)
                     if (!candidate) Text(roles.reason(item), style = MaterialTheme.typography.bodySmall, color = Muted)
-                    else Text(if (selected) "휴지통 이동 대상으로 선택했습니다." else "필요 없는 사본이면 이동 대상으로 선택하세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    else Text(if (selected) "정리 대상으로 선택했습니다. 아직 휴지통으로 이동하지 않았습니다." else "남길 파일을 확인한 뒤 필요한 사본만 정리 대상으로 선택하세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
                     if (item.uri == roles.keeper.uri) Text("이 묶음에서 남길 기준 파일", style = MaterialTheme.typography.labelMedium, color = Ink)
                     else ActionButton("이 파일 남기기", onChooseKeeper, Modifier.fillMaxWidth().semantics { contentDescription = "$slot 남길 파일로 지정" }, filled = true, enabled = actionsEnabled)
                     TextButton(onClick = onProtect,
@@ -186,7 +186,7 @@ private fun DuplicateComparePanel(
                     }
                     if (candidate) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         SelectBox(selected, actionsEnabled, "$slot 정리 후보 선택", onToggleSelection)
-                        Text(if (selected) "이동 대상 · 선택됨" else "휴지통 이동 대상으로 선택", style = MaterialTheme.typography.labelMedium)
+                        Text(if (selected) "정리 후보 · 선택됨" else "정리 후보로 선택", style = MaterialTheme.typography.labelMedium)
                     } else Text("남길 파일 · 이동 대상에서 제외", style = MaterialTheme.typography.labelMedium, color = Muted)
                     TextButton(onClick = onOpen, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$slot 외부 앱에서 파일 열기" }) {
                         GalliIcon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp))
