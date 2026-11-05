@@ -14,8 +14,8 @@ from pathlib import Path
 PACKAGE = 'com.hebi.gallipick'
 LANGUAGE = 'ko-KR'
 SCREENSHOTS = [
-    '01-home.png', '02-files.png', '03-filters.png', '04-duplicates.png',
-    '05-comparison.png', '06-cleanup.png', '07-dark-mode.png',
+    '01-home.png', '02-files.png', '03-duplicates.png', '04-cleanup.png',
+    '05-settings-dark.png', '06-filters.png', '07-comparison.png',
 ]
 FEATURE = 'feature-graphic.png'
 BASE = f'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{PACKAGE}'
@@ -39,6 +39,15 @@ def validate(directory: Path):
     files = [(x['file'],x['sha256']) for x in manifest.get('screenshots',[])]
     if [x[0] for x in files] != SCREENSHOTS:
         raise ValueError('Unexpected number or order of screenshot assets')
+    primary_tabs = manifest.get('primary_tabs', [])
+    if primary_tabs != ['01-home', '02-files', '09-duplicates-scanned', '04-cleanup', '05-settings-dark']:
+        raise ValueError('Five primary navigation tabs must lead the store image sequence')
+    unexpected = sorted(
+        file.name for file in directory.glob('[0-9][0-9]-*.png')
+        if file.name not in SCREENSHOTS
+    )
+    if unexpected:
+        raise ValueError(f'Unlisted legacy Play screenshots are present: {unexpected}')
     feature = manifest.get('feature_graphic', {})
     if feature.get('file') != FEATURE:
         raise ValueError('Missing feature graphic manifest')
