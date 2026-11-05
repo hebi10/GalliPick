@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -20,6 +21,8 @@ import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.MediaFilter
+import com.hebi.gallipick.domain.MediaItem
+import com.hebi.gallipick.domain.MediaKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -65,6 +68,37 @@ class Stage6AccessibilityTest {
         screenshot("stage6-files-empty-large-text")
         compose.onNodeWithText("필터 초기화").performClick()
         compose.runOnIdle { assertEquals(MediaFilter(), resetFilter) }
+    }
+
+
+    @Test fun longFileNameIsTruncatedWithoutHidingSelectionAtLargeText() {
+        val item = MediaItem(
+            "content://fixture/stage6-photo", 1, "external_primary",
+            "EXAMPLE_" + "아주긴파일이름".repeat(25) + ".jpg",
+            MediaKind.PHOTO, "image/jpeg", "Pictures/", 1024, 800, 600, 0, 100, 100, 100,
+        )
+        var selected: String? = null
+        val actions = FilesScreenActions(
+            {}, {}, { selected = it }, {}, {}, {}, { _, _ -> }, {},
+        )
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(1f, 1.6f)) {
+                    Box(Modifier.requiredSize(320.dp, 480.dp).testTag("stage6-files-viewport")) {
+                        FilesScreenContent(
+                            AppUiState(access = MediaAccess.FULL, items = listOf(item), filtered = listOf(item)),
+                            false, {}, {}, {}, actions,
+                        )
+                    }
+                }
+            }
+        }
+        val viewport = compose.onNodeWithTag("stage6-files-viewport").fetchSemanticsNode().boundsInRoot
+        val label = compose.onNodeWithText(item.displayName).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("Long media titles must remain within the viewport", label.left >= viewport.left && label.right <= viewport.right + 1f)
+        compose.onNodeWithContentDescription(item.displayName + " 선택")
+            .assertIsDisplayed().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp).performClick()
+        compose.runOnIdle { assertEquals(item.uri, selected) }
     }
 
     @Test fun screenTitlesAndEmptyStatesAreNavigableAsAccessibilityHeadings() {
