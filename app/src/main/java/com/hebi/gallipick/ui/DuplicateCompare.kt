@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.hebi.gallipick.domain.DuplicateGroup
@@ -77,6 +78,7 @@ internal fun DuplicateCompareContent(
     BoxWithConstraints(modifier.fillMaxSize()) {
         val sideBySide = maxWidth >= 720.dp * scale.coerceAtMost(1.4f) && maxHeight >= 480.dp * scale
         val short = maxHeight < 420.dp * scale
+        val showComparisonFilenames = maxHeight >= 600.dp * scale
         val sideMetadataFits = maxWidth - 24.dp >= 560.dp * scale.coerceAtMost(1.4f)
         val scrollBody = !sideBySide && maxHeight < (if (sideMetadataFits) 320.dp else 600.dp) * scale
         val finitePanelHeight = if (sideMetadataFits) (220.dp * scale).coerceAtLeast(300.dp) else 520.dp * scale.coerceAtMost(1.4f)
@@ -92,10 +94,32 @@ internal fun DuplicateCompareContent(
                 if (!short) Text("정리 후보 ${roles.candidates.size}개 · 선택 ${roles.candidates.count { it.uri in selectedUris }}개. 선택만으로 이동하지 않습니다. 소리는 한 영상씩 재생합니다.", style = MaterialTheme.typography.bodySmall, color = Muted,
                     modifier = Modifier.padding(top = 3.dp, bottom = 6.dp))
                 if (!sideBySide) PrimaryTabRow(selectedTabIndex = activeSlot) {
-                    Tab(selected = activeSlot == 0, onClick = { activeSlot = 0 }, modifier = Modifier.testTag("A 비교 탭"),
-                        text = { Text("A · ${roles.label(left, selectedUris).substringBefore(" · ")}") })
-                    Tab(selected = activeSlot == 1, onClick = { activeSlot = 1 }, modifier = Modifier.testTag("B 비교 탭"),
-                        text = { Text("B · ${roles.label(right, selectedUris).substringBefore(" · ")}") })
+                    Tab(
+                        selected = activeSlot == 0, onClick = { activeSlot = 0 },
+                        modifier = Modifier.testTag("A 비교 탭"),
+                        text = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("A · ${roles.label(left, selectedUris).substringBefore(" · ")}", maxLines = 1)
+                                if (showComparisonFilenames) Text(
+                                    left.displayName, style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        },
+                    )
+                    Tab(
+                        selected = activeSlot == 1, onClick = { activeSlot = 1 },
+                        modifier = Modifier.testTag("B 비교 탭"),
+                        text = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("B · ${roles.label(right, selectedUris).substringBefore(" · ")}", maxLines = 1)
+                                if (showComparisonFilenames) Text(
+                                    right.displayName, style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        },
+                    )
                 }
                 val panel: @Composable (String, MediaItem, Modifier) -> Unit = { slot, item, panelModifier ->
                     key(slot, item.uri, item.fingerprint, item.volumeVersion) {
