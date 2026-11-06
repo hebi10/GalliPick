@@ -124,7 +124,7 @@ class AdaptiveMediaReviewTest {
         compose.onNodeWithContentDescription("B 남길 파일로 지정").performScrollTo().performClick()
         compose.onNodeWithTag("B 비교 탭").assert(hasText("B · 남길 파일"))
         compose.onNodeWithTag("A 비교 탭").assert(hasText("A · 정리 후보")).performClick()
-        compose.onNodeWithText("first.mp4").assertIsDisplayed()
+        compose.onNode(hasText("first.mp4") and hasAnyAncestor(hasContentDescription("A 파일 비교 패널"))).assertIsDisplayed()
         compose.onNodeWithContentDescription("A 정리 후보 선택").performScrollTo().assertIsEnabled()
     }
 
@@ -143,13 +143,13 @@ class AdaptiveMediaReviewTest {
         } }
         compose.onNodeWithTag("A 비교 탭").assert(hasText("A · 남길 파일"))
         compose.onNodeWithTag("B 비교 탭").assert(hasText("B · 남길 파일"))
-        compose.onNodeWithText("B · 남길 파일").performClick()
-        compose.onNodeWithText("second-protected.mp4").assertIsDisplayed()
-        compose.onNodeWithText("first-protected.mp4").assertDoesNotExist()
+        compose.onNodeWithTag("B 비교 탭").performClick()
+        compose.onNode(hasText("second-protected.mp4") and hasAnyAncestor(hasContentDescription("B 파일 비교 패널"))).assertIsDisplayed()
+        compose.onNode(hasText("first-protected.mp4") and hasAnyAncestor(hasContentDescription("B 파일 비교 패널"))).assertDoesNotExist()
         compose.onNodeWithContentDescription("B 정리 후보 선택").assertDoesNotExist()
-        compose.onNodeWithText("A · 남길 파일").performClick()
-        compose.onNodeWithText("first-protected.mp4").assertIsDisplayed()
-        compose.onNodeWithText("second-protected.mp4").assertDoesNotExist()
+        compose.onNodeWithTag("A 비교 탭").performClick()
+        compose.onNode(hasText("first-protected.mp4") and hasAnyAncestor(hasContentDescription("A 파일 비교 패널"))).assertIsDisplayed()
+        compose.onNode(hasText("second-protected.mp4") and hasAnyAncestor(hasContentDescription("A 파일 비교 패널"))).assertDoesNotExist()
         compose.runOnIdle { assertNull("Switching between protected copies must not choose a keeper", chosenKeeper) }
     }
 
