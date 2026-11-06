@@ -108,21 +108,11 @@ internal fun FileToolbar(
                 })
             }
         }
-        if (LocalConfiguration.current.screenHeightDp >= 480) Row(
+        Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                 .semantics { contentDescription = "파일 도구 모음" },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
-                FileKindChip(kindLabel(kind), filter.kind == kind) {
-                    change(MediaFilterActions.kind(filter, kind))
-                }
-            }
-        }
-        Row(
-            Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
         Box {
             ToolbarChoice(if (conditionCount == 0) "필터" else "필터 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { advanced() }
@@ -159,7 +149,11 @@ internal fun FileToolbar(
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
+        listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
+            FileKindChip(kindLabel(kind), filter.kind == kind) {
+                change(MediaFilterActions.kind(filter, kind))
+            }
+        }
         IconAction(if (gridView) "목록 보기" else "그리드 보기",
             if (gridView) Icons.Rounded.ViewList else Icons.Rounded.GridView
         ) { onGridViewChange(!gridView) }
