@@ -30,7 +30,7 @@ class CleanupResultDialogTest {
         } }
         compose.onNodeWithText("일부 파일만 처리 확인").assertIsDisplayed()
         compose.onNodeWithText("요청 3개 · 확인 완료 2개").assertIsDisplayed()
-        compose.onNodeWithText("미이동 1개").assertIsDisplayed()
+        compose.onNodeWithText("미이동 1개").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("다음 정리 후보 확인").assertIsDisplayed().performClick()
         compose.runOnIdle {
             assertEquals(0, home)
@@ -83,7 +83,7 @@ class CleanupResultDialogTest {
 
         compose.runOnIdle { result.value = CleanupOperationResult.unknown(false, 2, 8_192L) }
         compose.onNodeWithText("파일 상태 확인 불가").assertIsDisplayed()
-        compose.onNodeWithText("확인 불가 2개").assertIsDisplayed()
+        compose.onNodeWithText("확인 불가 2개").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("휴지통 이동 완료").assertDoesNotExist()
     }
 
