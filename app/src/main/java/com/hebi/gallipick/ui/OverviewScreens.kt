@@ -421,7 +421,7 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
         val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
         val compact = maxWidth < 440.dp * fontScale
         Column(
-            Modifier.fillMaxHeight().widthIn(max = 720.dp).fillMaxWidth()
+            Modifier.fillMaxHeight().widthIn(max = 600.dp).fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = if (compact) 16.dp else 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 14.dp else 18.dp),
