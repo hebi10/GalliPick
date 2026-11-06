@@ -31,6 +31,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -135,6 +136,8 @@ class NativeScreenCaptureTest {
             }
             compose.onNodeWithContentDescription("그리드 보기").performClick()
             captureDetail("02c-real-jpeg-detail") {
+                compose.onNodeWithContentDescription("미디어 파일 목록")
+                    .performScrollToNode(hasText("EXAMPLE_scene_20.jpg"))
                 compose.onNodeWithText("EXAMPLE_scene_20.jpg").performClick()
                 compose.onNodeWithText("앱에서 미리보기").assertIsDisplayed()
             }
