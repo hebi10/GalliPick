@@ -251,9 +251,7 @@ class AdaptiveFilterTest {
             GalliPickTheme {
                 // Resize cases model the available height themselves. Do not also let the real
                 // IME resize/pan the host activity; NativeScreenCaptureTest verifies the real IME.
-                InterceptPlatformTextInput(interceptor = { request, next ->
-                    if (windowHeight == null) next.startInputMethod(request) else awaitCancellation()
-                }) {
+                InterceptPlatformTextInput(interceptor = { _, _ -> awaitCancellation() }) {
                     CompositionLocalProvider(LocalDensity provides Density(.6f, fontScale = fontScale)) {
                         Box(Modifier.requiredSize(width.dp, (windowHeight?.value ?: height).dp)) {
                             FilterDialogContent(current, emptyList(), onApply, {}, Modifier.fillMaxSize())
