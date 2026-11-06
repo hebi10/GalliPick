@@ -81,6 +81,9 @@ class ModalSurfaceCaptureTest {
             screenshot(output, "02-calendar-dark")
             compose.runOnIdle { dark = false; current = Screen.DETAIL }
             compose.onNodeWithText("정리에서 보호 중").assertIsDisplayed()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription(photoA.displayName).fetchSemanticsNodes().isNotEmpty()
+            }
             screenshot(output, "03-file-detail")
             compose.runOnIdle { current = Screen.PHOTO }
             compose.onNodeWithText("외부 앱에서 원본 열기").assertIsDisplayed()
