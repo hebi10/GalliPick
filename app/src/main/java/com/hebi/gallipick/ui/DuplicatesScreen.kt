@@ -158,13 +158,18 @@ internal fun DuplicatesScreenContent(
                             item("group:${group.hash}", span = { GridItemSpan(maxLineSpan) }) {
                                 FlowRow(
                                     Modifier.fillMaxWidth().padding(top = if (shortResults) 0.dp else 6.dp)
-                                        .background(Panel, RoundedCornerShape(14.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        .background(Panel, RoundedCornerShape(14.dp)).padding(horizontal = 10.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
+                                    Box(Modifier.size(64.dp).clip(RoundedCornerShape(10.dp))
+                                        .plainClick(action = { compare(group) })) {
+                                        MediaThumbnail(roles.keeper, Modifier.fillMaxSize())
+                                    }
                                     Column(Modifier.weight(1f).widthIn(min = 140.dp).align(Alignment.CenterVertically)) {
-                                        Text("묶음 ${index + 1} · ${if (group.items.all { it.kind == MediaKind.VIDEO }) "영상" else "파일"} ${group.items.size}개", style = MaterialTheme.typography.titleSmall)
-                                        Text("남김 ${roles.kept.size} · 후보 ${roles.candidates.size} · 선택 ${selectedInGroup}", style = MaterialTheme.typography.bodySmall, color = Muted)
+                                        Text("중복 묶음 ${index + 1} · ${group.items.size}개", style = MaterialTheme.typography.titleSmall)
+                                        Text("정리 후보 ${roles.candidates.size}개 · ${bytesLabel(duplicateBytes(roles.candidates))}", style = MaterialTheme.typography.bodySmall, color = Muted)
+                                        if (selectedInGroup > 0) Text("선택 ${selectedInGroup}개", style = MaterialTheme.typography.labelSmall, color = Primary)
                                     }
                                     ActionButton(duplicateGroupSelectionLabel(roles.candidates.size, selectedInGroup, selected.size),
                                         { actions.selectGroupCandidates(group) }, Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 묶음 ${index + 1} 후보 선택" },
