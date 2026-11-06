@@ -66,7 +66,7 @@ class CleanupResultDialogTest {
         compose.onNodeWithText("휴지통 이동 완료").assertIsDisplayed()
         compose.onNodeWithText("2개", substring = false).assertIsDisplayed()
         compose.onNodeWithText("요청 2개 · 확인 완료 2개").assertIsDisplayed()
-        compose.onNodeWithText("요청한 파일 크기의 합계", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("요청한 파일 크기의 합계", substring = true).performScrollTo().assertIsDisplayed()
 
         compose.runOnIdle { result.value = CleanupOperationResult.verified(TrashOutcome(1, 1, 0), false, 2, 8_192L) }
         compose.onNodeWithText("일부 파일만 처리 확인").assertIsDisplayed()
