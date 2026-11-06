@@ -1,6 +1,7 @@
 package com.hebi.gallipick.ui
 
 import android.content.ContentUris
+import android.graphics.Bitmap
 import android.provider.MediaStore
 import com.hebi.gallipick.Stage7aFixtureMedia
 import android.net.Uri
