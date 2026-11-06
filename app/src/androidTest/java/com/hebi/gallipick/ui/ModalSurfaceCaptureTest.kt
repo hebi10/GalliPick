@@ -1,6 +1,8 @@
 package com.hebi.gallipick.ui
 
-import android.graphics.Bitmap
+import android.content.ContentUris
+import android.provider.MediaStore
+import com.hebi.gallipick.Stage7aFixtureMedia
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,15 +40,15 @@ class ModalSurfaceCaptureTest {
     private enum class Screen { FILTER, DETAIL, PHOTO, VIDEO, COMPARE, REVIEW, RESTORE, TRASH, PRESET, CACHE, RESULT }
 
     @Test fun captureAllDialogAndDetailSurfaces() {
-        val photoA = photo("EXAMPLE_original.png", 1)
-        val photoB = photo("EXAMPLE_copy.png", 2)
-        val videoFile = File(compose.activity.cacheDir, "EXAMPLE_video.mp4")
+        val photoA = photo("EXAMPLE_original.jpg", 1)
+        val photoB = photo("EXAMPLE_copy.jpg", 2)
         val output = File(compose.activity.filesDir, "modal-screen-captures").apply { mkdirs() }
-        InstrumentationRegistry.getInstrumentation().context.assets.open("preview-baseline.mp4").use { input ->
-            videoFile.outputStream().use { input.copyTo(it) }
-        }
-        val video = MediaItem(Uri.fromFile(videoFile).toString(), 3, "test", videoFile.name, MediaKind.VIDEO,
-            "video/mp4", "Movies/GalliPick_EXAMPLE/", videoFile.length(), 1920, 1080, 30_000, 0, 0, 0)
+        val videoBytes = InstrumentationRegistry.getInstrumentation().context.assets.open("preview-baseline.mp4").use { it.readBytes() }
+        val videoFixture = Stage7aFixtureMedia.insert(compose.activity, "EXAMPLE_video.mp4", "video/mp4",
+            videoBytes, System.currentTimeMillis(), "Movies/GalliPick_EXAMPLE/")
+        val video = MediaItem(videoFixture.uri.toString(), ContentUris.parseId(videoFixture.uri),
+            MediaStore.VOLUME_EXTERNAL_PRIMARY, videoFixture.name, MediaKind.VIDEO, "video/mp4",
+            "Movies/GalliPick_EXAMPLE/", videoBytes.size.toLong(), 1920, 1080, 30_000, 0, 0, 0)
         val group = DuplicateGroup("example", listOf(photoA, photoB))
         var current by mutableStateOf(Screen.FILTER)
         var dark by mutableStateOf(true)
@@ -99,7 +101,7 @@ class ModalSurfaceCaptureTest {
             screenshot(output, "08-restore-review")
             compose.runOnIdle { current = Screen.TRASH }
             compose.onNodeWithText("휴지통").assertIsDisplayed()
-            compose.onNodeWithText("EXAMPLE_copy.png").assertIsDisplayed()
+            compose.onNodeWithText("EXAMPLE_copy.jpg").assertIsDisplayed()
             screenshot(output, "09-trash-list")
             compose.runOnIdle { current = Screen.PRESET }
             compose.onNodeWithText("현재 필터 저장").assertIsDisplayed()
@@ -112,23 +114,19 @@ class ModalSurfaceCaptureTest {
             screenshot(output, "12-cleanup-result")
             assertEquals("All modal/detail captures must be saved", 12, output.listFiles { file -> file.extension == "png" }?.size)
         } finally {
-            File(compose.activity.cacheDir, "EXAMPLE_original.png").delete()
-            File(compose.activity.cacheDir, "EXAMPLE_copy.png").delete()
-            videoFile.delete()
+            listOf(photoA.uri, photoB.uri, video.uri).forEach { uri ->
+                compose.activity.contentResolver.delete(Uri.parse(uri), null, null)
+            }
         }
     }
 
     private fun photo(name: String, id: Long): MediaItem {
-        val file = File(compose.activity.cacheDir, name)
-        val bitmap = Bitmap.createBitmap(240, 180, Bitmap.Config.ARGB_8888)
-        try {
-            bitmap.eraseColor(android.graphics.Color.rgb(136, 186, 155))
-            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        } finally {
-            bitmap.recycle()
-        }
-        return MediaItem(Uri.fromFile(file).toString(), id, "test", name, MediaKind.PHOTO,
-            "image/png", "Pictures/GalliPick_EXAMPLE/", file.length(), 240, 180, 0, 0, 0, 0)
+        val bytes = Stage7aFixtureMedia.sceneJpeg(3)
+        val sample = Stage7aFixtureMedia.insert(compose.activity, name, "image/jpeg", bytes,
+            System.currentTimeMillis(), "Pictures/GalliPick_EXAMPLE/")
+        return MediaItem(sample.uri.toString(), ContentUris.parseId(sample.uri), MediaStore.VOLUME_EXTERNAL_PRIMARY,
+            name, MediaKind.PHOTO, "image/jpeg", "Pictures/GalliPick_EXAMPLE/",
+            bytes.size.toLong(), 480, 720, 0, 0, 0, 0)
     }
 
     private fun screenshot(output: File, name: String) {
