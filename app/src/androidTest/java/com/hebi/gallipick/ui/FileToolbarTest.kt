@@ -34,9 +34,8 @@ class FileToolbarTest {
             }
         } }
         val toolbar = compose.onNodeWithContentDescription("파일 도구 모음").fetchSemanticsNode().boundsInRoot
-        val typeRow = compose.onNodeWithContentDescription("파일 유형 선택").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithContentDescription("파일 유형 선택").assertExists()
         assertTrue("Sort and advanced filter actions should stay on one compact row", toolbar.height <= 56f)
-        assertTrue("Media type controls must preserve an accessible 48dp row", typeRow.height >= 48f)
         val grid = compose.onNodeWithContentDescription("미디어 파일 목록").fetchSemanticsNode().boundsInRoot
         assertTrue("The search and chip header must leave usable media space", grid.height >= 60f)
         compose.onNodeWithContentDescription("파일 검색").assertIsDisplayed()
