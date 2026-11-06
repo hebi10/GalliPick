@@ -44,6 +44,27 @@ class AdaptiveOverviewTest {
         compose.onNodeWithText("오래된 파일").performScrollTo().assertIsDisplayed()
     }
 
+    @Test fun compactHomeAtLargeFontKeepsHeroAndFourShortcutsOperable() {
+        var cleanupOpens = 0
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f, fontScale = 1.6f)) {
+                    Surface(Modifier.requiredSize(320.dp, 540.dp)) {
+                        HomeScreen(homeState(), {}, {}, {}, { cleanupOpens++ })
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("사진과 영상을", substring = true).assertIsDisplayed()
+        compose.onNode(hasText("정리 시작하기") and hasClickAction())
+            .assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
+        for (title in listOf("사진·영상 정리", "중복 파일 찾기", "용량 큰 파일", "오래된 파일")) {
+            compose.onNode(hasText(title) and hasClickAction())
+                .performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        }
+        compose.runOnIdle { assertEquals(1, cleanupOpens) }
+    }
+
     @Test fun homeReflowsWithTheWindowRatherThanDeviceConfiguration() {
         val width = mutableStateOf(1000.dp)
         compose.setContent {
