@@ -118,24 +118,7 @@ internal fun FileToolbar(
         ) {
         Box {
             ToolbarChoice(shortSortLabel(filter), "정렬 기준 선택", sortChoiceLabel(filter), false) { menu = "sort" }
-            if (menu == "sort") {
-                Dialog(onDismissRequest = { menu = null }) {
-                    Surface(shape = RoundedCornerShape(16.dp), color = AppSurface) {
-                        Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                            SortChoices.forEach { choice ->
-                                DropdownMenuItem(text = { Text(choice.label) }, onClick = {
-                                    change(MediaFilterActions.sort(filter, choice.field, choice.direction))
-                                    menu = null
-                                }, trailingIcon = {
-                                    if (filter.sortField == choice.field && filter.sortDirection == choice.direction) {
-                                        GalliIcon(Icons.Rounded.Check, null)
-                                    }
-                                })
-                            }
-                        }
-                    }
-                }
-            }
+
         }
         Box {
             ToolbarChoice(if (conditionCount == 0) "필터" else "필터 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { advanced() }
@@ -179,6 +162,24 @@ internal fun FileToolbar(
             }
         }
         }
+            if (menu == "sort") {
+                Dialog(onDismissRequest = { menu = null }) {
+                    Surface(shape = RoundedCornerShape(16.dp), color = AppSurface) {
+                        Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                            SortChoices.forEach { choice ->
+                                DropdownMenuItem(text = { Text(choice.label) }, onClick = {
+                                    change(MediaFilterActions.sort(filter, choice.field, choice.direction))
+                                    menu = null
+                                }, trailingIcon = {
+                                    if (filter.sortField == choice.field && filter.sortDirection == choice.direction) {
+                                        GalliIcon(Icons.Rounded.Check, null)
+                                    }
+                                })
+                            }
+                        }
+                    }
+                }
+            }
     }
 }
 
