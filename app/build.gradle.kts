@@ -57,8 +57,8 @@ android {
         applicationId = "com.hebi.gallipick"
         minSdk = 30
         targetSdk = 36
-        versionCode = 15
-        versionName = "0.2.4"
+        versionCode = 16
+        versionName = "0.2.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
