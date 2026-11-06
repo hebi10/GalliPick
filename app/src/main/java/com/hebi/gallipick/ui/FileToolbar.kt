@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.hebi.gallipick.domain.*
 import java.util.Calendar
 
@@ -141,12 +142,31 @@ internal fun FileToolbar(
         }
         Box {
             ToolbarChoice(shortSortLabel(filter), "정렬 기준 선택", sortChoiceLabel(filter), false) { menu = "sort" }
-            DropdownMenu(expanded = menu == "sort", onDismissRequest = { menu = null }, modifier = Modifier.heightIn(max = 420.dp)) {
-                SortChoices.forEach { choice ->
-                    DropdownMenuItem(text = { Text(choice.label) }, onClick = {
-                        change(MediaFilterActions.sort(filter, choice.field, choice.direction)); menu = null
-                    }, trailingIcon = { if (filter.sortField == choice.field && filter.sortDirection == choice.direction) GalliIcon(Icons.Rounded.Check, null) })
+            if (menu == "sort") {
+                Dialog(onDismissRequest = { menu = null }) {
+                    Surface(shape = RoundedCornerShape(16.dp), color = AppSurface) {
+                        Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                            SortChoices.forEach { choice ->
+                                DropdownMenuItem(text = { Text(choice.label) }, onClick = {
+                                    change(MediaFilterActions.sort(filter, choice.field, choice.direction))
+                                    menu = null
+                                }, trailingIcon = {
+                                    if (filter.sortField == choice.field && filter.sortDirection == choice.direction) {
+                                        GalliIcon(Icons.Rounded.Check, null)
+                                    }
+                                })
+                            }
+                        }
+                    }
                 }
+            }
+        }
+        Box {
+            IconAction("파일 추가 작업", Icons.Rounded.MoreVert) { menu = "more" }
+            DropdownMenu(expanded = menu == "more", onDismissRequest = { menu = null }) {
+                DropdownMenuItem(text = { Text("현재 조건 저장") }, onClick = { menu = null; save() })
+                DropdownMenuItem(text = { Text("조건 초기화") }, onClick = { change(MediaFilter()); menu = null })
+                DropdownMenuItem(text = { Text("빠른 조건·저장한 조건") }, onClick = { menu = "conditions" })
             }
         }
         listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
@@ -157,14 +177,6 @@ internal fun FileToolbar(
         IconAction(if (gridView) "목록 보기" else "그리드 보기",
             if (gridView) Icons.Rounded.ViewList else Icons.Rounded.GridView
         ) { onGridViewChange(!gridView) }
-        Box {
-            IconAction("파일 추가 작업", Icons.Rounded.MoreVert) { menu = "more" }
-            DropdownMenu(expanded = menu == "more", onDismissRequest = { menu = null }) {
-                DropdownMenuItem(text = { Text("현재 조건 저장") }, onClick = { menu = null; save() })
-                DropdownMenuItem(text = { Text("조건 초기화") }, onClick = { change(MediaFilter()); menu = null })
-                DropdownMenuItem(text = { Text("빠른 조건·저장한 조건") }, onClick = { menu = "conditions" })
-            }
-        }
         }
     }
 }
