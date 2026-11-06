@@ -34,13 +34,17 @@ class FileToolbarTest {
             }
         } }
         val toolbar = compose.onNodeWithContentDescription("파일 도구 모음").fetchSemanticsNode().boundsInRoot
-        assertTrue("Type chips and filters must remain on one scrollable row", toolbar.height <= 56f)
+        compose.onNodeWithContentDescription("파일 유형 선택").assertExists()
+        assertTrue("Sort and advanced filter actions should stay on one compact row", toolbar.height <= 56f)
         val grid = compose.onNodeWithContentDescription("미디어 파일 목록").fetchSemanticsNode().boundsInRoot
         assertTrue("The search and chip header must leave usable media space", grid.height >= 60f)
         compose.onNodeWithContentDescription("파일 검색").assertIsDisplayed()
         compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색").assertIsDisplayed()
-        listOf("파일 유형: 전체", "파일 유형: 사진", "파일 유형: 동영상", "파일 조건 선택", "정렬 기준 선택")
+        listOf("파일 유형: 전체", "파일 유형: 사진", "파일 유형: 동영상")
+            .forEach { compose.onNodeWithContentDescription(it).assertIsDisplayed() }
+        listOf("파일 조건 선택", "정렬 기준 선택")
             .forEach { compose.onNodeWithContentDescription(it).assertExists() }
+        compose.onNodeWithContentDescription("목록 보기").assertIsDisplayed()
         // The constrained header can scroll away when the 280dp viewport's body moves.
         // Verify that the control remains in the tree. The sort workflow is checked
         // by sortDropdownChangesRealOrderAndPreservesCompatibleConditions below.
@@ -61,12 +65,12 @@ class FileToolbarTest {
             assertEquals("trip", filter.value.query)
             assertEquals("DCIM/Camera/", filter.value.folder)
         }
-        compose.onNodeWithContentDescription("파일 유형: 동영상").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("파일 유형: 동영상").assertIsDisplayed().performClick()
         compose.runOnIdle {
             assertEquals(MediaKind.VIDEO, filter.value.kind)
             assertEquals(1024L, filter.value.minSizeBytes)
         }
-        compose.onNodeWithContentDescription("파일 유형: 전체").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("파일 유형: 전체").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(null, filter.value.kind) }
     }
 
