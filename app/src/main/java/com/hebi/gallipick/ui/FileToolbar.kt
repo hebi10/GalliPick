@@ -111,6 +111,21 @@ internal fun FileToolbar(
             }
         }
         Row(
+            Modifier.fillMaxWidth().semantics { contentDescription = "파일 유형 선택" },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
+                FileKindChip(kindLabel(kind), filter.kind == kind, modifier = Modifier.weight(1f)) {
+                    change(MediaFilterActions.kind(filter, kind))
+                }
+            }
+            IconAction(
+                if (gridView) "목록 보기" else "그리드 보기",
+                if (gridView) Icons.Rounded.ViewList else Icons.Rounded.GridView,
+            ) { onGridViewChange(!gridView) }
+        }
+        Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                 .semantics { contentDescription = "파일 도구 모음" },
             verticalAlignment = Alignment.CenterVertically,
@@ -153,14 +168,7 @@ internal fun FileToolbar(
                 DropdownMenuItem(text = { Text("빠른 조건·저장한 조건") }, onClick = { menu = "conditions" })
             }
         }
-        IconAction(if (gridView) "목록 보기" else "그리드 보기",
-            if (gridView) Icons.Rounded.ViewList else Icons.Rounded.GridView
-        ) { onGridViewChange(!gridView) }
-        listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
-            FileKindChip(kindLabel(kind), filter.kind == kind) {
-                change(MediaFilterActions.kind(filter, kind))
-            }
-        }
+
         }
             if (menu == "sort") {
                 Dialog(onDismissRequest = { menu = null }) {
@@ -184,10 +192,10 @@ internal fun FileToolbar(
 }
 
 @Composable
-private fun FileKindChip(label: String, isSelected: Boolean, onClick: () -> Unit) {
+private fun FileKindChip(label: String, isSelected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Box(
-        Modifier.heightIn(min = GalliUiMetrics.touchTarget)
+        modifier.heightIn(min = GalliUiMetrics.touchTarget)
             .semantics {
                 selected = isSelected
                 role = Role.RadioButton
@@ -197,7 +205,7 @@ private fun FileKindChip(label: String, isSelected: Boolean, onClick: () -> Unit
             .background(if (isSelected) Primary else AppSurface)
             .border(1.dp, if (isSelected) Primary else Line, shape)
             .plainClick(action = onClick)
-            .padding(horizontal = 13.dp, vertical = 12.dp),
+            .padding(horizontal = 6.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
