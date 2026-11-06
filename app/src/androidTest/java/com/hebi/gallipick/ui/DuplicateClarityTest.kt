@@ -24,6 +24,53 @@ import org.junit.runner.RunWith
 class DuplicateClarityTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun threeDuplicateGroupsExposeCompactPreviewStacksWithoutSelectingFiles() {
+        val groups = (1..3).map { index ->
+            DuplicateGroup(
+                "preview-group-$index",
+                listOf(
+                    media((index * 10).toLong(), "keep-$index.mp4"),
+                    media((index * 10 + 1).toLong(), "copy-a-$index.mp4"),
+                    media((index * 10 + 2).toLong(), "copy-b-$index.mp4"),
+                ),
+            )
+        }
+        val items = groups.flatMap { it.items }
+        var trashRequested = false
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(1f)) {
+                Box(Modifier.requiredSize(360.dp, 720.dp)) {
+                    DuplicatesScreenContent(
+                        AppUiState(access = MediaAccess.FULL, items = items, duplicates = groups),
+                        { trashRequested = true }, {}, {}, actions(),
+                    )
+                }
+            }
+        } }
+        val list = compose.onNodeWithContentDescription("중복 파일 목록")
+        list.performScrollToNode(hasContentDescription("중복 묶음 2 미리보기"))
+        compose.onNodeWithContentDescription("중복 묶음 2 미리보기").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("비교 닫기").assertIsDisplayed()
+        compose.runOnIdle { assertFalse(trashRequested) }
+    }
+
+    @Test fun portraitComparisonTabsExposeBothFileNamesBeforeSwitching() {
+        val group = DuplicateGroup("two-visible-names", listOf(media(1, "original.mp4"), media(2, "copy.mp4")))
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(1f)) {
+                Box(Modifier.requiredSize(400.dp, 800.dp)) {
+                    DuplicateCompareContent(group, group.items.first().uri, emptySet(), emptySet(),
+                        {}, {}, { _, _ -> }, {}, { _, _ -> })
+                }
+            }
+        } }
+        compose.onNodeWithTag("A 비교 탭").assert(hasText("A · 남길 파일"))
+            .assert(hasText("original.mp4"))
+        compose.onNodeWithTag("B 비교 탭").assert(hasText("B · 정리 후보"))
+            .assert(hasText("copy.mp4")).performClick()
+        compose.onNodeWithContentDescription("B 파일 비교 패널").assertIsDisplayed()
+    }
+
     @Test fun keptFilesHaveNoCheckboxAndOnlyCheckedCandidatesReachTheTrashAction() {
         val keeper = media(1, "camera.mp4").copy(relativePath = "DCIM/Camera/")
         val protected = media(2, "protected.mp4").copy(isProtected = true)
