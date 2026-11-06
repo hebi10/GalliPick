@@ -9,6 +9,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -102,8 +103,9 @@ fun CleanupResultDialog(
                         Text("정리 작업 결과", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         IconAction("결과 닫기", Icons.Rounded.Close, onClick = onDismiss)
                     }
+                    val bodyScroll = key(result) { rememberScrollState() }
                     Column(
-                        Modifier.weight(1f).verticalScroll(rememberScrollState())
+                        Modifier.weight(1f).verticalScroll(bodyScroll)
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
