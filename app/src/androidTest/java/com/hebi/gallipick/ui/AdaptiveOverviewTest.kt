@@ -80,11 +80,11 @@ class AdaptiveOverviewTest {
         }
         val screenshot = compose.onNodeWithText("오래된 스크린샷 후보").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val screenRecording = compose.onNodeWithText("화면 녹화 후보").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        assertTrue("Populated cleanup categories should share a row on wide windows", screenshot.right <= screenRecording.left)
+        assertTrue("Reference categories are presented in a consistent vertical list", screenshot.top < screenRecording.top)
         val emptyCategory = compose.onNode(hasText("큰 동영상") and hasClickAction())
         val emptyBounds = emptyCategory.assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        assertTrue("Empty categories should follow categories with results", emptyBounds.top > screenshot.bottom)
-        assertTrue("An empty category should be a compact row", emptyBounds.height <= 100 * .6f)
+        assertTrue("The first category should remain at the beginning of the list", emptyBounds.top < screenshot.top)
+        assertTrue("Even empty categories must remain compact", emptyBounds.height <= 100 * .6f)
         compose.onNodeWithText("0개 · 0 B").assertDoesNotExist()
         compose.onNodeWithText("즐겨찾기·보호 파일 제외 시", substring = true).assertDoesNotExist()
         emptyCategory.performClick()

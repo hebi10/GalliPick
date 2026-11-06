@@ -282,53 +282,81 @@ private fun cleanupSuggestions(items: List<MediaItem>): List<CleanupSuggestion> 
 internal fun CleanupScreen(state: AppUiState, onOpenDuplicates: (() -> Unit)? = null, browse: (MediaFilter) -> Unit) {
     val suggestions = remember(state.items) { cleanupSuggestions(state.items) }
     val populated = suggestions.filter { it.items.isNotEmpty() }
-    val empty = suggestions.filter { it.items.isEmpty() }
+    val totalCandidates = populated.sumOf { suggestion -> suggestion.items.count { it.canTrash() } }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val columns = if (maxWidth >= 700.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) 2 else 1
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            SectionTitle("정리 후보", "파일을 확인하고 직접 선택해야 휴지통으로 이동할 수 있습니다.")
+        val wide = maxWidth >= 700.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = if (wide) 28.dp else 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            SectionTitle("정리 후보", "확인 후 직접 선택한 파일만 휴지통으로 이동합니다.")
+            Row(
+                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                GalliIcon(Icons.Rounded.AutoAwesome, null, Modifier.size(30.dp), tint = Primary)
+                Column(Modifier.weight(1f)) {
+                    Text("정리할 파일을 확인해 보세요", style = MaterialTheme.typography.titleMedium)
+                    Text("직접 선택 가능한 후보 ${totalCandidates}개", style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+            }
             if (onOpenDuplicates != null) {
                 Row(
-                    Modifier.fillMaxWidth().galliCardSurface(Panel)
-                        .semantics {
-                            contentDescription = "중복 파일 검사 열기"
-                            role = Role.Button
-                        }
-                        .plainClick(action = onOpenDuplicates)
-                        .padding(GalliUiMetrics.cardPadding),
+                    Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(14.dp))
+                        .semantics { contentDescription = "중복 파일 검사 열기"; role = Role.Button }
+                        .plainClick(action = onOpenDuplicates).padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    GalliIcon(Icons.Rounded.CopyAll, null, Modifier.size(28.dp), tint = Primary)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    GalliIcon(Icons.Rounded.CopyAll, null, Modifier.size(32.dp), tint = Primary)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("완전히 같은 파일 찾기", style = MaterialTheme.typography.titleMedium)
-                        Text("같은 내용의 사본을 검사하고 남길 파일을 비교하세요.",
-                            style = MaterialTheme.typography.bodySmall, color = Muted)
+                        Text("중복된 사진·영상을 검사하고 비교", style = MaterialTheme.typography.bodySmall, color = Muted)
                     }
                     GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(22.dp))
                 }
             }
-            Text("후보 ${populated.sumOf { it.items.size }}개 · ${bytesLabel(populated.sumOf { group -> group.items.sumOf { it.sizeBytes } })} · 조건 ${suggestions.size}개 중 ${populated.size}개 해당", style = MaterialTheme.typography.bodyMedium, color = Muted)
-            if (populated.isEmpty()) EmptyState("현재 정리 후보가 없습니다", "지금 적용된 조건에서 정리할 파일을 찾지 못했습니다. 아래에서 각 조건을 확인할 수 있습니다.", Icons.Rounded.CheckCircle, scene = GalliScene.COMPLETE)
-            populated.chunked(columns).forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
-                    row.forEach { suggestion ->
-                        CleanupResultCard(suggestion, { browse(suggestion.filter) }, Modifier.weight(1f))
-                    }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                }
+            Text("종류별 정리", style = MaterialTheme.typography.titleMedium)
+            suggestions.forEach { suggestion ->
+                CleanupSuggestionRow(suggestion) { browse(suggestion.filter) }
             }
-            if (empty.isNotEmpty()) {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (populated.isNotEmpty()) Text("후보가 없는 항목", color = Muted, style = MaterialTheme.typography.labelLarge)
-                    empty.forEach { suggestion -> CleanupEmptyRow(suggestion) { browse(suggestion.filter) } }
-                }
+            if (populated.isEmpty()) {
+                Text("현재 확인된 정리 후보가 없습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
             }
-            Row(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(20.dp)).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                GalliIcon(Icons.Rounded.Shield, null, Modifier.size(26.dp))
-                Text("스크린샷과 화면 녹화는 폴더·파일명으로 찾은 후보입니다. 실제 내용과 다를 수 있습니다. 자동으로 삭제하지 않습니다.", modifier = Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.bodySmall)
+            Text(
+                "스크린샷·화면 녹화 후보는 폴더 및 파일명 기준입니다. 실제 내용을 확인해 주세요. 자동 삭제하지 않습니다.",
+                color = Muted, style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CleanupSuggestionRow(suggestion: CleanupSuggestion, open: () -> Unit) {
+    val deletable = suggestion.items.filter { it.canTrash() }
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 76.dp)
+            .background(AppSurface, RoundedCornerShape(14.dp))
+            .semantics { role = Role.Button }
+            .plainClick(action = open).padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CleanupCategoryIcon(suggestion, Modifier.size(44.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(suggestion.title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (deletable.isEmpty()) "현재 선택 가능한 후보 없음"
+                else "${deletable.size}개 · ${bytesLabel(deletable.sumOf { it.sizeBytes })}",
+                style = MaterialTheme.typography.bodySmall, color = Muted,
+            )
+            if (deletable.size < suggestion.items.size) {
+                Text("즐겨찾기·보호 파일 제외", style = MaterialTheme.typography.labelSmall, color = Muted)
             }
         }
+        GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(22.dp))
     }
 }
 
