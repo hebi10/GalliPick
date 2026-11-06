@@ -1,5 +1,5 @@
 name: Play testing deployment
-run-name: GalliPick Play ${{ inputs.mode || 'deploy' }} · ${{ inputs.target || 'internal' }} · ${{ github.ref_name }}
+run-name: GalliPick Play ${{ inputs.mode || 'deploy' }} · ${{ inputs.target || (contains(github.event.head_commit.message, '[deploy-closed]') && 'closed') || 'internal' }} · ${{ github.ref_name }}
 on:
   push:
     branches: [main]
@@ -29,7 +29,7 @@ jobs:
     if: >-
       github.repository == 'hebi10/GalliPick' &&
       (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') ||
-      (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[deploy-internal]')))
+      (github.ref == 'refs/heads/main' && (contains(github.event.head_commit.message, '[deploy-internal]') || contains(github.event.head_commit.message, '[deploy-closed]'))))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -75,10 +75,22 @@ jobs:
             TARGET=internal
             RELEASE_TAG="$REF_NAME"
           elif [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
-            # Main pushes deploy only on an explicit release-intent commit and a
-            # source versionCode increase. Unrelated Gradle edits never publish.
+            # Main pushes deploy only on an explicit, mutually exclusive
+            # testing-track intent and a source versionCode increase.
             MODE=deploy
-            TARGET=internal
+            RELEASE_MESSAGE="$(git log -1 --pretty=%B)"
+            if [[ "$RELEASE_MESSAGE" == *'[deploy-closed]'* && "$RELEASE_MESSAGE" == *'[deploy-internal]'* ]]; then
+              echo 'Ambiguous release intent: choose only one testing track.' >&2
+              exit 1
+            fi
+            if [[ "$RELEASE_MESSAGE" == *'[deploy-closed]'* ]]; then
+              TARGET=closed
+            elif [[ "$RELEASE_MESSAGE" == *'[deploy-internal]'* ]]; then
+              TARGET=internal
+            else
+              echo 'Missing explicit release intent.' >&2
+              exit 1
+            fi
             RELEASE_TAG="$(python3 - <<'PY'
           import sys
           from pathlib import Path
@@ -99,8 +111,8 @@ jobs:
           _, previous_code = parse_source_version(previous_source)
           _, next_code = parse_source_version(Path('app/build.gradle.kts').read_text(encoding='utf-8'))
           if next_code <= previous_code:
-              raise SystemExit('Internal release requires a higher versionCode than the previous main commit.')
-          print(f'Intentional internal release versionCode: {previous_code} -> {next_code}')
+              raise SystemExit('Testing release requires a higher versionCode than the previous main commit.')
+          print(f'Intentional testing release versionCode: {previous_code} -> {next_code}')
           PY
           else
             echo 'Automatic Play runs require a version tag or an intentional main release commit.' >&2
