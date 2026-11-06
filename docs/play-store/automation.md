@@ -101,6 +101,15 @@ API 클라이언트는 기존 트랙과 이미 업로드한 APK·AAB 버전을 �
 
 업로드 또는 commit 중 연결이 끊기면 원격에서는 이미 수락했을 수 있습니다. 자동 재시도·자동 버전 변경·자동 재업로드를 하지 않습니다. Actions 보고서와 Play Console의 실제 bundle·트랙 상태를 먼저 확인합니다. 이미 올라간 버전은 재사용하지 않고 새 버전을 준비하며, 판단할 수 없는 commit 결과를 단순히 같은 실행 재시도로 해결하지 않습니다.
 
+## 2026-11-06 최신 릴리스와 사용 원칙
+
+- `main`은 디자인 7-A~7-G가 반영된 v0.2.5/code16으로 준비했습니다. [릴리스 PR #39](https://github.com/hebi10/GalliPick/pull/39).
+- [v0.2.5 비공개 테스트 alpha 실행](https://github.com/hebi10/GalliPick/actions/runs/42231012844)은 `[deploy-closed]`가 명시된 버전 증가 병합으로만 시작했습니다.
+- 제출 성공 여부는 해당 실행의 `GalliPick-v0.2.5-play-deployment` 보고서에서 `track=alpha`, `version_code=16`, `api_accepted=true`, `track_verified=true`를 확인해 판단합니다.
+- API commit은 Google 심사 승인/테스터 설치 가능 상태를 의미하지 않습니다. [수동 Play 확인 #42](https://github.com/hebi10/GalliPick/issues/42)에서 별도로 검증합니다.
+- 테스트용 미디어·추가 화면 캡처는 `androidTest`에 한정하며 실제 사용자 기기의 미디어를 변경하지 않습니다.
+- 과거 0.1.x 버전 이력은 아래에 보존하되 **현행 버전/트랙 상태로 해석하지 않습니다.**
+
 ## 현재 설정 상태
 
 2026-11-04 별도 앱 배포 전용 프로젝트의 GalliPick 서비스 계정을 사용합니다. 해당 앱의 조회·테스트 출시 권한만 부여했으며 장기 JSON 개인 키 없이 WIF로 인증합니다. `PLAY_CLOSED_TRACK=alpha`는 실제 API 조회로 확인한 기존 비공개 트랙 ID입니다. 버전 태그는 내부 테스트, 비공개 테스트는 main 수동 `target=closed` 또는 명시적 버전 증가 커밋 `[deploy-closed]`로만 제출합니다. 수동 실행 기본값은 `mode=build`·`target=internal`입니다.
