@@ -170,14 +170,14 @@ internal fun FileToolbar(
                 DropdownMenuItem(text = { Text("빠른 조건·저장한 조건") }, onClick = { menu = "conditions" })
             }
         }
+        IconAction(if (gridView) "목록 보기" else "그리드 보기",
+            if (gridView) Icons.Rounded.ViewList else Icons.Rounded.GridView
+        ) { onGridViewChange(!gridView) }
         listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
             FileKindChip(kindLabel(kind), filter.kind == kind) {
                 change(MediaFilterActions.kind(filter, kind))
             }
         }
-        IconAction(if (gridView) "목록 보기" else "그리드 보기",
-            if (gridView) Icons.Rounded.ViewList else Icons.Rounded.GridView
-        ) { onGridViewChange(!gridView) }
         }
     }
 }
