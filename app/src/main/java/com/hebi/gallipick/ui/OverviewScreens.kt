@@ -448,28 +448,23 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
         val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
         val compact = maxWidth < 440.dp * fontScale
         Column(
-            Modifier.fillMaxHeight().widthIn(max = 600.dp).fillMaxWidth()
+            Modifier.fillMaxHeight().widthIn(max = 660.dp).fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = if (compact) 16.dp else 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(if (compact) 14.dp else 18.dp),
+                .padding(horizontal = if (compact) 12.dp else 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
         ) {
-            SectionTitle("설정", "화면·권한·정리 안전 설정을 한곳에서 관리합니다.")
+            SectionTitle("설정", "화면·권한·파일 관리")
             SettingsSection("화면 테마") {
-                Text("현재 설정 · " + when (state.themeMode) {
-                    AppThemeMode.SYSTEM -> "기기 설정 따르기"
-                    AppThemeMode.LIGHT -> "라이트 모드"
-                    AppThemeMode.DARK -> "다크 모드"
-                }, style = MaterialTheme.typography.bodyMedium)
-                Text("기기 설정을 따르거나 사용할 모드를 직접 선택하세요.", color = Muted, style = MaterialTheme.typography.bodySmall)
-                Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("기기 설정을 따르거나 모드를 직접 선택하세요.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     AppThemeMode.entries.forEach { mode ->
                         val selected = state.themeMode == mode
                         Row(
-                            Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(RoundedCornerShape(14.dp))
+                            Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.touchTarget).clip(RoundedCornerShape(10.dp))
                                 .background(if (selected) Panel else androidx.compose.ui.graphics.Color.Transparent)
                                 .selectable(selected = selected, role = Role.RadioButton, onClick = { vm.setThemeMode(mode) },
                                     indication = null, interactionSource = remember { MutableInteractionSource() })
-                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
@@ -519,7 +514,7 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
             SettingsSection("보호 폴더") {
                 Text("직접 보호한 폴더 ${state.protectedFolders.size}개", style = MaterialTheme.typography.bodyMedium)
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    GalliIllustration(GalliScene.PROTECT, Modifier.size(64.dp))
+                    GalliIllustration(GalliScene.PROTECT, Modifier.size(44.dp))
                     Text("폴더를 보호하면 해당 파일의 정리 선택이 차단됩니다. 즐겨찾기도 기본으로 보호합니다.", color = Muted,
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                 }
@@ -602,16 +597,15 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
         else -> Icons.Rounded.Shield
     }
     Column(
-        Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(GalliUiMetrics.cardCorner))
-            .border(1.dp, Line, RoundedCornerShape(GalliUiMetrics.cardCorner))
-            .padding(GalliUiMetrics.cardPadding),
-        verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing),
+        Modifier.fillMaxWidth().galliCardSurface(AppSurface)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(40.dp).background(Panel, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                GalliIcon(icon, null, Modifier.size(26.dp))
+            Box(Modifier.size(32.dp).background(Panel, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                GalliIcon(icon, null, Modifier.size(20.dp))
             }
-            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+            Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
         }
         content()
     }
