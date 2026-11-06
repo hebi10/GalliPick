@@ -38,7 +38,10 @@ import java.io.File
 class ModalSurfaceCaptureTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    private enum class Screen { FILTER, DETAIL, PHOTO, VIDEO, COMPARE, REVIEW, RESTORE, TRASH, PRESET, CACHE, RESULT }
+    private enum class Screen {
+        FILTER, DETAIL, PHOTO, VIDEO, COMPARE, REVIEW, RESTORE, TRASH, PRESET, CACHE,
+        RESULT_SUCCESS, RESULT_PARTIAL, RESULT_CANCELED, RESULT_FAILED, RESULT_UNKNOWN,
+    }
 
     @Test fun captureAllDialogAndDetailSurfaces() {
         val photoA = photo("EXAMPLE_original.jpg", 1)
@@ -74,7 +77,11 @@ class ModalSurfaceCaptureTest {
                             Screen.TRASH -> TrashScreen(trashItems, {}, {})
                             Screen.PRESET -> SavePresetDialog({}, {})
                             Screen.CACHE -> ClearAnalysisCacheDialog({}, {})
-                            Screen.RESULT -> CleanupResultDialog(CleanupOperationResult.verified(TrashOutcome(1, 0, 0), false, 1, photoB.sizeBytes), {}, {}, {})
+                            Screen.RESULT_SUCCESS -> CleanupResultDialog(CleanupOperationResult.verified(TrashOutcome(1, 0, 0), false, 1, photoB.sizeBytes), {}, {}, {})
+                            Screen.RESULT_PARTIAL -> CleanupResultDialog(CleanupOperationResult.verified(TrashOutcome(1, 1, 0), false, 2, photoB.sizeBytes), {}, {}, {})
+                            Screen.RESULT_CANCELED -> CleanupResultDialog(CleanupOperationResult.cancelled(false, 1, photoB.sizeBytes), {}, {}, {})
+                            Screen.RESULT_FAILED -> CleanupResultDialog(CleanupOperationResult.failed(false, 1, photoB.sizeBytes), {}, {}, {})
+                            Screen.RESULT_UNKNOWN -> CleanupResultDialog(CleanupOperationResult.unknown(false, 1, photoB.sizeBytes), {}, {}, {})
                         }
                     }
                 }
@@ -121,10 +128,22 @@ class ModalSurfaceCaptureTest {
             compose.runOnIdle { current = Screen.CACHE }
             compose.onNodeWithText("분석 캐시를 비울까요?").assertIsDisplayed()
             screenshot(output, "11-cache-confirm")
-            compose.runOnIdle { current = Screen.RESULT }
+            compose.runOnIdle { current = Screen.RESULT_SUCCESS }
             compose.onNodeWithText("휴지통 이동 완료").assertIsDisplayed()
             screenshot(output, "12-cleanup-result")
-            assertEquals("All modal/detail captures must be saved", 12, output.listFiles { file -> file.extension == "png" }?.size)
+            compose.runOnIdle { current = Screen.RESULT_PARTIAL }
+            compose.onNodeWithText("일부 파일만 처리 확인").assertIsDisplayed()
+            screenshot(output, "13-cleanup-partial")
+            compose.runOnIdle { current = Screen.RESULT_CANCELED }
+            compose.onNodeWithText("작업 취소").assertIsDisplayed()
+            screenshot(output, "14-cleanup-canceled")
+            compose.runOnIdle { current = Screen.RESULT_FAILED }
+            compose.onNodeWithText("작업 완료 실패").assertIsDisplayed()
+            screenshot(output, "15-cleanup-failed")
+            compose.runOnIdle { current = Screen.RESULT_UNKNOWN }
+            compose.onNodeWithText("파일 상태 확인 불가").assertIsDisplayed()
+            screenshot(output, "16-cleanup-unknown")
+            assertEquals("All modal/detail captures must be saved", 16, output.listFiles { file -> file.extension == "png" }?.size)
         } finally {
             (listOf(photoA.uri, photoB.uri, video.uri) + trashSamples.map { it.uri }).forEach { uri ->
                 compose.activity.contentResolver.delete(Uri.parse(uri), null, null)
