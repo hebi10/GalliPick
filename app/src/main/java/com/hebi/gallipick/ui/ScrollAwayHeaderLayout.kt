@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,7 +30,9 @@ internal fun ScrollAwayHeaderLayout(
         Box(Modifier.verticalScroll(headerScroll)) { header() }
         Box(Modifier.nestedScroll(behavior.nestedScrollConnection)) { content() }
     }) { measurables, constraints ->
-        val top = measurables[0].measure(constraints.copy(minHeight = 0, maxHeight = constraints.maxHeight / 2))
+        val minimumBodyHeight = minOf(constraints.maxHeight / 2, 80.dp.roundToPx())
+        val headerHeightLimit = (constraints.maxHeight - minimumBodyHeight).coerceAtLeast(0)
+        val top = measurables[0].measure(constraints.copy(minHeight = 0, maxHeight = headerHeightLimit))
         state.heightOffsetLimit = -top.height.toFloat()
         state.heightOffset = state.heightOffset.coerceIn(state.heightOffsetLimit, 0f)
         val visible = (top.height + state.heightOffset).roundToInt().coerceIn(0, top.height)
