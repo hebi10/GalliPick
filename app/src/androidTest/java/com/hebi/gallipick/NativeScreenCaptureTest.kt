@@ -151,8 +151,8 @@ class NativeScreenCaptureTest {
             captureDetail("08-files-filter-dialog") {
                 navigate("파일")
                 compose.onNodeWithContentDescription("파일 조건 선택").performScrollTo().performClick()
-                compose.onNodeWithText("상세 필터").performClick()
-                compose.onNodeWithText("파일 필터").assertIsDisplayed()
+                compose.onNodeWithContentDescription("필터 닫기").assertIsDisplayed()
+                compose.onNodeWithText("날짜 범위").assertIsDisplayed()
             }
             captureDetail("08b-filter-with-keyboard") {
                 compose.onNodeWithText("파일 이름 검색").performScrollTo().performClick().performTextInput("EXAMPLE")
@@ -294,7 +294,7 @@ class NativeScreenCaptureTest {
     }
 
     private fun chooseSort(label: String) {
-        compose.onNodeWithContentDescription("정렬 기준 선택").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("정렬 기준 선택").performClick()
         compose.onNodeWithText(label).performScrollTo().performClick()
         compose.waitForIdle()
     }

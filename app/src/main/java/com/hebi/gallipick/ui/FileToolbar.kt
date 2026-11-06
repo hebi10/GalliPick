@@ -3,6 +3,7 @@ package com.hebi.gallipick.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +21,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.contentDescription
@@ -29,6 +31,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.hebi.gallipick.domain.*
 import java.util.Calendar
 
@@ -40,6 +43,8 @@ internal fun FileToolbar(
     advanced: () -> Unit,
     save: () -> Unit,
     deletePreset: (String) -> Unit,
+    gridView: Boolean = true,
+    onGridViewChange: (Boolean) -> Unit = {},
 ) {
     var menu by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
@@ -68,10 +73,6 @@ internal fun FileToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            IconAction("파일 검색", Icons.Rounded.Search) {
-                focus.requestFocus()
-                keyboard?.show()
-            }
             OutlinedTextField(
                 value = filter.query,
                 onValueChange = { change(filter.copy(query = it)) },
@@ -82,6 +83,12 @@ internal fun FileToolbar(
                 singleLine = true,
                 shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
                 textStyle = MaterialTheme.typography.bodyMedium,
+                leadingIcon = {
+                    IconAction("파일 검색", Icons.Rounded.Search) {
+                        focus.requestFocus()
+                        keyboard?.show()
+                    }
+                },
                 trailingIcon = {
                     if (filter.query.isNotEmpty()) {
                         IconAction("검색어 지우기", Icons.Rounded.Close) {
@@ -109,13 +116,12 @@ internal fun FileToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
-                FileKindChip(kindLabel(kind), filter.kind == kind) {
-                    change(MediaFilterActions.kind(filter, kind))
-                }
-            }
         Box {
-            ToolbarChoice(if (conditionCount == 0) "필터" else "필터 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { menu = "conditions" }
+            ToolbarChoice(shortSortLabel(filter), "정렬 기준 선택", sortChoiceLabel(filter), false) { menu = "sort" }
+
+        }
+        Box {
+            ToolbarChoice(if (conditionCount == 0) "필터" else "필터 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { advanced() }
             DropdownMenu(expanded = menu == "conditions", onDismissRequest = { menu = null }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 420.dp)) {
                 DropdownMenuItem(text = { Text("상세 필터") }, onClick = { menu = null; advanced() }, leadingIcon = { GalliIcon(Icons.Rounded.Tune, null) })
                 if (conditionCount > 0) Text("적용 중: ${filterSummary(filter)}", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -140,23 +146,40 @@ internal fun FileToolbar(
             }
         }
         Box {
-            ToolbarChoice(shortSortLabel(filter), "정렬 기준 선택", sortChoiceLabel(filter), false) { menu = "sort" }
-            DropdownMenu(expanded = menu == "sort", onDismissRequest = { menu = null }, modifier = Modifier.heightIn(max = 420.dp)) {
-                SortChoices.forEach { choice ->
-                    DropdownMenuItem(text = { Text(choice.label) }, onClick = {
-                        change(MediaFilterActions.sort(filter, choice.field, choice.direction)); menu = null
-                    }, trailingIcon = { if (filter.sortField == choice.field && filter.sortDirection == choice.direction) GalliIcon(Icons.Rounded.Check, null) })
-                }
-            }
-        }
-        Box {
             IconAction("파일 추가 작업", Icons.Rounded.MoreVert) { menu = "more" }
             DropdownMenu(expanded = menu == "more", onDismissRequest = { menu = null }) {
                 DropdownMenuItem(text = { Text("현재 조건 저장") }, onClick = { menu = null; save() })
                 DropdownMenuItem(text = { Text("조건 초기화") }, onClick = { change(MediaFilter()); menu = null })
+                DropdownMenuItem(text = { Text("빠른 조건·저장한 조건") }, onClick = { menu = "conditions" })
+            }
+        }
+        IconAction(if (gridView) "목록 보기" else "그리드 보기",
+            if (gridView) Icons.Rounded.ViewList else Icons.Rounded.GridView
+        ) { onGridViewChange(!gridView) }
+        listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
+            FileKindChip(kindLabel(kind), filter.kind == kind) {
+                change(MediaFilterActions.kind(filter, kind))
             }
         }
         }
+            if (menu == "sort") {
+                Dialog(onDismissRequest = { menu = null }) {
+                    Surface(shape = RoundedCornerShape(16.dp), color = AppSurface) {
+                        Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                            SortChoices.forEach { choice ->
+                                DropdownMenuItem(text = { Text(choice.label) }, onClick = {
+                                    change(MediaFilterActions.sort(filter, choice.field, choice.direction))
+                                    menu = null
+                                }, trailingIcon = {
+                                    if (filter.sortField == choice.field && filter.sortDirection == choice.direction) {
+                                        GalliIcon(Icons.Rounded.Check, null)
+                                    }
+                                })
+                            }
+                        }
+                    }
+                }
+            }
     }
 }
 
@@ -171,14 +194,14 @@ private fun FileKindChip(label: String, isSelected: Boolean, onClick: () -> Unit
                 contentDescription = "파일 유형: $label"
             }
             .clip(shape)
-            .background(if (isSelected) Mint else AppSurface)
+            .background(if (isSelected) Primary else AppSurface)
             .border(1.dp, if (isSelected) Primary else Line, shape)
             .plainClick(action = onClick)
             .padding(horizontal = 13.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            label, color = Ink, style = MaterialTheme.typography.labelLarge,
+            label, color = if (isSelected) OnPrimary else Ink, style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
         )
     }

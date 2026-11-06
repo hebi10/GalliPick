@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items as listItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -18,6 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,6 +60,7 @@ internal fun FilesScreenContent(
 ) {
     var showFilter by remember { mutableStateOf(false) }
     var showSave by remember { mutableStateOf(false) }
+    var gridView by rememberSaveable { mutableStateOf(true) }
     var detailUri by rememberSaveable { mutableStateOf<String?>(null) }
     val gridState = rememberLazyGridState()
     var previousFilter by remember { mutableStateOf(state.filter) }
@@ -78,7 +82,8 @@ internal fun FilesScreenContent(
                 resetKey = state.filter to (state.catalogError != null || state.access == MediaAccess.NONE),
                 header = {
                     FileToolbar(state.filter, state.presets, actions.setFilter,
-                        advanced = { showFilter = true }, save = { showSave = true }, deletePreset = actions.deletePreset)
+                        advanced = { showFilter = true }, save = { showSave = true }, deletePreset = actions.deletePreset,
+                        gridView = gridView, onGridViewChange = { gridView = it })
                 },
             ) {
                 BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -87,19 +92,6 @@ internal fun FilesScreenContent(
                     val detailWidth = (maxWidth * .32f).coerceIn(280.dp, 360.dp)
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Column(Modifier.weight(1f).fillMaxHeight()) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                val summary = "${filtered.size}개 · ${bytesLabel(filtered.sumOf { it.sizeBytes })}" +
-                                    if (state.filter.query.isNotBlank()) " · 검색: ${state.filter.query}" else ""
-                                Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text("파일", style = MaterialTheme.typography.titleMedium)
-                                    Text(summary, style = MaterialTheme.typography.bodySmall, color = Muted,
-                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.semantics { contentDescription = "파일 목록 요약" })
-                                }
-                                if (filtered.any { it.canTrash() }) TextAction("모두 선택", actions.selectAll)
-                                else Spacer(Modifier.height(44.dp))
-                            }
                             when {
                                 state.access == MediaAccess.NONE -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("미디어 접근이 필요합니다", "허용한 파일만 이곳에 표시됩니다.", action = { ActionButton("접근 허용", requestAccess, filled = true) })
@@ -113,14 +105,37 @@ internal fun FilesScreenContent(
                                 filtered.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("조건에 맞는 파일이 없습니다", "접근 범위와 필터 조건을 확인해주세요.", action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) }, scene = GalliScene.SEARCH)
                                 }
-                                else -> LazyVerticalGrid(
-                                    columns = GridCells.Adaptive(if (wide) 148.dp else 128.dp), state = gridState,
-                                    modifier = Modifier.weight(1f).semantics { contentDescription = "미디어 파일 목록" },
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
-                                    contentPadding = PaddingValues(bottom = 16.dp),
-                                ) {
-                                    items(filtered, key = { it.uri }) { item ->
-                                        MediaTile(item, item.uri in state.selected, { actions.toggleSelection(item.uri) }, { detailUri = item.uri }, state.filter.sortField)
+                                else -> {
+                                    val fontScale = LocalDensity.current.fontScale
+                                    if (gridView) {
+                                        LazyVerticalGrid(
+                                            columns = GridCells.Adaptive(
+                                                if (wide) 152.dp else if (fontScale >= 1.5f) 132.dp else 108.dp
+                                            ),
+                                            state = gridState,
+                                            modifier = Modifier.weight(1f).semantics { contentDescription = "미디어 파일 목록" },
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
+                                        ) {
+                                            items(filtered, key = { it.uri }) { item ->
+                                                MediaTile(item, item.uri in state.selected,
+                                                    { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
+                                                    state.filter.sortField)
+                                            }
+                                        }
+                                    } else {
+                                        LazyColumn(
+                                            modifier = Modifier.weight(1f).semantics { contentDescription = "미디어 파일 목록" },
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                            contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
+                                        ) {
+                                            listItems(filtered, key = { it.uri }) { item ->
+                                                MediaTile(item, item.uri in state.selected,
+                                                    { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
+                                                    state.filter.sortField, listView = true)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -141,6 +156,9 @@ internal fun FilesScreenContent(
                 }
             }
 
+            if (catalogVisible && filtered.isNotEmpty() && selected.isEmpty()) {
+                FilesFooterSummary(filtered, actions.selectAll)
+            }
             SelectionBar(selected, actions.clearSelection, { trash(selected) })
         }
         if (showFilter) FilterDialog(state.filter, visibleItems, {
@@ -151,29 +169,93 @@ internal fun FilesScreenContent(
 }
 
 @Composable
-private fun MediaTile(item: MediaItem, selected: Boolean, toggle: () -> Unit, detail: () -> Unit, sortField: SortField) {
-    Column(Modifier.fillMaxWidth().galliCardSurface().padding(7.dp)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp))
-            .border(if (selected) 2.dp else 0.dp, if (selected) Ink else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(12.dp))
-            .plainClick(action = detail)) {
-            MediaThumbnail(item, Modifier.fillMaxSize())
-            SelectBox(selected, item.canTrash(), if (item.canTrash()) "${item.displayName} 선택" else "${item.displayName} 즐겨찾기 또는 보호 파일", toggle, Modifier.align(Alignment.TopEnd))
-            if (item.kind == MediaKind.VIDEO) Text(durationLabel(item.durationMs), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, modifier = Modifier.align(Alignment.BottomEnd).padding(5.dp).background(Ink, RoundedCornerShape(12.dp)).padding(horizontal = 7.dp, vertical = 3.dp))
-            if (item.isFavorite || item.isProtected) GalliIcon(if (item.isFavorite) Icons.Rounded.Star else Icons.Rounded.Shield, if (item.isFavorite) "즐겨찾기" else "보호됨", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.align(Alignment.BottomStart).padding(5.dp).background(Ink, RoundedCornerShape(12.dp)).padding(4.dp).size(16.dp))
+private fun FilesFooterSummary(items: List<MediaItem>, selectAll: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "총 " + String.format(java.util.Locale.KOREA, "%,d", items.size) +
+                "개 · " + bytesLabel(items.sumOf { it.sizeBytes }),
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted,
+            modifier = Modifier.semantics { contentDescription = "파일 목록 요약" },
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        if (items.any { it.canTrash() }) TextAction("모두 선택", selectAll)
+    }
+}
+
+@Composable
+private fun MediaTile(
+    item: MediaItem,
+    selected: Boolean,
+    toggle: () -> Unit,
+    detail: () -> Unit,
+    sortField: SortField,
+    listView: Boolean = false,
+) {
+    if (listView) {
+        Row(
+            Modifier.fillMaxWidth().galliCardSurface().padding(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)).plainClick(action = detail)) {
+                MediaThumbnail(item, Modifier.fillMaxSize())
+            }
+            Column(Modifier.weight(1f).plainClick(action = detail), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(item.displayName, style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(item.capturedAt).substringBefore(" "),
+                    style = MaterialTheme.typography.bodySmall, color = Muted)
+                if (item.kind == MediaKind.VIDEO) {
+                    Text(durationLabel(item.durationMs), style = MaterialTheme.typography.labelSmall, color = Muted)
+                }
+            }
+            SelectBox(
+                selected, item.canTrash(),
+                if (item.canTrash()) item.displayName + " 선택" else item.displayName + " 즐겨찾기 또는 보호 파일",
+                toggle,
+            )
         }
-        Spacer(Modifier.height(6.dp))
-        Text(item.displayName, style = MaterialTheme.typography.bodySmall, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.plainClick(action = detail))
-        Text(bytesLabel(item.sizeBytes), color = Muted, style = MaterialTheme.typography.labelSmall)
-        val sortDetail = when (sortField) {
-            SortField.CAPTURED -> dateLabel(item.capturedAt).substringBefore(" ")
-            SortField.ADDED -> dateLabel(item.dateAddedMs).substringBefore(" ")
-            SortField.MODIFIED -> dateLabel(item.dateModifiedMs).substringBefore(" ")
-            SortField.DURATION -> if (item.kind == MediaKind.VIDEO) durationLabel(item.durationMs) else null
-            SortField.PIXELS -> "${item.width} × ${item.height}"
-            else -> null
+    } else {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Box(
+                Modifier.fillMaxWidth().aspectRatio(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(if (selected) 2.dp else 0.dp,
+                        if (selected) Primary else androidx.compose.ui.graphics.Color.Transparent,
+                        RoundedCornerShape(10.dp))
+                    .plainClick(action = detail),
+            ) {
+                MediaThumbnail(item, Modifier.fillMaxSize())
+                SelectBox(
+                    selected, item.canTrash(),
+                    if (item.canTrash()) item.displayName + " 선택" else item.displayName + " 즐겨찾기 또는 보호 파일",
+                    toggle, Modifier.align(Alignment.TopStart),
+                )
+                if (item.kind == MediaKind.VIDEO) {
+                    Text(durationLabel(item.durationMs), color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                            .background(Ink, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+                if (item.isFavorite || item.isProtected) {
+                    GalliIcon(
+                        if (item.isFavorite) Icons.Rounded.Star else Icons.Rounded.Shield,
+                        if (item.isFavorite) "즐겨찾기" else "보호됨",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
+                            .background(Ink, RoundedCornerShape(8.dp)).padding(4.dp).size(16.dp),
+                    )
+                }
+            }
+            Text(item.displayName, style = MaterialTheme.typography.labelSmall, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().plainClick(action = detail))
         }
-        if (sortDetail != null) Text(sortDetail, color = Muted, style = MaterialTheme.typography.labelSmall,
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

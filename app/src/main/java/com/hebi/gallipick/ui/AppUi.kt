@@ -91,7 +91,11 @@ fun GalliPickApp(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     resetKey = Triple(destination, showTrash to showDuplicates, state.filter),
                     header = {
-                        GalliAppHeader(state.loading, vm::refresh)
+                        if (destination == Destination.FILES && !showTrash && !showDuplicates) {
+                            GalliFilesHeader(state.loading, vm::refresh)
+                        } else {
+                            GalliAppHeader(state.loading, vm::refresh)
+                        }
                     },
                 ) {
                     Column(Modifier.fillMaxSize()) {
@@ -196,6 +200,20 @@ fun GalliPickApp(
             onDismissResult()
         },
     )
+}
+
+@Composable
+internal fun GalliFilesHeader(loading: Boolean, onRefresh: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.headerHeight)
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("파일", style = MaterialTheme.typography.titleLarge, color = Ink,
+            modifier = Modifier.weight(1f))
+        if (loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted)
+        IconAction("새로고침", Icons.Rounded.Refresh, onClick = onRefresh)
+    }
 }
 
 @Composable
