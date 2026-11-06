@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -32,6 +35,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -89,7 +94,30 @@ internal fun TrashScreen(
                 modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).border(1.dp, Line, RoundedCornerShape(16.dp)).padding(14.dp),
             )
             if (items.isEmpty()) {
-                EmptyState("휴지통이 비어 있습니다", "휴지통으로 이동한 사진과 동영상이 여기에 표시됩니다.", Icons.Rounded.DeleteOutline)
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    val short = maxHeight < 300.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                    if (short) {
+                        Column(
+                            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            GalliIllustration(GalliScene.EMPTY, Modifier.size(44.dp))
+                            Text("휴지통이 비어 있습니다", style = MaterialTheme.typography.titleSmall,
+                                textAlign = TextAlign.Center)
+                            Text("휴지통으로 이동한 사진과 동영상이 여기에 표시됩니다.",
+                                style = MaterialTheme.typography.bodySmall, color = Muted,
+                                textAlign = TextAlign.Center)
+                        }
+                    } else {
+                        Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                            EmptyState("휴지통이 비어 있습니다",
+                                "휴지통으로 이동한 사진과 동영상이 여기에 표시됩니다.",
+                                Icons.Rounded.DeleteOutline)
+                        }
+                    }
+                }
             } else {
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

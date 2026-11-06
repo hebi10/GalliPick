@@ -127,7 +127,7 @@ jobs:
             adb shell am force-stop com.android.launcher3
             adb install -r capture-apks/debug/app-debug.apk
             adb install -r capture-apks/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.GalliDesignSystemTest,com.hebi.gallipick.ui.ShortDuplicateResultsTest,com.hebi.gallipick.ui.AdaptiveNavigationTest,com.hebi.gallipick.ui.AdaptiveFilesTest,com.hebi.gallipick.ui.AdaptiveFilterTest,com.hebi.gallipick.ui.AdaptiveOverviewTest,com.hebi.gallipick.ui.AdaptiveMediaReviewTest,com.hebi.gallipick.ui.DuplicateClarityTest,com.hebi.gallipick.ui.CleanupResultDialogTest,com.hebi.gallipick.ui.Stage6AccessibilityTest,com.hebi.gallipick.ui.ReferenceNavigationFlowTest,com.hebi.gallipick.ui.ReferenceHomeScreenTest,com.hebi.gallipick.ui.ReferenceFilesFilterTest com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > adaptive-instrumentation.txt || echo failed > adaptive-failed.txt
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.GalliDesignSystemTest,com.hebi.gallipick.ui.ShortDuplicateResultsTest,com.hebi.gallipick.ui.AdaptiveNavigationTest,com.hebi.gallipick.ui.AdaptiveFilesTest,com.hebi.gallipick.ui.AdaptiveFilterTest,com.hebi.gallipick.ui.AdaptiveOverviewTest,com.hebi.gallipick.ui.AdaptiveMediaReviewTest,com.hebi.gallipick.ui.DuplicateClarityTest,com.hebi.gallipick.ui.CleanupResultDialogTest,com.hebi.gallipick.ui.TrashEmptyLayoutTest,com.hebi.gallipick.ui.Stage6AccessibilityTest,com.hebi.gallipick.ui.ReferenceNavigationFlowTest,com.hebi.gallipick.ui.ReferenceHomeScreenTest,com.hebi.gallipick.ui.ReferenceFilesFilterTest com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > adaptive-instrumentation.txt || echo failed > adaptive-failed.txt
             cat adaptive-instrumentation.txt
             adb shell am instrument -w -r -e class com.hebi.gallipick.NativeScreenCaptureTest -e captureProfile ${{ matrix.name }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > capture-instrumentation.txt || echo failed > capture-failed.txt
             cat capture-instrumentation.txt
@@ -139,13 +139,14 @@ jobs:
             mkdir -p adaptive-screenshots
             tar -xf adaptive-screenshots.tar -C adaptive-screenshots || true
             python3 -c "import pathlib,re; t=pathlib.Path('adaptive-instrumentation.txt').read_text(); assert not pathlib.Path('adaptive-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Adaptive UI regression tests did not pass'"
-            python3 -c "import pathlib,re,json; t=pathlib.Path('capture-instrumentation.txt').read_text(); p=pathlib.Path('captures'); m=list(p.glob('*-manifest.json')); assert not pathlib.Path('capture-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Native capture instrumentation did not pass'; assert len(list(p.glob('*.png'))) == 14, 'Expected 14 native screenshots'; assert len(m)==1 and json.loads(m[0].read_text())['photos']==24 and json.loads(m[0].read_text())['videos']==6 and json.loads(m[0].read_text())['protectedMedia']==2, 'Fixture inventory mismatch'"
+            python3 -c "import pathlib,re,json; t=pathlib.Path('capture-instrumentation.txt').read_text(); p=pathlib.Path('captures'); m=list(p.glob('*-manifest.json')); assert not pathlib.Path('capture-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Native capture instrumentation did not pass'; assert len(list(p.glob('*.png'))) == 15, 'Expected 15 native screenshots'; assert len(m)==1 and json.loads(m[0].read_text())['photos']==24 and json.loads(m[0].read_text())['videos']==6 and json.loads(m[0].read_text())['protectedMedia']==2, 'Fixture inventory mismatch'"
             adb shell am instrument -w -r -e class com.hebi.gallipick.ui.ModalSurfaceCaptureTest com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > modal-instrumentation.txt || echo failed > modal-failed.txt
             cat modal-instrumentation.txt
             adb exec-out run-as com.hebi.gallipick tar -C files/modal-screen-captures -cf - . > modal-payload.tar || true
             mkdir -p modal-captures
             tar -xf modal-payload.tar -C modal-captures || true
             python3 -c "import pathlib,re; t=pathlib.Path('modal-instrumentation.txt').read_text(); assert not pathlib.Path('modal-failed.txt').exists() and re.search(r'OK \\(\\d+ tests?\\)',t), 'Modal capture instrumentation did not pass'; assert len(list(pathlib.Path('modal-captures').glob('*.png'))) == 16, 'Expected 16 modal/detail screenshots'"
+            python3 scripts/qa/verify_design_captures.py --native captures --modal modal-captures --profile "${{ matrix.name }}" --output qa/design-audit.json
       - name: Upload fresh native captures and execution record
         if: always()
         uses: actions/upload-artifact@v4
@@ -161,5 +162,6 @@ jobs:
             adaptive-screenshots/
             modal-captures/
             modal-instrumentation.txt
+            qa/design-audit.json
             modal-failed.txt
           retention-days: 14

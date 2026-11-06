@@ -156,6 +156,12 @@ class NativeScreenCaptureTest {
             saveViewport("05-settings-dark")
             compose.onNodeWithText("라이트 모드").performScrollTo().performClick().assertIsSelected()
             saveViewport("05b-settings-light")
+            // Capture the real app's status-bar-safe trash route, not just the standalone modal fixture.
+            compose.onNodeWithText("휴지통 열기").performScrollTo().performClick()
+            compose.onNodeWithText("휴지통이 비어 있습니다").assertIsDisplayed()
+            saveViewport("05c-trash-empty-real-activity")
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            compose.onNodeWithText("화면 테마").assertIsDisplayed()
 
             captureDetail("06-files-size-descending") {
                 navigate("파일")
@@ -200,7 +206,7 @@ class NativeScreenCaptureTest {
             }
             dismissDialogIfPresent("비교 닫기", contentDescription = true)
 
-            assertTrue("All fourteen rich-fixture captures must exist", captures.length() == 14)
+            assertTrue("All fifteen rich-fixture captures must exist", captures.length() == 15)
             assertTrue("Every detail capture must succeed", detailFailures.length() == 0)
         } catch (failure: Throwable) {
             testFailure = failure
