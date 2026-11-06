@@ -104,37 +104,28 @@ fun GalliPickApp(
                             color = Primary, trackColor = Panel,
                         )
                         if (state.catalogError != null && state.catalogError != state.message) {
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
-                                    .galliCardSurface(Panel).padding(start = 14.dp, end = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                GalliIcon(Icons.Rounded.ErrorOutline, null, Modifier.size(22.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("파일을 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요.",
-                                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                                TextAction("다시 시도", vm::refresh)
-                            }
+                            GalliInlineNotice(
+                                message = "파일을 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요.",
+                                actionLabel = "다시 시도",
+                                onAction = vm::refresh,
+                                icon = Icons.Rounded.ErrorOutline,
+                            )
                         }
                         if (state.message != null) {
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
-                                    .galliCardSurface().padding(start = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(state.message.orEmpty(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                                IconAction("알림 닫기", Icons.Rounded.Close, onClick = vm::dismissMessage)
-                            }
+                            GalliInlineNotice(
+                                message = state.message.orEmpty(),
+                                actionLabel = "알림 닫기",
+                                onAction = vm::dismissMessage,
+                                icon = Icons.Rounded.Info,
+                            )
                         }
                         if (state.access == MediaAccess.PARTIAL) {
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
-                                    .galliCardSurface(backgroundColor = Panel).padding(start = 14.dp, end = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("허용된 사진·동영상만 표시 중", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                                TextAction("접근 변경", onClick = onRequestPermission)
-                            }
+                            GalliInlineNotice(
+                                message = "허용된 사진·동영상만 표시 중",
+                                actionLabel = "접근 변경",
+                                onAction = onRequestPermission,
+                                icon = Icons.Rounded.PhotoLibrary,
+                            )
                         }
                         Row(Modifier.weight(1f).fillMaxWidth()) {
                             if (wide) {
@@ -200,6 +191,36 @@ fun GalliPickApp(
             onDismissResult()
         },
     )
+}
+
+@Composable
+internal fun GalliInlineNotice(
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    icon: ImageVector,
+) {
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+            .galliCardSurface(Panel).padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        val compact = maxWidth < 360.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        if (compact) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GalliIcon(icon, null, Modifier.size(22.dp))
+                    Text(message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                }
+                TextAction(actionLabel, onAction, Modifier.align(Alignment.End))
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GalliIcon(icon, null, Modifier.size(22.dp))
+                Text(message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                TextAction(actionLabel, onAction)
+            }
+        }
+    }
 }
 
 @Composable

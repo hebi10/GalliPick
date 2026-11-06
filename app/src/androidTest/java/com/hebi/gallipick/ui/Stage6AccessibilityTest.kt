@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
@@ -146,6 +147,45 @@ class Stage6AccessibilityTest {
             assertEquals(1, settingsClicks)
         }
         assertTrue("Device permission settings must be represented in the UI", settingsClicks > 0)
+    }
+
+    @Test fun inlineErrorActionRemainsVisibleWithLargeTextAndNarrowWidth() {
+        var attempts = 0
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(1f, 1.6f)) {
+                    Box(Modifier.requiredSize(320.dp, 210.dp)) {
+                        GalliInlineNotice(
+                            "파일을 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요.",
+                            "다시 시도",
+                            { attempts++ },
+                            androidx.compose.material.icons.Icons.Rounded.ErrorOutline,
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("다시 시도").assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
+        compose.runOnIdle { assertEquals(1, attempts) }
+        screenshot("stage6-inline-error-large-text")
+    }
+
+    @Test fun trashConfirmationActionsRemainVisibleWithLargeText() {
+        var cancelled = 0
+        var proceeded = 0
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(1f, 1.6f)) {
+                    Box(Modifier.requiredSize(320.dp, 420.dp)) {
+                        TrashReviewContent(emptyList(), emptyList(), false, 0, { cancelled++ }, { proceeded++ })
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("취소").assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithText("휴지통 이동 요청").assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
+        compose.runOnIdle { assertEquals(0, cancelled); assertEquals(1, proceeded) }
+        screenshot("stage6-trash-confirmation-large-text")
     }
 
     private fun screenshot(name: String) {

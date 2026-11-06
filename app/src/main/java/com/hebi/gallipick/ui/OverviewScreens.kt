@@ -417,8 +417,15 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
         val observed = state.items.groupBy { normalizeUiFolder(it.relativePath) }
         (observed.keys + state.protectedFolders).associateWith { observed[it].orEmpty() }.toSortedMap()
     }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-        Column(Modifier.widthIn(max = 600.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val compact = maxWidth < 440.dp * fontScale
+        Column(
+            Modifier.fillMaxHeight().widthIn(max = 600.dp).fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = if (compact) 16.dp else 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 14.dp else 18.dp),
+        ) {
             SectionTitle("설정", "화면·권한·정리 안전 설정을 한곳에서 관리합니다.")
             SettingsSection("화면 테마") {
                 Text("현재 설정 · " + when (state.themeMode) {
@@ -498,13 +505,27 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
                 if (showProtectedFolders) folders.forEach { (path, items) ->
                     val protected = path in state.protectedFolders
                     val inherited = state.protectedFolders.firstOrNull { it.isNotEmpty() && it != path && path.startsWith(it) }
-                    Row(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(path.trimEnd('/').ifEmpty { "기본 폴더" }, style = MaterialTheme.typography.bodyMedium)
-                            Text("${items.size}개 · ${bytesLabel(items.sumOf { it.sizeBytes })}", color = Muted, style = MaterialTheme.typography.bodySmall)
-                            if (inherited != null) Text("상위 ${inherited.trimEnd('/')} 폴더에서 보호 중", color = Muted, style = MaterialTheme.typography.labelSmall)
+                    BoxWithConstraints(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(14.dp)).padding(12.dp)) {
+                        val label = if (protected) "보호 해제" else if (inherited != null) "상위 보호" else "보호"
+                        val toggle = { vm.protectFolder(path, !protected) }
+                        val description: @Composable () -> Unit = {
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(path.trimEnd('/').ifEmpty { "기본 폴더" }, style = MaterialTheme.typography.bodyMedium)
+                                Text("${items.size}개 · ${bytesLabel(items.sumOf { it.sizeBytes })}", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                if (inherited != null) Text("상위 ${inherited.trimEnd('/')} 폴더에서 보호 중", color = Muted, style = MaterialTheme.typography.labelSmall)
+                            }
                         }
-                        ActionButton(if (protected) "보호 해제" else if (inherited != null) "상위 보호" else "보호", { vm.protectFolder(path, !protected) }, enabled = protected || inherited == null)
+                        if (maxWidth < 360.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                description()
+                                ActionButton(label, toggle, Modifier.fillMaxWidth(), enabled = protected || inherited == null)
+                            }
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Box(Modifier.weight(1f)) { description() }
+                                ActionButton(label, toggle, enabled = protected || inherited == null)
+                            }
+                        }
                     }
                 }
             }
@@ -553,7 +574,12 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
         "분석 캐시" -> Icons.Rounded.CleaningServices
         else -> Icons.Rounded.Shield
     }
-    Column(Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(20.dp)).border(1.dp, Line, RoundedCornerShape(20.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(
+        Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(GalliUiMetrics.cardCorner))
+            .border(1.dp, Line, RoundedCornerShape(GalliUiMetrics.cardCorner))
+            .padding(GalliUiMetrics.cardPadding),
+        verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.size(40.dp).background(Panel, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                 GalliIcon(icon, null, Modifier.size(26.dp))
