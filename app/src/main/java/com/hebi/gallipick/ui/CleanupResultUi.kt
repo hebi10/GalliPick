@@ -9,9 +9,11 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -82,7 +84,11 @@ fun CleanupResultDialog(
             contentAlignment = Alignment.Center,
         ) {
             val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-            val dialogHeight = minOf(maxHeight, 600.dp * fontScale.coerceAtMost(1.6f))
+            val success = result.status == CleanupResultStatus.SUCCESS
+            val dialogHeight = minOf(
+                maxHeight,
+                (if (success) 520.dp else 460.dp) * fontScale.coerceAtMost(1.4f),
+            )
             Surface(
                 Modifier.widthIn(max = 640.dp).fillMaxWidth().height(dialogHeight),
                 shape = RoundedCornerShape(20.dp),
@@ -97,24 +103,47 @@ fun CleanupResultDialog(
                         Text("정리 작업 결과", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         IconAction("결과 닫기", Icons.Rounded.Close, onClick = onDismiss)
                     }
+                    val bodyScroll = key(result) { rememberScrollState() }
                     Column(
-                        Modifier.weight(1f).verticalScroll(rememberScrollState())
+                        Modifier.weight(1f).verticalScroll(bodyScroll)
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            GalliIllustration(
-                                if (result.status == CleanupResultStatus.SUCCESS) GalliScene.COMPLETE else GalliScene.SEARCH,
-                                Modifier.size(72.dp),
-                            )
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(result.title, style = MaterialTheme.typography.titleLarge)
-                                Text(result.description, style = MaterialTheme.typography.bodySmall, color = Muted)
+                        if (success) {
+                            Column(
+                                Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                GalliIllustration(GalliScene.COMPLETE, Modifier.size(116.dp))
+                                Text(result.title, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+                                Text(
+                                    result.description, style = MaterialTheme.typography.bodySmall,
+                                    color = Muted, textAlign = TextAlign.Center,
+                                )
+                            }
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                GalliIllustration(GalliScene.SEARCH, Modifier.size(60.dp))
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(result.title, style = MaterialTheme.typography.titleLarge)
+                                    Text(result.description, style = MaterialTheme.typography.bodySmall, color = Muted)
+                                }
                             }
                         }
                         Surface(shape = RoundedCornerShape(12.dp), color = Panel) {
                             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("요청 ${result.requestedCount}개 · 확인 완료 ${result.completedCount}개", style = MaterialTheme.typography.titleSmall)
+                                if (success) Text(
+                                    "${result.completedCount}개", style = MaterialTheme.typography.headlineLarge,
+                                    color = Ink, modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                )
+                                Text(
+                                    "요청 ${result.requestedCount}개 · 확인 완료 ${result.completedCount}개",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = if (success) TextAlign.Center else TextAlign.Start,
+                                )
                                 if (result.unchangedCount > 0) Text("미${action} ${result.unchangedCount}개", style = MaterialTheme.typography.bodySmall)
                                 if (result.unknownCount > 0) Text("확인 불가 ${result.unknownCount}개", style = MaterialTheme.typography.bodySmall)
                                 Text("요청한 파일의 용량 ${bytesLabel(result.requestedBytes)}", style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -123,7 +152,10 @@ fun CleanupResultDialog(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             GalliIcon(Icons.Rounded.Info, null, Modifier.size(22.dp))
                             Text(
-                                "표시된 용량은 요청한 파일 크기의 합계이며 실제 확보된 저장공간이 아닙니다. 휴지통 이동만으로 공간이 즉시 늘어나지는 않을 수 있습니다.",
+                                if (result.restore)
+                                    "표시된 용량은 복원을 요청한 파일 크기의 합계입니다. 실제 복원 결과는 Android 확인 이후 다시 조회합니다."
+                                else
+                                    "표시된 용량은 요청한 파일 크기의 합계이며 실제 확보된 저장공간이 아닙니다. 휴지통 이동만으로 공간이 즉시 늘어나지는 않을 수 있습니다.",
                                 style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.weight(1f),
                             )
                         }
