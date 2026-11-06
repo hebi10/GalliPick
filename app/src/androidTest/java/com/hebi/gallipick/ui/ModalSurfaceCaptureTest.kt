@@ -111,6 +111,9 @@ class ModalSurfaceCaptureTest {
             compose.onNodeWithText("휴지통").assertIsDisplayed()
             compose.onNodeWithText("EXAMPLE_copy.jpg").assertIsDisplayed()
             compose.onNodeWithText("보관 파일 11개", substring = true).assertIsDisplayed()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription(photoB.displayName).fetchSemanticsNodes().isNotEmpty()
+            }
             screenshot(output, "09-trash-list")
             compose.runOnIdle { current = Screen.PRESET }
             compose.onNodeWithText("현재 필터 저장").assertIsDisplayed()
