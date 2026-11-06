@@ -86,43 +86,55 @@ internal fun HomeScreen(
 
 @Composable
 private fun HomeWelcome(cleanup: () -> Unit) {
-    val largeText = LocalDensity.current.fontScale >= 1.5f
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(GalliUiMetrics.cardCorner))
-            .background(if (IsGalliDark) Panel else Color(0xFFF0F7EB))
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Image(
-            painter = painterResource(R.drawable.gp_cat_organize),
-            contentDescription = null,
-            modifier = Modifier.size(if (largeText) 88.dp else 116.dp),
-            contentScale = ContentScale.Fit,
-        )
-        Column(
-            Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
-        ) {
-            Text(
-                "사진과 영상을\n더 가볍고,\n더 깔끔하게!",
-                style = MaterialTheme.typography.titleMedium,
-                color = Ink,
-                modifier = Modifier.semantics { heading() },
-            )
-            Text(
-                "필요한 파일만 직접 확인하세요",
-                style = MaterialTheme.typography.bodySmall,
-                color = Muted,
-            )
-            ActionButton(
-                "정리 시작하기",
-                cleanup,
-                modifier = Modifier.widthIn(max = 240.dp).fillMaxWidth(),
-                filled = true,
-                icon = Icons.Rounded.ArrowForward,
-            )
+    BoxWithConstraints(Modifier.fillMaxWidth().galliCardSurface(Panel)) {
+        val stacked = maxWidth < 350.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        if (stacked) {
+            Column(
+                Modifier.fillMaxWidth().padding(GalliUiMetrics.cardPadding),
+                verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    GalliIllustration(GalliScene.ORGANIZE, Modifier.size(72.dp))
+                    Text(
+                        "사진과 영상을\n더 가볍고,\n더 깔끔하게!",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Ink,
+                        modifier = Modifier.weight(1f).semantics { heading() },
+                    )
+                }
+                Text("필요한 파일만 직접 확인하세요", style = MaterialTheme.typography.bodySmall, color = Muted)
+                ActionButton(
+                    "정리 시작하기", cleanup, Modifier.fillMaxWidth(),
+                    filled = true, icon = Icons.Rounded.ArrowForward,
+                )
+            }
+        } else {
+            Row(
+                Modifier.fillMaxWidth().padding(GalliUiMetrics.cardPadding),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                GalliIllustration(GalliScene.ORGANIZE, Modifier.size(116.dp))
+                Column(
+                    Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing),
+                ) {
+                    Text(
+                        "사진과 영상을\n더 가볍고,\n더 깔끔하게!",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Ink,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Text("필요한 파일만 직접 확인하세요", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    ActionButton(
+                        "정리 시작하기", cleanup, Modifier.widthIn(max = 260.dp).fillMaxWidth(),
+                        filled = true, icon = Icons.Rounded.ArrowForward,
+                    )
+                }
+            }
         }
     }
 }
@@ -227,37 +239,52 @@ private fun HomeQuickActions(
 
 @Composable
 private fun HomeShortcutCard(shortcut: HomeShortcut, modifier: Modifier = Modifier, compact: Boolean = false) {
-    Column(
-        modifier.heightIn(min = if (compact) 86.dp else 120.dp)
-            .galliCardSurface(if (IsGalliDark) AppSurface else Color.White)
-            .semantics { role = Role.Button }
-            .plainClick(action = shortcut.onClick)
-            .padding(horizontal = 10.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+    val surface = if (IsGalliDark) AppSurface else Color.White
+    if (compact) {
+        Row(
+            modifier.heightIn(min = 76.dp).galliCardSurface(surface)
+                .semantics { role = Role.Button }.plainClick(action = shortcut.onClick)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HomeShortcutIcon(shortcut, Modifier.size(48.dp))
+            Text(shortcut.title, style = MaterialTheme.typography.titleSmall, color = Ink, modifier = Modifier.weight(1f))
+            GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(20.dp), tint = Muted)
+        }
+    } else {
+        Column(
+            modifier.heightIn(min = 124.dp).galliCardSurface(surface)
+                .semantics { role = Role.Button }.plainClick(action = shortcut.onClick)
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            HomeShortcutIcon(shortcut, Modifier.size(56.dp))
+            Text(
+                shortcut.title, style = MaterialTheme.typography.titleSmall, color = Ink,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeShortcutIcon(shortcut: HomeShortcut, modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
         if (shortcut.imageRes != null) {
             Image(
-                painter = painterResource(shortcut.imageRes),
-                contentDescription = null,
-                modifier = Modifier.size(if (compact) 48.dp else 60.dp),
-                contentScale = ContentScale.Fit,
+                painter = painterResource(shortcut.imageRes), contentDescription = null,
+                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
             )
         } else if (shortcut.vectorIcon != null) {
             Box(
-                Modifier.size(if (compact) 48.dp else 60.dp)
-                    .background(Panel, RoundedCornerShape(14.dp)),
+                Modifier.fillMaxSize().background(Panel, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                GalliIcon(shortcut.vectorIcon, null, Modifier.size(34.dp), tint = Primary)
+                GalliIcon(shortcut.vectorIcon, null, Modifier.fillMaxSize(.62f), tint = Primary)
             }
         }
-        Text(
-            shortcut.title,
-            style = MaterialTheme.typography.titleSmall,
-            color = Ink,
-            textAlign = TextAlign.Center,
-        )
     }
 }
 
