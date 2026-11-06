@@ -69,6 +69,50 @@ internal fun MediaThumbnail(item: MediaItem, modifier: Modifier = Modifier, cont
 }
 
 @Composable
+private fun DetailPhoto(item: MediaItem, modifier: Modifier = Modifier) {
+    val resolver = LocalContext.current.contentResolver
+    val key = "${item.uri}:${item.fingerprint}:${item.volumeVersion}"
+    var bitmap by remember(key) { mutableStateOf<Bitmap?>(null) }
+    var failed by remember(key) { mutableStateOf(false) }
+    var attempt by remember(key) { mutableIntStateOf(0) }
+
+    LaunchedEffect(key, attempt) {
+        failed = false
+        bitmap = null
+        try {
+            bitmap = withContext(Dispatchers.IO) { decodePreviewBitmap(resolver, Uri.parse(item.uri)) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: OutOfMemoryError) {
+            failed = true
+        } catch (_: Exception) {
+            failed = true
+        }
+    }
+
+    Box(
+        modifier.clip(RoundedCornerShape(12.dp)).background(Panel),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            bitmap != null -> Image(
+                bitmap!!.asImageBitmap(), contentDescription = item.displayName,
+                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
+            )
+            failed -> Column(
+                Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("사진 미리보기를 불러오지 못했습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                TextButton(onClick = { attempt++ }) { Text("다시 시도") }
+            }
+            else -> CircularProgressIndicator(Modifier.semantics { contentDescription = "사진 미리보기 로딩 중" })
+        }
+    }
+}
+
+@Composable
 internal fun SelectBox(checked: Boolean, enabled: Boolean = true, description: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(modifier.size(48.dp).semantics { contentDescription = description }.toggleable(
         value = checked, enabled = enabled, role = Role.Checkbox,
@@ -158,12 +202,14 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
         }
         if (beside) Row(Modifier.fillMaxSize()) {
             Column(Modifier.weight(1f).fillMaxHeight().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                MediaThumbnail(item, Modifier.weight(1f).fillMaxWidth(), contentScale = ContentScale.Fit)
+                if (item.kind == MediaKind.PHOTO) DetailPhoto(item, Modifier.weight(1f).fillMaxWidth())
+                else MediaThumbnail(item, Modifier.weight(1f).fillMaxWidth(), contentScale = ContentScale.Fit)
                 previewAction(Modifier.fillMaxWidth())
             }
             metadata(Modifier.weight(1f).fillMaxHeight())
         } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            MediaThumbnail(item, Modifier.fillMaxWidth().height(thumbnailHeight), contentScale = ContentScale.Fit)
+            if (item.kind == MediaKind.PHOTO) DetailPhoto(item, Modifier.fillMaxWidth().height(thumbnailHeight))
+            else MediaThumbnail(item, Modifier.fillMaxWidth().height(thumbnailHeight), contentScale = ContentScale.Fit)
             metadata(Modifier.fillMaxWidth())
         }
     }
