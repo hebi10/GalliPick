@@ -39,8 +39,9 @@ class DuplicateClarityTest {
             ))
         } }
         val list = compose.onNodeWithContentDescription("중복 파일 목록")
-        list.performScrollToNode(hasText("남김 3 · 후보 1 · 선택 0"))
-        compose.onNodeWithText("남김 3 · 후보 1 · 선택 0").assertIsDisplayed()
+        list.performScrollToNode(hasText("중복 묶음 1 · 4개"))
+        compose.onNodeWithText("중복 묶음 1 · 4개").assertIsDisplayed()
+        compose.onNodeWithText("정리 후보 1개", substring = true).assertIsDisplayed()
         for (kept in listOf(keeper, protected, favorite)) {
             list.performScrollToNode(hasText(kept.displayName))
             compose.onNodeWithContentDescription("${kept.displayName}, ${kept.relativePath} 정리 후보 선택").assertDoesNotExist()
