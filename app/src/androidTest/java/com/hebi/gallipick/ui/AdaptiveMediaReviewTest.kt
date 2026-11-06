@@ -262,6 +262,40 @@ class AdaptiveMediaReviewTest {
         saveScreenshot("duplicate-compare-pending-short-large-text")
     }
 
+    @Test fun portraitFileDetailsKeepOpenAndProtectionActionsBesideEachOther() {
+        val item = media(91, "detail-preview.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                Surface(Modifier.requiredSize(420.dp, 740.dp)) {
+                    MediaDetail(item, {}, {})
+                }
+            }
+        } }
+        compose.onNodeWithText("파일 열기").performScrollTo().assertIsDisplayed()
+        val open = compose.onNodeWithText("파일 열기").fetchSemanticsNode().boundsInRoot
+        val protect = compose.onNodeWithText("보호").fetchSemanticsNode().boundsInRoot
+        assertTrue("Portrait detail should show related actions on one row", kotlin.math.abs(open.top - protect.top) <= 2f)
+        compose.onNodeWithText("앱에서 미리보기").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("파일 형식").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun narrowLargeTextFileDetailsStackActionsAndKeepMetadataReachable() {
+        val item = media(92, "very-long-filename.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1.6f)) {
+                Surface(Modifier.requiredSize(320.dp, 560.dp)) {
+                    MediaDetail(item, {}, {})
+                }
+            }
+        } }
+        compose.onNodeWithText("파일 열기").performScrollTo().assertIsDisplayed()
+        val open = compose.onNodeWithText("파일 열기").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("보호").performScrollTo().assertIsDisplayed()
+        val protect = compose.onNodeWithText("보호").fetchSemanticsNode().boundsInRoot
+        assertTrue("Large text should keep file actions vertically reachable", protect.top > open.top)
+        compose.onNodeWithText("폴더").performScrollTo().assertIsDisplayed()
+    }
+
     @Test fun shortWideFileDetailsKeepThePreviewActionBesideMetadata() {
         val item = media(1, "가로 화면에서도 전체 이름을 확인하는 영상.mp4")
         compose.setContent { GalliPickTheme {
