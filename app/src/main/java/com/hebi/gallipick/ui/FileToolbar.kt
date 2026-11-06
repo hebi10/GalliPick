@@ -117,6 +117,27 @@ internal fun FileToolbar(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
         Box {
+            ToolbarChoice(shortSortLabel(filter), "정렬 기준 선택", sortChoiceLabel(filter), false) { menu = "sort" }
+            if (menu == "sort") {
+                Dialog(onDismissRequest = { menu = null }) {
+                    Surface(shape = RoundedCornerShape(16.dp), color = AppSurface) {
+                        Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                            SortChoices.forEach { choice ->
+                                DropdownMenuItem(text = { Text(choice.label) }, onClick = {
+                                    change(MediaFilterActions.sort(filter, choice.field, choice.direction))
+                                    menu = null
+                                }, trailingIcon = {
+                                    if (filter.sortField == choice.field && filter.sortDirection == choice.direction) {
+                                        GalliIcon(Icons.Rounded.Check, null)
+                                    }
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Box {
             ToolbarChoice(if (conditionCount == 0) "필터" else "필터 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { advanced() }
             DropdownMenu(expanded = menu == "conditions", onDismissRequest = { menu = null }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 420.dp)) {
                 DropdownMenuItem(text = { Text("상세 필터") }, onClick = { menu = null; advanced() }, leadingIcon = { GalliIcon(Icons.Rounded.Tune, null) })
@@ -138,27 +159,6 @@ internal fun FileToolbar(
                     }, trailingIcon = {
                         IconAction("${preset.name} 필터 삭제", Icons.Rounded.Close, Modifier.size(44.dp)) { deletePreset(preset.id) }
                     })
-                }
-            }
-        }
-        Box {
-            ToolbarChoice(shortSortLabel(filter), "정렬 기준 선택", sortChoiceLabel(filter), false) { menu = "sort" }
-            if (menu == "sort") {
-                Dialog(onDismissRequest = { menu = null }) {
-                    Surface(shape = RoundedCornerShape(16.dp), color = AppSurface) {
-                        Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                            SortChoices.forEach { choice ->
-                                DropdownMenuItem(text = { Text(choice.label) }, onClick = {
-                                    change(MediaFilterActions.sort(filter, choice.field, choice.direction))
-                                    menu = null
-                                }, trailingIcon = {
-                                    if (filter.sortField == choice.field && filter.sortDirection == choice.direction) {
-                                        GalliIcon(Icons.Rounded.Check, null)
-                                    }
-                                })
-                            }
-                        }
-                    }
                 }
             }
         }
