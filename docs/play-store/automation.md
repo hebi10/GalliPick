@@ -1,6 +1,6 @@
 # Play 테스트 배포 자동화
 
-`Play testing deployment`는 같은 소스에서 고정 키로 서명한 APK·AAB를 검증하고, 기본 대상으로 GalliPick 내부 테스트(`internal`)에 AAB 업데이트를 제출합니다. 비공개 테스트(`closed`)는 수동 실행에서 선택한 경우에만 사용합니다. 대상 패키지는 `com.hebi.gallipick` 하나입니다. 기존 `Public APK release`의 GitHub Releases APK 공개 흐름도 그대로 사용합니다.
+`Play testing deployment`는 같은 소스에서 고정 키로 서명한 APK·AAB를 검증하고, 기본 대상으로 GalliPick 내부 테스트(`internal`)에 AAB 업데이트를 제출합니다. 비공개 테스트(`closed`)는 `main`에서 수동 실행하거나, 별도의 `[deploy-closed]` 릴리스 의도가 명시된 `main` 버전 증가 커밋에서만 사용합니다. 대상 패키지는 `com.hebi.gallipick` 하나입니다. 기존 `Public APK release`의 GitHub Releases APK 공개 흐름도 그대로 사용합니다.
 
 ## 실행 모드
 
@@ -10,13 +10,14 @@
 | 수동 `build` — 기본값 | 단위 검사·release lint 후 서명 APK·AAB artifact 생성 | 불필요 | 실행 안 함 |
 | 수동 `deploy` | 전체 검사·빌드 후 선택한 기존 테스트 트랙 제출 | 필요 | API 36 검사 필수 |
 | `v*` 태그 push | 전체 검사·빌드 후 **내부 테스트만** 제출 | 필요 | API 36 검사 필수 |
+| `main` 버전 증가 + `[deploy-closed]` | 전체 검사·빌드 후 **기존 `PLAY_CLOSED_TRACK` 하나에만** 제출 | 필요 | API 36 검사 필수 |
 
 수동 실행은 Actions → [Play testing deployment](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml) → Run workflow에서 **main**을 선택합니다. `mode` 기본값은 `build`, `target` 기본값은 `internal`입니다. 기본 입력 그대로 실행하면 APK·AAB만 만들며 Play에 제출하지 않습니다. Play 업로드와 테스트 트랙 업데이트에는 `mode=deploy`를 직접 선택합니다.
 
 | 대상 | 선택 방법 | 실제 API 트랙 |
 | --- | --- | --- |
 | 내부 테스트 — 기본값 | 수동 `target=internal` 또는 모든 `v*` 태그 push | `internal` 고정 |
-| 비공개 테스트 | 수동 `target=closed` | repository variable `PLAY_CLOSED_TRACK`의 정확한 기존 트랙 ID |
+| 비공개 테스트 | 수동 `target=closed` 또는 `main`의 명시적 `[deploy-closed]` 버전 증가 커밋 | repository variable `PLAY_CLOSED_TRACK`의 정확한 기존 트랙 ID |
 
 `target`과 `mode`는 별도 설정입니다. 태그 실행은 수동 입력이나 `PLAY_CLOSED_TRACK` 값과 관계없이 항상 `deploy`·`internal`로 고정합니다. 내부 테스트에는 `PLAY_CLOSED_TRACK`이 필요하지 않습니다. 비공개 대상의 `check`·`deploy`에는 해당 variable이 필요하며, `build`에는 Play 설정이 없어도 됩니다. 비공개 트랙 값이 있으면 `production`, `beta`, `internal` 및 그 대소문자 변형, 잘못된 형식·form-factor 트랙은 인증이나 서명 Secret 접근 전에 거부합니다.
 
@@ -63,7 +64,7 @@ WIF를 사용할 수 없다면 `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secret을 등�
 
 1. 새 버전·사용하지 않은 높은 versionCode와 `docs/play-store/release-notes-ko.txt`를 main에 반영합니다.
 2. 기본 `target=internal`의 `check`로 고정 서명과 내부 테스트 접근을 확인합니다. 파일만 필요하면 기본 `build`를 실행합니다.
-3. **기본 내부 테스트 자동 제출:** `app/build.gradle.kts`의 `versionCode`가 직전 `main` 커밋보다 증가한 버전을 병합하면서 커밋 메시지에 `[deploy-internal]`을 포함하면 자동으로 내부 테스트에만 제출합니다. 버전 태그를 push하거나 main에서 수동 `mode=deploy`·`target=internal`을 실행하는 기존 경로도 유지합니다. 비공개 테스트 제출은 main에서 수동 `mode=deploy`·`target=closed`를 선택합니다.
+3. **기본 내부 테스트 자동 제출:** `app/build.gradle.kts`의 `versionCode`가 직전 `main` 커밋보다 증가한 버전을 병합하면서 커밋 메시지에 `[deploy-internal]`을 포함하면 자동으로 내부 테스트에만 제출합니다. 버전 태그를 push하거나 main에서 수동 `mode=deploy`·`target=internal`을 실행하는 기존 경로도 유지합니다. 비공개 테스트 제출은 main에서 수동 `mode=deploy`·`target=closed`로 실행하거나, 명시적인 `[deploy-closed]` 버전 증가 커밋을 main에 병합합니다. `[deploy-internal]`과 `[deploy-closed]`를 동시에 지정하면 중단합니다. 모든 대상은 기존 트랙을 조회하며 닫힌 트랙이 없으면 배포하지 않습니다.
 4. Actions의 배포 보고서와 Play Console의 검토·게시 상태를 확인합니다.
 
 태그 예시는 다음과 같습니다. 버전은 실제 소스에 맞게 바꿉니다.
@@ -94,7 +95,7 @@ APK와 AAB는 한 번의 release 빌드에서 만들며 단위 검사·release l
 
 ## 제출 결과와 실패 처리
 
-API 클라이언트는 기존 트랙과 이미 업로드한 APK·AAB 버전을 확인하고, 새 업로드 응답의 hash·version을 검증한 뒤 **선택한 기존 테스트 트랙 하나만** 수정합니다. 기본 내부 테스트 배포는 `internal`만, 수동 비공개 배포는 `PLAY_CLOSED_TRACK`에 지정한 트랙만 수정합니다. edit 검증 후 `ERROR_IF_IN_REVIEW` 정책으로 commit하고, 새 edit에서 결과를 다시 읽습니다. 진행 중 검토와 충돌할 때 검토 전송을 생략한 초안 저장으로 자동 전환하지 않습니다.
+API 클라이언트는 기존 트랙과 이미 업로드한 APK·AAB 버전을 확인하고, 새 업로드 응답의 hash·version을 검증한 뒤 **선택한 기존 테스트 트랙 하나만** 수정합니다. 기본 내부 테스트 배포는 `internal`만, 수동 또는 명시적 `[deploy-closed]` 비공개 배포는 `PLAY_CLOSED_TRACK`에 지정한 트랙만 수정합니다. edit 검증 후 `ERROR_IF_IN_REVIEW` 정책으로 commit하고, 새 edit에서 결과를 다시 읽습니다. 진행 중 검토와 충돌할 때 검토 전송을 생략한 초안 저장으로 자동 전환하지 않습니다.
 
 **API commit 수락은 Google 심사 승인이나 테스터 설치 가능 상태를 의미하지 않습니다.** 개발자 계정·앱 설정·정책·검토·관리형 게시 조건은 Console에서 확인합니다. 프로덕션·공개 테스트·테스터 목록·스토어 정보·정책 선언은 변경하지 않습니다.
 
@@ -102,7 +103,7 @@ API 클라이언트는 기존 트랙과 이미 업로드한 APK·AAB 버전을 �
 
 ## 현재 설정 상태
 
-2026-11-04 별도 앱 배포 전용 프로젝트의 GalliPick 서비스 계정을 사용합니다. 해당 앱의 조회·테스트 출시 권한만 부여했으며 장기 JSON 개인 키 없이 WIF로 인증합니다. `PLAY_CLOSED_TRACK=alpha`는 실제 API 조회로 확인한 기존 비공개 트랙 ID입니다. 버전 태그는 내부 테스트, 비공개 테스트는 main 수동 `target=closed` 선택으로만 제출합니다. 수동 실행 기본값은 `mode=build`·`target=internal`입니다.
+2026-11-04 별도 앱 배포 전용 프로젝트의 GalliPick 서비스 계정을 사용합니다. 해당 앱의 조회·테스트 출시 권한만 부여했으며 장기 JSON 개인 키 없이 WIF로 인증합니다. `PLAY_CLOSED_TRACK=alpha`는 실제 API 조회로 확인한 기존 비공개 트랙 ID입니다. 버전 태그는 내부 테스트, 비공개 테스트는 main 수동 `target=closed` 또는 명시적 버전 증가 커밋 `[deploy-closed]`로만 제출합니다. 수동 실행 기본값은 `mode=build`·`target=internal`입니다.
 
 기존 원본 키의 고정 인증서 일치와 실제 서명 검증을 확인하고 Actions 서명 설정을 갱신했습니다. [check #3의 두 번째 시도](https://github.com/hebi10/GalliPick/actions/runs/41790941768)는 소스·실제 개인 키·고정 인증서·WIF·내부 테스트 접근 검사를 모두 통과했습니다. [build #4](https://github.com/hebi10/GalliPick/actions/runs/41799541269)는 0.1.7/code 8의 서명 APK·AAB를 생성·검증했고 릴리스 도구 테스트 72개도 통과했습니다. 새 키 생성이나 업로드키 재설정은 필요하지 않았습니다.
 
