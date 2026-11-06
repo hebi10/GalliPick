@@ -34,7 +34,15 @@
 - Play Console 심사/테스터 설치 가능 여부는 Google Play 운영 검증으로 별도 판단
 
 ## 최종 검증 및 병합 상태
-CI 결과/드라이브 스크린샷 대조 완료 후 이 절을 업데이트합니다.
+**완료 — 2026-11-06**. PR #38이 main `7a71f64a663ec17f5dcf70758b85529bbb50d018`로 병합됐습니다.
+- Android verification: https://github.com/hebi10/GalliPick/actions/runs/42207681057 — success
+- Android device tests: https://github.com/hebi10/GalliPick/actions/runs/42207680898 — success
+- 5프로필 실제 화면 캡처 + QA: https://github.com/hebi10/GalliPick/actions/runs/42207673342 — success
+- Google Drive 증빙: https://drive.google.com/drive/folders/1Eki5scRxOvYr2559DCt9osEDeDX-lZRY
+- 5개 ZIP 각각 qa/design-audit.json = passed. 프로필당 native 15장 + modal/detail 16장, 총 155장·원본 9화면 매핑·5결과 상태 구분.
+- 실제 휴대폰 가로의 MainActivity 휴지통 빈 상태에서 제목·안내가 정상 표시되는 것을 캡처로 확인.
+- 자동 캡처와 시각 검증은 Samsung 실기기/HEIC/다양한 MP4/실제 휴지통 승인/대규모 파일 성능 테스트를 대체하지 않습니다.
+- 7-G는 신규 Play 배포를 실행하지 않았으며, 현재 alpha 최신 배포는 v0.2.4/code15 (7-E까지)입니다.
 
 
 ## QA 발견 사항 및 직접 보정
