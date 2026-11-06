@@ -58,8 +58,11 @@ internal object Stage7aFixtureMedia {
                 protected = index == 0 || index == 10)
         }
 
-        val clip = assets.open("preview-baseline.mp4").use { it.readBytes() }
+        val baselineClip = assets.open("preview-baseline.mp4").use { it.readBytes() }
+        val coastClip = assets.open("store-coast-preview.mp4").use { it.readBytes() }
+        check(!baselineClip.contentEquals(coastClip)) { "Video fixture sources must be different" }
         repeat(VIDEO_COUNT) { index ->
+            val clip = if (index < VIDEO_COUNT / 2) baselineClip else coastClip
             samples += insert(context, "EXAMPLE_clip_" + index.toString().padStart(2, '0') + ".mp4",
                 "video/mp4", clip, now - (index + 2L) * day, "Movies/GalliPick_EXAMPLE/")
         }
