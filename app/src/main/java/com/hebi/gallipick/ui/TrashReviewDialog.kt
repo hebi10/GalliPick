@@ -88,9 +88,19 @@ internal fun TrashReviewContent(moving: List<MediaItem>, kept: List<MediaItem>, 
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ActionButton("취소", onDismiss, Modifier.weight(1f))
-            ActionButton(if (restore) "복원 요청" else "휴지통 이동 요청", onProceed, Modifier.weight(1f), filled = true)
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            val stacked = maxWidth < 420.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+            if (stacked) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionButton("취소", onDismiss, Modifier.fillMaxWidth())
+                    ActionButton(if (restore) "복원 요청" else "휴지통 이동 요청", onProceed, Modifier.fillMaxWidth(), filled = true)
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionButton("취소", onDismiss, Modifier.weight(1f))
+                    ActionButton(if (restore) "복원 요청" else "휴지통 이동 요청", onProceed, Modifier.weight(1f), filled = true)
+                }
+            }
         }
     }
 }
