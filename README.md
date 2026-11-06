@@ -2,21 +2,28 @@
 
 사진·동영상을 조건으로 찾고 완전히 같은 사본을 안전하게 정리하는 Android 앱입니다.
 
+## 현재 구현·검증 상태 (2026-11-06)
+
+- 디자인 7-A~7-G는 [PR #31~#38](https://github.com/hebi10/GalliPick/pulls?q=is%3Apr+is%3Amerged)으로 `main`에 병합되었고, 휴대폰·태블릿 5개 환경의 총 155장 네이티브 화면 감사가 성공했습니다.
+- 최신 릴리스 소스는 `v0.2.5 / versionCode 16`이며, 기존 비공개 테스트 `alpha`에만 배포하도록 [PR #39](https://github.com/hebi10/GalliPick/pull/39)를 병합했습니다. 제출 보고서와 Play 심사·테스터 제공 상태는 별도로 확인합니다.
+- [7-G 최종 화면 검증](https://github.com/hebi10/GalliPick/actions/runs/42207673342), [원본 시안·캡처 자료](https://drive.google.com/drive/folders/1Eki5scRxOvYr2559DCt9osEDeDX-lZRY).
+- 남은 항목은 [실기기 QA #40](https://github.com/hebi10/GalliPick/issues/40), [테스터 설치·심사 확인 #42](https://github.com/hebi10/GalliPick/issues/42)입니다. 자동 에뮬레이터 검증을 실제 삼성 기기 검증으로 간주하지 않습니다.
+
 ## Google Play 자동 배포
 
-[Play 배포 자동화](docs/play-store/automation.md)의 `Play testing deployment`는 고정 키 APK/AAB 생성·검증 후 기본적으로 내부 테스트(`internal`)에 제출합니다. 버전 태그는 항상 내부 테스트에 배포하며, 비공개 테스트는 main에서 수동 `target=closed`를 선택한 경우에만 사용합니다. 수동 기본값은 `mode=build`·`target=internal`이며, Play 제출에는 `mode=deploy`를 선택합니다. `check`로 계정·서명 설정을 점검하고 `build`로 설치·업로드용 파일을 만듭니다.
+[Play 배포 자동화](docs/play-store/automation.md)의 `Play testing deployment`는 기존 고정 서명키로 APK/AAB를 검증한 뒤 지정한 테스트 트랙에만 AAB를 제출합니다. 수동 기본값은 `mode=build`·`target=internal`이며, 실제 제출에는 `mode=deploy`를 선택합니다. `main` 버전 증가 커밋에 `[deploy-internal]`이 있으면 내부 테스트만, `[deploy-closed]`가 있으면 기존 비공개 테스트 `alpha`만 대상으로 합니다. 버전 태그 배포는 내부 테스트만 사용합니다.
 
 서명 설정 갱신 후 [내부 테스트 check #3의 두 번째 시도](https://github.com/hebi10/GalliPick/actions/runs/41790941768)가 성공했습니다. [서명 빌드 #4](https://github.com/hebi10/GalliPick/actions/runs/41799541269)에서 APK·AAB 생성과 검증도 통과했습니다. 기존 0.1.7/code 8 초안을 출시 처리한 뒤 새 0.1.8/code 9를 내부 테스트에 배포했습니다.
 
 [내부 테스트 배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)는 같은 소스의 검사·서명 APK/AAB 빌드·새 AAB 업로드·API commit과 재조회를 모두 통과했습니다. Play Console에서도 2026-11-04에 활성·최신 0.1.8/code 9·내부 테스터에게 제공됨을 확인했습니다. 당시 다음 업로드의 최소 versionCode는 10이었습니다. API 제출 수락과 Google 심사 승인·테스터 제공 상태는 구분합니다.
 
-고양이 런처와 Google Play 등록용 아이콘은 [전용 아이콘 생성·업로드 자동화](.github/workflows/play-store-icon.yml)를 통해 일치시킵니다. 버전 증가 커밋에 `[deploy-internal]`이 포함되면 **내부 테스트에만** 자동 배포되며, 비공개 테스트는 수동 선택을 유지합니다.
+고양이 런처와 Google Play 등록용 아이콘은 [전용 아이콘 생성·업로드 자동화](.github/workflows/play-store-icon.yml)로 관리합니다. 비공개 테스트 배포는 버전 증가와 단독 `[deploy-closed]` 마커 또는 `main`에서 수동 `target=closed`를 선택한 경우만 가능합니다. Google Play API 제출 수락은 심사 승인·테스터 설치 가능 상태와 구분합니다.
 
 2026-11-05 [아이콘 업로드](https://github.com/hebi10/GalliPick/actions/runs/41964686350)는 한국어 스토어 아이콘 한 장의 API 수정·별도 조회를 통과했습니다. 이어 [내부 테스트 v0.1.9/code 10 배포](https://github.com/hebi10/GalliPick/actions/runs/41965227662)에서는 기존 서명키 검사·Android 테스트·서명 APK/AAB 검증·Google Play 내부 테스트 제출이 모두 성공했습니다. 배포 보고서 `status=committed`, `api_accepted=true`, `track_verified=true`를 확인했으며, Google 심사 승인·Play Console 게시 상태·테스터 설치 가능 여부는 별도로 확인해야 합니다.
 
 ## 서명 APK·AAB
 
-검증된 v0.1.9 설치·업로드 파일은 [배포 실행](https://github.com/hebi10/GalliPick/actions/runs/41965227662)의 **Artifacts**에서 내려받습니다. 이후 버전은 해당 [Play testing deployment 실행](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)의 산출물을 사용합니다. APK artifact에는 APK·체크섬, AAB artifact에는 AAB·체크섬·공개 빌드 근거가 포함되며 보관 기간은 14일입니다. 버전 태그 또는 별도 `Public APK release` 실행으로 게시하는 공개 APK는 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 확인합니다.
+현재 릴리스 소스 v0.2.5(code 16)의 서명 APK·AAB와 검증 보고서는 [v0.2.5 테스트 배포 실행](https://github.com/hebi10/GalliPick/actions/runs/42231012844)의 **Artifacts**에서 검증 완료 후 확인합니다. 이전 버전은 [Play testing deployment](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)의 실행 이력을 사용합니다. APK artifact에는 APK·체크섬, AAB artifact에는 AAB·체크섬·공개 빌드 근거가 포함되며 보관 기간은 14일입니다. 버전 태그 또는 별도 `Public APK release` 실행으로 게시하는 공개 APK는 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 확인합니다.
 
 ## 중복 정리 개선 · v0.1.6
 
@@ -30,7 +37,7 @@
 ## 테마와 파일 도구
 
 - 설정에서 기기 설정 따르기·라이트·다크 모드를 선택하고 저장합니다.
-- 파일 상단의 검색·전체/사진/동영상·조건·정렬·추가 작업은 한 줄 드롭다운입니다. 용량 큰/작은 순, 영상 긴/짧은 순을 포함한 14가지 정렬을 제공합니다.
+- 파일 상단 첫 번째 행에는 전체/사진/동영상 종류와 그리드/목록 전환, 두 번째 도구 행에는 검색·정렬·조건·추가 작업이 표시됩니다. 용량 큰/작은 순, 영상 긴/짧은 순을 포함한 14가지 정렬을 제공합니다.
 - 아래로 스크롤하면 상단이 접히고 위로 올리면 다시 표시됩니다. 좁은 창과 큰 글씨에서도 도구와 파일 목록의 공간을 확보합니다.
 - 넓고 충분히 높은 창에서는 두 사본을 나란히 비교합니다. 작은 창은 A/B 전환을 사용하며 재생·메타데이터·보관·보호·후보 선택을 화면 크기에 맞춰 배치합니다. 비교 영상은 한 번에 하나만 재생합니다.
 
@@ -77,7 +84,7 @@ Windows PowerShell에서는 다음을 사용합니다.
 .\gradlew.bat testDebugUnitTest lintDebug lintRelease assembleRelease
 ```
 
-릴리스 APK 경로는 `app/build/outputs/apk/release/app-release.apk`입니다. 패키지 `com.hebi.gallipick`, 앱 이름 `GalliPick`, v0.1.9/versionCode 10을 사용합니다. `.preview` 구분은 없습니다.
+릴리스 APK 경로는 `app/build/outputs/apk/release/app-release.apk`입니다. 패키지 `com.hebi.gallipick`, 앱 이름 `GalliPick`, v0.2.5/versionCode 16을 사용합니다. `.preview` 구분은 없습니다.
 
 현재 릴리스는 기존 사용자 제공 JKS 키로 서명합니다. 기존 개발 키로 설치한 v0.1.5 또는 이전 v0.1.6 시험 APK는 서명이 달라 **새 APK 공개 후 한 번 삭제·재설치해야 합니다.** 로컬 필터·보호·분석 설정은 초기화될 수 있습니다. 이번 전환에 앱 데이터 이전이나 서명 키 회전 증명은 포함하지 않습니다. 이후에는 같은 JKS 키·패키지와 더 높은 versionCode로 업데이트합니다. 별도 preview 앱의 설정도 자동 이전되지 않습니다.
 
@@ -86,8 +93,8 @@ Windows PowerShell에서는 다음을 사용합니다.
 ## 처음 사용
 
 1. 홈에서 사진·동영상 접근을 허용합니다. 일부 파일 또는 한 종류만 허용하면 허용 범위만 표시됩니다.
-2. 파일 탭의 한 줄 도구에서 검색·유형·조건·정렬을 설정합니다. 자주 쓰는 조건은 이름을 붙여 저장합니다.
-3. 중복 탭에서 검사를 시작하고 남길 파일과 정리 후보를 확인합니다. 후보를 선택한 뒤 하단의 휴지통 이동 버튼을 누르고, 이동 대상·남길 사본과 Android 확인창을 검토합니다.
+2. 파일 탭의 유형 선택과 정렬·검색·조건 도구에서 원하는 파일만 표시합니다. 자주 쓰는 조건은 이름을 붙여 저장합니다.
+3. 정리 탭의 `완전히 같은 파일 찾기`에서 중복 검사를 시작하고 남길 파일과 정리 후보를 확인합니다. 후보를 선택한 뒤 하단의 휴지통 이동 버튼을 누르고, 이동 대상·남길 사본과 Android 확인창을 검토합니다.
 4. 설정의 휴지통에서 복원을 요청할 수 있습니다. 보관 기간과 실제 파일 제거는 Android가 관리합니다.
 
 ## 개인정보와 안전
