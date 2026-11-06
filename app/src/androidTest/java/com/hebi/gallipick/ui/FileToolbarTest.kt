@@ -41,7 +41,7 @@ class FileToolbarTest {
         compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색").assertIsDisplayed()
         listOf("파일 유형: 전체", "파일 유형: 사진", "파일 유형: 동영상", "파일 조건 선택", "정렬 기준 선택")
             .forEach { compose.onNodeWithContentDescription(it).assertExists() }
-        compose.onNodeWithContentDescription("정렬 기준 선택").performClick()
+        compose.onNodeWithContentDescription("정렬 기준 선택").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithText("용량 큰 순").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("영상 짧은 순").performScrollTo().assertIsDisplayed()
     }
