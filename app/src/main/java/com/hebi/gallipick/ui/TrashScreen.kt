@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -82,7 +83,7 @@ internal fun TrashScreen(
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                "휴지통은 Android가 관리합니다. 보관 기간이 지나면 파일이 자동 삭제될 수 있습니다. 복원은 파일 선택 후 Android 시스템에서 최종 확인합니다.",
+                "휴지통 보관 기간은 Android가 관리합니다. 보관 기간이 지나면 자동 삭제될 수 있습니다. 파일 복원은 Android 시스템에서 최종 승인합니다.",
                 style = MaterialTheme.typography.bodySmall,
                 color = Muted,
                 modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).border(1.dp, Line, RoundedCornerShape(16.dp)).padding(14.dp),
@@ -141,15 +142,15 @@ internal fun TrashScreen(
 @Composable
 private fun TrashRow(item: MediaItem, selected: Boolean, onToggle: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+        Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(RoundedCornerShape(12.dp))
             .background(if (selected) Panel else MaterialTheme.colorScheme.surface)
-            .border(1.dp, if (selected) Ink else Line, RoundedCornerShape(16.dp))
-            .plainClick(action = onToggle).padding(8.dp),
+            .border(1.dp, if (selected) Ink else Line, RoundedCornerShape(12.dp))
+            .plainClick(action = onToggle).padding(horizontal = 6.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SelectBox(checked = selected, description = "${item.displayName} 복원 선택", onClick = onToggle)
-        MediaThumbnail(item, Modifier.size(76.dp))
-        Spacer(Modifier.width(12.dp))
+        MediaThumbnail(item, Modifier.size(56.dp))
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(item.displayName, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(

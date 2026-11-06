@@ -77,6 +77,9 @@ class MediaPreviewTest {
         val item = media(imageFile(160, 80))
         var externalOpens = 0
         compose.setContent { GalliPickTheme { MediaDetail(item, { externalOpens++ }, {}) } }
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithContentDescription(item.displayName).fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithText("앱에서 미리보기").performScrollTo().performClick()
         waitForPhoto(item)
         compose.onNodeWithContentDescription("사진 확대").performClick()
@@ -90,6 +93,20 @@ class MediaPreviewTest {
         compose.runOnIdle { assertEquals(1, externalOpens) }
         compose.onAllNodesWithContentDescription("미리보기 닫기").assertCountEquals(0)
         compose.onNodeWithText("파일 열기").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun missingDetailImageCanRetryAndShowActualPhoto() {
+        val file = File(compose.activity.cacheDir, "detail-${System.nanoTime()}.jpg").also { files += it }
+        val item = media(file)
+        compose.setContent { GalliPickTheme { MediaDetail(item, {}, {}) } }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("사진 미리보기를 불러오지 못했습니다.").fetchSemanticsNodes().isNotEmpty()
+        }
+        writeImage(file, 120, 80)
+        compose.onNodeWithText("다시 시도").performClick()
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithContentDescription(item.displayName).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Test fun photoErrorCanRetryAfterFileBecomesAvailable() {

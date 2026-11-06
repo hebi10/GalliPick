@@ -43,6 +43,9 @@ class ModalSurfaceCaptureTest {
     @Test fun captureAllDialogAndDetailSurfaces() {
         val photoA = photo("EXAMPLE_original.jpg", 1)
         val photoB = photo("EXAMPLE_copy.jpg", 2)
+        val trashSamples = (3L..12L).map { index ->
+            photo("EXAMPLE_trash_${index.toString().padStart(2, '0')}.jpg", index)
+        }
         val output = File(compose.activity.filesDir, "modal-screen-captures").apply { mkdirs() }
         val videoBytes = InstrumentationRegistry.getInstrumentation().context.assets.open("preview-baseline.mp4").use { it.readBytes() }
         val videoFixture = Stage7aFixtureMedia.insert(compose.activity, "EXAMPLE_video.mp4", "video/mp4",
@@ -51,6 +54,7 @@ class ModalSurfaceCaptureTest {
             MediaStore.VOLUME_EXTERNAL_PRIMARY, videoFixture.name, MediaKind.VIDEO, "video/mp4",
             "Movies/GalliPick_EXAMPLE/", videoBytes.size.toLong(), 1920, 1080, 30_000, 0, 0, 0)
         val group = DuplicateGroup("example", listOf(photoA, photoB))
+        val trashItems = (listOf(photoB) + trashSamples).map { it.copy(isTrashed = true) }
         var current by mutableStateOf(Screen.FILTER)
         var dark by mutableStateOf(true)
         val filter = MediaFilter(fromDateMs = System.currentTimeMillis() - 6L * 86_400_000)
@@ -67,7 +71,7 @@ class ModalSurfaceCaptureTest {
                             Screen.COMPARE -> DuplicateCompareDialog(group, photoA.uri, emptySet(), emptySet(), {}, {}, { _, _ -> }, {}, { _, _ -> })
                             Screen.REVIEW -> TrashReviewDialog(listOf(photoB), listOf(photoA), false, 0, {}, {})
                             Screen.RESTORE -> TrashReviewDialog(listOf(photoB), emptyList(), true, 0, {}, {})
-                            Screen.TRASH -> TrashScreen(listOf(photoB.copy(isTrashed = true)), {}, {})
+                            Screen.TRASH -> TrashScreen(trashItems, {}, {})
                             Screen.PRESET -> SavePresetDialog({}, {})
                             Screen.CACHE -> ClearAnalysisCacheDialog({}, {})
                             Screen.RESULT -> CleanupResultDialog(CleanupOperationResult.verified(TrashOutcome(1, 0, 0), false, 1, photoB.sizeBytes), {}, {}, {})
@@ -106,6 +110,10 @@ class ModalSurfaceCaptureTest {
             compose.runOnIdle { current = Screen.TRASH }
             compose.onNodeWithText("휴지통").assertIsDisplayed()
             compose.onNodeWithText("EXAMPLE_copy.jpg").assertIsDisplayed()
+            compose.onNodeWithText("보관 파일 11개", substring = true).assertIsDisplayed()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription(photoB.displayName).fetchSemanticsNodes().isNotEmpty()
+            }
             screenshot(output, "09-trash-list")
             compose.runOnIdle { current = Screen.PRESET }
             compose.onNodeWithText("현재 필터 저장").assertIsDisplayed()
@@ -118,14 +126,14 @@ class ModalSurfaceCaptureTest {
             screenshot(output, "12-cleanup-result")
             assertEquals("All modal/detail captures must be saved", 12, output.listFiles { file -> file.extension == "png" }?.size)
         } finally {
-            listOf(photoA.uri, photoB.uri, video.uri).forEach { uri ->
+            (listOf(photoA.uri, photoB.uri, video.uri) + trashSamples.map { it.uri }).forEach { uri ->
                 compose.activity.contentResolver.delete(Uri.parse(uri), null, null)
             }
         }
     }
 
     private fun photo(name: String, id: Long): MediaItem {
-        val bytes = Stage7aFixtureMedia.sceneJpeg(3)
+        val bytes = Stage7aFixtureMedia.sceneJpeg(id.toInt() % 21)
         val sample = Stage7aFixtureMedia.insert(compose.activity, name, "image/jpeg", bytes,
             System.currentTimeMillis(), "Pictures/GalliPick_EXAMPLE/")
         return MediaItem(sample.uri.toString(), ContentUris.parseId(sample.uri), MediaStore.VOLUME_EXTERNAL_PRIMARY,

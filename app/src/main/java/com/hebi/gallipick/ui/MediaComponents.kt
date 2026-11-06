@@ -23,10 +23,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -46,7 +48,7 @@ private object ThumbnailCache {
 }
 
 @Composable
-internal fun MediaThumbnail(item: MediaItem, modifier: Modifier = Modifier) {
+internal fun MediaThumbnail(item: MediaItem, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
     val resolver = LocalContext.current.contentResolver
     val key = "${item.uri}:${item.fingerprint}:${item.volumeVersion}"
     var bitmap by remember(key) { mutableStateOf(ThumbnailCache.bitmaps.get(key)) }
@@ -61,8 +63,52 @@ internal fun MediaThumbnail(item: MediaItem, modifier: Modifier = Modifier) {
     }
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(Panel), contentAlignment = Alignment.Center) {
         val loaded = bitmap
-        if (loaded != null) Image(loaded.asImageBitmap(), contentDescription = item.displayName, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        if (loaded != null) Image(loaded.asImageBitmap(), contentDescription = item.displayName, modifier = Modifier.fillMaxSize(), contentScale = contentScale)
         else GalliIcon(if (item.kind == MediaKind.VIDEO) Icons.Rounded.Videocam else Icons.Rounded.Image, "미리보기 없음", Modifier.size(30.dp), tint = Muted)
+    }
+}
+
+@Composable
+private fun DetailPhoto(item: MediaItem, modifier: Modifier = Modifier) {
+    val resolver = LocalContext.current.contentResolver
+    val key = "${item.uri}:${item.fingerprint}:${item.volumeVersion}"
+    var bitmap by remember(key) { mutableStateOf<Bitmap?>(null) }
+    var failed by remember(key) { mutableStateOf(false) }
+    var attempt by remember(key) { mutableIntStateOf(0) }
+
+    LaunchedEffect(key, attempt) {
+        failed = false
+        bitmap = null
+        try {
+            bitmap = withContext(Dispatchers.IO) { decodePreviewBitmap(resolver, Uri.parse(item.uri)) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: OutOfMemoryError) {
+            failed = true
+        } catch (_: Exception) {
+            failed = true
+        }
+    }
+
+    Box(
+        modifier.clip(RoundedCornerShape(12.dp)).background(Panel),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            bitmap != null -> Image(
+                bitmap!!.asImageBitmap(), contentDescription = item.displayName,
+                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
+            )
+            failed -> Column(
+                Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("사진 미리보기를 불러오지 못했습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                TextButton(onClick = { attempt++ }) { Text("다시 시도") }
+            }
+            else -> CircularProgressIndicator(Modifier.semantics { contentDescription = "사진 미리보기 로딩 중" })
+        }
     }
 }
 
@@ -114,8 +160,23 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
                 Text(item.displayName, style = MaterialTheme.typography.titleMedium)
                 Text("${if (item.kind == MediaKind.VIDEO) "동영상" else "사진"} · ${bytesLabel(item.sizeBytes)}", color = Muted, style = MaterialTheme.typography.bodySmall)
                 if (!beside) previewAction(Modifier.fillMaxWidth())
-                ActionButton("파일 열기", { onOpen(item) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.OpenInNew)
-                ActionButton(if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호", { onProtect(!item.isProtected) }, Modifier.fillMaxWidth(), enabled = !folderProtected, icon = Icons.Rounded.Shield)
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val protectLabel = if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호"
+                    val stacked = maxWidth < 350.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                    if (stacked) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ActionButton("파일 열기", { onOpen(item) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.OpenInNew)
+                            ActionButton(protectLabel, { onProtect(!item.isProtected) }, Modifier.fillMaxWidth(),
+                                enabled = !folderProtected, icon = Icons.Rounded.Shield)
+                        }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ActionButton("파일 열기", { onOpen(item) }, Modifier.weight(1f), icon = Icons.Rounded.OpenInNew)
+                            ActionButton(protectLabel, { onProtect(!item.isProtected) }, Modifier.weight(1f),
+                                enabled = !folderProtected, icon = Icons.Rounded.Shield)
+                        }
+                    }
+                }
                 if (folderProtected || item.isProtected) {
                     Row(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -141,12 +202,14 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
         }
         if (beside) Row(Modifier.fillMaxSize()) {
             Column(Modifier.weight(1f).fillMaxHeight().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                MediaThumbnail(item, Modifier.weight(1f).fillMaxWidth())
+                if (item.kind == MediaKind.PHOTO) DetailPhoto(item, Modifier.weight(1f).fillMaxWidth())
+                else MediaThumbnail(item, Modifier.weight(1f).fillMaxWidth(), contentScale = ContentScale.Fit)
                 previewAction(Modifier.fillMaxWidth())
             }
             metadata(Modifier.weight(1f).fillMaxHeight())
         } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            MediaThumbnail(item, Modifier.fillMaxWidth().height(thumbnailHeight))
+            if (item.kind == MediaKind.PHOTO) DetailPhoto(item, Modifier.fillMaxWidth().height(thumbnailHeight))
+            else MediaThumbnail(item, Modifier.fillMaxWidth().height(thumbnailHeight), contentScale = ContentScale.Fit)
             metadata(Modifier.fillMaxWidth())
         }
     }
@@ -154,8 +217,14 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
 
 @Composable
 private fun DetailRow(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = Muted)
-        Text(value, style = MaterialTheme.typography.bodyMedium)
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 36.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(label, modifier = Modifier.widthIn(min = 76.dp),
+            style = MaterialTheme.typography.labelMedium, color = Muted)
+        Text(value, modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium, overflow = TextOverflow.Ellipsis)
     }
 }
