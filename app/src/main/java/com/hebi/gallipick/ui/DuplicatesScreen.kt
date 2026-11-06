@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -114,6 +115,7 @@ internal fun DuplicatesScreenContent(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val shortResults = maxHeight < 420.dp && maxWidth >= 720.dp && groups.isNotEmpty()
+        val densePhoneResults = groups.size >= 3 && maxWidth < 600.dp && LocalDensity.current.fontScale < 1.5f
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             if (catalogVisible && !checkingComparison) {
                 LazyVerticalGrid(
@@ -162,9 +164,28 @@ internal fun DuplicatesScreenContent(
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     verticalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
-                                    Box(Modifier.size(64.dp).clip(RoundedCornerShape(10.dp))
-                                        .plainClick(action = { compare(group) })) {
-                                        MediaThumbnail(roles.keeper, Modifier.fillMaxSize())
+                                    if (group.items.size >= 3) {
+                                        val previews = listOf(roles.keeper) + group.items.filter { it.uri != roles.keeper.uri }.take(2)
+                                        Box(
+                                            Modifier.width(76.dp).height(64.dp)
+                                                .semantics { contentDescription = "중복 묶음 ${index + 1} 미리보기" }
+                                                .plainClick(action = { compare(group) }),
+                                        ) {
+                                            previews.forEachIndexed { previewIndex, previewItem ->
+                                                MediaThumbnail(
+                                                    previewItem,
+                                                    Modifier.align(Alignment.CenterStart)
+                                                        .offset(x = (previewIndex * 14).dp)
+                                                        .size(48.dp)
+                                                        .border(1.dp, Line, RoundedCornerShape(10.dp)),
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        Box(Modifier.size(64.dp).clip(RoundedCornerShape(10.dp))
+                                            .plainClick(action = { compare(group) })) {
+                                            MediaThumbnail(roles.keeper, Modifier.fillMaxSize())
+                                        }
                                     }
                                     Column(Modifier.weight(1f).widthIn(min = 140.dp).align(Alignment.CenterVertically)) {
                                         Text("중복 묶음 ${index + 1} · ${group.items.size}개", style = MaterialTheme.typography.titleSmall)
@@ -178,11 +199,11 @@ internal fun DuplicatesScreenContent(
                                 }
                             }
                             items(roles.kept, key = { "${group.hash}:${it.uri}" }) { item ->
-                                DuplicateFileRow(item, roles, state.selected, { compare(group, item.uri) }, { actions.chooseKeeper(group, item.uri) }, { actions.toggleSelection(item.uri) }, shortResults)
+                                DuplicateFileRow(item, roles, state.selected, { compare(group, item.uri) }, { actions.chooseKeeper(group, item.uri) }, { actions.toggleSelection(item.uri) }, shortResults || densePhoneResults)
                             }
                             if (roles.candidates.isNotEmpty()) {
                                 items(roles.candidates, key = { "${group.hash}:${it.uri}" }) { item ->
-                                    DuplicateFileRow(item, roles, state.selected, { compare(group, item.uri) }, { actions.chooseKeeper(group, item.uri) }, { actions.toggleSelection(item.uri) }, shortResults)
+                                    DuplicateFileRow(item, roles, state.selected, { compare(group, item.uri) }, { actions.chooseKeeper(group, item.uri) }, { actions.toggleSelection(item.uri) }, shortResults || densePhoneResults)
                                 }
                             }
                         }
