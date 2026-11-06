@@ -394,12 +394,6 @@ internal fun FilterDialogContent(
                             .padding(horizontal = 20.dp, vertical = if (compactChrome) 0.dp else 8.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        // In a keyboard-height window, validation must not consume the field viewport.
-                        if (compactChrome) {
-                            error?.let {
-                                Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
                         if (wide) {
                             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                                 Column(Modifier.weight(1f).semantics { contentDescription = "기본 필터 조건" },
@@ -435,10 +429,8 @@ internal fun FilterDialogContent(
                         else -> 12.dp
                     }),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (!compactChrome) {
-                            error?.let {
-                                Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
-                            }
+                        error?.let {
+                            Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
                             TextAction("초기화", onClick = { onApply(MediaFilter()); onDismiss() }, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
@@ -468,11 +460,9 @@ internal fun FilterDialogContent(
                                         onDismiss()
                                     } catch (invalid: IllegalArgumentException) {
                                         error = invalid.message ?: "입력한 조건을 확인해 주세요."
-                                        if (compactChrome) {
-                                            focusManager.clearFocus()
-                                            keyboardController?.hide()
-                                            scope.launch { scrollState.scrollTo(0) }
-                                        }
+                                        focusManager.clearFocus()
+                                        keyboardController?.hide()
+                                        if (compactChrome) scope.launch { scrollState.scrollTo(0) }
                                     }
                                 },
                             )
