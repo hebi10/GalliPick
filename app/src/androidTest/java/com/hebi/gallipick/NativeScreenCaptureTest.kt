@@ -16,6 +16,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import com.hebi.gallipick.domain.MediaKind
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
@@ -58,6 +59,7 @@ class NativeScreenCaptureTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app = instrumentation.targetContext.applicationContext as GalliPickApplication
     private val created = mutableListOf<Uri>()
+    private val fixtureSamples = mutableListOf<Stage7aFixtureMedia.Sample>()
     private val captures = JSONArray()
     private val detailFailures = JSONArray()
     private val progress = JSONArray()
@@ -127,6 +129,17 @@ class NativeScreenCaptureTest {
             navigate("파일")
             compose.onNodeWithContentDescription("파일 조건 선택").assertIsDisplayed()
             saveViewport("02-files")
+            captureDetail("02b-files-list") {
+                compose.onNodeWithContentDescription("목록 보기").performClick()
+                compose.onNodeWithContentDescription("그리드 보기").assertIsDisplayed()
+            }
+            compose.onNodeWithContentDescription("그리드 보기").performClick()
+            captureDetail("02c-real-jpeg-detail") {
+                compose.onNodeWithText("EXAMPLE_scene_20.jpg").performClick()
+                compose.onNodeWithText("앱에서 미리보기").assertIsDisplayed()
+            }
+            dismissDialogIfPresent("닫기", contentDescription = true)
+            dismissDialogIfPresent("파일 상세 닫기", contentDescription = true)
             navigate("정리")
             compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
             compose.onNodeWithContentDescription("정리로 돌아가기").assertIsDisplayed()
@@ -139,6 +152,7 @@ class NativeScreenCaptureTest {
             compose.onNodeWithText("다크 모드").performScrollTo().performClick().assertIsSelected()
             saveViewport("05-settings-dark")
             compose.onNodeWithText("라이트 모드").performScrollTo().performClick().assertIsSelected()
+            saveViewport("05b-settings-light")
 
             captureDetail("06-files-size-descending") {
                 navigate("파일")
@@ -170,6 +184,12 @@ class NativeScreenCaptureTest {
                         .fetchSemanticsNodes().isNotEmpty()
                 }
                 compose.onNodeWithContentDescription("중복 묶음 1 비교").performScrollTo()
+                val groups = runBlocking {
+                    withTimeout(90_000) {
+                        app.repository.duplicates.first { it.size >= Stage7aFixtureMedia.MIN_DUPLICATE_GROUPS }
+                    }
+                }
+                assertTrue("Rich fixture must yield at least three exact-duplicate groups", groups.size >= 3)
             }
             captureDetail("10-duplicate-comparison") {
                 compose.onNodeWithContentDescription("중복 묶음 1 비교").performScrollTo().performClick()
@@ -177,7 +197,7 @@ class NativeScreenCaptureTest {
             }
             dismissDialogIfPresent("비교 닫기", contentDescription = true)
 
-            assertTrue("All eleven native screen captures must exist", captures.length() == 11)
+            assertTrue("All fourteen rich-fixture captures must exist", captures.length() == 14)
             assertTrue("Every detail capture must succeed", detailFailures.length() == 0)
         } catch (failure: Throwable) {
             testFailure = failure
@@ -200,6 +220,7 @@ class NativeScreenCaptureTest {
                 // All inserted URIs are owned by this test's target app, so no delete dialog is needed.
                 runBlocking {
                     app.repository.clearAnalysisCache()
+                    fixtureSamples.filter { it.protected }.forEach { app.repository.setProtected(it.uri.toString(), false) }
                     created.forEach { uri -> app.contentResolver.delete(uri, null, null) }
                     app.repository.refresh()
                 }
@@ -226,55 +247,13 @@ class NativeScreenCaptureTest {
     }
 
     private fun seedExampleMedia() {
-        val mascot = app.resources.openRawResource(R.drawable.gp_mascot).use { it.readBytes() }
-        val photoIcon = app.resources.openRawResource(R.drawable.gp_photo).use { it.readBytes() }
-        // Identical bytes are intentional: the app's real SHA-256 worker discovers this pair.
-        insertExample("EXAMPLE_mascot_original.png", "image/png", mascot)
-        insertExample("EXAMPLE_mascot_copy.png", "image/png", mascot)
-        insertExample("EXAMPLE_photo_icon.png", "image/png", photoIcon)
-        val video = instrumentation.context.assets.open("preview-baseline.mp4").use { it.readBytes() }
-        insertExample("EXAMPLE_preview_video.mp4", "video/mp4", video)
-    }
-
-    private fun insertExample(name: String, mimeType: String, bytes: ByteArray) {
-        val video = mimeType.startsWith("video/")
-        val collection = if (video) MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            else MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-            put(MediaStore.MediaColumns.RELATIVE_PATH,
-                if (video) "Movies/GalliPick_EXAMPLE/" else "Pictures/GalliPick_EXAMPLE/")
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-            if (!video) {
-                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                put(MediaStore.MediaColumns.WIDTH, options.outWidth)
-                put(MediaStore.MediaColumns.HEIGHT, options.outHeight)
+        fixtureSamples += Stage7aFixtureMedia.seed(app, instrumentation.context.assets)
+        created += fixtureSamples.map { it.uri }
+        runBlocking {
+            fixtureSamples.filter { it.protected }.forEach { sample ->
+                app.repository.setProtected(sample.uri.toString(), true)
             }
         }
-        val uri = checkNotNull(app.contentResolver.insert(collection, values)) { "Cannot insert $name" }
-        created += uri
-        checkNotNull(app.contentResolver.openOutputStream(uri)).use { it.write(bytes) }
-        val published = ContentValues().apply {
-            put(MediaStore.MediaColumns.IS_PENDING, 0)
-        }
-        if (video) {
-            // Read actual clip metadata, rather than waiting for an asynchronous provider scan.
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(app, uri)
-                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
-                    ?.let { published.put(MediaStore.MediaColumns.DURATION, it) }
-                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
-                    ?.let { published.put(MediaStore.MediaColumns.WIDTH, it) }
-                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
-                    ?.let { published.put(MediaStore.MediaColumns.HEIGHT, it) }
-            } finally {
-                retriever.release()
-            }
-        }
-        app.contentResolver.update(uri, published, null, null)
     }
 
     private fun awaitCatalog() {
@@ -432,8 +411,13 @@ class NativeScreenCaptureTest {
             .put("fontScale", app.resources.configuration.fontScale)
             .put("densityDpi", app.resources.configuration.densityDpi)
             .put("captureMethod", "UiAutomation.takeScreenshot: full Android viewport")
-            .put("exampleMedia", JSONArray(listOf("EXAMPLE_mascot_original.png", "EXAMPLE_mascot_copy.png",
-                "EXAMPLE_photo_icon.png", "EXAMPLE_preview_video.mp4")))
+            .put("fixture", "stage7a-rich-media-v1")
+            .put("fixtureKind", "test-owned decoded JPEG/PNG and playable MP4; procedural scenes")
+            .put("photos", fixtureSamples.count { it.kind == MediaKind.PHOTO })
+            .put("videos", fixtureSamples.count { it.kind == MediaKind.VIDEO })
+            .put("protectedMedia", fixtureSamples.count { it.protected })
+            .put("minimumDuplicateGroups", Stage7aFixtureMedia.MIN_DUPLICATE_GROUPS)
+            .put("exampleMedia", JSONArray(fixtureSamples.map { it.name }))
             .put("captures", captures)
             .put("detailFailures", detailFailures)
             .put("keyboardObservations", keyboardObservations)
