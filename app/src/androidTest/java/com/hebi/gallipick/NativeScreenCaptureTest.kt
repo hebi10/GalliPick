@@ -161,7 +161,7 @@ class NativeScreenCaptureTest {
             compose.onNodeWithText("휴지통이 비어 있습니다").assertIsDisplayed()
             saveViewport("05c-trash-empty-real-activity")
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            compose.onNodeWithText("설정").assertIsDisplayed()
+            compose.onNodeWithText("화면 테마").assertIsDisplayed()
 
             captureDetail("06-files-size-descending") {
                 navigate("파일")
