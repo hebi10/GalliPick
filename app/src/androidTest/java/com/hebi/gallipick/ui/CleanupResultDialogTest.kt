@@ -3,6 +3,7 @@ package com.hebi.gallipick.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
@@ -55,6 +56,35 @@ class CleanupResultDialogTest {
         compose.onNodeWithText("휴지통 확인").assertIsDisplayed()
         compose.onNodeWithContentDescription("결과 닫기").performClick()
         compose.runOnIdle { assertEquals(1, dismissed) }
+    }
+
+    @Test fun allFiveOutcomesExposeAccurateStatusAndDoNotClaimSavedSpace() {
+        val result = mutableStateOf(CleanupOperationResult.verified(TrashOutcome(2, 0, 0), false, 2, 8_192L))
+        compose.setContent { GalliPickTheme {
+            CleanupResultDialog(result.value, {}, {}, {})
+        } }
+        compose.onNodeWithText("휴지통 이동 완료").assertIsDisplayed()
+        compose.onNodeWithText("2개", substring = false).assertIsDisplayed()
+        compose.onNodeWithText("요청 2개 · 확인 완료 2개").assertIsDisplayed()
+        compose.onNodeWithText("요청한 파일 크기의 합계", substring = true).assertIsDisplayed()
+
+        compose.runOnIdle { result.value = CleanupOperationResult.verified(TrashOutcome(1, 1, 0), false, 2, 8_192L) }
+        compose.onNodeWithText("일부 파일만 처리 확인").assertIsDisplayed()
+        compose.onNodeWithText("미이동 1개").assertIsDisplayed()
+        compose.onNodeWithText("휴지통 이동 완료").assertDoesNotExist()
+
+        compose.runOnIdle { result.value = CleanupOperationResult.cancelled(false, 2, 8_192L) }
+        compose.onNodeWithText("작업 취소").assertIsDisplayed()
+        compose.onNodeWithText("휴지통 이동 완료").assertDoesNotExist()
+
+        compose.runOnIdle { result.value = CleanupOperationResult.failed(false, 2, 8_192L) }
+        compose.onNodeWithText("작업 완료 실패").assertIsDisplayed()
+        compose.onNodeWithText("휴지통 이동 완료").assertDoesNotExist()
+
+        compose.runOnIdle { result.value = CleanupOperationResult.unknown(false, 2, 8_192L) }
+        compose.onNodeWithText("파일 상태 확인 불가").assertIsDisplayed()
+        compose.onNodeWithText("확인 불가 2개").assertIsDisplayed()
+        compose.onNodeWithText("휴지통 이동 완료").assertDoesNotExist()
     }
 
     @Test fun unknownResultNeverPresentsSuccessMessage() {
