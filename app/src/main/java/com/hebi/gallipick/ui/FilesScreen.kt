@@ -234,7 +234,7 @@ private fun MediaTile(
                 SelectBox(
                     selected, item.canTrash(),
                     if (item.canTrash()) item.displayName + " 선택" else item.displayName + " 즐겨찾기 또는 보호 파일",
-                    toggle, Modifier.align(Alignment.TopStart),
+                    toggle, Modifier.align(Alignment.TopStart), indicatorAtTopStart = true,
                 )
                 if (item.kind == MediaKind.VIDEO) {
                     Text(durationLabel(item.durationMs), color = MaterialTheme.colorScheme.onPrimary,

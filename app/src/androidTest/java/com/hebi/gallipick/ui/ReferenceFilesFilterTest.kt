@@ -68,6 +68,46 @@ class ReferenceFilesFilterTest {
         compose.onNodeWithContentDescription("sample-1.jpg 선택").assertExists()
     }
 
+    @Test fun gridSelectionIndicatorMovesToCornerWhileHitTargetRemainsAccessible() {
+        val item = media(1)
+        val selected = mutableStateOf(emptySet<String>())
+        var toggles = 0
+        val actions = FilesScreenActions({}, {}, { uri ->
+            toggles++
+            selected.value = if (uri in selected.value) selected.value - uri else selected.value + uri
+        }, {}, {}, {}, { _, _ -> }, {})
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Box(Modifier.requiredSize(360.dp, 700.dp)) {
+                        FilesScreenContent(
+                            AppUiState(access = MediaAccess.FULL, items = listOf(item),
+                                filtered = listOf(item), selected = selected.value),
+                            false, {}, {}, {}, actions,
+                        )
+                    }
+                }
+            }
+        }
+
+        val checkbox = compose.onNodeWithContentDescription("sample-1.jpg 선택")
+            .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        val hit = checkbox.fetchSemanticsNode().boundsInRoot
+        val glyph = compose.onNodeWithTag("grid-selection-indicator", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue("Selection circle must stay inside the 48dp touch target",
+            glyph.left >= hit.left && glyph.top >= hit.top && glyph.right <= hit.right && glyph.bottom <= hit.bottom)
+        assertTrue("Visible circle should be within 8dp of the thumbnail top-left",
+            glyph.left - hit.left < hit.width / 6f && glyph.top - hit.top < hit.height / 6f)
+        checkbox.performClick()
+        compose.runOnIdle {
+            assertEquals(1, toggles)
+            assertTrue(item.uri in selected.value)
+        }
+        compose.onNodeWithText(item.displayName).performClick()
+        compose.onNodeWithText("파일 상세").assertIsDisplayed()
+    }
+
     @Test fun quickLastMonthUsesCalendarBoundariesAndBottomApply() {
         var applied: MediaFilter? = null
         compose.setContent {
