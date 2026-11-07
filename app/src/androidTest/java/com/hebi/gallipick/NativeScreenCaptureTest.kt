@@ -202,7 +202,7 @@ class NativeScreenCaptureTest {
             }
             captureDetail("10-duplicate-comparison") {
                 compose.onNodeWithContentDescription("중복 묶음 1 비교").performScrollTo().performClick()
-                compose.onNodeWithContentDescription("A 파일 비교 패널").assertIsDisplayed()
+                compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertIsDisplayed()
             }
             dismissDialogIfPresent("비교 닫기", contentDescription = true)
 

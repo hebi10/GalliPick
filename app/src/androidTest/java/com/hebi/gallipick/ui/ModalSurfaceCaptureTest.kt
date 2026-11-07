@@ -77,8 +77,8 @@ class ModalSurfaceCaptureTest {
                             Screen.TRASH -> TrashScreen(trashItems, {}, {})
                             Screen.PRESET -> SavePresetDialog({}, {})
                             Screen.CACHE -> ClearAnalysisCacheDialog({}, {})
-                            Screen.RESULT_SUCCESS -> CleanupResultDialog(CleanupOperationResult.verified(TrashOutcome(1, 0, 0), false, 1, photoB.sizeBytes), {}, {}, {})
-                            Screen.RESULT_PARTIAL -> CleanupResultDialog(CleanupOperationResult.verified(TrashOutcome(1, 1, 0), false, 2, photoB.sizeBytes), {}, {}, {})
+                            Screen.RESULT_SUCCESS -> CleanupResultDialog(CleanupOperationResult.verified(TrashOutcome(1, 0, 0, photoB.sizeBytes), false, 1, photoB.sizeBytes), {}, {}, {})
+                            Screen.RESULT_PARTIAL -> CleanupResultDialog(CleanupOperationResult.verified(TrashOutcome(1, 1, 0, photoB.sizeBytes), false, 2, photoB.sizeBytes), {}, {}, {})
                             Screen.RESULT_CANCELED -> CleanupResultDialog(CleanupOperationResult.cancelled(false, 1, photoB.sizeBytes), {}, {}, {})
                             Screen.RESULT_FAILED -> CleanupResultDialog(CleanupOperationResult.failed(false, 1, photoB.sizeBytes), {}, {}, {})
                             Screen.RESULT_UNKNOWN -> CleanupResultDialog(CleanupOperationResult.unknown(false, 1, photoB.sizeBytes), {}, {}, {})
@@ -105,7 +105,7 @@ class ModalSurfaceCaptureTest {
             compose.onNodeWithText("재생").assertIsDisplayed()
             screenshot(output, "05-video-preview")
             compose.runOnIdle { current = Screen.COMPARE }
-            compose.onNodeWithContentDescription("A 파일 비교 패널").assertIsDisplayed()
+            compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertIsDisplayed()
             compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("사진 미리보기: ${photoA.displayName}").fetchSemanticsNodes().isNotEmpty() }
             screenshot(output, "06-duplicate-compare")
             compose.runOnIdle { current = Screen.REVIEW }

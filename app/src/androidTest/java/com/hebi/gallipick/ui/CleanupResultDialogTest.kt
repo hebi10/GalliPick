@@ -24,7 +24,7 @@ class CleanupResultDialogTest {
     @Test fun verifiedResultShowsConfirmedCountsAndNavigatesToNextCleanup() {
         var home = 0
         var next = 0
-        val result = CleanupOperationResult.verified(TrashOutcome(2, 1, 0), false, 3, 4_096L)
+        val result = CleanupOperationResult.verified(TrashOutcome(2, 1, 0, 3_072L), false, 3, 4_096L)
         compose.setContent { GalliPickTheme {
             CleanupResultDialog(result, {}, { home++ }, { next++ })
         } }
@@ -59,16 +59,18 @@ class CleanupResultDialogTest {
     }
 
     @Test fun allFiveOutcomesExposeAccurateStatusAndDoNotClaimSavedSpace() {
-        val result = mutableStateOf(CleanupOperationResult.verified(TrashOutcome(2, 0, 0), false, 2, 8_192L))
+        val result = mutableStateOf(CleanupOperationResult.verified(TrashOutcome(2, 0, 0, 8_192L), false, 2, 8_192L))
         compose.setContent { GalliPickTheme {
             CleanupResultDialog(result.value, {}, {}, {})
         } }
         compose.onNodeWithText("휴지통 이동 완료").assertIsDisplayed()
         compose.onNodeWithText("2개", substring = false).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("요청 2개 · 확인 완료 2개").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("요청한 파일 크기의 합계", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("휴지통 이동 확인 파일 크기").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("8 KB").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("실제 확보된 저장공간이 아닙니다", substring = true).performScrollTo().assertIsDisplayed()
 
-        compose.runOnIdle { result.value = CleanupOperationResult.verified(TrashOutcome(1, 1, 0), false, 2, 8_192L) }
+        compose.runOnIdle { result.value = CleanupOperationResult.verified(TrashOutcome(1, 1, 0, 4_096L), false, 2, 8_192L) }
         compose.onNodeWithText("일부 파일만 처리 확인").assertIsDisplayed()
         compose.onNodeWithText("미이동 1개").assertIsDisplayed()
         compose.onNodeWithText("휴지통 이동 완료").assertDoesNotExist()

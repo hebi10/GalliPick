@@ -85,7 +85,7 @@ class DuplicateClarityTest {
         keeper.assertIsDisplayed()
     }
 
-    @Test fun portraitComparisonTabsExposeBothFileNamesBeforeSwitching() {
+    @Test fun portraitComparisonStripShowsAllFilesBeforeSelectingFocus() {
         val group = DuplicateGroup("two-visible-names", listOf(media(1, "original.mp4"), media(2, "copy.mp4")))
         compose.setContent { GalliPickTheme {
             CompositionLocalProvider(LocalDensity provides Density(1f)) {
@@ -95,11 +95,13 @@ class DuplicateClarityTest {
                 }
             }
         } }
-        compose.onNodeWithTag("A 비교 탭").assert(hasText("A · 남길 파일"))
-            .assert(hasText("original.mp4"))
-        compose.onNodeWithTag("B 비교 탭").assert(hasText("B · 정리 후보"))
-            .assert(hasText("copy.mp4")).performClick()
-        compose.onNodeWithContentDescription("B 파일 비교 패널").assertIsDisplayed()
+        val strip = compose.onNodeWithContentDescription("중복 파일 가로 비교 목록")
+        strip.assertIsDisplayed()
+        compose.onNodeWithTag("A 비교 탭").assertDoesNotExist()
+        strip.performScrollToNode(hasContentDescription("copy.mp4 비교 대상"))
+        compose.onNodeWithContentDescription("original.mp4 비교 대상").assertExists()
+        compose.onNodeWithContentDescription("copy.mp4 비교 대상").performClick()
+        compose.onNode(hasText("copy.mp4") and hasAnyAncestor(hasContentDescription("선택 파일 파일 비교 패널"))).assertExists()
     }
 
     @Test fun keptFilesHaveNoCheckboxAndOnlyCheckedCandidatesReachTheTrashAction() {
@@ -272,16 +274,17 @@ class DuplicateClarityTest {
         })) } }
         compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasContentDescription("중복 묶음 1 비교"))
         compose.onNodeWithContentDescription("중복 묶음 1 비교").performClick()
-        if (compose.onAllNodesWithTag("B 비교 탭").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithTag("B 비교 탭").performClick()
-        scrollComparisonControlIntoView("B 보호").assertIsEnabled().performClick()
+        compose.onNodeWithContentDescription("중복 파일 가로 비교 목록").performScrollToNode(hasContentDescription("second.mp4 비교 대상"))
+        compose.onNodeWithContentDescription("second.mp4 비교 대상").performClick()
+        scrollComparisonControlIntoView("선택 파일 보호").assertIsEnabled().performClick()
         compose.runOnIdle { assertTrue(state.value.items.first { it.uri == copy.uri }.isProtected) }
         compose.onNodeWithContentDescription("비교 닫기").assertIsDisplayed()
         compose.onNodeWithContentDescription("중복 결과 확인 중").assertIsDisplayed()
-        scrollComparisonControlIntoView("B 보호 해제").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("B 정리 후보 선택").assertDoesNotExist()
+        scrollComparisonControlIntoView("선택 파일 보호 해제").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("선택 파일 정리 후보 선택").assertDoesNotExist()
         compose.runOnIdle { state.value = state.value.copy(duplicates = listOf(group.copy(items = state.value.items))) }
         compose.onNodeWithContentDescription("중복 결과 확인 중").assertDoesNotExist()
-        compose.onNodeWithContentDescription("B 보호 해제").assertIsEnabled()
+        compose.onNodeWithContentDescription("선택 파일 보호 해제").assertIsEnabled()
     }
 
     @Test fun changedFileIdentityClosesAnUnverifiedComparison() {
@@ -303,8 +306,9 @@ class DuplicateClarityTest {
         })) } }
         compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasContentDescription("중복 묶음 36 비교"))
         compose.onNodeWithContentDescription("중복 묶음 36 비교").performClick()
-        if (compose.onAllNodesWithTag("B 비교 탭").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithTag("B 비교 탭").performClick()
-        scrollComparisonControlIntoView("B 보호").assertIsEnabled().performClick()
+        compose.onNodeWithContentDescription("중복 파일 가로 비교 목록").performScrollToNode(hasContentDescription("copy-35.mp4 비교 대상"))
+        compose.onNodeWithContentDescription("copy-35.mp4 비교 대상").performClick()
+        scrollComparisonControlIntoView("선택 파일 보호").assertIsEnabled().performClick()
         compose.runOnIdle { assertTrue(state.value.items.any { it.isProtected && it.uri in groups[35].items.map { file -> file.uri } }) }
         compose.onNodeWithContentDescription("중복 결과 확인 중").assertIsDisplayed()
         compose.onNodeWithContentDescription("비교 닫기").performClick()
@@ -318,7 +322,7 @@ class DuplicateClarityTest {
 
     private fun scrollComparisonControlIntoView(description: String): SemanticsNodeInteraction {
         val control = compose.onNodeWithContentDescription(description).performScrollTo()
-        val body = compose.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("B 파일 비교 패널")))
+        val body = compose.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("선택 파일 파일 비교 패널")))
         repeat(10) {
             if (runCatching { control.assertIsDisplayed() }.isSuccess) return control
             val aboveBody = control.fetchSemanticsNode().positionInRoot.y < body.fetchSemanticsNode().boundsInRoot.top
