@@ -1,7 +1,7 @@
 name: Adaptive UI verification and native captures
 on:
   push:
-    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*', 'design-details-trash-stage4-*', 'design-settings-results-stage5-*', 'design-visual-verification-stage6-*', 'design-reference-system-stage1-*', 'design-reference-navigation-stage2-*', 'design-reference-home-stage3-*', 'design-reference-files-filter-stage4-*', 'design-reference-cleanup-duplicates-stage5-*', 'design-reference-stage6-*', 'design-stage7a-*', 'design-stage7b-*', 'design-stage7c-*', 'design-stage7d-*', 'design-stage7e-*', 'design-stage7f-*', 'design-stage7g-*', 'design-stage8a-*', 'design-stage8b-*', 'design-stage8c-*', 'design-stage8d-*', 'design-stage8e-*', 'design-stage8f-*']
+    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*', 'design-details-trash-stage4-*', 'design-settings-results-stage5-*', 'design-visual-verification-stage6-*', 'design-reference-system-stage1-*', 'design-reference-navigation-stage2-*', 'design-reference-home-stage3-*', 'design-reference-files-filter-stage4-*', 'design-reference-cleanup-duplicates-stage5-*', 'design-reference-stage6-*', 'design-stage7a-*', 'design-stage7b-*', 'design-stage7c-*', 'design-stage7d-*', 'design-stage7e-*', 'design-stage7f-*', 'design-stage7g-*', 'design-stage8a-*', 'design-stage8b-*', 'design-stage8c-*', 'design-stage8d-*', 'design-stage8e-*', 'design-stage8f-*', 'design-stage8g-*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -147,6 +147,7 @@ jobs:
             tar -xf modal-payload.tar -C modal-captures || true
             python3 -c "import pathlib,re; t=pathlib.Path('modal-instrumentation.txt').read_text(); assert not pathlib.Path('modal-failed.txt').exists() and re.search(r'OK \\(\\d+ tests?\\)',t), 'Modal capture instrumentation did not pass'; assert len(list(pathlib.Path('modal-captures').glob('*.png'))) == 16, 'Expected 16 modal/detail screenshots'"
             python3 scripts/qa/verify_design_captures.py --native captures --modal modal-captures --profile "${{ matrix.name }}" --output qa/design-audit.json
+            python3 scripts/qa/verify_stage8_captures.py --native captures --modal modal-captures --design-audit qa/design-audit.json --profile "${{ matrix.name }}" --output qa/stage8-audit.json
       - name: Upload fresh native captures and execution record
         if: always()
         uses: actions/upload-artifact@v4
@@ -163,5 +164,6 @@ jobs:
             modal-captures/
             modal-instrumentation.txt
             qa/design-audit.json
+            qa/stage8-audit.json
             modal-failed.txt
           retention-days: 14
