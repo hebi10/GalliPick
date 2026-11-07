@@ -1,0 +1,62 @@
+name: GalliPick Play alpha read-only status check
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/play-status-v026-readonly.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: gallipick-play-alpha-readonly-check
+  cancel-in-progress: false
+jobs:
+  inspect:
+    if: github.repository == 'hebi10/GalliPick' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Refuse any track other than existing alpha
+        env:
+          PLAY_CLOSED_TRACK: ${{ vars.PLAY_CLOSED_TRACK }}
+        run: |
+          test "$PLAY_CLOSED_TRACK" = "alpha" || { echo 'Existing closed track must be alpha.' >&2; exit 1; }
+      - name: Authenticate for Play status query only
+        uses: google-github-actions/auth@v3
+        id: auth
+        with:
+          workload_identity_provider: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+          export_environment_variables: false
+          cleanup_credentials: true
+      - name: Read Play track and uploaded version codes without publishing
+        env:
+          PLAY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          PLAY_CLOSED_TRACK: ${{ vars.PLAY_CLOSED_TRACK }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release/play_publish.py check --track "$PLAY_CLOSED_TRACK" --report play-status-v026.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          result=json.loads(Path("play-status-v026.json").read_text(encoding="utf-8"))
+          assert result.get("status") == "checked" and result.get("track") == "alpha"
+          print("Uploaded or published codes:", result.get("used_version_codes"))
+          for track in result.get("tracks", []):
+              print("Track", track.get("track"), "releases", track.get("releases"))
+          PY
+      - name: Upload sanitized Play status report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalliPick-v0.2.6-play-status-readonly
+          path: play-status-v026.json
+          retention-days: 14
+          if-no-files-found: warn
