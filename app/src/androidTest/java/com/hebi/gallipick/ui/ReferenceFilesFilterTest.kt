@@ -70,11 +70,11 @@ class ReferenceFilesFilterTest {
 
     @Test fun gridSelectionIndicatorMovesToCornerWhileHitTargetRemainsAccessible() {
         val item = media(1)
-        var selected by mutableStateOf(emptySet<String>())
+        val selected = mutableStateOf(emptySet<String>())
         var toggles = 0
         val actions = FilesScreenActions({}, {}, { uri ->
             toggles++
-            selected = if (uri in selected) selected - uri else selected + uri
+            selected.value = if (uri in selected.value) selected.value - uri else selected.value + uri
         }, {}, {}, {}, { _, _ -> }, {})
         compose.setContent {
             GalliPickTheme {
@@ -82,7 +82,7 @@ class ReferenceFilesFilterTest {
                     Box(Modifier.requiredSize(360.dp, 700.dp)) {
                         FilesScreenContent(
                             AppUiState(access = MediaAccess.FULL, items = listOf(item),
-                                filtered = listOf(item), selected = selected),
+                                filtered = listOf(item), selected = selected.value),
                             false, {}, {}, {}, actions,
                         )
                     }
@@ -102,7 +102,7 @@ class ReferenceFilesFilterTest {
         checkbox.performClick()
         compose.runOnIdle {
             assertEquals(1, toggles)
-            assertTrue(item.uri in selected)
+            assertTrue(item.uri in selected.value)
         }
         compose.onNodeWithText(item.displayName).performClick()
         compose.onNodeWithText("파일 상세").assertIsDisplayed()
