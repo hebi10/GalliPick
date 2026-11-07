@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as horizontalItems
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -158,53 +161,19 @@ internal fun DuplicatesScreenContent(
                             val roles = rolesByHash.getValue(group.hash)
                             val selectedInGroup = roles.candidates.count { it.uri in state.selected }
                             item("group:${group.hash}", span = { GridItemSpan(maxLineSpan) }) {
-                                FlowRow(
-                                    Modifier.fillMaxWidth().padding(top = if (shortResults) 0.dp else 6.dp)
-                                        .background(Panel, RoundedCornerShape(14.dp)).padding(horizontal = 10.dp, vertical = 10.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    if (group.items.size >= 3) {
-                                        val previews = listOf(roles.keeper) + group.items.filter { it.uri != roles.keeper.uri }.take(2)
-                                        Box(
-                                            Modifier.width(76.dp).height(64.dp)
-                                                .semantics { contentDescription = "중복 묶음 ${index + 1} 미리보기" }
-                                                .plainClick(action = { compare(group) }),
-                                        ) {
-                                            previews.forEachIndexed { previewIndex, previewItem ->
-                                                MediaThumbnail(
-                                                    previewItem,
-                                                    Modifier.align(Alignment.CenterStart)
-                                                        .offset(x = (previewIndex * 14).dp)
-                                                        .size(48.dp)
-                                                        .border(1.dp, Line, RoundedCornerShape(10.dp)),
-                                                )
-                                            }
-                                        }
-                                    } else {
-                                        Box(Modifier.size(64.dp).clip(RoundedCornerShape(10.dp))
-                                            .plainClick(action = { compare(group) })) {
-                                            MediaThumbnail(roles.keeper, Modifier.fillMaxSize())
-                                        }
-                                    }
-                                    Column(Modifier.weight(1f).widthIn(min = 140.dp).align(Alignment.CenterVertically)) {
-                                        Text("중복 묶음 ${index + 1} · ${group.items.size}개", style = MaterialTheme.typography.titleSmall)
-                                        Text("정리 후보 ${roles.candidates.size}개 · ${bytesLabel(duplicateBytes(roles.candidates))}", style = MaterialTheme.typography.bodySmall, color = Muted)
-                                        if (selectedInGroup > 0) Text("선택 ${selectedInGroup}개", style = MaterialTheme.typography.labelSmall, color = Primary)
-                                    }
-                                    ActionButton(duplicateGroupSelectionLabel(roles.candidates.size, selectedInGroup, selected.size),
-                                        { actions.selectGroupCandidates(group) }, Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 묶음 ${index + 1} 후보 선택" },
-                                        enabled = selectedInGroup < roles.candidates.size && selected.size < SelectionPolicy.MAX_SELECTION_SIZE)
-                                    TextAction("비교", { compare(group) }, Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 묶음 ${index + 1} 비교" })
-                                }
-                            }
-                            items(roles.kept, key = { "${group.hash}:${it.uri}" }) { item ->
-                                DuplicateFileRow(item, roles, state.selected, { compare(group, item.uri) }, { actions.chooseKeeper(group, item.uri) }, { actions.toggleSelection(item.uri) }, shortResults || densePhoneResults)
-                            }
-                            if (roles.candidates.isNotEmpty()) {
-                                items(roles.candidates, key = { "${group.hash}:${it.uri}" }) { item ->
-                                    DuplicateFileRow(item, roles, state.selected, { compare(group, item.uri) }, { actions.chooseKeeper(group, item.uri) }, { actions.toggleSelection(item.uri) }, shortResults || densePhoneResults)
-                                }
+                                DuplicateGroupCard(
+                                    index = index,
+                                    group = group,
+                                    roles = roles,
+                                    selected = state.selected,
+                                    selectedInGroup = selectedInGroup,
+                                    totalSelected = selected.size,
+                                    compact = shortResults,
+                                    onCompare = { uri -> compare(group, uri) },
+                                    onSelectGroup = { actions.selectGroupCandidates(group) },
+                                    onChooseKeeper = { uri -> actions.chooseKeeper(group, uri) },
+                                    onToggle = actions.toggleSelection,
+                                )
                             }
                         }
                     }
@@ -237,6 +206,147 @@ internal fun DuplicatesScreenContent(
         onOpen = open, onChooseKeeper = actions.chooseKeeper, onToggleSelection = actions.toggleSelection,
         onProtect = actions.setProtected, initialItemUri = initialCompareUri, actionsEnabled = authoritativeComparison != null,
     )
+}
+
+@Composable
+private fun DuplicateGroupCard(
+    index: Int,
+    group: DuplicateGroup,
+    roles: DuplicateRoles,
+    selected: Set<String>,
+    selectedInGroup: Int,
+    totalSelected: Int,
+    compact: Boolean,
+    onCompare: (String?) -> Unit,
+    onSelectGroup: () -> Unit,
+    onChooseKeeper: (String) -> Unit,
+    onToggle: (String) -> Unit,
+) {
+    val ordered = remember(group.items, roles) {
+        (listOf(roles.keeper) + roles.kept.filterNot { it.uri == roles.keeper.uri } + roles.candidates)
+            .distinctBy { it.uri }
+    }
+    val rowState = rememberLazyListState()
+    LaunchedEffect(roles.keeper.uri) { rowState.scrollToItem(0) }
+    Column(
+        Modifier.fillMaxWidth()
+            .background(Panel, RoundedCornerShape(14.dp))
+            .padding(horizontal = if (compact) 8.dp else 10.dp, vertical = if (compact) 4.dp else 10.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 8.dp),
+    ) {
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 0.dp else 4.dp),
+        ) {
+            Column(Modifier.weight(1f).widthIn(min = if (compact) 100.dp else 130.dp)
+                .align(Alignment.CenterVertically)) {
+                Text("중복 묶음 ${index + 1} · ${group.items.size}개",
+                    style = MaterialTheme.typography.titleSmall)
+                if (!compact) {
+                    Text(
+                        "정리 후보 ${roles.candidates.size}개 · ${bytesLabel(duplicateBytes(roles.candidates))}",
+                        style = MaterialTheme.typography.bodySmall, color = Muted,
+                    )
+                    if (selectedInGroup > 0) Text(
+                        "선택 ${selectedInGroup}개", style = MaterialTheme.typography.labelSmall, color = Primary,
+                    )
+                }
+            }
+            ActionButton(
+                duplicateGroupSelectionLabel(roles.candidates.size, selectedInGroup, totalSelected),
+                onSelectGroup,
+                Modifier.align(Alignment.CenterVertically)
+                    .semantics { contentDescription = "중복 묶음 ${index + 1} 후보 선택" },
+                enabled = selectedInGroup < roles.candidates.size && totalSelected < SelectionPolicy.MAX_SELECTION_SIZE,
+            )
+            TextAction("비교", { onCompare(null) }, Modifier.align(Alignment.CenterVertically)
+                .semantics { contentDescription = "중복 묶음 ${index + 1} 비교" })
+        }
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().semantics {
+                contentDescription = "중복 묶음 ${index + 1} 파일 가로 목록"
+            },
+            state = rowState,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(top = 4.dp, bottom = 4.dp, end = 12.dp),
+        ) {
+            horizontalItems(ordered, key = { it.uri }) { item ->
+                DuplicateHorizontalMediaCard(
+                    item = item,
+                    roles = roles,
+                    selected = selected,
+                    compact = compact,
+                    onCompare = { onCompare(item.uri) },
+                    onChooseKeeper = { onChooseKeeper(item.uri) },
+                    onToggle = { onToggle(item.uri) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DuplicateHorizontalMediaCard(
+    item: MediaItem,
+    roles: DuplicateRoles,
+    selected: Set<String>,
+    compact: Boolean,
+    onCompare: () -> Unit,
+    onChooseKeeper: () -> Unit,
+    onToggle: () -> Unit,
+) {
+    val isKeeper = item.uri == roles.keeper.uri
+    val candidate = item.uri in roles.candidateUris
+    val checked = candidate && item.uri in selected
+    val borderColor = if (isKeeper || checked) Primary else Line
+    Column(
+        Modifier.width(if (compact) 106.dp else 132.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(if (isKeeper || checked) 2.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
+            .padding(6.dp)
+            .semantics { contentDescription = "${item.displayName}, ${item.relativePath}, ${roles.label(item, selected)}" },
+        verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp),
+    ) {
+        Box(Modifier.fillMaxWidth().height(if (compact) 68.dp else 116.dp)
+            .clip(RoundedCornerShape(10.dp)).plainClick(action = onCompare)) {
+            MediaThumbnail(item, Modifier.fillMaxSize())
+        }
+        Text(
+            item.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.fillMaxWidth().plainClick(action = onCompare),
+        )
+        if (!compact) Text(
+            bytesLabel(item.sizeBytes) +
+                if (item.kind == MediaKind.VIDEO) " · ${durationLabel(item.durationMs)}" else "",
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall, color = Muted,
+        )
+        Text(
+            roles.label(item, selected), maxLines = 1, overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isKeeper) Primary else if (checked) Ink else Muted,
+        )
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+            if (candidate) {
+                SelectBox(checked,
+                    description = "${item.displayName}, ${item.relativePath} 정리 후보 선택",
+                    onClick = onToggle)
+            } else {
+                Column(Modifier.size(48.dp).semantics { contentDescription = "${item.displayName} 남김" },
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders))
+                        Icons.Rounded.Lock else Icons.Rounded.PushPin, null, Modifier.size(20.dp), tint = Ink)
+                    Text("남김", style = MaterialTheme.typography.labelSmall, color = Ink)
+                }
+            }
+            if (!isKeeper) TextAction("남기기", onChooseKeeper,
+                Modifier.semantics { contentDescription = "${item.displayName} 남길 파일로 지정" })
+        }
+    }
 }
 
 @Composable
