@@ -264,15 +264,13 @@ private fun DuplicateGroupCard(
                 .align(Alignment.CenterVertically)) {
                 Text("중복 묶음 ${index + 1} · ${group.items.size}개",
                     style = MaterialTheme.typography.titleSmall)
-                if (!compact) {
-                    Text(
-                        "정리 후보 ${roles.candidates.size}개 · ${bytesLabel(duplicateBytes(roles.candidates))}",
-                        style = MaterialTheme.typography.bodySmall, color = Muted,
-                    )
-                    if (selectedInGroup > 0) Text(
-                        "선택 ${selectedInGroup}개", style = MaterialTheme.typography.labelSmall, color = Primary,
-                    )
-                }
+                Text(
+                    "정리 후보 ${roles.candidates.size}개 · ${bytesLabel(duplicateBytes(roles.candidates))}",
+                    style = MaterialTheme.typography.bodySmall, color = Muted,
+                )
+                if (selectedInGroup > 0) Text(
+                    "선택 ${selectedInGroup}개", style = MaterialTheme.typography.labelSmall, color = Primary,
+                )
             }
             ActionButton(
                 duplicateGroupSelectionLabel(roles.candidates.size, selectedInGroup, totalSelected),
