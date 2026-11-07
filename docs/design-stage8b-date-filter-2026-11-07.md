@@ -24,3 +24,14 @@
 
 ## 후속
 8-C 중복 묶음 가로 스크롤 → 8-D 비교 화면 단일 스트립 → 8-E 결과 용량 정확도 → 8-F 홈 아이콘 → 8-G 최종 QA.
+
+
+## 2026-11-07 최종 검증 및 main 병합
+- PR #46: https://github.com/hebi10/GalliPick/pull/46 — merged `4d849cbab17e124f5e00644e60f55abd10221736`
+- 최종 검증 대상 SHA: `ac4bcb7a97bbabfaaa877648f003a51d2922906f`
+- Android verification: https://github.com/hebi10/GalliPick/actions/runs/42343178794 — success
+- Android device tests: https://github.com/hebi10/GalliPick/actions/runs/42343178729 — success
+- 5프로필 native 캡처: https://github.com/hebi10/GalliPick/actions/runs/42343155540 — success
+- 5개 ZIP Drive 보관: https://drive.google.com/drive/folders/1HDcQhQrg1eJNIzMD5ui07-Q6Jg-XsxL2
+- 휴대폰 세로 및 태블릿 세로 실제 필터 캡처에서 날짜 기준·촬영일 정보 부재시 추가일 사용 안내, 오늘·직접 선택 프리셋, 시작일/종료일, 적용 버튼을 검수했습니다.
+- 날짜 필터·파일 안전 정책을 보존하며 Play 비공개 테스트 v0.2.5(code16)는 재배포하지 않았습니다.
