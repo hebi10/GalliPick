@@ -1,5 +1,6 @@
 package com.hebi.gallipick.ui
 
+import android.graphics.BitmapFactory
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.Surface
@@ -15,6 +16,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
+import com.hebi.gallipick.R
 import com.hebi.gallipick.domain.MediaFilter
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
@@ -27,6 +29,28 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AdaptiveOverviewTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun oldFilesShortcutUsesPackagedIconAndPreservesItsOneYearFilter() {
+        val bitmap = BitmapFactory.decodeResource(compose.activity.resources, R.drawable.gp_old_files)
+        assertEquals(256, bitmap.width)
+        assertEquals(256, bitmap.height)
+        assertEquals(0, bitmap.getPixel(0, 0) ushr 24)
+
+        var applied: MediaFilter? = null
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                Surface(Modifier.requiredSize(360.dp, 760.dp)) {
+                    HomeScreen(homeState(), {}, { filter -> applied = filter }, {}, {})
+                }
+            }
+        } }
+        compose.onNode(hasText("오래된 파일") and hasClickAction()).performScrollTo().performClick()
+        compose.runOnIdle {
+            val filter = requireNotNull(applied)
+            assertEquals(1L, filter.fromDateMs)
+            assertTrue(filter.toDateMs != null && filter.toDateMs!! > 0L)
+        }
+    }
 
     @Test fun shortHomeWindowShowsPrimaryCtaAndKeepsShortcutsReachable() {
         compose.setContent {
