@@ -20,6 +20,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.hebi.gallipick.domain.DateField
 import com.hebi.gallipick.domain.MediaFilter
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.Orientation
@@ -63,6 +64,49 @@ class AdaptiveFilterTest {
             assertNotNull(applied?.fromDateMs)
             assertEquals(SortField.NAME, applied?.sortField)
         }
+    }
+
+    @Test fun dateBasisHelpExplainsOriginalDateFallbackAndOtherDateSources() {
+        var applied: MediaFilter? = null
+        showFilter(width = 320, height = 620, onApply = { applied = it })
+
+        compose.onNodeWithText("촬영일 기준").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(
+            "촬영 정보가 있으면 그 날짜를 사용하고, 없으면 기기에 추가된 날짜를 사용합니다.",
+        ).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("추가일").performScrollTo().performClick()
+        compose.onNodeWithText("추가일 기준").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("기기 미디어 목록에 추가된 날짜입니다. 원본 촬영일과 다를 수 있습니다.")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("수정일").performScrollTo().performClick()
+        compose.onNodeWithText("파일이 마지막으로 수정된 날짜입니다. 촬영일과 다를 수 있습니다.")
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("필터 적용").performClick()
+        compose.runOnIdle { assertEquals(DateField.MODIFIED, applied?.dateField) }
+    }
+
+    @Test fun todayPresetRestoresItsSelectionAfterApplyingAndDirectPickerRemainsReachable() {
+        val current = mutableStateOf(MediaFilter())
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                Box(Modifier.requiredSize(360.dp, 700.dp)) {
+                    FilterDialogContent(current.value, emptyList(), { current.value = it }, {})
+                }
+            }
+        } }
+
+        compose.onNodeWithText("오늘").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithText("필터 적용").performClick()
+        compose.runOnIdle {
+            val start = requireNotNull(current.value.fromDateMs)
+            val end = requireNotNull(current.value.toDateMs)
+            val formatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
+            assertEquals(formatter.format(java.util.Date(start)), formatter.format(java.util.Date(end)))
+            assertTrue(end >= start)
+        }
+        compose.onNodeWithText("오늘").performScrollTo().assertIsSelected()
+        compose.onNodeWithText("직접 선택").performScrollTo().performClick()
+        compose.onNodeWithText("날짜 선택").assertIsDisplayed()
     }
 
     @Test fun recentDateShortcutsAndCalendarButtonsStayReachable() {
