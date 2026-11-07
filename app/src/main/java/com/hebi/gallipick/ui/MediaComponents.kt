@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -113,13 +114,30 @@ private fun DetailPhoto(item: MediaItem, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun SelectBox(checked: Boolean, enabled: Boolean = true, description: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.size(48.dp).semantics { contentDescription = description }.toggleable(
-        value = checked, enabled = enabled, role = Role.Checkbox,
-        interactionSource = remember { MutableInteractionSource() }, indication = ripple(bounded = false, radius = 24.dp),
-        onValueChange = { onClick() },
-    ), contentAlignment = Alignment.Center) {
-        Box(Modifier.size(24.dp).background(if (checked) Ink else MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)).border(1.dp, if (enabled) Ink else Line, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+internal fun SelectBox(
+    checked: Boolean,
+    enabled: Boolean = true,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    indicatorAtTopStart: Boolean = false,
+) {
+    Box(
+        modifier.size(48.dp).semantics { contentDescription = description }.toggleable(
+            value = checked, enabled = enabled, role = Role.Checkbox,
+            interactionSource = remember { MutableInteractionSource() },
+            indication = ripple(bounded = false, radius = 24.dp),
+            onValueChange = { onClick() },
+        ),
+        contentAlignment = if (indicatorAtTopStart) Alignment.TopStart else Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(24.dp)
+                .then(if (indicatorAtTopStart) Modifier.offset(x = 4.dp, y = 4.dp).testTag("grid-selection-indicator") else Modifier)
+                .background(if (checked) Ink else MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
+                .border(1.dp, if (enabled) Ink else Line, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
             if (checked) GalliIcon(Icons.Rounded.Check, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onPrimary)
             else if (!enabled) GalliIcon(Icons.Rounded.Lock, null, Modifier.size(14.dp), tint = Muted)
         }
