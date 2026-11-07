@@ -118,7 +118,6 @@ internal fun DuplicatesScreenContent(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val shortResults = maxHeight < 420.dp && maxWidth >= 720.dp && groups.isNotEmpty()
-        val densePhoneResults = groups.size >= 3 && maxWidth < 600.dp && LocalDensity.current.fontScale < 1.5f
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             if (catalogVisible && !checkingComparison) {
                 LazyVerticalGrid(
@@ -436,77 +435,6 @@ private fun DuplicateScanProgress(scan: ScanState) {
             stateDescription = if (scan.total > 0) "전체 ${scan.total}개 중 ${processed}개 처리" else "검사할 파일을 확인하고 있습니다"
         }) {
             if (progress > 0) Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(Ink, RoundedCornerShape(12.dp)))
-        }
-    }
-}
-
-@Composable
-private fun DuplicateFileRow(item: MediaItem, roles: DuplicateRoles, selected: Set<String>, compare: () -> Unit, chooseKeeper: () -> Unit, toggle: () -> Unit, compact: Boolean = false) {
-    if (compact) {
-        CompactDuplicateFileRow(item, roles, selected, compare, chooseKeeper, toggle)
-        return
-    }
-    val candidate = item.uri in roles.candidateUris
-    val chosen = candidate && item.uri in selected
-    val shape = RoundedCornerShape(16.dp)
-    Row(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surface)
-        .border(1.dp, if (chosen) Ink else Line, shape).padding(10.dp)
-        .semantics { contentDescription = "${item.displayName}, ${item.relativePath}, ${roles.label(item, selected)}" },
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        MediaThumbnail(item, Modifier.size(60.dp).plainClick(action = compare))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(roles.label(item, selected), Modifier.background(
-                if (chosen) MaterialTheme.colorScheme.primary else if (!candidate) Mint else Panel, RoundedCornerShape(8.dp),
-            ).padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelMedium,
-                color = if (chosen) MaterialTheme.colorScheme.onPrimary else Ink)
-            Column(Modifier.fillMaxWidth().plainClick(action = compare), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(item.displayName, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                Text(item.relativePath.trimEnd('/').ifEmpty { "기본 폴더" }, maxLines = 2, overflow = TextOverflow.Ellipsis, color = Muted, style = MaterialTheme.typography.bodySmall)
-                Text(bytesLabel(item.sizeBytes) + if (item.kind == MediaKind.VIDEO) " · ${durationLabel(item.durationMs)}" else "", color = Muted, style = MaterialTheme.typography.bodySmall)
-            }
-            if (!candidate) Text(roles.reason(item), style = MaterialTheme.typography.bodySmall, color = Muted)
-            if (item.uri != roles.keeper.uri) TextAction("이 파일 남기기", chooseKeeper, Modifier.semantics { contentDescription = "${item.displayName} 남길 파일로 지정" })
-        }
-        if (candidate) SelectBox(chosen, description = "${item.displayName}, ${item.relativePath} 정리 후보 선택", onClick = toggle, modifier = Modifier.size(48.dp))
-        else Column(Modifier.widthIn(min = 36.dp).semantics { contentDescription = "${item.displayName} 남김" },
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders)) Icons.Rounded.Lock else Icons.Rounded.PushPin,
-                null, Modifier.size(22.dp), tint = Ink)
-            Text("남김", style = MaterialTheme.typography.labelSmall, color = Ink)
-        }
-    }
-}
-
-@Composable
-private fun CompactDuplicateFileRow(item: MediaItem, roles: DuplicateRoles, selected: Set<String>, compare: () -> Unit, chooseKeeper: () -> Unit, toggle: () -> Unit) {
-    val candidate = item.uri in roles.candidateUris
-    val chosen = candidate && item.uri in selected
-    val shape = RoundedCornerShape(16.dp)
-    Row(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surface)
-        .border(1.dp, if (chosen) Ink else Line, shape).padding(6.dp)
-        .semantics { contentDescription = "${item.displayName}, ${item.relativePath}, ${roles.label(item, selected)}" },
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        MediaThumbnail(item, Modifier.size(48.dp).plainClick(action = compare))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(roles.label(item, selected), Modifier.background(
-                if (chosen) MaterialTheme.colorScheme.primary else if (!candidate) Mint else Panel, RoundedCornerShape(8.dp),
-            ).padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium,
-                color = if (chosen) MaterialTheme.colorScheme.onPrimary else Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).plainClick(action = compare)) {
-                Text(item.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                Text(item.relativePath.trimEnd('/').ifEmpty { "기본 폴더" }, maxLines = 1, overflow = TextOverflow.Ellipsis, color = Muted, style = MaterialTheme.typography.bodySmall)
-                Text(bytesLabel(item.sizeBytes) + if (item.kind == MediaKind.VIDEO) " · ${durationLabel(item.durationMs)}" else "", color = Muted, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        Column(Modifier.widthIn(min = 64.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (candidate) SelectBox(chosen, description = "${item.displayName}, ${item.relativePath} 정리 후보 선택", onClick = toggle, modifier = Modifier.size(48.dp))
-            else Column(Modifier.heightIn(min = 48.dp).semantics { contentDescription = "${item.displayName} 남김" },
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders)) Icons.Rounded.Lock else Icons.Rounded.PushPin,
-                    null, Modifier.size(20.dp), tint = Ink)
-                Text("남김", style = MaterialTheme.typography.labelSmall, color = Ink)
-            }
-            if (item.uri != roles.keeper.uri) TextAction("남기기", chooseKeeper, Modifier.semantics { contentDescription = "${item.displayName} 남길 파일로 지정" })
         }
     }
 }
