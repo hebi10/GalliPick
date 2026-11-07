@@ -325,11 +325,13 @@ private fun DuplicateHorizontalMediaCard(
             SelectBox(checked, description = "${item.displayName}, ${item.relativePath} 정리 후보 선택",
                 onClick = onToggle)
         } else {
-            Column(Modifier.size(48.dp).semantics { contentDescription = "${item.displayName} 남김" },
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders))
-                    Icons.Rounded.Lock else Icons.Rounded.PushPin, null, Modifier.size(20.dp), tint = Ink)
-                Text("남김", style = MaterialTheme.typography.labelSmall, color = Ink)
+            Box(Modifier.size(48.dp).semantics { contentDescription = "${item.displayName} 남김" },
+                contentAlignment = Alignment.Center) {
+                Box(Modifier.size(28.dp).background(Mint, RoundedCornerShape(14.dp)),
+                    contentAlignment = Alignment.Center) {
+                    GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders))
+                        Icons.Rounded.Lock else Icons.Rounded.PushPin, null, Modifier.size(17.dp), tint = Ink)
+                }
             }
         }
     }
@@ -348,10 +350,20 @@ private fun DuplicateHorizontalMediaCard(
         ) {
             MediaThumbnail(item, Modifier.fillMaxSize().plainClick(action = onCompare))
             Box(Modifier.align(Alignment.TopEnd)) { candidateControl() }
-            if (!isKeeper) IconAction(
-                "${item.displayName} 남길 파일로 지정", Icons.Rounded.PushPin,
-                Modifier.align(Alignment.BottomStart).background(Panel, RoundedCornerShape(24.dp)),
-            ) { onChooseKeeper() }
+            if (!isKeeper) Box(
+                Modifier.align(Alignment.BottomStart).size(48.dp)
+                    .semantics {
+                        contentDescription = "${item.displayName} 남길 파일로 지정"
+                        role = androidx.compose.ui.semantics.Role.Button
+                    }
+                    .plainClick(action = onChooseKeeper),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.size(28.dp).background(Panel, RoundedCornerShape(14.dp)),
+                    contentAlignment = Alignment.Center) {
+                    GalliIcon(Icons.Rounded.PushPin, null, Modifier.size(17.dp), tint = Ink)
+                }
+            }
         }
         Text(
             item.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis,
