@@ -218,9 +218,9 @@ class MediaIntegrationTest {
         val identities = items.map(TrashIdentity::from)
         try {
             assertEquals(1, app.contentResolver.update(created[0], ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, 1) }, null, null))
-            assertEquals(TrashOutcome(1, 1, 0), repository.inspectTrashOutcome(identities, false))
+            assertEquals(TrashOutcome(1, 1, 0, items.single { it.uri == created[0].toString() }.sizeBytes), repository.inspectTrashOutcome(identities, false))
             assertEquals(1, app.contentResolver.update(created[0], ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, 0) }, null, null))
-            assertEquals(TrashOutcome(2, 0, 0), repository.inspectTrashOutcome(identities, true))
+            assertEquals(TrashOutcome(2, 0, 0, items.sumOf { it.sizeBytes }), repository.inspectTrashOutcome(identities, true))
         } finally {
             app.contentResolver.update(created[0], ContentValues().apply { put(MediaStore.MediaColumns.IS_TRASHED, 0) }, null, null)
         }
