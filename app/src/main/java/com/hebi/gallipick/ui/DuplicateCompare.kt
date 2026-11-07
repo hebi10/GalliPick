@@ -99,7 +99,7 @@ internal fun DuplicateCompareContent(
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                 Text("SHA-256 전체 내용이 같은 사본 ${ordered.size}개 · 정리 후보 ${roles.candidates.size}개",
                     style = MaterialTheme.typography.bodySmall, color = Muted)
-                Text("파일을 누르면 아래 정보만 바뀝니다. 남길 파일은 별도 버튼으로 지정합니다.",
+                Text("파일을 눌러 비교하고, '이 파일 남기기'로 보존 대상을 바꿉니다.",
                     style = MaterialTheme.typography.bodySmall, color = Muted,
                     modifier = Modifier.padding(bottom = 8.dp))
                 LazyRow(
