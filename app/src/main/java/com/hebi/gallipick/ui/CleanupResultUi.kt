@@ -88,7 +88,7 @@ fun CleanupResultDialog(
             val success = result.status == CleanupResultStatus.SUCCESS
             val dialogHeight = minOf(
                 maxHeight,
-                (if (success) 520.dp else 460.dp) * fontScale.coerceAtMost(1.4f),
+                (if (success) 640.dp else 520.dp) * fontScale.coerceAtMost(1.4f),
             )
             Surface(
                 Modifier.widthIn(max = 640.dp).fillMaxWidth().height(dialogHeight),
