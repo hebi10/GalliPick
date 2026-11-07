@@ -35,6 +35,7 @@ import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.*
+import kotlinx.coroutines.flow.collect
 
 internal data class DuplicatesScreenActions(
     val startScan: () -> Unit,
@@ -71,9 +72,21 @@ internal fun DuplicatesScreenContent(
     var initialCompareUri by rememberSaveable { mutableStateOf<String?>(null) }
     var retainedComparison by remember { mutableStateOf<DuplicateGroup?>(null) }
     var closedPendingHash by remember { mutableStateOf<String?>(null) }
-    // Keep the URI-keyed viewport while the catalog is temporarily revalidated.
+    // Keep the group-keyed viewport while the catalog is temporarily revalidated.
     val listState = rememberLazyGridState()
+    var lastVisibleGroup by remember { mutableStateOf<String?>(null) }
+    var groupToRestore by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            (listState.layoutInfo.visibleItemsInfo
+                .firstOrNull { (it.key as? String)?.startsWith("group:") == true }?.key as? String)
+                ?.removePrefix("group:")
+        }.collect { hash -> if (hash != null) lastVisibleGroup = hash }
+    }
     val catalogVisible = !state.loading && state.access != MediaAccess.NONE && state.catalogError == null
+    LaunchedEffect(catalogVisible) {
+        if (!catalogVisible) groupToRestore = lastVisibleGroup
+    }
     val liveItems = remember(state.items, catalogVisible) {
         if (!catalogVisible) emptyMap() else state.items.filterNot { it.isTrashed }.associateBy { it.uri }
     }
@@ -118,6 +131,14 @@ internal fun DuplicatesScreenContent(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val shortResults = maxHeight < 420.dp && maxWidth >= 720.dp && groups.isNotEmpty()
+        LaunchedEffect(catalogVisible, groups, shortResults) {
+            val requestedHash = groupToRestore
+            if (catalogVisible && requestedHash != null && groups.isNotEmpty()) {
+                val index = groups.indexOfFirst { it.hash == requestedHash }
+                if (index >= 0) listState.scrollToItem(index + if (shortResults) 1 else 3)
+                groupToRestore = null
+            }
+        }
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             if (catalogVisible && !checkingComparison) {
                 LazyVerticalGrid(
