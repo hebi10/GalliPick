@@ -18,3 +18,15 @@
 
 ## 후속
 8-B 날짜 필터 설명/기준 → 8-C 중복 목록 가로 스크롤 → 8-D 단일 화면 비교 → 8-E 결과 용량 정확도 → 8-F 오래된 파일 아이콘 → 8-G 최종 Android QA.
+
+
+## 최종 검증 및 병합 — 2026-11-07
+- PR #45: https://github.com/hebi10/GalliPick/pull/45 — main 병합 완료, merge SHA `ed40053efbd5a9b70720973e6db66a2fd57a3afe`.
+- 검증 대상 최종 HEAD: `08c620b15ac07e407e8f3e7b32e77261f54a9bea`.
+- Android verification: https://github.com/hebi10/GalliPick/actions/runs/42342143340 — success.
+- Android device tests: https://github.com/hebi10/GalliPick/actions/runs/42342143240 — success.
+- 5환경 실제 앱 캡처: https://github.com/hebi10/GalliPick/actions/runs/42342139440 — success.
+- Google Drive 실제 Android 캡처 ZIP 5종: https://drive.google.com/drive/folders/1spI6MRC8W6RUY1J3ejt2d1wYHk4cvmOs
+- 휴대폰 세로/가로 `02-files` 실제 앱 캡처 확인: 원의 표시 인셋 축소, 파일 썸네일·선택/보호 상태 정상. `qa/design-audit.json`이 모든 5프로필에서 통과함.
+- 48dp 터치와 실제 표시 원 4dp 위치, 선택/상세 열기 분리는 기기 UI 회귀 테스트 성공으로 확인.
+- Google Play v0.2.5(code16) 비공개 테스트는 이번 단계에서 재배포하지 않았습니다.
