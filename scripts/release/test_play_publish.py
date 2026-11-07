@@ -112,9 +112,9 @@ class PlayPublishTests(unittest.TestCase):
         self.client = play_publish.PlayClient(TOKEN, transport=self.server.open)
         self.report = {}
 
-    def run_client(self, mode="deploy", track="alpha"):
+    def run_client(self, mode="deploy", track="alpha", upload_protocol="media"):
         return play_publish.run(self.client, mode, track, bundle=self.bundle, manifest=self.manifest,
-                                notes=self.notes, report=self.report)
+                                notes=self.notes, report=self.report, upload_protocol=upload_protocol)
 
     def test_check_reads_every_source_and_deletes_edit_without_upload_or_commit(self):
         report = self.run_client("check")
@@ -273,6 +273,86 @@ class PlayPublishTests(unittest.TestCase):
                 with self.assertRaises(ReleaseError):
                     self.run_client()
         self.assertEqual(self.server.calls, [])
+
+    def resumable_server(self, *, location=None, upload_error=None, session_error=None):
+        original = self.server.open
+        destination = (
+            "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/"
+            "applications/com.hebi.gallipick/edits/edit1/bundles?uploadType=resumable&upload_id=test-session"
+        )
+        class SessionResponse(Response):
+            def __init__(self, uri):
+                super().__init__({})
+                self.headers = {"Location": uri}
+
+        def transport(request, timeout):
+            url = urlsplit(request.full_url)
+            if request.method == "POST" and url.path.startswith("/resumable/upload/androidpublisher/"):
+                self.server.calls.append((request.method, request.full_url, request.data))
+                assert timeout >= 120
+                assert request.get_header("Authorization") == "Bearer " + TOKEN
+                assert parse_qs(url.query) == {"uploadType": ["resumable"]}
+                headers = {k.lower(): v for k, v in request.header_items()}
+                assert headers["x-upload-content-type"] == "application/octet-stream"
+                assert headers["x-upload-content-length"] == str(self.bundle.stat().st_size)
+                assert request.data == b""
+                if session_error:
+                    raise HTTPError(request.full_url, session_error, "masked", {}, io.BytesIO())
+                return SessionResponse(location or destination)
+            if request.method == "PUT" and url.path.startswith("/upload/androidpublisher/"):
+                self.server.calls.append((request.method, request.full_url, request.data))
+                assert timeout >= 120
+                assert request.get_header("Authorization") == "Bearer " + TOKEN
+                assert request.data == self.bundle.read_bytes()
+                assert {k.lower(): v for k, v in request.header_items()}["content-type"] == "application/octet-stream"
+                if upload_error:
+                    raise HTTPError(request.full_url, upload_error, "masked", {}, io.BytesIO())
+                return Response({"versionCode": self.metadata["version_code"],
+                                 "sha256": hashlib.sha256(request.data).hexdigest()})
+            return original(request, timeout)
+        self.client = play_publish.PlayClient(TOKEN, transport=transport)
+
+    def test_resumable_bundle_upload_uses_single_session_then_verifies_only_alpha(self):
+        self.resumable_server()
+        report = self.run_client(upload_protocol="resumable")
+        self.assertEqual(report["status"], "committed")
+        self.assertTrue(report["track_verified"])
+        self.assertEqual(report["upload_stage"], "bundle_uploaded")
+        calls = [(method, urlsplit(url).path) for method, url, _ in self.server.calls]
+        self.assertEqual(sum(path.startswith("/resumable/upload") for _, path in calls), 1)
+        self.assertEqual(sum(method == "PUT" and path.startswith("/upload/") for method, path in calls), 1)
+        self.assertEqual(self.server.tracks[0]["releases"][0]["versionCodes"], ["1"])
+        self.assertEqual(self.server.tracks[1]["releases"][0]["versionCodes"], ["6"])
+        self.assertEqual(self.server.tracks[2]["releases"][0]["versionCodes"], ["3"])
+
+    def test_resumable_session_rejects_untrusted_redirect_before_sending_payload(self):
+        self.resumable_server(location="https://external.example/upload/androidpublisher/v3/applications/com.hebi.gallipick/edits/edit1/bundles")
+        with self.assertRaisesRegex(ReleaseError, "untrusted resumable"):
+            self.run_client(upload_protocol="resumable")
+        self.assertEqual(self.report.get("upload_stage"), "session_start")
+        self.assertTrue(self.report["temporary_edit_deleted"])
+        self.assertFalse(any(method == "PUT" for method, _, _ in self.server.calls))
+        self.assertFalse(any(":commit" in url for _, url, _ in self.server.calls))
+
+    def test_resumable_failed_transfer_never_commits_or_retries(self):
+        self.resumable_server(upload_error=500)
+        with self.assertRaises(play_publish.ApiError):
+            self.run_client(upload_protocol="resumable")
+        self.assertEqual(self.report.get("upload_stage"), "media_transfer")
+        self.assertEqual(self.report.get("upload_result"), "unknown")
+        self.assertFalse(self.report["api_accepted"])
+        self.assertTrue(self.report["temporary_edit_deleted"])
+        self.assertEqual(sum(method == "PUT" for method, _, _ in self.server.calls), 1)
+        self.assertFalse(any(":commit" in url for _, url, _ in self.server.calls))
+
+    def test_resumable_session_failure_never_starts_another_session(self):
+        self.resumable_server(session_error=503)
+        with self.assertRaises(play_publish.ApiError):
+            self.run_client(upload_protocol="resumable")
+        self.assertEqual(self.report.get("upload_stage"), "session_start")
+        self.assertTrue(self.report["temporary_edit_deleted"])
+        self.assertEqual(sum("/resumable/upload" in url for _, url, _ in self.server.calls), 1)
+        self.assertFalse(any(method == "PUT" for method, _, _ in self.server.calls))
 
     def test_upload_hash_or_code_mismatch_prevents_track_update(self):
         digest = self.evidence["bundle_sha256"]

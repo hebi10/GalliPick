@@ -1,0 +1,116 @@
+name: GalliPick v0.2.6 closed alpha recovery
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/play-v026-resumable-recovery.yml']
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+concurrency:
+  group: gallipick-play-publish
+  cancel-in-progress: false
+jobs:
+  recover:
+    if: >-
+      github.repository == 'hebi10/GalliPick' &&
+      github.ref == 'refs/heads/main' &&
+      contains(github.event.head_commit.message, '[recover-v026-alpha]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Refuse other tracks and verify this exact published source
+        env:
+          PLAY_CLOSED_TRACK: ${{ vars.PLAY_CLOSED_TRACK }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$PLAY_CLOSED_TRACK" = alpha || { echo 'Only the existing alpha track is authorized.' >&2; exit 1; }
+          git merge-base --is-ancestor e331ba4060663e03c9cc5b8cb5df448d369cd272 HEAD
+          python3 scripts/release/verify_apk.py source --tag v0.2.6
+          python3 -m unittest discover -s scripts/release -p 'test_*.py'
+      - name: Download the already verified v0.2.6 signed Play bundle
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 42370010477
+          github-token: ${{ github.token }}
+          name: GalliPick-v0.2.6-play-bundle
+          path: play-dist
+      - name: Verify pinned bundle bytes, source, signer and release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          sys.path.insert(0, "scripts/release")
+          from play_publish import load_inputs
+          root = Path("play-dist")
+          name = "GalliPick-v0.2.6-release.aab"
+          metadata, evidence, payload, _ = load_inputs(root/name, root/"manifest.json",
+              Path("docs/play-store/release-notes-ko.txt"))
+          expected = "eb7aa1793f3b7404c3ce6d491d536ff73a0e303e665bf49e396653a4acce0f53"
+          assert (metadata["package"], metadata["version_code"], metadata["version_name"]) == (
+              "com.hebi.gallipick", 17, "0.2.6")
+          assert evidence["source_commit"] == "e331ba4060663e03c9cc5b8cb5df448d369cd272"
+          assert evidence["bundle_sha256"] == expected == hashlib.sha256(payload).hexdigest()
+          assert evidence["signer_certificate_sha256"] == Path("signing/certificate.sha256").read_text().strip()
+          print("Validated original signed v0.2.6/code17 AAB, SHA256 and fixed signer.")
+          PY
+      - name: Authenticate with existing GitHub to Google Play federation
+        id: wif
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+          export_environment_variables: false
+          cleanup_credentials: true
+      - name: Read current Play status and refuse duplicate code17 before upload
+        env:
+          PLAY_ACCESS_TOKEN: ${{ steps.wif.outputs.access_token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release/play_publish.py check --track alpha --report play-v026-before-recovery.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          info=json.loads(Path("play-v026-before-recovery.json").read_text())
+          assert info.get("status")=="checked" and info.get("track")=="alpha"
+          codes=info["used_version_codes"]
+          if 17 in codes or codes and max(codes) >= 17:
+              raise SystemExit("Code 17 already exists or a higher version is present: upload prohibited.")
+          alpha=[t for t in info["tracks"] if t["track"]=="alpha"]
+          if len(alpha)!=1 or alpha[0]["releases"]!=[{"status":"completed","version_codes":[16]}]:
+              raise SystemExit("Alpha release changed since v0.2.5: upload prohibited.")
+          print("Safe to proceed with a single alpha-only upload, no code17 already present.")
+          PY
+      - name: Resumable upload to existing alpha only - no automatic retry
+        env:
+          PLAY_ACCESS_TOKEN: ${{ steps.wif.outputs.access_token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release/play_publish.py deploy --track alpha \
+            --upload-protocol resumable \
+            --bundle play-dist/GalliPick-v0.2.6-release.aab \
+            --manifest play-dist/manifest.json \
+            --notes docs/play-store/release-notes-ko.txt \
+            --report play-v026-resumable-report.json
+      - name: Preserve status evidence without credentials
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GalliPick-v0.2.6-resumable-recovery-evidence
+          path: |
+            play-v026-before-recovery.json
+            play-v026-resumable-report.json
+          retention-days: 14
+          if-no-files-found: warn
