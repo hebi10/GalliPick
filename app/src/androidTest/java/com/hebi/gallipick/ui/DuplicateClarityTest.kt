@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
 class DuplicateClarityTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun threeDuplicateGroupsExposeCompactPreviewStacksWithoutSelectingFiles() {
+    @Test fun threeDuplicateGroupsExposeHorizontalRowsWithoutSelectingFiles() {
         val groups = (1..3).map { index ->
             DuplicateGroup(
                 "preview-group-$index",
@@ -48,10 +48,41 @@ class DuplicateClarityTest {
             }
         } }
         val list = compose.onNodeWithContentDescription("중복 파일 목록")
-        list.performScrollToNode(hasContentDescription("중복 묶음 2 미리보기"))
-        compose.onNodeWithContentDescription("중복 묶음 2 미리보기").assertIsDisplayed().performClick()
+        list.performScrollToNode(hasContentDescription("중복 묶음 2 비교"))
+        compose.onNodeWithContentDescription("중복 묶음 2 파일 가로 목록").assertExists()
+        compose.onNodeWithContentDescription("중복 묶음 2 비교").assertIsDisplayed().performClick()
         compose.onNodeWithContentDescription("비교 닫기").assertIsDisplayed()
         compose.runOnIdle { assertFalse(trashRequested) }
+    }
+
+    @Test fun keeperFirstHorizontalCarouselScrollsThroughFiveCopiesWithoutMovingFiles() {
+        val items = (1L..5L).map { media(it, "long_example_duplicate_filename_$it.mp4") }
+        val group = DuplicateGroup("five-copies", items)
+        var moved = false
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(1f)) {
+                Box(Modifier.requiredSize(360.dp, 760.dp)) {
+                    DuplicatesScreenContent(
+                        AppUiState(access = MediaAccess.FULL, items = items, duplicates = listOf(group),
+                            duplicateKeepers = mapOf(group.hash to items[2].uri)),
+                        { moved = true }, {}, {}, actions(),
+                    )
+                }
+            }
+        } }
+        val list = compose.onNodeWithContentDescription("중복 파일 목록")
+        list.performScrollToNode(hasText("중복 묶음 1 · 5개"))
+        val carousel = compose.onNodeWithContentDescription("중복 묶음 1 파일 가로 목록").assertExists()
+        carousel.performScrollToNode(hasText(items[2].displayName))
+        val keeper = compose.onNodeWithText(items[2].displayName)
+        keeper.assertIsDisplayed()
+        carousel.performScrollToNode(hasText(items.last().displayName))
+        compose.onNodeWithText(items.last().displayName).assertIsDisplayed()
+        compose.onNodeWithContentDescription("${items.last().displayName}, ${items.last().relativePath} 정리 후보 선택")
+            .assertIsDisplayed().assertIsOff()
+        compose.runOnIdle { assertFalse(moved) }
+        carousel.performScrollToNode(hasText(items[2].displayName))
+        keeper.assertIsDisplayed()
     }
 
     @Test fun portraitComparisonTabsExposeBothFileNamesBeforeSwitching() {
@@ -89,20 +120,21 @@ class DuplicateClarityTest {
         list.performScrollToNode(hasText("중복 묶음 1 · 4개"))
         compose.onNodeWithText("중복 묶음 1 · 4개").assertIsDisplayed()
         compose.onNodeWithText("정리 후보 1개 · ${bytesLabel(duplicateBytes(listOf(candidate)))}").assertIsDisplayed()
+        val carousel = compose.onNodeWithContentDescription("중복 묶음 1 파일 가로 목록")
         for (kept in listOf(keeper, protected, favorite)) {
-            list.performScrollToNode(hasText(kept.displayName))
+            carousel.performScrollToNode(hasText(kept.displayName))
             compose.onNodeWithContentDescription("${kept.displayName}, ${kept.relativePath} 정리 후보 선택").assertDoesNotExist()
             compose.onNodeWithContentDescription("${kept.displayName} 남김").assertIsDisplayed().assertHasNoClickAction()
                 .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.ToggleableState))
         }
         val candidateDescription = "${candidate.displayName}, ${candidate.relativePath} 정리 후보 선택"
-        list.performScrollToNode(hasContentDescription(candidateDescription))
+        carousel.performScrollToNode(hasContentDescription(candidateDescription))
         compose.onNodeWithContentDescription(candidateDescription).performClick()
         compose.runOnIdle { assertEquals(setOf(candidate.uri), state.value.selected) }
         // The selection bar resizes the lazy list, so reacquire its possibly recreated checkbox.
-        list.performScrollToNode(hasContentDescription(candidateDescription))
+        carousel.performScrollToNode(hasContentDescription(candidateDescription))
         compose.onNodeWithContentDescription(candidateDescription).assertIsDisplayed().assertIsOn()
-        list.performScrollToNode(hasText("이동 대상 · 선택됨"))
+        carousel.performScrollToNode(hasText("이동 대상 · 선택됨"))
         compose.onNodeWithText("이동 대상 · 선택됨").assertIsDisplayed()
         compose.runOnIdle { assertTrue(requested.isEmpty()) }
         compose.onNodeWithText("선택한 1개 휴지통으로 이동").assertIsDisplayed().performClick()
