@@ -5,7 +5,7 @@
 ## 현재 구현·검증 상태 (2026-11-07)
 
 - 디자인 8-A~8-G는 [PR #45~#51](https://github.com/hebi10/GalliPick/pulls?q=is%3Apr+is%3Amerged)로 `main`에 병합되었습니다. [Android verification](https://github.com/hebi10/GalliPick/actions/runs/42357166164), [기기 테스트](https://github.com/hebi10/GalliPick/actions/runs/42357166151), [5개 환경·155장 화면 감사](https://github.com/hebi10/GalliPick/actions/runs/42357162580)가 성공했습니다.
-- 신규 릴리스 소스는 `v0.2.6 / versionCode 17`입니다. 기존 비공개 테스트 `alpha`에만 제출하며, 실제 Google Play API 수락·심사·테스터 설치 가능 상태는 별도 결과로 확인합니다. 기존 v0.2.5/code16은 [PR #39](https://github.com/hebi10/GalliPick/pull/39)로 제출되었습니다.
+- **v0.2.6 / versionCode 17을 기존 Google Play 비공개 테스트 `alpha`에 제출했습니다.** [복구 배포 #42381354767](https://github.com/hebi10/GalliPick/actions/runs/42381354767)의 `status=committed`, `api_accepted=true`, `track_verified=true`를 확인했습니다. 기존 서명키를 유지하고, 내부·공개·프로덕션 트랙은 변경하지 않았습니다. Google 심사 승인·테스터 설치 가능 여부는 별도 확인이 필요합니다.
 - [8-G 최종 캡처 자료](https://drive.google.com/drive/folders/1RHDWY02uR5tYmorOH-ptFqwg4vR7hkU7)와 [8단계 기획서](https://docs.google.com/document/d/18IF_iIwytQZv5xVV62yZ3ZV4Onk6ytwBy5gkca8Md3Y/edit)에서 실제 화면과 보존 정책을 확인할 수 있습니다.
 - 남은 항목은 [실기기 QA #40](https://github.com/hebi10/GalliPick/issues/40), [테스터 설치·심사 확인 #42](https://github.com/hebi10/GalliPick/issues/42)입니다. 자동 에뮬레이터 검증을 실제 삼성 기기 검증으로 간주하지 않습니다.
 
