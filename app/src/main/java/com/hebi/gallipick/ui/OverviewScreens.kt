@@ -213,7 +213,7 @@ private fun HomeQuickActions(
         HomeShortcut("용량 큰 파일", imageRes = R.drawable.gp_video, onClick = {
             browse(MediaFilter(minSizeBytes = 100L * 1024 * 1024, sortField = SortField.SIZE))
         }),
-        HomeShortcut("오래된 파일", vectorIcon = Icons.Rounded.DateRange, onClick = {
+        HomeShortcut("오래된 파일", imageRes = R.drawable.gp_old_files, onClick = {
             browse(MediaFilter(
                 fromDateMs = 1L, toDateMs = oneYearAgo,
                 sortField = SortField.CAPTURED, sortDirection = SortDirection.ASCENDING,
