@@ -146,7 +146,7 @@ internal fun FilterDialogContent(
     var sortField by remember(current) { mutableStateOf(current.sortField) }
     var sortDirection by remember(current) { mutableStateOf(current.sortDirection) }
     var error by remember { mutableStateOf<String?>(null) }
-    var quickDateSelection by remember(current) { mutableStateOf<String?>(null) }
+    var quickDateSelection by remember(current) { mutableStateOf(matchingDatePreset(current.fromDateMs, current.toDateMs)) }
     var calendarField by remember { mutableStateOf<String?>(null) }
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
@@ -181,6 +181,8 @@ internal fun FilterDialogContent(
             }
         }
         FilterGroup("날짜 범위") {
+            Text("${dateFieldLabel(dateField)} 기준", style = MaterialTheme.typography.titleSmall, color = Ink)
+            Text(dateBasisHelp(dateField), color = Muted, style = MaterialTheme.typography.bodySmall)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -193,6 +195,12 @@ internal fun FilterDialogContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                FilterChoice("오늘", quickDateSelection == "today") {
+                    val today = dateText(Calendar.getInstance().timeInMillis)
+                    fromDate = today
+                    toDate = today
+                    quickDateSelection = "today"
+                }
                 FilterChoice("최근 7일", quickDateSelection == "7") {
                     val end = Calendar.getInstance()
                     toDate = dateText(end.timeInMillis)
@@ -210,7 +218,7 @@ internal fun FilterDialogContent(
                 FilterChoice("전체 기간", fromDate.isBlank() && toDate.isBlank()) {
                     fromDate = ""
                     toDate = ""
-                    quickDateSelection = null
+                    quickDateSelection = "all"
                 }
                 FilterChoice("이번 달", quickDateSelection == "month") {
                     val today = Calendar.getInstance()
@@ -229,13 +237,17 @@ internal fun FilterDialogContent(
                     toDate = dateText(previous.timeInMillis)
                     quickDateSelection = "previous"
                 }
+                FilterChoice("직접 선택", quickDateSelection == "custom" && (fromDate.isNotBlank() || toDate.isNotBlank())) {
+                    quickDateSelection = "custom"
+                    calendarField = "start"
+                }
             }
             FilterFieldPair(
                 first = { fieldModifier ->
-                    FilterDateInput("시작일", fromDate, { fromDate = it; quickDateSelection = null }, fieldModifier) { calendarField = "start" }
+                    FilterDateInput("시작일", fromDate, { fromDate = it; quickDateSelection = "custom" }, fieldModifier) { calendarField = "start" }
                 },
                 second = { fieldModifier ->
-                    FilterDateInput("종료일", toDate, { toDate = it; quickDateSelection = null }, fieldModifier) { calendarField = "end" }
+                    FilterDateInput("종료일", toDate, { toDate = it; quickDateSelection = "custom" }, fieldModifier) { calendarField = "end" }
                 },
             )
             Text(
@@ -364,7 +376,7 @@ internal fun FilterDialogContent(
                 onDismiss = { calendarField = null },
                 onSelect = { selected ->
                     if (field == "start") fromDate = selected else toDate = selected
-                    quickDateSelection = null
+                    quickDateSelection = "custom"
                     calendarField = null
                 },
             )
@@ -691,6 +703,39 @@ private fun parseBound(text: String, multiplier: Double, label: String, original
 
 private fun checkOrder(minimum: Long?, maximum: Long?, label: String) {
     require(minimum == null || maximum == null || minimum <= maximum) { "$label: 최소값이 최대값보다 클 수 없습니다." }
+}
+
+private fun dateBasisHelp(field: DateField): String = when (field) {
+    DateField.CAPTURED -> "촬영 정보가 있으면 그 날짜를 사용하고, 없으면 기기에 추가된 날짜를 사용합니다."
+    DateField.ADDED -> "기기 미디어 목록에 추가된 날짜입니다. 원본 촬영일과 다를 수 있습니다."
+    DateField.MODIFIED -> "파일이 마지막으로 수정된 날짜입니다. 촬영일과 다를 수 있습니다."
+}
+
+private fun matchingDatePreset(from: Long?, to: Long?): String {
+    if (from == null && to == null) return "all"
+    if (from == null || to == null) return "custom"
+    val start = dateText(from)
+    val end = dateText(to)
+    val today = Calendar.getInstance()
+    val now = dateText(today.timeInMillis)
+    val last7 = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -6) }
+    val last30 = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -29) }
+    val firstOfMonth = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }
+    val previous = Calendar.getInstance().apply {
+        set(Calendar.DAY_OF_MONTH, 1)
+        add(Calendar.MONTH, -1)
+    }
+    val previousStart = dateText(previous.timeInMillis)
+    previous.set(Calendar.DAY_OF_MONTH, previous.getActualMaximum(Calendar.DAY_OF_MONTH))
+    val previousEnd = dateText(previous.timeInMillis)
+    return when {
+        start == now && end == now -> "today"
+        start == dateText(last7.timeInMillis) && end == now -> "7"
+        start == dateText(last30.timeInMillis) && end == now -> "30"
+        start == dateText(firstOfMonth.timeInMillis) && end == now -> "month"
+        start == previousStart && end == previousEnd -> "previous"
+        else -> "custom"
+    }
 }
 
 private fun dateText(value: Long?): String = value?.let {
