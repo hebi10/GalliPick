@@ -299,10 +299,6 @@ private fun DuplicateHorizontalMediaCard(
     val candidate = item.uri in roles.candidateUris
     val checked = candidate && item.uri in selected
     val borderColor = if (isKeeper || checked) Primary else Line
-    val keeperAction: @Composable () -> Unit = {
-        if (!isKeeper) TextAction("남기기", onChooseKeeper,
-            Modifier.semantics { contentDescription = "${item.displayName} 남길 파일로 지정" })
-    }
     val candidateControl: @Composable () -> Unit = {
         if (candidate) {
             SelectBox(checked, description = "${item.displayName}, ${item.relativePath} 정리 후보 선택",
@@ -327,16 +323,14 @@ private fun DuplicateHorizontalMediaCard(
     ) {
         Box(
             Modifier.fillMaxWidth().height(if (compact) 68.dp else 116.dp)
-                .clip(RoundedCornerShape(10.dp)).plainClick(action = onCompare),
+                .clip(RoundedCornerShape(10.dp)),
         ) {
-            MediaThumbnail(item, Modifier.fillMaxSize())
-            if (compact) {
-                Box(Modifier.align(Alignment.TopEnd)) { candidateControl() }
-                if (!isKeeper) IconAction(
-                    "${item.displayName} 남길 파일로 지정", Icons.Rounded.PushPin,
-                    Modifier.align(Alignment.BottomStart).background(Panel, RoundedCornerShape(24.dp)),
-                ) { onChooseKeeper() }
-            }
+            MediaThumbnail(item, Modifier.fillMaxSize().plainClick(action = onCompare))
+            Box(Modifier.align(Alignment.TopEnd)) { candidateControl() }
+            if (!isKeeper) IconAction(
+                "${item.displayName} 남길 파일로 지정", Icons.Rounded.PushPin,
+                Modifier.align(Alignment.BottomStart).background(Panel, RoundedCornerShape(24.dp)),
+            ) { onChooseKeeper() }
         }
         Text(
             item.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -354,11 +348,6 @@ private fun DuplicateHorizontalMediaCard(
             style = MaterialTheme.typography.labelSmall,
             color = if (isKeeper) Primary else if (checked) Ink else Muted,
         )
-        if (!compact) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            candidateControl()
-            keeperAction()
-        }
     }
 }
 
