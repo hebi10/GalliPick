@@ -2,11 +2,11 @@
 
 사진·동영상을 조건으로 찾고 완전히 같은 사본을 안전하게 정리하는 Android 앱입니다.
 
-## 현재 구현·검증 상태 (2026-11-06)
+## 현재 구현·검증 상태 (2026-11-07)
 
-- 디자인 7-A~7-G는 [PR #31~#38](https://github.com/hebi10/GalliPick/pulls?q=is%3Apr+is%3Amerged)으로 `main`에 병합되었고, 휴대폰·태블릿 5개 환경의 총 155장 네이티브 화면 감사가 성공했습니다.
-- 최신 릴리스 소스는 `v0.2.5 / versionCode 16`이며, 기존 비공개 테스트 `alpha`에만 배포하도록 [PR #39](https://github.com/hebi10/GalliPick/pull/39)를 병합했습니다. 제출 보고서와 Play 심사·테스터 제공 상태는 별도로 확인합니다.
-- [7-G 최종 화면 검증](https://github.com/hebi10/GalliPick/actions/runs/42207673342), [원본 시안·캡처 자료](https://drive.google.com/drive/folders/1Eki5scRxOvYr2559DCt9osEDeDX-lZRY).
+- 디자인 8-A~8-G는 [PR #45~#51](https://github.com/hebi10/GalliPick/pulls?q=is%3Apr+is%3Amerged)로 `main`에 병합되었습니다. [Android verification](https://github.com/hebi10/GalliPick/actions/runs/42357166164), [기기 테스트](https://github.com/hebi10/GalliPick/actions/runs/42357166151), [5개 환경·155장 화면 감사](https://github.com/hebi10/GalliPick/actions/runs/42357162580)가 성공했습니다.
+- 신규 릴리스 소스는 `v0.2.6 / versionCode 17`입니다. 기존 비공개 테스트 `alpha`에만 제출하며, 실제 Google Play API 수락·심사·테스터 설치 가능 상태는 별도 결과로 확인합니다. 기존 v0.2.5/code16은 [PR #39](https://github.com/hebi10/GalliPick/pull/39)로 제출되었습니다.
+- [8-G 최종 캡처 자료](https://drive.google.com/drive/folders/1RHDWY02uR5tYmorOH-ptFqwg4vR7hkU7)와 [8단계 기획서](https://docs.google.com/document/d/18IF_iIwytQZv5xVV62yZ3ZV4Onk6ytwBy5gkca8Md3Y/edit)에서 실제 화면과 보존 정책을 확인할 수 있습니다.
 - 남은 항목은 [실기기 QA #40](https://github.com/hebi10/GalliPick/issues/40), [테스터 설치·심사 확인 #42](https://github.com/hebi10/GalliPick/issues/42)입니다. 자동 에뮬레이터 검증을 실제 삼성 기기 검증으로 간주하지 않습니다.
 
 ## Google Play 자동 배포
@@ -23,7 +23,7 @@
 
 ## 서명 APK·AAB
 
-현재 릴리스 소스 v0.2.5(code 16)의 서명 APK·AAB와 검증 보고서는 [v0.2.5 테스트 배포 실행](https://github.com/hebi10/GalliPick/actions/runs/42231012844)의 **Artifacts**에서 검증 완료 후 확인합니다. 이전 버전은 [Play testing deployment](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)의 실행 이력을 사용합니다. APK artifact에는 APK·체크섬, AAB artifact에는 AAB·체크섬·공개 빌드 근거가 포함되며 보관 기간은 14일입니다. 버전 태그 또는 별도 `Public APK release` 실행으로 게시하는 공개 APK는 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 확인합니다.
+새 릴리스 소스 v0.2.6(code 17)의 서명 APK·AAB와 배포 보고서는 [Play testing deployment](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)에서 실제 성공한 실행의 **Artifacts**로 확인합니다. 기존 v0.2.5(code 16)는 [배포 #42231012844](https://github.com/hebi10/GalliPick/actions/runs/42231012844)에 보관되어 있습니다. 이전 버전은 [Play testing deployment](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)의 실행 이력을 사용합니다. APK artifact에는 APK·체크섬, AAB artifact에는 AAB·체크섬·공개 빌드 근거가 포함되며 보관 기간은 14일입니다. 버전 태그 또는 별도 `Public APK release` 실행으로 게시하는 공개 APK는 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 확인합니다.
 
 ## 중복 정리 개선 · v0.1.6
 
@@ -39,7 +39,7 @@
 - 설정에서 기기 설정 따르기·라이트·다크 모드를 선택하고 저장합니다.
 - 파일 상단 첫 번째 행에는 전체/사진/동영상 종류와 그리드/목록 전환, 두 번째 도구 행에는 검색·정렬·조건·추가 작업이 표시됩니다. 용량 큰/작은 순, 영상 긴/짧은 순을 포함한 14가지 정렬을 제공합니다.
 - 아래로 스크롤하면 상단이 접히고 위로 올리면 다시 표시됩니다. 좁은 창과 큰 글씨에서도 도구와 파일 목록의 공간을 확보합니다.
-- 넓고 충분히 높은 창에서는 두 사본을 나란히 비교합니다. 작은 창은 A/B 전환을 사용하며 재생·메타데이터·보관·보호·후보 선택을 화면 크기에 맞춰 배치합니다. 비교 영상은 한 번에 하나만 재생합니다.
+- 중복 파일은 남길 파일을 맨 앞에 둔 가로 목록으로 비교하고, 선택한 파일 하나만 크게 미리 봅니다. 남길 파일 변경은 별도 버튼으로 실행하며, 비교 영상은 한 번에 하나만 재생합니다.
 
 ## 사용성·안전성 보완 · v0.1.2
 
