@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import re
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from signing_bundle import ReleaseError
@@ -72,6 +72,71 @@ class PlayClient:
             return False
 
 
+
+    def upload_bundle_resumable(self, edit, payload, report=None):
+        """Single-session bundle upload. Never starts a second session after an uncertain result."""
+        if not isinstance(edit, str) or not edit.startswith(EDITS + "/") or not isinstance(payload, bytes) or not payload:
+            raise ReleaseError("A valid Play edit and nonempty verified bundle are required.")
+        upload_path = "/resumable/upload" + edit + "/bundles?uploadType=resumable"
+        if report is not None:
+            report.update(upload_protocol="resumable", upload_stage="session_start")
+        initial = Request(
+            ROOT + upload_path, data=b"", method="POST",
+            headers={
+                "Authorization": "Bearer " + self.token,
+                "Accept": "application/json",
+                "Content-Type": "application/json; charset=UTF-8",
+                "X-Upload-Content-Type": "application/octet-stream",
+                "X-Upload-Content-Length": str(len(payload)),
+            },
+        )
+        try:
+            with self.transport(initial, timeout=180) as response:
+                location = response.headers.get("Location") if response.headers else None
+        except HTTPError as error:
+            raise ApiError(error.code) from None
+        except (URLError, OSError, HTTPException, ValueError, UnicodeError):
+            raise ApiError() from None
+        if not isinstance(location, str):
+            raise ReleaseError("Google Play did not return a resumable upload session.")
+        parsed = urlsplit(location)
+        allowed_path = (
+            "/resumable/upload" + edit + "/bundles",
+            "/upload" + edit + "/bundles",
+        )
+        if (parsed.scheme != "https" or parsed.hostname not in {"androidpublisher.googleapis.com", "www.googleapis.com"}
+                or parsed.username is not None or parsed.password is not None or parsed.port is not None
+                or parsed.fragment or parsed.path not in allowed_path):
+            raise ReleaseError("Google Play returned an untrusted resumable upload destination.")
+        if report is not None:
+            report["upload_stage"] = "media_transfer"
+        upload = Request(
+            location, data=payload, method="PUT",
+            headers={
+                "Authorization": "Bearer " + self.token,
+                "Accept": "application/json",
+                "Content-Type": "application/octet-stream",
+                "Content-Length": str(len(payload)),
+            },
+        )
+        try:
+            with self.transport(upload, timeout=180) as response:
+                raw = response.read()
+            result = json.loads(raw) if raw else {}
+            if not isinstance(result, dict):
+                raise ValueError()
+        except HTTPError as error:
+            if report is not None:
+                report["upload_result"] = "unknown"
+            raise ApiError(error.code) from None
+        except (URLError, OSError, HTTPException, ValueError, UnicodeError):
+            if report is not None:
+                report["upload_result"] = "unknown"
+            raise ApiError() from None
+        if report is not None:
+            report["upload_stage"] = "media_transferred"
+        return result
+
 def version_code(value):
     if not (type(value) is int or isinstance(value, str) and re.fullmatch(r"[1-9][0-9]*", value)):
         raise ReleaseError("A Play version code is missing or invalid.")
@@ -129,7 +194,7 @@ def load_inputs(bundle, manifest, notes):
         raise ReleaseError("Verified AAB, matching signed provenance, manifest and plain text notes (1–500 characters) are required.") from None
 
 
-def run(client, mode, track, *, bundle=None, manifest=None, notes=None, report=None):
+def run(client, mode, track, *, bundle=None, manifest=None, notes=None, report=None, upload_protocol="media"):
     report = report if report is not None else {}
     report.update(package=PACKAGE, mode=mode, api_accepted=False, play_approval="not_confirmed", status="started")
     if (not isinstance(track, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", track)
@@ -137,6 +202,8 @@ def run(client, mode, track, *, bundle=None, manifest=None, notes=None, report=N
             or mode not in {"check", "deploy"}):
         raise ReleaseError("Select internal or an existing closed track; production, open, form-factor tracks and internal case variants are forbidden.")
     report["track"] = track
+    if upload_protocol not in {"media", "resumable"}:
+        raise ReleaseError("Unsupported bundle upload protocol.")
     inputs = load_inputs(bundle, manifest, notes) if mode == "deploy" else None
     edit = client.create_edit()
     try:
@@ -177,7 +244,12 @@ def run(client, mode, track, *, bundle=None, manifest=None, notes=None, report=N
             raise ReleaseError("The target has a draft, halted or in-progress release; resolve it in Play Console before deployment.")
         report.update(version_code=code, version_name=metadata["version_name"], source_commit=evidence["source_commit"],
                       bundle_sha256=evidence["bundle_sha256"])
-        uploaded = client.request("POST", "/upload" + edit + "/bundles?uploadType=media", payload)
+        if upload_protocol == "resumable":
+            uploaded = client.upload_bundle_resumable(edit, payload, report)
+        else:
+            report["upload_stage"] = "media_transfer"
+            uploaded = client.request("POST", "/upload" + edit + "/bundles?uploadType=media", payload)
+        report["upload_stage"] = "bundle_uploaded"
         if version_code(uploaded.get("versionCode")) != code or uploaded.get("sha256") != evidence["bundle_sha256"]:
             raise ReleaseError("Google Play's uploaded bundle version or SHA256 does not match the verified artifact.")
         target = edit + "/tracks/" + quote(track, safe="")
@@ -221,6 +293,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("check", "deploy"))
     parser.add_argument("--track", default="internal")
+    parser.add_argument("--upload-protocol", choices=("media", "resumable"), default="media")
     parser.add_argument("--report", type=Path, required=True)
     for argument in ("bundle", "manifest", "notes"):
         parser.add_argument("--" + argument, type=Path)
@@ -228,7 +301,8 @@ def main(argv=None):
     report = {"package": PACKAGE, "status": "failed", "api_accepted": False, "play_approval": "not_confirmed"}
     try:
         client = PlayClient(os.environ.get("PLAY_ACCESS_TOKEN", ""))
-        run(client, args.mode, args.track, bundle=args.bundle, manifest=args.manifest, notes=args.notes, report=report)
+        run(client, args.mode, args.track, bundle=args.bundle, manifest=args.manifest, notes=args.notes, report=report,
+            upload_protocol=args.upload_protocol)
         print("Play configuration checked." if args.mode == "check" else
               "Commit accepted by Google Play API and track verified. Play approval and tester availability are not confirmed.")
     except ReleaseError as error:
