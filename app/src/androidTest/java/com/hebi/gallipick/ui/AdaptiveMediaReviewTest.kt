@@ -49,7 +49,7 @@ class AdaptiveMediaReviewTest {
         compose.onNodeWithContentDescription("중복 파일 가로 비교 목록").assertIsDisplayed()
         compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertIsDisplayed()
         focusComparisonFile("protected.mp4")
-        compose.onNodeWithText("남길 파일 · 보호됨").assertIsDisplayed()
+        compose.onNode(hasText("남길 파일 · 보호됨") and hasAnyAncestor(hasContentDescription("선택 파일 파일 비교 패널"))).assertIsDisplayed()
         compose.onNodeWithContentDescription("선택 파일 정리 후보 선택").assertDoesNotExist()
         saveScreenshot("duplicate-compare-wide-dark")
     }
@@ -71,7 +71,7 @@ class AdaptiveMediaReviewTest {
         val movedCard = compose.onNodeWithContentDescription("third.mp4 비교 대상").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val previousCard = compose.onNodeWithContentDescription("first.mp4 비교 대상").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue("New keeper should be first", movedCard.left < previousCard.left)
-        compose.onNodeWithText("남길 파일 · 직접 지정").assertIsDisplayed()
+        compose.onNode(hasText("남길 파일 · 직접 지정") and hasAnyAncestor(hasContentDescription("선택 파일 파일 비교 패널"))).assertIsDisplayed()
         compose.onNodeWithContentDescription("선택 파일 정리 후보 선택").assertDoesNotExist()
     }
 
@@ -121,7 +121,7 @@ class AdaptiveMediaReviewTest {
             }
         } }
         focusComparisonFile("second-protected.mp4")
-        compose.onNodeWithText("남길 파일 · 보호됨").assertIsDisplayed()
+        compose.onNode(hasText("남길 파일 · 보호됨") and hasAnyAncestor(hasContentDescription("선택 파일 파일 비교 패널"))).assertIsDisplayed()
         compose.onNodeWithContentDescription("선택 파일 정리 후보 선택").assertDoesNotExist()
         focusComparisonFile("first-protected.mp4")
         compose.runOnIdle { assertFalse(changed) }
@@ -184,7 +184,7 @@ class AdaptiveMediaReviewTest {
         focusComparisonFile("second.mp4")
         scrollComparisonControlIntoView("선택 파일 정리 후보 선택").assertIsOn()
         scrollComparisonControlIntoView("선택 파일 보호").performClick()
-        compose.onNodeWithText("남길 파일 · 보호됨").assertIsDisplayed()
+        compose.onNode(hasText("남길 파일 · 보호됨") and hasAnyAncestor(hasContentDescription("선택 파일 파일 비교 패널"))).assertIsDisplayed()
         compose.onNodeWithContentDescription("선택 파일 정리 후보 선택").assertDoesNotExist()
         compose.onNodeWithContentDescription("선택 파일 보호 해제").assertIsEnabled()
         compose.runOnIdle { assertEquals(original.items[1].uri, changed) }
