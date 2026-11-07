@@ -119,7 +119,7 @@ class DuplicateClarityTest {
         val list = compose.onNodeWithContentDescription("중복 파일 목록")
         list.performScrollToNode(hasText("중복 묶음 1 · 4개"))
         compose.onNodeWithText("중복 묶음 1 · 4개").assertIsDisplayed()
-        compose.onNodeWithText("정리 후보 1개 · ${bytesLabel(duplicateBytes(listOf(candidate)))}").assertIsDisplayed()
+        compose.onNodeWithText("정리 후보 1개 · ${bytesLabel(duplicateBytes(listOf(candidate)))}").performScrollTo().assertIsDisplayed()
         val carousel = compose.onNodeWithContentDescription("중복 묶음 1 파일 가로 목록")
         for (kept in listOf(keeper, protected, favorite)) {
             carousel.performScrollToNode(hasText(kept.displayName))
