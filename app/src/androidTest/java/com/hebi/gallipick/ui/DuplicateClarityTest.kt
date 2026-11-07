@@ -246,11 +246,14 @@ class DuplicateClarityTest {
         val populated = AppUiState(access = MediaAccess.FULL, items = groups.flatMap { it.items }, duplicates = groups)
         val state = mutableStateOf(populated)
         compose.setContent { GalliPickTheme { DuplicatesScreenContent(state.value, {}, {}, {}, actions()) } }
-        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("copy-35.mp4"))
+        val group35Description = "중복 묶음 36 파일 가로 목록"
+        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasContentDescription(group35Description))
+        compose.onNodeWithContentDescription(group35Description).performScrollToNode(hasText("copy-35.mp4"))
         compose.onNodeWithText("copy-35.mp4").assertIsDisplayed()
         compose.runOnIdle { state.value = populated.copy(loading = true, items = emptyList(), duplicates = emptyList()) }
         compose.onNodeWithText("미디어를 불러오고 있습니다").assertIsDisplayed()
         compose.runOnIdle { state.value = populated }
+        compose.onNodeWithContentDescription(group35Description).assertIsDisplayed()
         compose.onNodeWithText("copy-35.mp4").assertIsDisplayed()
     }
 
