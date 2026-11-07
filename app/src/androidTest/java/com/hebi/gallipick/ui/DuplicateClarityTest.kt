@@ -253,7 +253,12 @@ class DuplicateClarityTest {
         compose.runOnIdle { state.value = populated.copy(loading = true, items = emptyList(), duplicates = emptyList()) }
         compose.onNodeWithText("미디어를 불러오고 있습니다").assertIsDisplayed()
         compose.runOnIdle { state.value = populated }
-        compose.onNodeWithContentDescription(group35Description).assertIsDisplayed()
+        val restoredNearDeepGroup = (31..37).any { number ->
+            compose.onAllNodesWithText("중복 묶음 $number · 2개").fetchSemanticsNodes().isNotEmpty()
+        }
+        assertTrue("Revalidation must restore the viewport near the previous deep group", restoredNearDeepGroup)
+        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasContentDescription(group35Description))
+        compose.onNodeWithContentDescription(group35Description).performScrollToNode(hasText("copy-35.mp4"))
         compose.onNodeWithText("copy-35.mp4").assertIsDisplayed()
     }
 
