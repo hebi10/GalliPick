@@ -299,8 +299,25 @@ private fun DuplicateHorizontalMediaCard(
     val candidate = item.uri in roles.candidateUris
     val checked = candidate && item.uri in selected
     val borderColor = if (isKeeper || checked) Primary else Line
+    val keeperAction: @Composable () -> Unit = {
+        if (!isKeeper) TextAction("남기기", onChooseKeeper,
+            Modifier.semantics { contentDescription = "${item.displayName} 남길 파일로 지정" })
+    }
+    val candidateControl: @Composable () -> Unit = {
+        if (candidate) {
+            SelectBox(checked, description = "${item.displayName}, ${item.relativePath} 정리 후보 선택",
+                onClick = onToggle)
+        } else {
+            Column(Modifier.size(48.dp).semantics { contentDescription = "${item.displayName} 남김" },
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders))
+                    Icons.Rounded.Lock else Icons.Rounded.PushPin, null, Modifier.size(20.dp), tint = Ink)
+                Text("남김", style = MaterialTheme.typography.labelSmall, color = Ink)
+            }
+        }
+    }
     Column(
-        Modifier.width(if (compact) 106.dp else 132.dp)
+        Modifier.width(if (compact) 112.dp else 132.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surface)
             .border(if (isKeeper || checked) 2.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
@@ -308,9 +325,18 @@ private fun DuplicateHorizontalMediaCard(
             .semantics { contentDescription = "${item.displayName}, ${item.relativePath}, ${roles.label(item, selected)}" },
         verticalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp),
     ) {
-        Box(Modifier.fillMaxWidth().height(if (compact) 68.dp else 116.dp)
-            .clip(RoundedCornerShape(10.dp)).plainClick(action = onCompare)) {
+        Box(
+            Modifier.fillMaxWidth().height(if (compact) 68.dp else 116.dp)
+                .clip(RoundedCornerShape(10.dp)).plainClick(action = onCompare),
+        ) {
             MediaThumbnail(item, Modifier.fillMaxSize())
+            if (compact) {
+                Box(Modifier.align(Alignment.TopEnd)) { candidateControl() }
+                if (!isKeeper) IconAction(
+                    "${item.displayName} 남길 파일로 지정", Icons.Rounded.PushPin,
+                    Modifier.align(Alignment.BottomStart).background(Panel, RoundedCornerShape(24.dp)),
+                ) { onChooseKeeper() }
+            }
         }
         Text(
             item.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -328,22 +354,10 @@ private fun DuplicateHorizontalMediaCard(
             style = MaterialTheme.typography.labelSmall,
             color = if (isKeeper) Primary else if (checked) Ink else Muted,
         )
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(0.dp)) {
-            if (candidate) {
-                SelectBox(checked,
-                    description = "${item.displayName}, ${item.relativePath} 정리 후보 선택",
-                    onClick = onToggle)
-            } else {
-                Column(Modifier.size(48.dp).semantics { contentDescription = "${item.displayName} 남김" },
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders))
-                        Icons.Rounded.Lock else Icons.Rounded.PushPin, null, Modifier.size(20.dp), tint = Ink)
-                    Text("남김", style = MaterialTheme.typography.labelSmall, color = Ink)
-                }
-            }
-            if (!isKeeper) TextAction("남기기", onChooseKeeper,
-                Modifier.semantics { contentDescription = "${item.displayName} 남길 파일로 지정" })
+        if (!compact) Row(Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            candidateControl()
+            keeperAction()
         }
     }
 }
