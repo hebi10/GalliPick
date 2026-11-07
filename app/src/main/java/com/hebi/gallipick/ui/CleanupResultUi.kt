@@ -29,6 +29,7 @@ data class CleanupOperationResult(
     val unchangedCount: Int = 0,
     val unknownCount: Int = 0,
     val requestedBytes: Long = 0,
+    val confirmedCompletedBytes: Long = 0,
 ) {
     companion object {
         fun verified(outcome: TrashOutcome, restore: Boolean, requestedCount: Int, requestedBytes: Long): CleanupOperationResult {
@@ -38,7 +39,7 @@ data class CleanupOperationResult(
                 outcome.unknown > 0 -> CleanupResultStatus.UNKNOWN
                 else -> CleanupResultStatus.FAILED
             }
-            return CleanupOperationResult(status, restore, requestedCount, outcome.completed, outcome.unchanged, outcome.unknown, requestedBytes)
+            return CleanupOperationResult(status, restore, requestedCount, outcome.completed, outcome.unchanged, outcome.unknown, requestedBytes, outcome.confirmedCompletedBytes)
         }
 
         fun cancelled(restore: Boolean, requestedCount: Int, requestedBytes: Long) =
@@ -146,6 +147,10 @@ fun CleanupResultDialog(
                                 )
                                 if (result.unchangedCount > 0) Text("미${action} ${result.unchangedCount}개", style = MaterialTheme.typography.bodySmall)
                                 if (result.unknownCount > 0) Text("확인 불가 ${result.unknownCount}개", style = MaterialTheme.typography.bodySmall)
+                                if (result.completedCount > 0) {
+                                    Text(if (result.restore) "복원 확인 파일 크기" else "휴지통 이동 확인 파일 크기", style = MaterialTheme.typography.titleSmall)
+                                    Text(bytesLabel(result.confirmedCompletedBytes), style = MaterialTheme.typography.headlineMedium, color = Ink)
+                                }
                                 Text("요청한 파일의 용량 ${bytesLabel(result.requestedBytes)}", style = MaterialTheme.typography.bodySmall, color = Muted)
                             }
                         }
@@ -153,9 +158,9 @@ fun CleanupResultDialog(
                             GalliIcon(Icons.Rounded.Info, null, Modifier.size(22.dp))
                             Text(
                                 if (result.restore)
-                                    "표시된 용량은 복원을 요청한 파일 크기의 합계입니다. 실제 복원 결과는 Android 확인 이후 다시 조회합니다."
+                                    "복원 확인 파일 크기는 Android에서 복원 상태가 재확인된 파일의 용량입니다. 요청한 전체 용량과 구분합니다."
                                 else
-                                    "표시된 용량은 요청한 파일 크기의 합계이며 실제 확보된 저장공간이 아닙니다. 휴지통 이동만으로 공간이 즉시 늘어나지는 않을 수 있습니다.",
+                                    "휴지통 이동 확인 파일 크기는 상태를 재확인한 파일의 합계이며 실제 확보된 저장공간이 아닙니다. 영구 제거 전에는 여유 공간이 늘어나지 않을 수 있습니다.",
                                 style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.weight(1f),
                             )
                         }
