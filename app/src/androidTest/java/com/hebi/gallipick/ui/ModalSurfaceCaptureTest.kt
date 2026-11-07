@@ -105,7 +105,7 @@ class ModalSurfaceCaptureTest {
             compose.onNodeWithText("재생").assertIsDisplayed()
             screenshot(output, "05-video-preview")
             compose.runOnIdle { current = Screen.COMPARE }
-            compose.onNodeWithContentDescription("A 파일 비교 패널").assertIsDisplayed()
+            compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertIsDisplayed()
             compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("사진 미리보기: ${photoA.displayName}").fetchSemanticsNodes().isNotEmpty() }
             screenshot(output, "06-duplicate-compare")
             compose.runOnIdle { current = Screen.REVIEW }
