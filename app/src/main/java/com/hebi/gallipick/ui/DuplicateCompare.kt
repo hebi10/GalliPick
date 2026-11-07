@@ -1,6 +1,9 @@
 package com.hebi.gallipick.ui
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,8 +17,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,85 +68,85 @@ internal fun DuplicateCompareContent(
 ) {
     if (group.items.size < 2) return
     val roles = duplicateRoles(group, preferredKeeperUri, protectedFolders)
-    var leftUri by rememberSaveable(group.hash, initialItemUri) { mutableStateOf(roles.keeper.uri) }
-    var rightUri by rememberSaveable(group.hash, initialItemUri) {
-        mutableStateOf(group.items.firstOrNull { it.uri == initialItemUri && it.uri != roles.keeper.uri }?.uri
-            ?: group.items.first { it.uri != roles.keeper.uri }.uri)
+    val ordered = remember(group.items, roles) {
+        (listOf(roles.keeper) + roles.kept.filterNot { it.uri == roles.keeper.uri } + roles.candidates)
+            .distinctBy { it.uri }
     }
-    var activeSlot by rememberSaveable(group.hash, initialItemUri) { mutableIntStateOf(if (initialItemUri != null && initialItemUri != roles.keeper.uri) 1 else 0) }
-    val left = group.items.firstOrNull { it.uri == leftUri } ?: roles.keeper
-    val right = group.items.firstOrNull { it.uri == rightUri && it.uri != left.uri } ?: group.items.first { it.uri != left.uri }
+    var focusedUri by rememberSaveable(group.hash, initialItemUri) {
+        mutableStateOf(initialItemUri?.takeIf { uri -> ordered.any { it.uri == uri } } ?: roles.keeper.uri)
+    }
+    val focused = ordered.firstOrNull { it.uri == focusedUri } ?: roles.keeper
+    val rowState = rememberLazyListState()
+    LaunchedEffect(roles.keeper.uri) { rowState.scrollToItem(0) }
     val coordinator = remember(group.hash) { PreviewPlaybackCoordinator() }
-    val scale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    DisposableEffect(coordinator) { onDispose { coordinator.pauseActive() } }
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val sideBySide = maxWidth >= 720.dp * scale.coerceAtMost(1.4f) && maxHeight >= 480.dp * scale
-        val short = maxHeight < 420.dp * scale
-        val showComparisonFilenames = maxHeight >= 600.dp * scale
-        val sideMetadataFits = maxWidth - 24.dp >= 560.dp * scale.coerceAtMost(1.4f)
-        val scrollBody = !sideBySide && maxHeight < (if (sideMetadataFits) 320.dp else 600.dp) * scale
-        val finitePanelHeight = if (sideMetadataFits) (220.dp * scale).coerceAtLeast(300.dp) else 520.dp * scale.coerceAtMost(1.4f)
+        val compact = maxHeight < 420.dp || maxWidth < 350.dp
+        val cardWidth = if (compact) 108.dp else 136.dp
+        val thumbnailHeight = if (compact) 72.dp else 106.dp
+        val panelHeight = if (maxHeight < 420.dp) 460.dp else if (maxWidth >= 720.dp) 510.dp else 550.dp
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (short) "사본 비교" else "남길 파일과 정리 후보 비교", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                IconAction("비교 닫기", Icons.Rounded.Close, onClick = onDismiss)
+                Text("중복 파일 비교", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                IconAction("비교 닫기", Icons.Rounded.Close, onClick = { coordinator.pauseActive(); onDismiss() })
             }
-            if (!actionsEnabled) Text("중복 결과를 다시 확인하고 있습니다. 확인 후 변경할 수 있습니다.",
-                style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.semantics { contentDescription = "중복 결과 확인 중" })
-            Column(Modifier.weight(1f).fillMaxWidth().then(if (scrollBody) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
-                Text(if (short) "파일 전체 내용이 같은 사본" else "파일 이름이 아니라 파일 전체의 SHA-256 값이 같은 사본입니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
-                if (!short) Text("정리 후보 ${roles.candidates.size}개 · 선택 ${roles.candidates.count { it.uri in selectedUris }}개. 선택만으로 이동하지 않습니다. 소리는 한 영상씩 재생합니다.", style = MaterialTheme.typography.bodySmall, color = Muted,
-                    modifier = Modifier.padding(top = 3.dp, bottom = 6.dp))
-                if (!sideBySide) PrimaryTabRow(selectedTabIndex = activeSlot) {
-                    Tab(
-                        selected = activeSlot == 0, onClick = { activeSlot = 0 },
-                        modifier = Modifier.testTag("A 비교 탭"),
-                        text = {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("A · ${roles.label(left, selectedUris).substringBefore(" · ")}", maxLines = 1)
-                                if (showComparisonFilenames) Text(
-                                    left.displayName, style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        },
-                    )
-                    Tab(
-                        selected = activeSlot == 1, onClick = { activeSlot = 1 },
-                        modifier = Modifier.testTag("B 비교 탭"),
-                        text = {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("B · ${roles.label(right, selectedUris).substringBefore(" · ")}", maxLines = 1)
-                                if (showComparisonFilenames) Text(
-                                    right.displayName, style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        },
-                    )
-                }
-                val panel: @Composable (String, MediaItem, Modifier) -> Unit = { slot, item, panelModifier ->
-                    key(slot, item.uri, item.fingerprint, item.volumeVersion) {
-                        DuplicateComparePanel(slot, item, group, roles, selectedUris, coordinator, actionsEnabled,
-                            onChooseItem = { uri ->
-                                if (slot == "A") {
-                                    if (uri == right.uri) rightUri = left.uri
-                                    leftUri = uri
-                                } else {
-                                    if (uri == left.uri) leftUri = right.uri
-                                    rightUri = uri
-                                }
-                            },
-                            onOpen = { coordinator.pauseActive(); onOpen(item) },
-                            onChooseKeeper = { onChooseKeeper(group, item.uri) }, onToggleSelection = { onToggleSelection(item.uri) },
-                            onProtect = { onProtect(item, !item.isProtected) }, modifier = panelModifier,
-                        )
+            if (!actionsEnabled) Text(
+                "중복 결과를 다시 확인하고 있습니다. 확인 후 변경할 수 있습니다.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Muted,
+                modifier = Modifier.semantics { contentDescription = "중복 결과 확인 중" },
+            )
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                Text("SHA-256 전체 내용이 같은 사본 ${ordered.size}개 · 정리 후보 ${roles.candidates.size}개",
+                    style = MaterialTheme.typography.bodySmall, color = Muted)
+                Text("파일을 누르면 아래 정보만 바뀝니다. 남길 파일은 별도 버튼으로 지정합니다.",
+                    style = MaterialTheme.typography.bodySmall, color = Muted,
+                    modifier = Modifier.padding(bottom = 8.dp))
+                LazyRow(
+                    Modifier.fillMaxWidth().semantics { contentDescription = "중복 파일 가로 비교 목록" },
+                    state = rowState,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp),
+                ) {
+                    items(ordered, key = { it.uri }) { item ->
+                        val active = focused.uri == item.uri
+                        Column(
+                            Modifier.width(cardWidth)
+                                .border(if (active) 2.dp else 1.dp, if (active) Primary else Line, RoundedCornerShape(10.dp))
+                                .plainClick(action = { coordinator.pauseActive(); focusedUri = item.uri })
+                                .padding(4.dp)
+                                .semantics {
+                                    contentDescription = "${item.displayName} 비교 대상"
+                                    stateDescription = if (active) "현재 보고 있는 파일" else "파일 선택 가능"
+                                },
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            MediaThumbnail(item, Modifier.fillMaxWidth().height(thumbnailHeight))
+                            Text(item.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelMedium)
+                            Text(roles.label(item, selectedUris), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (active) Primary else Muted)
+                        }
                     }
                 }
-                if (sideBySide) Row(Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    panel("A", left, Modifier.weight(1f).fillMaxHeight())
-                    panel("B", right, Modifier.weight(1f).fillMaxHeight())
-                } else panel(if (activeSlot == 0) "A" else "B", if (activeSlot == 0) left else right,
-                    (if (scrollBody) Modifier.height(finitePanelHeight) else Modifier.weight(1f)).fillMaxWidth().padding(vertical = 8.dp))
+                Spacer(Modifier.height(8.dp))
+                key(focused.uri, focused.fingerprint, focused.volumeVersion) {
+                    DuplicateComparePanel(
+                        slot = "선택 파일",
+                        item = focused,
+                        roles = roles,
+                        selectedUris = selectedUris,
+                        coordinator = coordinator,
+                        actionsEnabled = actionsEnabled,
+                        onOpen = { coordinator.pauseActive(); onOpen(focused) },
+                        onChooseKeeper = { onChooseKeeper(group, focused.uri) },
+                        onToggleSelection = { onToggleSelection(focused.uri) },
+                        onProtect = { onProtect(focused, !focused.isProtected) },
+                        modifier = Modifier.fillMaxWidth().height(panelHeight),
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
             }
         }
     }
@@ -153,12 +156,10 @@ internal fun DuplicateCompareContent(
 private fun DuplicateComparePanel(
     slot: String,
     item: MediaItem,
-    group: DuplicateGroup,
     roles: DuplicateRoles,
     selectedUris: Set<String>,
     coordinator: PreviewPlaybackCoordinator,
     actionsEnabled: Boolean,
-    onChooseItem: (String) -> Unit,
     onOpen: () -> Unit,
     onChooseKeeper: () -> Unit,
     onToggleSelection: () -> Unit,
@@ -172,24 +173,12 @@ private fun DuplicateComparePanel(
         shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-            val metadataBeside = maxWidth >= 560.dp * fontScale.coerceAtMost(1.4f) && maxHeight < 400.dp * fontScale
+            val metadataBeside = maxWidth >= 560.dp * fontScale.coerceAtMost(1.4f)
             // A tall portrait window should bring the decision closer, not enlarge the preview indefinitely.
             val stackedPreviewHeight = (maxHeight * .45f).coerceIn(220.dp, 280.dp)
             val header: @Composable () -> Unit = {
-                Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(roles.label(item, selectedUris), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                    var picker by remember { mutableStateOf(false) }
-                    Box {
-                        TextButton(onClick = { picker = true }, modifier = Modifier.semantics { contentDescription = "$slot 비교 파일 변경" }) { Text("비교 대상 변경") }
-                        DropdownMenu(expanded = picker, onDismissRequest = { picker = false }) {
-                            group.items.forEach { option -> DropdownMenuItem(text = {
-                                Column {
-                                    Text(option.displayName)
-                                    Text(option.relativePath.ifEmpty { "기본 폴더" }, style = MaterialTheme.typography.bodySmall, color = Muted)
-                                }
-                            }, onClick = { picker = false; onChooseItem(option.uri) }) }
-                        }
-                    }
                 }
             }
             val details: @Composable (Modifier) -> Unit = { detailModifier ->
