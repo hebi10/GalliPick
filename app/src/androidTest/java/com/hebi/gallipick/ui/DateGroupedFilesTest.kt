@@ -15,7 +15,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.DateField
-import com.hebi.gallipick.domain.MediaDateGroups
 import com.hebi.gallipick.domain.MediaFilter
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
