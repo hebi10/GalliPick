@@ -321,6 +321,7 @@ internal fun CleanupScreen(
     state: AppUiState,
     onOpenDuplicates: (() -> Unit)? = null,
     onOpenFolderStorage: (() -> Unit)? = null,
+    onOpenPhotoAnalysis: (() -> Unit)? = null,
     browse: (MediaFilter) -> Unit,
 ) {
     val suggestions = remember(state.items) { cleanupSuggestions(state.items) }
@@ -357,6 +358,15 @@ internal fun CleanupScreen(
                     icon = Icons.Rounded.CopyAll,
                     description = "중복 파일 검사 열기",
                     open = onOpenDuplicates,
+                )
+            }
+            if (onOpenPhotoAnalysis != null) {
+                CleanupNavigationRow(
+                    title = "비슷한 사진 찾기",
+                    subtitle = "사진의 시각적 특징을 기기 안에서 분석",
+                    icon = Icons.Rounded.Collections,
+                    description = "유사 사진 분석 열기",
+                    open = onOpenPhotoAnalysis,
                 )
             }
             Text(
