@@ -207,7 +207,7 @@ class Stage9GFeatureCapturesTest {
             compose.onNodeWithText("정리 기록이 없습니다").assertExists()
             screenshot(screenshots, captured, names, "11-history-empty")
 
-            compose.runOnIdle { dark = captureTheme == "dark" || captureTheme == null; screen = Screen.HISTORY_DARK }
+            compose.runOnIdle { dark = true; screen = Screen.HISTORY_DARK }
             compose.onNodeWithText("정리 기록").assertExists()
             screenshot(screenshots, captured, names, "12-history-dark")
 
