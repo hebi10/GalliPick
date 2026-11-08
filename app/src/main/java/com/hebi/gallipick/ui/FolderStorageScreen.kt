@@ -62,6 +62,7 @@ internal fun FolderStorageScreen(
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
         val wide = maxWidth >= 700.dp * fontScale
+        val compactHeight = maxHeight < 480.dp * fontScale.coerceAtMost(1.3f)
         Column(
             Modifier.widthIn(max = 760.dp).fillMaxWidth().fillMaxHeight()
                 .padding(horizontal = if (wide) 28.dp else 16.dp),
@@ -104,13 +105,13 @@ internal fun FolderStorageScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp),
                 ) {
-                    item("intro") {
+                    if (!compactHeight) item("intro") {
                         Text(
                             "어떤 폴더의 사진·동영상이 용량을 많이 차지하는지 확인하세요.",
                             style = MaterialTheme.typography.bodyMedium, color = Muted,
                         )
                     }
-                    item("summary") { FolderStorageSummaryCard(summary) }
+                    item("summary") { FolderStorageSummaryCard(summary, compactHeight) }
                     item("sort") {
                         Row(
                             Modifier.fillMaxWidth(),
@@ -139,7 +140,7 @@ internal fun FolderStorageScreen(
                         }
                     }
                     items(folders, key = { it.path }) { entry ->
-                        FolderStorageRow(entry, summary.totalBytes) { onOpenFolder(entry.path) }
+                        FolderStorageRow(entry, summary.totalBytes, compactHeight) { onOpenFolder(entry.path) }
                     }
                     item("note") {
                         Text(
@@ -156,35 +157,43 @@ internal fun FolderStorageScreen(
 }
 
 @Composable
-private fun FolderStorageSummaryCard(summary: FolderStorageSummary) {
+private fun FolderStorageSummaryCard(summary: FolderStorageSummary, compact: Boolean) {
     Row(
         Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(GalliUiMetrics.cardCorner))
-            .padding(16.dp),
+            .padding(if (compact) 10.dp else 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(52.dp).background(Mint, RoundedCornerShape(12.dp)),
+            Modifier.size(if (compact) 40.dp else 52.dp).background(Mint, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            GalliIcon(Icons.Rounded.Storage, null, Modifier.size(28.dp), tint = Ink)
+            GalliIcon(Icons.Rounded.Storage, null, Modifier.size(if (compact) 22.dp else 28.dp), tint = Ink)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("접근 가능한 사진·동영상 합계", style = MaterialTheme.typography.bodySmall, color = Muted)
-            Text(bytesLabel(summary.totalBytes), style = MaterialTheme.typography.headlineMedium, color = Ink)
-            Text(
-                "${String.format(Locale.KOREA, "%,d", summary.totalCount)}개 파일 · ${summary.folders.size}개 폴더",
-                style = MaterialTheme.typography.bodySmall, color = Muted,
-            )
+            if (compact) {
+                Text("사진·영상 ${bytesLabel(summary.totalBytes)}", style = MaterialTheme.typography.titleMedium, color = Ink)
+                Text(
+                    "접근 가능 · ${String.format(Locale.KOREA, "%,d", summary.totalCount)}개 파일 · ${summary.folders.size}개 폴더",
+                    style = MaterialTheme.typography.bodySmall, color = Muted,
+                )
+            } else {
+                Text("접근 가능한 사진·동영상 합계", style = MaterialTheme.typography.bodySmall, color = Muted)
+                Text(bytesLabel(summary.totalBytes), style = MaterialTheme.typography.headlineMedium, color = Ink)
+                Text(
+                    "${String.format(Locale.KOREA, "%,d", summary.totalCount)}개 파일 · ${summary.folders.size}개 폴더",
+                    style = MaterialTheme.typography.bodySmall, color = Muted,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun FolderStorageRow(entry: FolderStorageEntry, totalBytes: Long, open: () -> Unit) {
+private fun FolderStorageRow(entry: FolderStorageEntry, totalBytes: Long, compact: Boolean, open: () -> Unit) {
     val fraction = FolderStoragePolicy.fraction(entry, totalBytes)
     val clickable = entry.canBrowse
-    val basis = Modifier.fillMaxWidth().heightIn(min = 94.dp)
+    val basis = Modifier.fillMaxWidth().heightIn(min = if (compact) 70.dp else 94.dp)
         .clip(RoundedCornerShape(GalliUiMetrics.cardCorner))
         .background(AppSurface)
         .then(
@@ -194,13 +203,13 @@ private fun FolderStorageRow(entry: FolderStorageEntry, totalBytes: Long, open: 
             }.plainClick(action = open)
             else Modifier
         )
-        .padding(GalliUiMetrics.cardPadding)
-    Column(basis, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        .padding(if (compact) 10.dp else GalliUiMetrics.cardPadding)
+    Column(basis, verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GalliIcon(Icons.Rounded.Folder, null, Modifier.size(24.dp), tint = Primary)
+            GalliIcon(Icons.Rounded.Folder, null, Modifier.size(if (compact) 20.dp else 24.dp), tint = Primary)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(entry.displayName, style = MaterialTheme.typography.titleSmall,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
                 Text("${String.format(Locale.KOREA, "%,d", entry.count)}개", style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             Column(horizontalAlignment = Alignment.End) {
@@ -210,7 +219,7 @@ private fun FolderStorageRow(entry: FolderStorageEntry, totalBytes: Long, open: 
             if (clickable) GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(20.dp))
         }
         Box(
-            Modifier.fillMaxWidth().height(7.dp).background(Panel, RoundedCornerShape(7.dp)),
+            Modifier.fillMaxWidth().height(if (compact) 5.dp else 7.dp).background(Panel, RoundedCornerShape(7.dp)),
         ) {
             if (fraction > 0f) Box(
                 Modifier.fillMaxWidth(fraction).fillMaxHeight()
