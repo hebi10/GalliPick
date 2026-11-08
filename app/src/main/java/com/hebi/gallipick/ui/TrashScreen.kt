@@ -23,9 +23,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.RestoreFromTrash
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -79,7 +79,7 @@ internal fun TrashScreen(
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(Modifier.widthIn(max = 1040.dp).fillMaxSize().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                IconAction("뒤로", Icons.Rounded.ArrowBack, onClick = onBack)
+                IconAction("뒤로", Icons.Outlined.ArrowBack, onClick = onBack)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text("휴지통", style = MaterialTheme.typography.headlineMedium)
@@ -114,7 +114,7 @@ internal fun TrashScreen(
                         Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                             EmptyState("휴지통이 비어 있습니다",
                                 "휴지통으로 이동한 사진과 동영상이 여기에 표시됩니다.",
-                                Icons.Rounded.DeleteOutline)
+                                Icons.Outlined.DeleteOutline)
                         }
                     }
                 }
@@ -159,7 +159,7 @@ internal fun TrashScreen(
                     ActionButton(
                         "선택한 ${selectedItems.size}개 복원", onClick = { onRestore(selectedItems) },
                         modifier = Modifier.fillMaxWidth(), filled = true,
-                        enabled = selectedItems.isNotEmpty(), icon = Icons.Rounded.RestoreFromTrash,
+                        enabled = selectedItems.isNotEmpty(), icon = Icons.Outlined.RestoreFromTrash,
                     )
                 }
             }

@@ -5,8 +5,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
@@ -102,7 +102,7 @@ fun CleanupResultDialog(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("정리 작업 결과", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                        IconAction("결과 닫기", Icons.Rounded.Close, onClick = onDismiss)
+                        IconAction("결과 닫기", Icons.Outlined.Close, onClick = onDismiss)
                     }
                     val bodyScroll = key(result) { rememberScrollState() }
                     Column(
@@ -155,7 +155,7 @@ fun CleanupResultDialog(
                             }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GalliIcon(Icons.Rounded.Info, null, Modifier.size(22.dp))
+                            GalliIcon(Icons.Outlined.Info, null, Modifier.size(22.dp))
                             Text(
                                 if (result.restore)
                                     "복원 확인 파일 크기는 Android에서 복원 상태가 재확인된 파일의 용량입니다. 요청한 전체 용량과 구분합니다."

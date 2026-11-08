@@ -14,7 +14,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -159,7 +159,7 @@ internal fun DuplicatesScreenContent(
                     if (groups.isEmpty()) {
                         item("empty", span = { GridItemSpan(maxLineSpan) }) { EmptyState(
                             if (state.scan.phase == ScanPhase.COMPLETE) "확인된 중복 파일이 없습니다" else "중복 사본을 찾아보세요",
-                            if (state.scan.phase == ScanPhase.COMPLETE) "접근이 허용된 미디어에서 검사한 결과입니다." else "검사를 시작하면 같은 내용의 파일이 묶여 표시됩니다.", Icons.Rounded.CopyAll,
+                            if (state.scan.phase == ScanPhase.COMPLETE) "접근이 허용된 미디어에서 검사한 결과입니다." else "검사를 시작하면 같은 내용의 파일이 묶여 표시됩니다.", Icons.Outlined.CopyAll,
                             scene = if (state.scan.phase == ScanPhase.COMPLETE) GalliScene.COMPLETE else GalliScene.SEARCH,
                         ) }
                     } else {
@@ -203,12 +203,12 @@ internal fun DuplicatesScreenContent(
                     item { DuplicateScanSummary(state.scan, false, actions) }
                     item {
                         when {
-                            checkingComparison -> EmptyState("중복 결과를 확인하고 있습니다", "남길 파일과 정리 후보를 다시 확인한 뒤 목록을 표시합니다.", Icons.Rounded.CopyAll)
-                            state.access == MediaAccess.NONE -> EmptyState("미디어 접근이 필요합니다", "접근을 허용한 사진과 동영상에서 중복 사본을 찾습니다.", Icons.Rounded.CopyAll,
+                            checkingComparison -> EmptyState("중복 결과를 확인하고 있습니다", "남길 파일과 정리 후보를 다시 확인한 뒤 목록을 표시합니다.", Icons.Outlined.CopyAll)
+                            state.access == MediaAccess.NONE -> EmptyState("미디어 접근이 필요합니다", "접근을 허용한 사진과 동영상에서 중복 사본을 찾습니다.", Icons.Outlined.CopyAll,
                                 action = { ActionButton("접근 허용", requestAccess, filled = true) })
-                            state.catalogError != null -> EmptyState("파일을 불러오지 못했습니다", state.catalogError, Icons.Rounded.Info,
+                            state.catalogError != null -> EmptyState("파일을 불러오지 못했습니다", state.catalogError, Icons.Outlined.Info,
                                 action = { ActionButton("다시 시도", actions.refresh, filled = true) })
-                            else -> EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.", Icons.Rounded.CopyAll)
+                            else -> EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.", Icons.Outlined.CopyAll)
                         }
                     }
                 }
@@ -324,7 +324,7 @@ private fun DuplicateHorizontalMediaCard(
                 Box(Modifier.size(28.dp).background(IconContainer, RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center) {
                     GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders))
-                        Icons.Rounded.Lock else Icons.Rounded.PushPin, null, Modifier.size(17.dp), tint = Ink)
+                        Icons.Outlined.Lock else Icons.Outlined.PushPin, null, Modifier.size(17.dp), tint = Ink)
                 }
             }
         }
@@ -393,10 +393,10 @@ private fun CompactDuplicateSummary(scan: ScanState, groupCount: Int, candidates
             ActionButton(duplicateSelectionLabel(candidates.size), actions.selectRecommended,
                 Modifier.semantics { contentDescription = "중복 정리 후보 선택" }, enabled = candidates.isNotEmpty())
             when (scan.phase) {
-                ScanPhase.RUNNING, ScanPhase.QUEUED -> ActionButton("일시정지", actions.pauseScan, icon = Icons.Rounded.Pause)
-                ScanPhase.PAUSED -> ActionButton("계속 검사", actions.resumeScan, filled = true, icon = Icons.Rounded.PlayArrow)
+                ScanPhase.RUNNING, ScanPhase.QUEUED -> ActionButton("일시정지", actions.pauseScan, icon = Icons.Outlined.Pause)
+                ScanPhase.PAUSED -> ActionButton("계속 검사", actions.resumeScan, filled = true, icon = Icons.Outlined.PlayArrow)
                 ScanPhase.COMPLETE -> ActionButton("다시 검사", actions.startScan, enabled = canScan)
-                else -> ActionButton("검사 시작", actions.startScan, filled = true, enabled = canScan, icon = Icons.Rounded.Search)
+                else -> ActionButton("검사 시작", actions.startScan, filled = true, enabled = canScan, icon = Icons.Outlined.Search)
             }
         }
         if (scan.phase != ScanPhase.COMPLETE) {
@@ -430,9 +430,9 @@ private fun DuplicateScanSummary(scan: ScanState, canScan: Boolean, actions: Dup
                 if (scan.phase == ScanPhase.PAUSED) Text("일시정지 중입니다. 계속 검사를 눌러 재개할 수 있습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             when (scan.phase) {
-                ScanPhase.RUNNING, ScanPhase.QUEUED -> ActionButton("일시정지", actions.pauseScan, icon = Icons.Rounded.Pause)
-                ScanPhase.PAUSED -> ActionButton("계속 검사", actions.resumeScan, filled = true, icon = Icons.Rounded.PlayArrow)
-                else -> ActionButton("검사 시작", actions.startScan, filled = true, enabled = canScan, icon = Icons.Rounded.Search)
+                ScanPhase.RUNNING, ScanPhase.QUEUED -> ActionButton("일시정지", actions.pauseScan, icon = Icons.Outlined.Pause)
+                ScanPhase.PAUSED -> ActionButton("계속 검사", actions.resumeScan, filled = true, icon = Icons.Outlined.PlayArrow)
+                else -> ActionButton("검사 시작", actions.startScan, filled = true, enabled = canScan, icon = Icons.Outlined.Search)
             }
         }
         DuplicateScanProgress(scan)
@@ -462,13 +462,13 @@ private fun DuplicateSelectionBar(selected: List<MediaItem>, clear: () -> Unit, 
             if (maxWidth >= 620.dp) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("${selected.size}개 선택 · 파일 용량 ${bytesLabel(duplicateBytes(selected))}", Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyMedium)
                 TextAction("선택 해제", clear)
-                ActionButton("선택한 ${selected.size}개 휴지통으로 이동", trash, filled = true, icon = Icons.Rounded.DeleteOutline)
+                ActionButton("선택한 ${selected.size}개 휴지통으로 이동", trash, filled = true, icon = Icons.Outlined.DeleteOutline)
             } else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("${selected.size}개 선택 · ${bytesLabel(duplicateBytes(selected))}", Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyMedium)
                     TextAction("선택 해제", clear)
                 }
-                ActionButton("선택한 ${selected.size}개 휴지통으로 이동", trash, Modifier.fillMaxWidth(), filled = true, icon = Icons.Rounded.DeleteOutline)
+                ActionButton("선택한 ${selected.size}개 휴지통으로 이동", trash, Modifier.fillMaxWidth(), filled = true, icon = Icons.Outlined.DeleteOutline)
             }
         }
     }

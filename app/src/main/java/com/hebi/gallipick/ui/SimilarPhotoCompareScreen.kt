@@ -9,7 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,7 +49,7 @@ internal fun SimilarPhotoCompareScreen(
         val thumbnailWidth = if (maxWidth < 350.dp) 102.dp else 132.dp
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconAction("유사 사진 목록으로 돌아가기", Icons.Rounded.ArrowBack, onClick = onBack)
+                IconAction("유사 사진 목록으로 돌아가기", Icons.Outlined.ArrowBack, onClick = onBack)
                 Text(title, style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).semantics { heading() })
             }
@@ -118,7 +118,7 @@ internal fun SimilarPhotoCompareScreen(
                             style = MaterialTheme.typography.bodySmall, color = Muted)
                     }
                     TextButton(onClick = { onOpenMedia(focused) }, modifier = Modifier.fillMaxWidth()) {
-                        GalliIcon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp))
+                        GalliIcon(Icons.Outlined.OpenInNew, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("원본 사진 외부 앱으로 열기")
                     }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Text
@@ -167,6 +168,72 @@ class GalliDesignSystemTest {
                 image.recycle()
             }
         }
+    }
+
+    @Test fun actionAndNavigationIconsShareTheOutlinedFamily() {
+        val actions = listOf(
+            androidx.compose.material.icons.Icons.Outlined.Search,
+            androidx.compose.material.icons.Icons.Outlined.Tune,
+            androidx.compose.material.icons.Icons.Outlined.Check,
+            androidx.compose.material.icons.Icons.Outlined.Star,
+            androidx.compose.material.icons.Icons.Outlined.Lock,
+            androidx.compose.material.icons.Icons.Outlined.Shield,
+            androidx.compose.material.icons.Icons.Outlined.DeleteOutline,
+            androidx.compose.material.icons.Icons.Outlined.RestoreFromTrash,
+            androidx.compose.material.icons.Icons.Outlined.Folder,
+            androidx.compose.material.icons.Icons.Outlined.CalendarMonth,
+            androidx.compose.material.icons.Icons.Outlined.PlayArrow,
+            androidx.compose.material.icons.Icons.Outlined.Pause,
+            androidx.compose.material.icons.Icons.Outlined.Close,
+        )
+        val destinations = Destination.entries.map { it.icon }
+        (actions + destinations).forEach { icon ->
+            assertTrue("${icon.name} must be an Outlined material icon", icon.name.startsWith("Outlined."))
+        }
+        assertEquals(4, destinations.distinct().size)
+        assertEquals(listOf("홈", "파일", "정리", "설정"), Destination.entries.map { it.title })
+    }
+
+    @Test fun highRiskIconsStayVisibleAndDistinctInDarkMode() {
+        compose.setContent {
+            GalliPickTheme(AppThemeMode.DARK) {
+                Row {
+                    GalliIcon(
+                        androidx.compose.material.icons.Icons.Outlined.Lock, null,
+                        Modifier.size(36.dp).testTag("stage10c-lock"),
+                    )
+                    GalliIcon(
+                        androidx.compose.material.icons.Icons.Outlined.DeleteOutline, null,
+                        Modifier.size(36.dp).testTag("stage10c-trash"),
+                    )
+                    GalliIcon(
+                        androidx.compose.material.icons.Icons.Outlined.RestoreFromTrash, null,
+                        Modifier.size(36.dp).testTag("stage10c-restore"),
+                    )
+                }
+            }
+        }
+        val masks = mutableListOf<Set<Int>>()
+        for (tag in listOf("stage10c-lock", "stage10c-trash", "stage10c-restore")) {
+            val bitmap = compose.onNodeWithTag(tag).assertIsDisplayed().captureToImage().asAndroidBitmap()
+            try {
+                val active = mutableSetOf<Int>()
+                for (y in 0 until bitmap.height) {
+                    for (x in 0 until bitmap.width) {
+                        if ((bitmap.getPixel(x, y) and 0x00FFFFFF) == 0x00F5F6F7) {
+                            active.add(y * bitmap.width + x)
+                        }
+                    }
+                }
+                assertTrue("$tag must remain visible", active.size > 12)
+                assertTrue("$tag must not become an opaque tile", active.size < bitmap.width * bitmap.height * .72)
+                masks.add(active)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+        assertTrue("Lock and trash must have distinct glyphs", masks[0] != masks[1])
+        assertTrue("Trash and restore must have distinct glyphs", masks[1] != masks[2])
     }
 
     @Test fun referenceTypographyBrandMarkAndOutlineTabIconsRender() {

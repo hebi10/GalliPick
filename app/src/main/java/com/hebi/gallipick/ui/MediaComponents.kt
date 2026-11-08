@@ -14,7 +14,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -65,7 +65,7 @@ internal fun MediaThumbnail(item: MediaItem, modifier: Modifier = Modifier, cont
     Box(modifier.clip(RoundedCornerShape(12.dp)).background(Panel), contentAlignment = Alignment.Center) {
         val loaded = bitmap
         if (loaded != null) Image(loaded.asImageBitmap(), contentDescription = item.displayName, modifier = Modifier.fillMaxSize(), contentScale = contentScale)
-        else GalliIcon(if (item.kind == MediaKind.VIDEO) Icons.Rounded.Videocam else Icons.Rounded.Image, "미리보기 없음", Modifier.size(30.dp), tint = Muted)
+        else GalliIcon(if (item.kind == MediaKind.VIDEO) Icons.Outlined.Videocam else Icons.Outlined.Image, "미리보기 없음", Modifier.size(30.dp), tint = Muted)
     }
 }
 
@@ -138,8 +138,8 @@ internal fun SelectBox(
                 .border(1.dp, if (enabled) Ink else Line, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            if (checked) GalliIcon(Icons.Rounded.Check, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onPrimary)
-            else if (!enabled) GalliIcon(Icons.Rounded.Lock, null, Modifier.size(14.dp), tint = Muted)
+            if (checked) GalliIcon(Icons.Outlined.Check, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onPrimary)
+            else if (!enabled) GalliIcon(Icons.Outlined.Lock, null, Modifier.size(14.dp), tint = Muted)
         }
     }
 }
@@ -154,7 +154,7 @@ internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit, onOpen: (
                         Text("파일 상세", style = MaterialTheme.typography.titleLarge)
                         Text(if (item.kind == MediaKind.VIDEO) "동영상 정보" else "사진 정보", color = Muted, style = MaterialTheme.typography.bodySmall)
                     }
-                    IconAction("닫기", Icons.Rounded.Close, onClick = onDismiss)
+                    IconAction("닫기", Icons.Outlined.Close, onClick = onDismiss)
                 }
                 MediaDetail(item, onOpen, onProtect, Modifier.weight(1f), folderProtected)
             }
@@ -171,7 +171,7 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
         val thumbnailHeight = (maxWidth / 1.2f).coerceAtMost(320.dp)
         val previewAction: @Composable (Modifier) -> Unit = { actionModifier ->
             ActionButton("앱에서 미리보기", { previewOpen = true }, actionModifier, filled = true,
-                icon = if (item.kind == MediaKind.VIDEO) Icons.Rounded.PlayArrow else Icons.Rounded.ZoomIn)
+                icon = if (item.kind == MediaKind.VIDEO) Icons.Outlined.PlayArrow else Icons.Outlined.ZoomIn)
         }
         val metadata: @Composable (Modifier) -> Unit = { detailModifier ->
             Column(detailModifier.then(if (beside) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -183,15 +183,15 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
                     val stacked = maxWidth < 350.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
                     if (stacked) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ActionButton("파일 열기", { onOpen(item) }, Modifier.fillMaxWidth(), icon = Icons.Rounded.OpenInNew)
+                            ActionButton("파일 열기", { onOpen(item) }, Modifier.fillMaxWidth(), icon = Icons.Outlined.OpenInNew)
                             ActionButton(protectLabel, { onProtect(!item.isProtected) }, Modifier.fillMaxWidth(),
-                                enabled = !folderProtected, icon = Icons.Rounded.Shield)
+                                enabled = !folderProtected, icon = Icons.Outlined.Shield)
                         }
                     } else {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ActionButton("파일 열기", { onOpen(item) }, Modifier.weight(1f), icon = Icons.Rounded.OpenInNew)
+                            ActionButton("파일 열기", { onOpen(item) }, Modifier.weight(1f), icon = Icons.Outlined.OpenInNew)
                             ActionButton(protectLabel, { onProtect(!item.isProtected) }, Modifier.weight(1f),
-                                enabled = !folderProtected, icon = Icons.Rounded.Shield)
+                                enabled = !folderProtected, icon = Icons.Outlined.Shield)
                         }
                     }
                 }

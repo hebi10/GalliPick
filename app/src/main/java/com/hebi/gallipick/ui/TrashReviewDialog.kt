@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -46,7 +46,7 @@ internal fun TrashReviewContent(moving: List<MediaItem>, kept: List<MediaItem>, 
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(if (restore) "복원할 파일 확인" else "휴지통 이동 확인", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            IconAction("확인창 닫기", Icons.Rounded.Close, onClick = onDismiss)
+            IconAction("확인창 닫기", Icons.Outlined.Close, onClick = onDismiss)
         }
         if (showTabs) PrimaryTabRow(selectedTabIndex = if (showKept) 1 else 0) {
             Tab(!showKept, { showKept = false }, text = { Text("이동 ${moving.size}개") })

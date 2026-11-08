@@ -14,7 +14,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -111,7 +111,7 @@ internal fun FilesScreenContent(
                                     EmptyState("미디어 접근이 필요합니다", "허용한 파일만 이곳에 표시됩니다.", action = { ActionButton("접근 허용", requestAccess, filled = true) })
                                 }
                                 state.catalogError != null -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-                                    EmptyState("파일을 불러오지 못했습니다", state.catalogError, Icons.Rounded.Info, action = { ActionButton("다시 시도", actions.refresh, filled = true) })
+                                    EmptyState("파일을 불러오지 못했습니다", state.catalogError, Icons.Outlined.Info, action = { ActionButton("다시 시도", actions.refresh, filled = true) })
                                 }
                                 state.loading -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.")
@@ -187,7 +187,7 @@ internal fun FilesScreenContent(
                                 .semantics { contentDescription = "파일 상세 패널" }) {
                                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text("파일 정보", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                                    IconAction("파일 상세 닫기", Icons.Rounded.Close) { detailUri = null }
+                                    IconAction("파일 상세 닫기", Icons.Outlined.Close) { detailUri = null }
                                 }
                                 MediaDetail(detail, open, { actions.setProtected(detail, it) }, Modifier.weight(1f), detail.hasFolderProtection(state.protectedFolders))
                             }
@@ -305,7 +305,7 @@ private fun MediaTile(
                 }
                 if (item.isFavorite || item.isProtected) {
                     GalliIcon(
-                        if (item.isFavorite) Icons.Rounded.Star else Icons.Rounded.Shield,
+                        if (item.isFavorite) Icons.Outlined.Star else Icons.Outlined.Shield,
                         if (item.isFavorite) "즐겨찾기" else "보호됨",
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
@@ -331,7 +331,7 @@ internal fun SelectionBar(selected: List<MediaItem>, clear: () -> Unit, trash: (
                 Text(bytesLabel(selected.sumOf { it.sizeBytes }), style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             TextAction("해제", clear, Modifier.align(Alignment.CenterVertically))
-            ActionButton("휴지통으로", trash, Modifier.align(Alignment.CenterVertically), filled = true, icon = Icons.Rounded.DeleteOutline)
+            ActionButton("휴지통으로", trash, Modifier.align(Alignment.CenterVertically), filled = true, icon = Icons.Outlined.DeleteOutline)
         }
         Text("즐겨찾기·보호 파일은 선택할 수 없습니다. 이동 전 Android 확인창이 표시됩니다.", color = Muted, style = MaterialTheme.typography.labelSmall)
     }

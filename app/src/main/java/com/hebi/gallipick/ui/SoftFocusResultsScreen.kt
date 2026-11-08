@@ -6,7 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,7 +29,7 @@ internal fun SoftFocusResultsScreen(
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconAction("사진 분석으로 돌아가기", Icons.Rounded.ArrowBack, onClick = onBack)
+            IconAction("사진 분석으로 돌아가기", Icons.Outlined.ArrowBack, onClick = onBack)
             Text("선명도 확인", style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f).semantics { heading() })
         }

@@ -6,7 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -72,7 +72,7 @@ internal fun FolderStorageScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                IconAction("폴더별 용량 분석 닫기", Icons.Rounded.ArrowBack, onClick = onBack)
+                IconAction("폴더별 용량 분석 닫기", Icons.Outlined.ArrowBack, onClick = onBack)
                 Text(
                     "폴더별 용량 분석",
                     style = MaterialTheme.typography.titleLarge,
@@ -126,7 +126,7 @@ internal fun FolderStorageScreen(
                                 ) {
                                     Text(sort.title, color = Ink)
                                     Spacer(Modifier.width(4.dp))
-                                    GalliIcon(Icons.Rounded.ArrowDropDown, null, Modifier.size(20.dp), tint = Ink)
+                                    GalliIcon(Icons.Outlined.ArrowDropDown, null, Modifier.size(20.dp), tint = Ink)
                                 }
                                 DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                                     FolderStorageSort.entries.forEach { item ->
@@ -168,7 +168,7 @@ private fun FolderStorageSummaryCard(summary: FolderStorageSummary, compact: Boo
             Modifier.size(if (compact) 40.dp else 52.dp).background(IconContainer, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            GalliIcon(Icons.Rounded.Storage, null, Modifier.size(if (compact) 22.dp else 28.dp), tint = Ink)
+            GalliIcon(Icons.Outlined.Storage, null, Modifier.size(if (compact) 22.dp else 28.dp), tint = Ink)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (compact) {
@@ -206,7 +206,7 @@ private fun FolderStorageRow(entry: FolderStorageEntry, totalBytes: Long, compac
         .padding(if (compact) 10.dp else GalliUiMetrics.cardPadding)
     Column(basis, verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GalliIcon(Icons.Rounded.Folder, null, Modifier.size(if (compact) 20.dp else 24.dp), tint = Primary)
+            GalliIcon(Icons.Outlined.Folder, null, Modifier.size(if (compact) 20.dp else 24.dp), tint = Primary)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(entry.displayName, style = MaterialTheme.typography.titleSmall,
                     maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
@@ -216,7 +216,7 @@ private fun FolderStorageRow(entry: FolderStorageEntry, totalBytes: Long, compac
                 Text(bytesLabel(entry.sizeBytes), style = MaterialTheme.typography.titleSmall, color = Ink)
                 Text("${(fraction * 100).roundToInt()}%", style = MaterialTheme.typography.bodySmall, color = Muted)
             }
-            if (clickable) GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(20.dp))
+            if (clickable) GalliIcon(Icons.Outlined.ChevronRight, null, Modifier.size(20.dp))
         }
         Box(
             Modifier.fillMaxWidth().height(if (compact) 5.dp else 7.dp).background(Panel, RoundedCornerShape(7.dp)),
