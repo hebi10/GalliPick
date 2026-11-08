@@ -188,7 +188,7 @@ jobs:
             adb exec-out run-as com.hebi.gallipick tar -C files/modal-screen-captures -cf - . > modal-payload.tar || true
             mkdir -p modal-captures
             tar -xf modal-payload.tar -C modal-captures || true
-            python3 -c "import pathlib,re; t=pathlib.Path('modal-instrumentation.txt').read_text(); assert not pathlib.Path('modal-failed.txt').exists() and re.search(r'OK \\(\\d+ tests?\\)',t), 'Modal capture instrumentation did not pass'; assert len(list(pathlib.Path('modal-captures').glob('*.png'))) == 16, 'Expected 16 modal/detail screenshots'"
+            python3 -c "import pathlib,re; t=pathlib.Path('modal-instrumentation.txt').read_text(); assert not pathlib.Path('modal-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Modal capture instrumentation did not pass'; assert len(list(pathlib.Path('modal-captures').glob('*.png'))) == 16, 'Expected 16 modal/detail screenshots'"
             python3 scripts/qa/verify_design_captures.py --native captures --modal modal-captures --profile "${{ matrix.name }}" --output qa/design-audit.json
             python3 scripts/qa/verify_stage8_captures.py --native captures --modal modal-captures --design-audit qa/design-audit.json --profile "${{ matrix.name }}" --output qa/stage8-audit.json
             adb shell am instrument -w -r -e class com.hebi.gallipick.ui.Stage9GFeatureCapturesTest -e captureProfile ${{ matrix.name }} -e captureTheme ${{ matrix.theme }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > stage9g-instrumentation.txt || echo failed > stage9g-failed.txt
@@ -196,7 +196,7 @@ jobs:
             adb exec-out run-as com.hebi.gallipick tar -C files/stage9g-feature-captures -cf - . > stage9g-feature-payload.tar || true
             mkdir -p stage9g-feature-captures
             tar -xf stage9g-feature-payload.tar -C stage9g-feature-captures || true
-            python3 -c "import pathlib,re; t=pathlib.Path('stage9g-instrumentation.txt').read_text(); assert not pathlib.Path('stage9g-failed.txt').exists() and re.search(r'OK \\(\\d+ tests?\\)',t), 'Stage9G feature capture instrumentation did not pass'"
+            python3 -c "import pathlib,re; t=pathlib.Path('stage9g-instrumentation.txt').read_text(); assert not pathlib.Path('stage9g-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Stage9G feature capture instrumentation did not pass'"
             python3 scripts/qa/verify_stage9g_captures.py --stage8-audit qa/stage8-audit.json --real-native stage9g-native-captures --feature-components stage9g-feature-captures --profile "${{ matrix.name }}" --output qa/stage9g-audit.json
             python3 scripts/qa/verify_stage10e_captures.py --profile "${{ matrix.name }}" --theme "${{ matrix.theme }}" --native captures --modal modal-captures --folder stage9a-captures --real stage9g-native-captures --features stage9g-feature-captures --stage9g-audit qa/stage9g-audit.json --output qa/stage10e-audit.json
       - name: Upload fresh native captures and execution record
