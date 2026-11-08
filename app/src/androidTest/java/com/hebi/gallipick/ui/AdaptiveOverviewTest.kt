@@ -119,6 +119,56 @@ class AdaptiveOverviewTest {
         assertTrue("A narrow home should show storage before the shortcut grid", narrowStorage.bottom < narrowAction.top)
     }
 
+    @Test fun tabletHomeBalancesDashboardPanelsAndShowsAccessibleMediaCounts() {
+        val photo = media(31, "photo.jpg", MediaKind.PHOTO, "Pictures/", 1024)
+        val video = media(32, "video.mp4", MediaKind.VIDEO, "Movies/", 2048)
+        var duplicateOpens = 0
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(1180.dp, 820.dp)) {
+                        HomeScreen(
+                            homeState().copy(items = listOf(photo, video)),
+                            {}, {}, { duplicateOpens++ }, {},
+                        )
+                    }
+                }
+            }
+        }
+        val welcome = compose.onNodeWithText("사진과 영상을", substring = true).fetchSemanticsNode().boundsInRoot
+        val storage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
+        val shortcut = compose.onNode(hasText("사진·영상 정리") and hasClickAction())
+            .fetchSemanticsNode().boundsInRoot
+
+        assertTrue("Tablet storage should sit below its welcome panel", storage.top > welcome.bottom)
+        assertTrue("Tablet shortcuts should form a separate right-hand dashboard column", storage.right < shortcut.left)
+        assertTrue("Tablet quick actions should align beside the welcome section", shortcut.top < storage.top)
+        assertTrue("Tablet shortcut cards need roomy touch targets", shortcut.height >= 150 * .6f)
+        compose.onNodeWithText("사진 1개").assertIsDisplayed()
+        compose.onNodeWithText("동영상 1개").assertIsDisplayed()
+        compose.onNode(hasText("중복 파일 찾기") and hasClickAction()).performClick()
+        compose.runOnIdle { assertEquals(1, duplicateOpens) }
+    }
+
+    @Test fun mediumLandscapeWindowKeepsOriginalHomeHierarchy() {
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(850.dp, 660.dp)) {
+                        HomeScreen(homeState(), {}, {}, {}, {})
+                    }
+                }
+            }
+        }
+        val welcome = compose.onNodeWithText("사진과 영상을", substring = true).fetchSemanticsNode().boundsInRoot
+        val storage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
+        val shortcut = compose.onNode(hasText("중복 파일 찾기") and hasClickAction())
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue("Medium screens still show the welcome panel before the content row", welcome.bottom < storage.top)
+        assertTrue("Medium screens preserve side-by-side storage and shortcuts", storage.right < shortcut.left)
+        compose.onNodeWithText("사진 0개").assertDoesNotExist()
+    }
+
     @Test fun cleanupOpensWithOnlyRealActionCardsAboveCategories() {
         var duplicateOpens = 0
         var opened: MediaFilter? = null

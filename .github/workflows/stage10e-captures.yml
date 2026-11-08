@@ -1,15 +1,17 @@
 name: GalliPick 10-E light-dark native captures
 on:
-  push:
-    branches: ['design-stage10e-*']
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: ui-captures-${{ github.ref }}
+  group: ui-captures-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'design-stage10e-')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -153,6 +155,7 @@ jobs:
           profile: ${{ steps.hardware.outputs.profile }}
           disable-animations: true
           script: |
+            trap 'adb logcat -d -v threadtime -s AndroidRuntime:E SnapshotStateObserver:E > android-runtime-errors.txt || true' EXIT
             adb shell wm size ${{ matrix.size }}
             adb shell wm density ${{ matrix.density }}
             adb shell settings put system accelerometer_rotation 0
@@ -214,6 +217,7 @@ jobs:
             capture-instrumentation.txt
             capture-failed.txt
             capture-progress.txt
+            android-runtime-errors.txt
             adaptive-instrumentation.txt
             adaptive-failed.txt
             adaptive-screenshots/
