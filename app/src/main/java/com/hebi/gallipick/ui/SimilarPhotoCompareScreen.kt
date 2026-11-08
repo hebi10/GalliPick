@@ -35,6 +35,9 @@ internal fun SimilarPhotoCompareScreen(
     onToggleCandidate: (String) -> Unit,
     onOpenMedia: (com.hebi.gallipick.domain.MediaItem) -> Unit,
     onReview: () -> Unit,
+    title: String = "사진 비교",
+    groupTitle: String = "유사 사진 묶음",
+    explanation: String = "여러 장을 남길 수 있습니다. 미리보기 선택과 정리 후보 선택은 별도 동작입니다.",
 ) {
     var focusedUri by rememberSaveable(group.id) { mutableStateOf(group.photos.first().item.uri) }
     val focused = group.photos.firstOrNull { it.item.uri == focusedUri }?.item ?: group.photos.first().item
@@ -47,17 +50,17 @@ internal fun SimilarPhotoCompareScreen(
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconAction("유사 사진 목록으로 돌아가기", Icons.Rounded.ArrowBack, onClick = onBack)
-                Text("사진 비교", style = MaterialTheme.typography.titleLarge,
+                Text(title, style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).semantics { heading() })
             }
             Column(
                 Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(GalliUiMetrics.cardCorner))
                     .padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text("유사 사진 묶음 ${groupIndex} / ${groupCount}", style = MaterialTheme.typography.titleSmall)
+                Text("$groupTitle ${groupIndex} / ${groupCount}", style = MaterialTheme.typography.titleSmall)
                 Text("${group.photos.size}장 · 남길 사진 ${keptCount}장 · 정리 후보 ${selectedCount}장",
                     style = MaterialTheme.typography.bodySmall, color = Muted)
-                Text("여러 장을 남길 수 있습니다. 미리보기 선택과 정리 후보 선택은 별도 동작입니다.",
+                Text(explanation,
                     style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             LazyRow(Modifier.fillMaxWidth().semantics { contentDescription = "유사 사진 가로 비교 목록" },

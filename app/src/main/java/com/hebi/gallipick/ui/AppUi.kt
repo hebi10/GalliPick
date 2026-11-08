@@ -40,6 +40,8 @@ import java.util.Locale
 
 // The reference design has four top-level destinations. Duplicate analysis
 // remains available as a child of CLEANUP and is never discarded.
+internal enum class PhotoReviewMode { SIMILAR, BURST }
+
 internal enum class Destination(val title: String, val icon: ImageVector) {
     HOME("홈", Icons.Rounded.Home), FILES("파일", Icons.Rounded.GridView),
     CLEANUP("정리", Icons.Rounded.CleaningServices),
@@ -65,6 +67,7 @@ fun GalliPickApp(
     var showPhotoAnalysis by rememberSaveable { mutableStateOf(false) }
     var showSimilarResults by rememberSaveable { mutableStateOf(false) }
     var similarCompareId by rememberSaveable { mutableStateOf<String?>(null) }
+    var photoReviewMode by rememberSaveable { mutableStateOf(PhotoReviewMode.SIMILAR) }
     fun closeSimilarReview() {
         showSimilarResults = false
         similarCompareId = null
@@ -135,7 +138,7 @@ fun GalliPickApp(
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage, showPhotoAnalysis, showSimilarResults to similarCompareId)), state.filter),
+                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage, showPhotoAnalysis, Triple(showSimilarResults, similarCompareId, photoReviewMode))), state.filter),
                     header = {
                         if (destination == Destination.FILES && !showTrash && !showDuplicates && !showFolderStorage && !showPhotoAnalysis) {
                             GalliFilesHeader(state.loading, vm::refresh)
@@ -196,30 +199,58 @@ fun GalliPickApp(
                                         }
                                     }
                                     similarCompareId != null -> {
-                                        val group = state.similarGroups.firstOrNull { it.id == similarCompareId }
-                                        if (group == null) SimilarPhotoResultsScreen(
-                                            state.similarGroups, state.selected,
-                                            onBack = ::closeSimilarReview,
-                                            onCompare = { similarCompareId = it },
-                                            onReview = ::reviewSimilarCandidates,
-                                        ) else SimilarPhotoCompareScreen(
+                                        val reviewGroups = if (photoReviewMode == PhotoReviewMode.BURST) state.burstGroups else state.similarGroups
+                                        val group = reviewGroups.firstOrNull { it.id == similarCompareId }
+                                        if (group == null) {
+                                            if (photoReviewMode == PhotoReviewMode.BURST) {
+                                                BurstPhotoResultsScreen(
+                                                    reviewGroups, state.selected,
+                                                    onBack = ::closeSimilarReview,
+                                                    onCompare = { similarCompareId = it },
+                                                    onReview = ::reviewSimilarCandidates,
+                                                )
+                                            } else {
+                                                SimilarPhotoResultsScreen(
+                                                    reviewGroups, state.selected,
+                                                    onBack = ::closeSimilarReview,
+                                                    onCompare = { similarCompareId = it },
+                                                    onReview = ::reviewSimilarCandidates,
+                                                )
+                                            }
+                                        } else SimilarPhotoCompareScreen(
                                             group = group,
-                                            groupIndex = state.similarGroups.indexOf(group) + 1,
-                                            groupCount = state.similarGroups.size,
+                                            groupIndex = reviewGroups.indexOf(group) + 1,
+                                            groupCount = reviewGroups.size,
                                             selectedUris = state.selected,
                                             protectedFolders = state.protectedFolders,
                                             onBack = { similarCompareId = null },
                                             onToggleCandidate = { vm.toggleSimilarCandidate(group.id, it) },
                                             onOpenMedia = onOpenMedia,
                                             onReview = ::reviewSimilarCandidates,
+                                            title = if (photoReviewMode == PhotoReviewMode.BURST) "연속 촬영 사진 비교" else "사진 비교",
+                                            groupTitle = if (photoReviewMode == PhotoReviewMode.BURST) "연속 촬영 묶음" else "유사 사진 묶음",
+                                            explanation = if (photoReviewMode == PhotoReviewMode.BURST)
+                                                "촬영 시각과 장면이 가까운 사진입니다. 여러 장을 남길 수 있으며 직접 정리 후보를 선택합니다."
+                                            else "여러 장을 남길 수 있습니다. 미리보기 선택과 정리 후보 선택은 별도 동작입니다.",
                                         )
                                     }
-                                    showSimilarResults -> SimilarPhotoResultsScreen(
-                                        groups = state.similarGroups, selectedUris = state.selected,
-                                        onBack = ::closeSimilarReview,
-                                        onCompare = { similarCompareId = it },
-                                        onReview = ::reviewSimilarCandidates,
-                                    )
+                                    showSimilarResults -> {
+                                        if (photoReviewMode == PhotoReviewMode.BURST) {
+                                            BurstPhotoResultsScreen(
+                                                groups = state.burstGroups, selectedUris = state.selected,
+                                                onBack = ::closeSimilarReview,
+                                                onCompare = { similarCompareId = it },
+                                                onReview = ::reviewSimilarCandidates,
+                                            )
+                                        } else {
+                                            SimilarPhotoResultsScreen(
+                                                groups = state.similarGroups, selectedUris = state.selected,
+                                                onBack = ::closeSimilarReview,
+                                                onCompare = { similarCompareId = it },
+                                                onReview = ::reviewSimilarCandidates,
+                                            )
+                                        }
+                                    }
                                     showPhotoAnalysis -> PhotoAnalysisScreen(
                                         state = state,
                                         onBack = { showPhotoAnalysis = false },
@@ -230,6 +261,14 @@ fun GalliPickApp(
                                         refresh = vm::refresh,
                                         onOpenResults = {
                                             vm.prepareSimilarReview()
+                                            photoReviewMode = PhotoReviewMode.SIMILAR
+                                            similarCompareId = null
+                                            showSimilarResults = true
+                                        },
+                                        onOpenBurstResults = {
+                                            vm.prepareBurstReview()
+                                            photoReviewMode = PhotoReviewMode.BURST
+                                            similarCompareId = null
                                             showSimilarResults = true
                                         },
                                     )

@@ -26,6 +26,7 @@ data class AppUiState(
     val scan: ScanState = ScanState(),
     val photoAnalysis: PhotoAnalysisState = PhotoAnalysisState(),
     val similarGroups: List<SimilarPhotoGroup> = emptyList(),
+    val burstGroups: List<SimilarPhotoGroup> = emptyList(),
     val selected: Set<String> = emptySet(),
     val catalogError: String? = null,
     val message: String? = null,
@@ -82,7 +83,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         filterJob?.cancel()
         similarGroupsJob?.cancel()
         selectedSimilarGroups.clear()
-        _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(), duplicates = emptyList(), similarGroups = emptyList(), selected = emptySet()) }
+        _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(), duplicates = emptyList(), similarGroups = emptyList(), burstGroups = emptyList(), selected = emptySet()) }
     }
 
     private fun publishMedia(items: List<MediaItem>) {
@@ -103,15 +104,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         similarGroupsJob = viewModelScope.launch {
             val groups = withContext(Dispatchers.Default) {
                 val lookup = hashes.associateBy { it.uri }
-                SimilarPhotoGrouper.groups(items.mapNotNull { item ->
+                val photos = items.mapNotNull { item ->
                     val record = lookup[item.uri]
                     if (item.kind != MediaKind.PHOTO || item.isTrashed || record?.phash == null ||
                         record.fingerprint != item.fingerprint || record.volumeVersion != item.volumeVersion) null
                     else SimilarPhoto(item, record.phash)
-                })
+                }
+                SimilarPhotoGrouper.groups(photos) to BurstPhotoGrouper.groups(photos)
             }
             if (catalogVerified && repository.catalogReady.value && _ui.value.items === items) {
-                _ui.update { it.copy(similarGroups = groups) }
+                _ui.update { it.copy(similarGroups = groups.first, burstGroups = groups.second) }
             }
         }
     }
@@ -267,6 +269,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun prepareBurstReview() = prepareSimilarReview()
+
+    private fun reviewedPhotoGroups(): List<SimilarPhotoGroup> =
+        _ui.value.similarGroups + _ui.value.burstGroups
+
     private fun similarReady(): Boolean = catalogVerified && repository.catalogReady.value &&
         !_ui.value.loading && _ui.value.catalogError == null &&
         _ui.value.photoAnalysis.phase == PhotoAnalysisPhase.COMPLETE
@@ -276,7 +283,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             showMessage("사진 분석 결과를 다시 확인한 뒤 선택해 주세요.")
             return
         }
-        val group = _ui.value.similarGroups.firstOrNull { it.id == groupId } ?: return
+        val group = reviewedPhotoGroups().firstOrNull { it.id == groupId } ?: return
         if (uri in selectedVersions) {
             selectedVersions.remove(uri)
             if (group.photos.none { it.item.uri in selectedVersions }) selectedSimilarGroups.remove(groupId)
@@ -298,7 +305,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectedSimilarCandidates(): List<MediaItem> {
         if (!similarReady()) return emptyList()
-        val groups = _ui.value.similarGroups.associateBy { it.id }
+        val groups = reviewedPhotoGroups().associateBy { it.id }
         return selectedSimilarGroups.values.flatMap { original ->
             val current = groups[original.id]
             if (current == null || original.photos.map { it.item.uri to it.item.fingerprint } !=
