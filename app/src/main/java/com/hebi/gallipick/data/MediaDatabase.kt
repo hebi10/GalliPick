@@ -181,6 +181,8 @@ internal abstract class MediaDao {
     abstract suspend fun allPhotoHashes(): List<CachedPhotoHash>
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun putPhotoHash(entry: CachedPhotoHash)
+    @Query("DELETE FROM photo_phash")
+    abstract suspend fun clearPhotoHashes()
     @Query("DELETE FROM photo_phash WHERE perceptualHash IS NULL")
     abstract suspend fun clearFailedPhotoHashes()
     @Query("DELETE FROM photo_phash WHERE NOT EXISTS (SELECT 1 FROM media_cache AS m WHERE m.uri = photo_phash.uri AND m.fingerprint = photo_phash.fingerprint AND m.isTrashed = 0 AND m.kind = 'PHOTO')")
