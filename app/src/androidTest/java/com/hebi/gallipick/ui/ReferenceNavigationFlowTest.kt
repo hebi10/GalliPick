@@ -49,6 +49,24 @@ class ReferenceNavigationFlowTest {
         compose.onNodeWithContentDescription("정리로 돌아가기").assertDoesNotExist()
     }
 
+    @Test fun photoAnalysisIsChildOfCleanupAndBackReturnsWithoutFifthTab() {
+        val vm = AppViewModel(compose.activity.application)
+        compose.setContent {
+            GalliPickTheme {
+                GalliPickApp(vm, {}, {}, {}, {})
+            }
+        }
+        tab("정리").performClick()
+        compose.onNodeWithContentDescription("유사 사진 분석 열기")
+            .performScrollTo().performClick()
+        compose.onNodeWithText("사진 분석").assertIsDisplayed()
+        compose.onAllNodes(tabMatcher).assertCountEquals(4)
+        tab("정리").assertIsSelected()
+        compose.onNodeWithContentDescription("사진 분석 닫기").performClick()
+        compose.onNodeWithContentDescription("유사 사진 분석 열기").assertExists()
+        compose.onNodeWithText("사진 분석").assertDoesNotExist()
+    }
+
     @Test fun homeDuplicateShortcutOpensCleanupChildWithoutReintroducingAFifthTab() {
         val vm = AppViewModel(compose.activity.application)
         compose.setContent {
