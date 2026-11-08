@@ -298,8 +298,19 @@ private fun cleanupSuggestions(items: List<MediaItem>): List<CleanupSuggestion> 
         .groupBy { it.relativePath }.maxByOrNull { it.value.size }?.key
     val screenshotQuery = if (screenshotFolder != null) "" else "Screenshot"
     val recordingQuery = if (recordingFolder != null) "" else "Screen"
+    val oldDownloads = MediaFilter(
+        downloadsOnly = true, groupByDate = true,
+        dateField = DateField.ADDED, fromDateMs = 1L, toDateMs = cutoff,
+        sortField = SortField.ADDED, sortDirection = SortDirection.ASCENDING,
+    )
+    val largePhotos = MediaFilter(
+        kind = MediaKind.PHOTO, minSizeBytes = 10L * 1024 * 1024,
+        sortField = SortField.SIZE, sortDirection = SortDirection.DESCENDING,
+    )
     return listOf(
+        CleanupSuggestion("오래된 다운로드 파일", "다운로드 폴더 · 기기에 추가한 날짜로 1년 이전", oldDownloads, MediaQuery.apply(items, oldDownloads)),
         CleanupSuggestion("큰 동영상", "500 MB 이상인 동영상", MediaFilter(kind = MediaKind.VIDEO, minSizeBytes = 500L * 1024 * 1024, sortField = SortField.SIZE), items.filter { it.kind == MediaKind.VIDEO && it.sizeBytes >= 500L * 1024 * 1024 }),
+        CleanupSuggestion("용량 큰 사진", "10 MB 이상 · 큰 사진부터", largePhotos, MediaQuery.apply(items, largePhotos)),
         CleanupSuggestion("오래된 스크린샷 후보", if (screenshotFolder != null) "1년 이전 · ${screenshotFolder.trimEnd('/')} 폴더 기준" else "1년 이전 · 파일명에 Screenshot 포함", MediaFilter(kind = MediaKind.PHOTO, folder = screenshotFolder.orEmpty(), query = screenshotQuery, fromDateMs = 1L, toDateMs = cutoff), items.filter { it.kind == MediaKind.PHOTO && it.capturedAt > 0 && it.capturedAt <= cutoff && if (screenshotFolder != null) it.relativePath == screenshotFolder else it.displayName.contains(screenshotQuery, true) }),
         CleanupSuggestion("화면 녹화 후보", if (recordingFolder != null) "${recordingFolder.trimEnd('/')} 폴더 기준" else "동영상 파일명에 Screen 포함", MediaFilter(kind = MediaKind.VIDEO, folder = recordingFolder.orEmpty(), query = recordingQuery, sortField = SortField.SIZE), items.filter { it.kind == MediaKind.VIDEO && if (recordingFolder != null) it.relativePath == recordingFolder else it.displayName.contains(recordingQuery, true) }),
     )
@@ -417,9 +428,10 @@ private fun CleanupEmptyRow(suggestion: CleanupSuggestion, open: () -> Unit) {
 
 @Composable
 private fun CleanupCategoryIcon(suggestion: CleanupSuggestion, modifier: Modifier) {
+    val downloads = suggestion.filter.downloadsOnly
     val photo = suggestion.filter.kind == MediaKind.PHOTO
-    Box(modifier.background(if (photo) Peach else Mint, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-        GalliIcon(if (photo) Icons.Rounded.Image else Icons.Rounded.Videocam, null, Modifier.size(26.dp))
+    Box(modifier.background(if (downloads) Panel else if (photo) Peach else Mint, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+        GalliIcon(if (downloads) Icons.Rounded.Folder else if (photo) Icons.Rounded.Image else Icons.Rounded.Videocam, null, Modifier.size(26.dp))
     }
 }
 
