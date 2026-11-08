@@ -151,6 +151,12 @@ class NativeScreenCaptureTest {
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             compose.onNodeWithText("사진 비교").assertIsDisplayed()
             saveViewport("04-cleanup")
+            recordStage("stage9a-open-folder-storage")
+            compose.onNodeWithContentDescription("폴더별 용량 분석 열기").performScrollTo().performClick()
+            compose.onNodeWithText("폴더별 용량 분석").assertIsDisplayed()
+            saveStage9AFolderViewport()
+            compose.onNodeWithContentDescription("폴더별 용량 분석 닫기").performClick()
+            compose.onNodeWithText("사진 비교").assertIsDisplayed()
             navigate("설정")
             compose.onNodeWithText("다크 모드").performScrollTo().performClick().assertIsSelected()
             saveViewport("05-settings-dark")
@@ -307,6 +313,28 @@ class NativeScreenCaptureTest {
             else compose.onAllNodesWithText(label)
         if (nodes.fetchSemanticsNodes().isNotEmpty()) nodes.onFirst().performClick()
         compose.waitForIdle()
+    }
+
+    private fun saveStage9AFolderViewport() {
+        val name = "stage9a-folder-storage"
+        recordStage(name)
+        compose.waitForIdle()
+        instrumentation.waitForIdleSync()
+        SystemClock.sleep(500)
+        clearKnownSystemUiAnr(name)
+        assertSystemUiAnrAbsent(name)
+        val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot()) {
+            "Android did not provide a folder-usage viewport"
+        }
+        try {
+            val directory = File(app.filesDir, "stage9a-screen-captures")
+            check(directory.isDirectory || directory.mkdirs()) { "Could not create Stage 9-A screenshot directory" }
+            val file = File(directory, "$capturePrefix-$name.png")
+            file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+            Log.i("NativeScreenCapture", "Saved Stage9A screenshot $file ${bitmap.width}x${bitmap.height}")
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     private fun saveViewport(name: String) {
