@@ -43,6 +43,7 @@ internal fun SimilarPhotoCompareScreen(
     val keptCount = group.photos.size - selectedCount
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val horizontal = maxWidth >= 700.dp && maxHeight > 400.dp
+        val thumbnailWidth = if (maxWidth < 350.dp) 102.dp else 132.dp
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconAction("유사 사진 목록으로 돌아가기", Icons.Rounded.ArrowBack, onClick = onBack)
@@ -68,7 +69,7 @@ internal fun SimilarPhotoCompareScreen(
                     val selected = photo.item.uri in selectedUris
                     val shape = RoundedCornerShape(10.dp)
                     Column(
-                        Modifier.width(if (maxWidth < 350.dp) 102.dp else 132.dp)
+                        Modifier.width(thumbnailWidth)
                             .border(if (active) 2.dp else 1.dp, if (active) Primary else Line, shape)
                             .semantics { contentDescription = "${photo.item.displayName} 미리보기 선택" }
                             .plainClick(action = { focusedUri = photo.item.uri })
