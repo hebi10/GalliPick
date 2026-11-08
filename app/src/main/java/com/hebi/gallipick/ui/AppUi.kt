@@ -64,6 +64,7 @@ fun GalliPickApp(
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var showDuplicates by rememberSaveable { mutableStateOf(false) }
     var showFolderStorage by rememberSaveable { mutableStateOf(false) }
+    var showCleanupHistory by rememberSaveable { mutableStateOf(false) }
     var showPhotoAnalysis by rememberSaveable { mutableStateOf(false) }
     var showSimilarResults by rememberSaveable { mutableStateOf(false) }
     var showSoftFocusResults by rememberSaveable { mutableStateOf(false) }
@@ -80,6 +81,7 @@ fun GalliPickApp(
         showTrash = false
         showDuplicates = false
         showFolderStorage = false
+        showCleanupHistory = false
         showPhotoAnalysis = false
         showSimilarResults = false
         showSoftFocusResults = false
@@ -90,6 +92,7 @@ fun GalliPickApp(
         vm.prepareDuplicateReview()
         showTrash = false
         showFolderStorage = false
+        showCleanupHistory = false
         showPhotoAnalysis = false
         showSimilarResults = false
         showSoftFocusResults = false
@@ -107,10 +110,22 @@ fun GalliPickApp(
         destination = Destination.CLEANUP
         showFolderStorage = true
     }
+    fun openCleanupHistory() {
+        showTrash = false
+        showDuplicates = false
+        showFolderStorage = false
+        showPhotoAnalysis = false
+        showSimilarResults = false
+        showSoftFocusResults = false
+        similarCompareId = null
+        destination = Destination.CLEANUP
+        showCleanupHistory = true
+    }
     fun openPhotoAnalysis() {
         showTrash = false
         showDuplicates = false
         showFolderStorage = false
+        showCleanupHistory = false
         showSimilarResults = false
         showSoftFocusResults = false
         similarCompareId = null
@@ -123,11 +138,12 @@ fun GalliPickApp(
         else onTrash(candidates)
     }
     BackHandler(enabled = showTrash || showDuplicates || showFolderStorage ||
-        showPhotoAnalysis || showSimilarResults || showSoftFocusResults || similarCompareId != null || destination != Destination.HOME) {
+        showPhotoAnalysis || showCleanupHistory || showSimilarResults || showSoftFocusResults || similarCompareId != null || destination != Destination.HOME) {
         when {
             showTrash -> showTrash = false
             showDuplicates -> showDuplicates = false
             showFolderStorage -> showFolderStorage = false
+            showCleanupHistory -> showCleanupHistory = false
             similarCompareId != null -> similarCompareId = null
             showSimilarResults || showSoftFocusResults -> closeSimilarReview()
             showPhotoAnalysis -> showPhotoAnalysis = false
@@ -144,7 +160,7 @@ fun GalliPickApp(
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage, showPhotoAnalysis, Triple(showSimilarResults || showSoftFocusResults, similarCompareId, photoReviewMode))), state.filter),
+                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage || showCleanupHistory, showPhotoAnalysis, Triple(showSimilarResults || showSoftFocusResults, similarCompareId, photoReviewMode))), state.filter),
                     header = {
                         if (destination == Destination.FILES && !showTrash && !showDuplicates && !showFolderStorage && !showPhotoAnalysis) {
                             GalliFilesHeader(state.loading, vm::refresh)
@@ -310,6 +326,12 @@ fun GalliPickApp(
                                             showSoftFocusResults = true
                                         },
                                     )
+                                    showCleanupHistory -> CleanupHistoryScreen(
+                                        entries = state.cleanupHistory,
+                                        onBack = { showCleanupHistory = false },
+                                        onDelete = vm::deleteCleanupHistory,
+                                        onClear = vm::clearCleanupHistory,
+                                    )
                                     showFolderStorage -> FolderStorageScreen(
                                         state = state,
                                         onBack = { showFolderStorage = false },
@@ -330,6 +352,7 @@ fun GalliPickApp(
                                             state, onOpenDuplicates = ::openDuplicates,
                                             onOpenFolderStorage = ::openFolderStorage,
                                             onOpenPhotoAnalysis = ::openPhotoAnalysis,
+                                            onOpenHistory = ::openCleanupHistory,
                                             browse = navigateFiles,
                                         )
                                         Destination.SETTINGS -> SettingsScreen(state, vm, onRequestPermission, onOpenSettings, { showTrash = true })

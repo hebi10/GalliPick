@@ -29,6 +29,7 @@ data class AppUiState(
     val burstGroups: List<SimilarPhotoGroup> = emptyList(),
     val softFocusCandidates: List<SoftFocusCandidate> = emptyList(),
     val sharpnessPending: Int = 0,
+    val cleanupHistory: List<CleanupHistoryEntry> = emptyList(),
     val selected: Set<String> = emptySet(),
     val catalogError: String? = null,
     val message: String? = null,
@@ -82,6 +83,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (catalogVerified && repository.catalogReady.value) _ui.update { it.copy(duplicates = groups) }
         } }
         viewModelScope.launch { repository.scan.collect { scan -> _ui.update { it.copy(scan = scan) } } }
+        viewModelScope.launch { repository.cleanupHistory.collect { history ->
+            _ui.update { it.copy(cleanupHistory = history) }
+        } }
         viewModelScope.launch { repository.photoAnalysis.collect { analysis -> _ui.update { it.copy(photoAnalysis = analysis) } } }
         viewModelScope.launch {
             repository.photoHashes.collect { hashes ->
@@ -420,6 +424,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun pauseScan() = repository.pauseScan()
     fun resumeScan() = repository.resumeScan()
     fun clearAnalysisCache() = task { repository.clearAnalysisCache() }
+    fun deleteCleanupHistory(id: String) = task { repository.deleteCleanupHistory(id) }
+    fun clearCleanupHistory() = task { repository.clearCleanupHistory() }
     fun showMessage(message: String) { _ui.update { it.copy(message = message) } }
     fun dismissMessage() { _ui.update { it.copy(message = null) } }
 
