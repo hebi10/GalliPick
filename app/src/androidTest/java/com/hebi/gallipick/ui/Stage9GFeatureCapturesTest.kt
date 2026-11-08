@@ -226,11 +226,23 @@ class Stage9GFeatureCapturesTest {
 
     private fun screenshot(output: File, manifest: JSONArray, names: MutableSet<String>, name: String) {
         require(names.add(name)) { "Duplicate capture name $name" }
-        compose.waitForIdle()
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-        SystemClock.sleep(240)
-        val image = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
-            "Android viewport screenshot unavailable for $name"
+        var rendered: Bitmap? = null
+        for (attempt in 1..8) {
+            compose.waitForIdle()
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            SystemClock.sleep(280)
+            val bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
+                "Android viewport screenshot unavailable for $name"
+            }
+            if (hasRenderedAppContent(bitmap)) {
+                rendered = bitmap
+                break
+            }
+            bitmap.recycle()
+            if (attempt < 8) SystemClock.sleep(320)
+        }
+        val image = checkNotNull(rendered) {
+            "Android did not render visible app content for $name after eight capture attempts"
         }
         try {
             val file = File(output, "$name.png")
@@ -243,5 +255,22 @@ class Stage9GFeatureCapturesTest {
         } finally {
             image.recycle()
         }
+    }
+
+    private fun hasRenderedAppContent(bitmap: Bitmap): Boolean {
+        val colors = HashSet<Int>()
+        val xStep = (bitmap.width / 75).coerceAtLeast(1)
+        val yStep = (bitmap.height / 100).coerceAtLeast(1)
+        for (y in bitmap.height / 10 until bitmap.height * 9 / 10 step yStep) {
+            for (x in bitmap.width / 20 until bitmap.width * 19 / 20 step xStep) {
+                val pixel = bitmap.getPixel(x, y)
+                val red = ((pixel ushr 16) and 255) / 24
+                val green = ((pixel ushr 8) and 255) / 24
+                val blue = (pixel and 255) / 24
+                colors += (red shl 8) or (green shl 4) or blue
+                if (colors.size >= 8) return true
+            }
+        }
+        return false
     }
 }

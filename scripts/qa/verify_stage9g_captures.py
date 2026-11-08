@@ -72,6 +72,8 @@ def audit(stage8: Path, native: Path, feature: Path, profile: str) -> dict:
         if record["file"] != name + ".png":
             raise ValueError("Fixture capture filename mismatch: " + name)
         current = checked(feature / record["file"])
+        if current["bytes"] < 50_000:
+            raise ValueError(f"Suspiciously blank Android feature viewport: {name} ({current['bytes']} bytes)")
         if (record["width"], record["height"]) != resolution:
             raise ValueError("Fixture capture manifest viewport mismatch")
         features[name] = current
