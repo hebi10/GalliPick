@@ -110,6 +110,48 @@ class PhotoAnalysisScreenTest {
         compose.runOnIdle { assertEquals(1, opens) }
     }
 
+    @Test fun completedAnalysisShowsConsecutiveCaptureGroupsAndOpensReview() {
+        var opens = 0
+        val group = SimilarPhotoGroup("burst:sample", listOf(
+            SimilarPhoto(photos.first().copy(dateTakenMs = 1_000L), "0000000000000000"),
+            SimilarPhoto(photos.first().copy(
+                uri = "content://media/external/images/media/412", id = 412, dateTakenMs = 2_000L
+            ), "0000000000000001"),
+        ))
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(360.dp, 850.dp)) {
+                        PhotoAnalysisScreen(
+                            state = AppUiState(
+                                access = MediaAccess.FULL, items = group.items,
+                                photoAnalysis = PhotoAnalysisState(PhotoAnalysisPhase.COMPLETE, completed = 2, total = 2),
+                                burstGroups = listOf(group),
+                            ),
+                            onBack = {}, onStart = {}, onPause = {}, onResume = {},
+                            requestAccess = {}, refresh = {},
+                            onOpenBurstResults = { opens++ },
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("연속 촬영").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("1개 연속 촬영 묶음", substring = true).performScrollTo().assertExists()
+        compose.onNodeWithText("연속 촬영 결과 보기").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, opens) }
+    }
+
+    @Test fun completedAnalysisWithoutTimestampsNeverSuggestsBurstCandidates() {
+        render(AppUiState(
+            access = MediaAccess.FULL, items = photos,
+            photoAnalysis = PhotoAnalysisState(PhotoAnalysisPhase.COMPLETE, completed = 1, total = 1),
+        ))
+        compose.onNodeWithText("현재 확인된 연속 촬영 사진 묶음이 없습니다.", substring = true)
+            .performScrollTo().assertExists()
+        compose.onNodeWithText("연속 촬영 결과 보기").assertDoesNotExist()
+    }
+
     private fun render(
         state: AppUiState,
         onStart: () -> Unit = {},
