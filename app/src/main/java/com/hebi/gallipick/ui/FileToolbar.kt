@@ -58,7 +58,7 @@ internal fun FileToolbar(
         )
     }
     val conditionCount = listOf(
-        filter.folder.isNotBlank(), filter.mimeType.isNotBlank(), filter.minSizeBytes != null || filter.maxSizeBytes != null,
+        filter.folder.isNotBlank(), filter.downloadsOnly, filter.mimeType.isNotBlank(), filter.minSizeBytes != null || filter.maxSizeBytes != null,
         filter.minDurationMs != null || filter.maxDurationMs != null, filter.fromDateMs != null || filter.toDateMs != null,
         filter.minPixels != null, filter.orientation != null, filter.favoritesOnly, filter.protectedOnly,
     ).count { it }
@@ -231,6 +231,7 @@ private fun ToolbarChoice(label: String, description: String, state: String, act
 private fun kindLabel(kind: MediaKind?): String = when (kind) { null -> "전체"; MediaKind.PHOTO -> "사진"; MediaKind.VIDEO -> "동영상" }
 
 internal fun filterSummary(filter: MediaFilter): String = buildList {
+    if (filter.downloadsOnly) add("다운로드 폴더")
     if (filter.folder.isNotBlank()) add(filter.folder.trimEnd('/'))
     if (filter.mimeType.isNotBlank()) add(filter.mimeType)
     filter.minSizeBytes?.let { add("${bytesLabel(it)} 이상") }
