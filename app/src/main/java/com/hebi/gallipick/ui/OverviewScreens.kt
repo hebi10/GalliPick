@@ -317,36 +317,63 @@ private fun cleanupSuggestions(items: List<MediaItem>): List<CleanupSuggestion> 
 }
 
 @Composable
-internal fun CleanupScreen(state: AppUiState, onOpenDuplicates: (() -> Unit)? = null, browse: (MediaFilter) -> Unit) {
+internal fun CleanupScreen(
+    state: AppUiState,
+    onOpenDuplicates: (() -> Unit)? = null,
+    onOpenFolderStorage: (() -> Unit)? = null,
+    browse: (MediaFilter) -> Unit,
+) {
     val suggestions = remember(state.items) { cleanupSuggestions(state.items) }
     val populated = suggestions.filter { it.items.isNotEmpty() }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide = maxWidth >= 700.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val wide = maxWidth >= 700.dp * fontScale
+        val showIllustration = maxWidth >= 350.dp * fontScale && maxHeight >= 480.dp * fontScale
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                 .padding(horizontal = if (wide) 28.dp else 20.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            SectionTitle("정리 후보", "확인 후 직접 선택한 파일만 휴지통으로 이동합니다.")
-            if (onOpenDuplicates != null) {
-                Row(
-                    Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(14.dp))
-                        .semantics { contentDescription = "중복 파일 검사 열기"; role = Role.Button }
-                        .plainClick(action = onOpenDuplicates).padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    GalliIcon(Icons.Rounded.CopyAll, null, Modifier.size(32.dp), tint = Primary)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("완전히 같은 파일 찾기", style = MaterialTheme.typography.titleMedium)
-                        Text("중복된 사진·영상을 검사하고 비교", style = MaterialTheme.typography.bodySmall, color = Muted)
-                    }
-                    GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(22.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    SectionTitle("정리", "필요한 파일을 찾아 직접 확인하고 정리하세요.")
+                }
+                if (showIllustration) {
+                    Image(
+                        painter = painterResource(R.drawable.gp_cat_organize),
+                        contentDescription = null,
+                        modifier = Modifier.size(88.dp), contentScale = ContentScale.Fit,
+                    )
                 }
             }
-            Text("종류별 정리", style = MaterialTheme.typography.titleMedium)
+            if (onOpenDuplicates != null) {
+                Text(
+                    "사진 비교", style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { heading() },
+                )
+                CleanupNavigationRow(
+                    title = "완전히 같은 파일 찾기",
+                    subtitle = "내용이 100% 같은 사진·동영상을 검사하고 비교",
+                    icon = Icons.Rounded.CopyAll,
+                    description = "중복 파일 검사 열기",
+                    open = onOpenDuplicates,
+                )
+            }
+            Text(
+                "종류별 정리", style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { heading() },
+            )
             suggestions.forEach { suggestion ->
                 CleanupSuggestionRow(suggestion) { browse(suggestion.filter) }
+            }
+            if (onOpenFolderStorage != null) {
+                CleanupNavigationRow(
+                    title = "폴더별 용량 분석",
+                    subtitle = "접근 가능한 사진·동영상의 폴더별 용량 확인",
+                    icon = Icons.Rounded.Folder,
+                    description = "폴더별 용량 분석 열기",
+                    open = onOpenFolderStorage,
+                )
             }
             if (populated.isEmpty()) {
                 Text("현재 확인된 정리 후보가 없습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -356,6 +383,37 @@ internal fun CleanupScreen(state: AppUiState, onOpenDuplicates: (() -> Unit)? = 
                 color = Muted, style = MaterialTheme.typography.bodySmall,
             )
         }
+    }
+}
+
+@Composable
+private fun CleanupNavigationRow(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    open: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 76.dp)
+            .clip(RoundedCornerShape(GalliUiMetrics.cardCorner))
+            .background(AppSurface)
+            .semantics { role = Role.Button; contentDescription = description }
+            .plainClick(action = open).padding(GalliUiMetrics.cardPadding),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier.size(44.dp).background(Panel, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            GalliIcon(icon, null, Modifier.size(26.dp), tint = Primary)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
+        GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(22.dp))
     }
 }
 
