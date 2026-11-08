@@ -46,6 +46,7 @@ class AppSettings(context: Context) {
         put("minPixels", f.minPixels); put("orientation", f.orientation?.name)
         put("favoritesOnly", f.favoritesOnly); put("protectedOnly", f.protectedOnly)
         put("sortField", f.sortField.name); put("sortDirection", f.sortDirection.name)
+        put("downloadsOnly", f.downloadsOnly); put("groupByDate", f.groupByDate)
     }
 
     private fun decode(j: JSONObject) = MediaFilter(
@@ -60,6 +61,7 @@ class AppSettings(context: Context) {
         favoritesOnly = j.optBoolean("favoritesOnly"), protectedOnly = j.optBoolean("protectedOnly"),
         sortField = enumValueOf(j.optString("sortField", "CAPTURED")),
         sortDirection = enumValueOf(j.optString("sortDirection", "DESCENDING")),
+        downloadsOnly = j.optBoolean("downloadsOnly"), groupByDate = j.optBoolean("groupByDate"),
     )
 
     private fun JSONObject.longOrNull(key: String): Long? = if (has(key) && !isNull(key)) getLong(key) else null
