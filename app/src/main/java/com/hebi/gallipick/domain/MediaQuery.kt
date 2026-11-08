@@ -6,14 +6,11 @@ object MediaQuery {
         val query = filter.query.trim()
         val hasDurationBound = filter.minDurationMs != null || filter.maxDurationMs != null
         val matching = items.filter { item ->
-            val date = when (filter.dateField) {
-                DateField.CAPTURED -> item.capturedAt
-                DateField.ADDED -> item.dateAddedMs
-                DateField.MODIFIED -> item.dateModifiedMs
-            }
+            val date = dateOf(item, filter.dateField)
             (filter.kind == null || item.kind == filter.kind) &&
                 (query.isEmpty() || item.displayName.contains(query, ignoreCase = true) || item.relativePath.contains(query, ignoreCase = true)) &&
                 (filter.folder.isEmpty() || item.relativePath == filter.folder) &&
+                (!filter.downloadsOnly || isDownloadsFolder(item.relativePath)) &&
                 (filter.mimeType.isEmpty() || item.mimeType.equals(filter.mimeType, ignoreCase = true)) &&
                 (filter.minSizeBytes == null || item.sizeBytes >= filter.minSizeBytes) &&
                 (filter.maxSizeBytes == null || item.sizeBytes <= filter.maxSizeBytes) &&
@@ -32,6 +29,17 @@ object MediaQuery {
             val directed = if (filter.sortDirection == SortDirection.ASCENDING) primary else -primary
             if (directed != 0) directed else first.uri.compareTo(second.uri)
         }
+    }
+
+    fun isDownloadsFolder(relativePath: String): Boolean {
+        val root = relativePath.trim('/').substringBefore('/')
+        return root.equals("Download", ignoreCase = true) || root.equals("Downloads", ignoreCase = true)
+    }
+
+    fun dateOf(item: MediaItem, field: DateField): Long = when (field) {
+        DateField.CAPTURED -> item.capturedAt
+        DateField.ADDED -> item.dateAddedMs
+        DateField.MODIFIED -> item.dateModifiedMs
     }
 
     private fun matchesOrientation(item: MediaItem, orientation: Orientation?): Boolean {
