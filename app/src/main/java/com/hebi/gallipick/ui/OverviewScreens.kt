@@ -309,7 +309,6 @@ private fun cleanupSuggestions(items: List<MediaItem>): List<CleanupSuggestion> 
 internal fun CleanupScreen(state: AppUiState, onOpenDuplicates: (() -> Unit)? = null, browse: (MediaFilter) -> Unit) {
     val suggestions = remember(state.items) { cleanupSuggestions(state.items) }
     val populated = suggestions.filter { it.items.isNotEmpty() }
-    val totalCandidates = populated.sumOf { suggestion -> suggestion.items.count { it.canTrash() } }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 700.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
         Column(
@@ -318,17 +317,6 @@ internal fun CleanupScreen(state: AppUiState, onOpenDuplicates: (() -> Unit)? = 
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             SectionTitle("정리 후보", "확인 후 직접 선택한 파일만 휴지통으로 이동합니다.")
-            Row(
-                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                GalliIcon(Icons.Rounded.AutoAwesome, null, Modifier.size(30.dp), tint = Primary)
-                Column(Modifier.weight(1f)) {
-                    Text("정리할 파일을 확인해 보세요", style = MaterialTheme.typography.titleMedium)
-                    Text("직접 선택 가능한 후보 ${totalCandidates}개", style = MaterialTheme.typography.bodySmall, color = Muted)
-                }
-            }
             if (onOpenDuplicates != null) {
                 Row(
                     Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(14.dp))
