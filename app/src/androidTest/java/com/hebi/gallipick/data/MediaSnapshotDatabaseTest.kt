@@ -88,6 +88,35 @@ class MediaSnapshotDatabaseTest {
         assertEquals(listOf(MediaVolumeVersion("primary", "one")), dao.allVolumeVersions())
     }
 
+    @Test fun historyIsIdempotentSortedAndNeverChangesMediaOrProtection() = runBlocking {
+        val media = media("protected", "primary")
+        dao.replaceAccessible(listOf(media), mapOf("primary" to "one"))
+        dao.protect(ProtectedMedia(media.uri))
+        dao.putHash(CachedHash(media.uri, media.fingerprint, HASH, "one"))
+        val first = CachedCleanupHistory("same-id", 1_000L, "MOVE_TO_TRASH", 2, 1, 4096)
+        val second = CachedCleanupHistory("restore-id", 2_000L, "RESTORE", 1, 1, 4096)
+        assertTrue(dao.insertCleanupHistory(first) >= 0)
+        assertEquals(-1L, dao.insertCleanupHistory(first))
+        dao.insertCleanupHistory(second)
+
+        assertEquals(listOf("restore-id", "same-id"), dao.allCleanupHistory().map { it.id })
+        assertEquals(1, dao.deleteCleanupHistory("same-id"))
+        assertEquals(listOf("restore-id"), dao.allCleanupHistory().map { it.id })
+        assertEquals(0, dao.deleteCleanupHistory("missing-id"))
+        assertEquals(1, dao.clearCleanupHistory())
+        assertTrue(dao.allCleanupHistory().isEmpty())
+        assertEquals(1, dao.allMedia().size)
+        assertEquals(listOf(media.uri), dao.allProtection().map { it.uri })
+        assertEquals(1, dao.allHashes().size)
+    }
+
+    @Test fun historySurvivesMediaCacheRefreshAndDoesNotRequirePhotoAccess() = runBlocking {
+        dao.insertCleanupHistory(CachedCleanupHistory("old", 1_000L, "MOVE_TO_TRASH", 2, 2, 2048))
+        dao.replaceAccessible(emptyList(), emptyMap())
+        assertEquals(1, dao.allCleanupHistory().size)
+        assertEquals("old", dao.allCleanupHistory().single().entry().id)
+    }
+
     @Test fun migratedHashesWithoutAKnownEpochAreInvalidated() = runBlocking {
         val row = media("a", "primary")
         dao.insertMedia(listOf(row))
