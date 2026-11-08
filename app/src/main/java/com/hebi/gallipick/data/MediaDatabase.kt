@@ -140,6 +140,8 @@ internal abstract class MediaDao {
     @Query("DELETE FROM photo_perceptual_hash WHERE uri IN (SELECT uri FROM media_cache WHERE volume IN (:volumes))")
     abstract suspend fun invalidateVolumePhotoHashes(volumes: Set<String>)
     @Query("SELECT * FROM photo_perceptual_hash")
+    abstract fun observePhotoHashes(): Flow<List<CachedPhotoHash>>
+    @Query("SELECT * FROM photo_perceptual_hash")
     abstract suspend fun allPhotoHashes(): List<CachedPhotoHash>
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun putPhotoHash(hash: CachedPhotoHash)

@@ -32,6 +32,7 @@ internal fun PhotoAnalysisScreen(
     onResume: () -> Unit,
     requestAccess: () -> Unit,
     refresh: () -> Unit,
+    onOpenResults: () -> Unit = {},
 ) {
     val scan = state.photoAnalysis
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -103,9 +104,16 @@ internal fun PhotoAnalysisScreen(
                         Text("특징 분석 완료", style = MaterialTheme.typography.titleMedium)
                         Text("분석 성공 ${scan.completed}개 · 제외 ${scan.skipped}개",
                             style = MaterialTheme.typography.bodyMedium)
-                        Text("유사 사진을 묶어 비교하고 남길 사진을 고르는 기능은 9-C 단계에서 제공됩니다.",
-                            style = MaterialTheme.typography.bodySmall, color = Muted)
-                        ActionButton("다시 분석", onStart, Modifier.fillMaxWidth(), filled = true, icon = Icons.Rounded.Refresh)
+                        if (state.similarGroups.isNotEmpty()) {
+                            Text("${state.similarGroups.size}개 유사 사진 묶음 · ${state.similarGroups.sumOf { it.photos.size }}장",
+                                style = MaterialTheme.typography.bodyMedium, color = Primary)
+                            ActionButton("유사 사진 결과 보기", onOpenResults, Modifier.fillMaxWidth(),
+                                filled = true, icon = Icons.Rounded.Collections)
+                        } else {
+                            Text("현재 확인된 유사 사진 묶음이 없습니다. 사진의 유사도는 참고용입니다.",
+                                style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
+                        ActionButton("다시 분석", onStart, Modifier.fillMaxWidth(), icon = Icons.Rounded.Refresh)
                     }
                     PhotoAnalysisPhase.FAILED -> {
                         Text("사진 분석을 완료하지 못했습니다.", style = MaterialTheme.typography.bodyMedium)

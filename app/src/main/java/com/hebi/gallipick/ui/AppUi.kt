@@ -63,11 +63,21 @@ fun GalliPickApp(
     var showDuplicates by rememberSaveable { mutableStateOf(false) }
     var showFolderStorage by rememberSaveable { mutableStateOf(false) }
     var showPhotoAnalysis by rememberSaveable { mutableStateOf(false) }
+    var showSimilarResults by rememberSaveable { mutableStateOf(false) }
+    var similarCompareId by rememberSaveable { mutableStateOf<String?>(null) }
+    fun closeSimilarReview() {
+        showSimilarResults = false
+        similarCompareId = null
+        vm.clearSelection()
+    }
     fun navigate(destinationValue: Destination) {
+        if (showSimilarResults || similarCompareId != null) vm.clearSelection()
         showTrash = false
         showDuplicates = false
         showFolderStorage = false
         showPhotoAnalysis = false
+        showSimilarResults = false
+        similarCompareId = null
         destination = destinationValue
     }
     fun openDuplicates() {
@@ -75,6 +85,8 @@ fun GalliPickApp(
         showTrash = false
         showFolderStorage = false
         showPhotoAnalysis = false
+        showSimilarResults = false
+        similarCompareId = null
         destination = Destination.CLEANUP
         showDuplicates = true
     }
@@ -82,6 +94,8 @@ fun GalliPickApp(
         showTrash = false
         showDuplicates = false
         showPhotoAnalysis = false
+        showSimilarResults = false
+        similarCompareId = null
         destination = Destination.CLEANUP
         showFolderStorage = true
     }
@@ -89,14 +103,24 @@ fun GalliPickApp(
         showTrash = false
         showDuplicates = false
         showFolderStorage = false
+        showSimilarResults = false
+        similarCompareId = null
         destination = Destination.CLEANUP
         showPhotoAnalysis = true
     }
-    BackHandler(enabled = showTrash || showDuplicates || showFolderStorage || showPhotoAnalysis || destination != Destination.HOME) {
+    fun reviewSimilarCandidates() {
+        val candidates = vm.selectedSimilarCandidates()
+        if (candidates.isEmpty()) vm.showMessage("이동할 사진을 직접 선택해 주세요.")
+        else onTrash(candidates)
+    }
+    BackHandler(enabled = showTrash || showDuplicates || showFolderStorage ||
+        showPhotoAnalysis || showSimilarResults || similarCompareId != null || destination != Destination.HOME) {
         when {
             showTrash -> showTrash = false
             showDuplicates -> showDuplicates = false
             showFolderStorage -> showFolderStorage = false
+            similarCompareId != null -> similarCompareId = null
+            showSimilarResults -> closeSimilarReview()
             showPhotoAnalysis -> showPhotoAnalysis = false
             else -> destination = Destination.HOME
         }
@@ -111,7 +135,7 @@ fun GalliPickApp(
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, showFolderStorage to showPhotoAnalysis), state.filter),
+                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage, showPhotoAnalysis, showSimilarResults to similarCompareId)), state.filter),
                     header = {
                         if (destination == Destination.FILES && !showTrash && !showDuplicates && !showFolderStorage && !showPhotoAnalysis) {
                             GalliFilesHeader(state.loading, vm::refresh)
@@ -171,6 +195,31 @@ fun GalliPickApp(
                                             DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission)
                                         }
                                     }
+                                    similarCompareId != null -> {
+                                        val group = state.similarGroups.firstOrNull { it.id == similarCompareId }
+                                        if (group == null) SimilarPhotoResultsScreen(
+                                            state.similarGroups, state.selected,
+                                            onBack = ::closeSimilarReview,
+                                            onCompare = { similarCompareId = it },
+                                            onReview = ::reviewSimilarCandidates,
+                                        ) else SimilarPhotoCompareScreen(
+                                            group = group,
+                                            groupIndex = state.similarGroups.indexOf(group) + 1,
+                                            groupCount = state.similarGroups.size,
+                                            selectedUris = state.selected,
+                                            protectedFolders = state.protectedFolders,
+                                            onBack = { similarCompareId = null },
+                                            onToggleCandidate = { vm.toggleSimilarCandidate(group.id, it) },
+                                            onOpenMedia = onOpenMedia,
+                                            onReview = ::reviewSimilarCandidates,
+                                        )
+                                    }
+                                    showSimilarResults -> SimilarPhotoResultsScreen(
+                                        groups = state.similarGroups, selectedUris = state.selected,
+                                        onBack = ::closeSimilarReview,
+                                        onCompare = { similarCompareId = it },
+                                        onReview = ::reviewSimilarCandidates,
+                                    )
                                     showPhotoAnalysis -> PhotoAnalysisScreen(
                                         state = state,
                                         onBack = { showPhotoAnalysis = false },
@@ -179,6 +228,10 @@ fun GalliPickApp(
                                         onResume = vm::resumePhotoAnalysis,
                                         requestAccess = onRequestPermission,
                                         refresh = vm::refresh,
+                                        onOpenResults = {
+                                            vm.prepareSimilarReview()
+                                            showSimilarResults = true
+                                        },
                                     )
                                     showFolderStorage -> FolderStorageScreen(
                                         state = state,

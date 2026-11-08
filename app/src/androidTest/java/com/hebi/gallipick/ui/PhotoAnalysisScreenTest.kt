@@ -76,9 +76,38 @@ class PhotoAnalysisScreenTest {
             photoAnalysis = PhotoAnalysisState(PhotoAnalysisPhase.COMPLETE, completed = 1, total = 1),
         ))
         compose.onNodeWithText("특징 분석 완료").assertExists()
-        compose.onNodeWithText("9-C 단계에서 제공됩니다.", substring = true).assertExists()
+        compose.onNodeWithText("현재 확인된 유사 사진 묶음이 없습니다.", substring = true).assertExists()
+        compose.onNodeWithText("유사 사진 결과 보기").assertDoesNotExist()
         compose.onNodeWithText("현재 허용된 사진만 분석합니다.").assertExists()
         compose.onNodeWithText("정리 후보 선택").assertDoesNotExist()
+    }
+
+    @Test fun completeAnalysisWithRealGroupsOpensResultList() {
+        var opens = 0
+        val group = SimilarPhotoGroup("group", listOf(
+            SimilarPhoto(photos.first(), "0000000000000000"),
+            SimilarPhoto(photos.first().copy(uri = "content://media/external/images/media/411", id = 411), "0000000000000001"),
+        ))
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(360.dp, 760.dp)) {
+                        PhotoAnalysisScreen(
+                            state = AppUiState(
+                                access = MediaAccess.FULL, items = group.items,
+                                photoAnalysis = PhotoAnalysisState(PhotoAnalysisPhase.COMPLETE, completed = 2, total = 2),
+                                similarGroups = listOf(group),
+                            ),
+                            onBack = {}, onStart = {}, onPause = {}, onResume = {},
+                            requestAccess = {}, refresh = {}, onOpenResults = { opens++ },
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("2장", substring = true).assertExists()
+        compose.onNodeWithText("유사 사진 결과 보기").performClick()
+        compose.runOnIdle { assertEquals(1, opens) }
     }
 
     private fun render(

@@ -27,6 +27,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.DuplicateGroup
+import com.hebi.gallipick.domain.SimilarPhotoGroup
 import com.hebi.gallipick.domain.SelectionPolicy
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.TrashIdentity
@@ -140,13 +141,14 @@ class MainActivity : ComponentActivity() {
                 operationResult = null
                 val requested = if (restore) items else vm.selectedItemsForReview(items)
                 val safetyGroups = if (restore) emptyList() else vm.selectionSafetyGroups(requested)
+                val similarSafetyGroups = if (restore) emptyList() else vm.selectionSafetySimilarGroups(requested)
                 val generation = reviewGeneration
                 val selectionSnapshot = vm.ui.value.selected.toSet()
                 reviewChecking = true
                 lifecycleScope.launch {
                     try {
                         val verified = if (restore) vm.repository.revalidateForRestore(requested) else vm.repository.revalidate(requested)
-                        if (verified.isEmpty()) {
+                        if (verified.isEmpty() || (similarSafetyGroups.isNotEmpty() && verified.size != requested.size)) {
                             vm.showMessage("처리할 파일이 없습니다. 파일 변경·접근 권한·즐겨찾기·보호 상태를 확인해 주세요.")
                             vm.refresh()
                         } else {
@@ -157,11 +159,15 @@ class MainActivity : ComponentActivity() {
                                 val survivor = vm.repository.confirmedSurvivingCopy(group, selectedUris, vm.ui.value.duplicateKeepers[group.hash])
                                 if (survivor == null) survivorsValid = false else kept += survivor
                             }
+                            for (group in similarSafetyGroups) {
+                                val survivor = vm.repository.confirmedSimilarSurvivor(group, selectedUris)
+                                if (survivor == null) survivorsValid = false else kept += survivor
+                            }
                             if (generation != reviewGeneration || !vm.repository.catalogReady.value || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                                 vm.showMessage("접근 범위 확인 후 파일을 다시 선택해 주세요.")
                             } else if (!restore && vm.ui.value.selected != selectionSnapshot) {
                                 vm.showMessage("선택이 변경되었습니다. 이동할 파일을 다시 확인해 주세요.")
-                            } else if (survivorsValid) pending = TrashReview(verified, restore, items.size - verified.size, safetyGroups, kept.distinctBy { it.uri }, selectionSnapshot)
+                            } else if (survivorsValid) pending = TrashReview(verified, restore, items.size - verified.size, safetyGroups, similarSafetyGroups, kept.distinctBy { it.uri }, selectionSnapshot)
                             else {
                                 vm.showMessage("중복 묶음에는 변경되지 않은 사본이 한 개 이상 남아 있어야 합니다. 다시 검사하고 선택해 주세요.")
                                 vm.refresh()
@@ -206,6 +212,9 @@ class MainActivity : ComponentActivity() {
                                     var survivorsValid = true
                                     for (group in request.safetyGroups) {
                                         if (!vm.repository.hasSurvivingCopy(group, selectedUris)) survivorsValid = false
+                                    }
+                                    for (group in request.similarSafetyGroups) {
+                                        if (vm.repository.confirmedSimilarSurvivor(group, selectedUris) == null) survivorsValid = false
                                     }
                                     if (generation != reviewGeneration || !vm.repository.catalogReady.value || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                                         vm.showMessage("파일 접근 상태가 변경되었습니다. 새로고침 후 다시 선택해 주세요.")
@@ -264,7 +273,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class TrashReview(val items: List<MediaItem>, val restore: Boolean, val excluded: Int, val safetyGroups: List<DuplicateGroup>, val kept: List<MediaItem>, val selectionSnapshot: Set<String>)
+private data class TrashReview(
+    val items: List<MediaItem>, val restore: Boolean, val excluded: Int,
+    val safetyGroups: List<DuplicateGroup>,
+    val similarSafetyGroups: List<SimilarPhotoGroup>,
+    val kept: List<MediaItem>, val selectionSnapshot: Set<String>,
+)
 
 private fun encodeTrashRequest(items: List<MediaItem>): String = JSONArray().apply {
     items.forEach { item -> put(JSONObject().apply {
