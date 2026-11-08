@@ -321,7 +321,7 @@ private fun DuplicateHorizontalMediaCard(
         } else {
             Box(Modifier.size(48.dp).semantics { contentDescription = "${item.displayName} 남김" },
                 contentAlignment = Alignment.Center) {
-                Box(Modifier.size(28.dp).background(Mint, RoundedCornerShape(14.dp)),
+                Box(Modifier.size(28.dp).background(IconContainer, RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center) {
                     GalliIcon(if (item.isProtected || item.hasFolderProtection(roles.protectedFolders))
                         Icons.Rounded.Lock else Icons.Rounded.PushPin, null, Modifier.size(17.dp), tint = Ink)
