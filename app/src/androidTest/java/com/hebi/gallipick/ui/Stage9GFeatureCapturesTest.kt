@@ -5,10 +5,11 @@ import android.graphics.Bitmap
 import android.os.SystemClock
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -113,9 +114,16 @@ class Stage9GFeatureCapturesTest {
             var screen by mutableStateOf(Screen.ANALYSIS_COMPLETE)
             var dark by mutableStateOf(false)
             compose.setContent {
+                SideEffect {
+                    WindowCompat.getInsetsController(context.window, context.window.decorView).apply {
+                        isAppearanceLightStatusBars = !dark
+                        isAppearanceLightNavigationBars = !dark
+                    }
+                }
                 GalliPickTheme(if (dark) AppThemeMode.DARK else AppThemeMode.LIGHT) {
                     Surface(Modifier.fillMaxSize(), color = AppBackground) {
-                        when (screen) {
+                        Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                            when (screen) {
                             Screen.ANALYSIS_COMPLETE, Screen.ANALYSIS_SCROLLED ->
                                 PhotoAnalysisScreen(
                                     state = completed, onBack = {}, onStart = {},
@@ -149,6 +157,7 @@ class Stage9GFeatureCapturesTest {
                                 CleanupHistoryScreen(history, {}, {}, {})
                             Screen.HISTORY_EMPTY ->
                                 CleanupHistoryScreen(emptyList(), {}, {}, {})
+                            }
                         }
                     }
                 }

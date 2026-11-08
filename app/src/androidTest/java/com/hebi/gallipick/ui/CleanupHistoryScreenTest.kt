@@ -32,7 +32,8 @@ class CleanupHistoryScreenTest {
         compose.onNodeWithText("총 2건").assertExists()
         compose.onNodeWithText("휴지통 이동").assertExists()
         compose.onNodeWithText("파일 복원").assertExists()
-        compose.onNodeWithText("확인 완료 2개 · 요청 3개 중 일부 확인").assertExists()
+        compose.onNodeWithText("확인 완료 2개").assertExists()
+        compose.onNodeWithText("전체 3개 요청 중 일부 확인").assertExists()
         compose.onNodeWithText("실제 확보 공간은 아닙니다.", substring = true).assertExists()
     }
 

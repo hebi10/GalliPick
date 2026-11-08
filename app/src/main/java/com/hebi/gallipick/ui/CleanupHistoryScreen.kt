@@ -62,21 +62,20 @@ internal fun CleanupHistoryScreen(
                                 .padding(14.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(
                                     if (entry.action == CleanupHistoryAction.RESTORE) "파일 복원" else "휴지통 이동",
                                     style = MaterialTheme.typography.titleMedium,
-                                    modifier = Modifier.weight(1f),
                                 )
                                 Text(dateFormat.format(Date(entry.occurredAtMs)),
                                     style = MaterialTheme.typography.bodySmall, color = Muted)
                             }
-                            Text(
-                                "확인 완료 ${entry.confirmedCount}개" +
-                                    if (entry.confirmedCount < entry.requestedCount)
-                                        " · 요청 ${entry.requestedCount}개 중 일부 확인" else "",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
+                            Text("확인 완료 ${entry.confirmedCount}개",
+                                style = MaterialTheme.typography.bodyMedium)
+                            if (entry.confirmedCount < entry.requestedCount) {
+                                Text("전체 ${entry.requestedCount}개 요청 중 일부 확인",
+                                    style = MaterialTheme.typography.bodySmall, color = Muted)
+                            }
                             Text("확인된 파일 용량 ${bytesLabel(entry.confirmedBytes)}",
                                 style = MaterialTheme.typography.bodySmall, color = Muted)
                             if (entry.action == CleanupHistoryAction.MOVE_TO_TRASH) {
