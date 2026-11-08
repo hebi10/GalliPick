@@ -1,6 +1,5 @@
 package com.hebi.gallipick.ui
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -13,14 +12,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
-import com.hebi.gallipick.R
 import com.hebi.gallipick.domain.PhotoAnalysisPhase
 
 @Composable
@@ -62,10 +59,7 @@ internal fun PhotoAnalysisScreen(
                     Text("사진을 축소해 시각적 특징을 기기 안에 저장합니다. 다른 크기나 압축본도 비교할 수 있도록 준비합니다.",
                         style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
-                if (!compact) Image(
-                    painterResource(R.drawable.gp_cat_search),
-                    contentDescription = null, modifier = Modifier.size(84.dp),
-                )
+                if (!compact) GalliIllustration(GalliScene.SEARCH, Modifier.size(84.dp))
             }
             if (state.access == MediaAccess.NONE) {
                 Text("사진에 접근할 수 없습니다. 권한을 허용해 주세요.",

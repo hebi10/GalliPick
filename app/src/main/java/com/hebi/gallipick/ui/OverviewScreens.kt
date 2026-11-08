@@ -1,7 +1,5 @@
 package com.hebi.gallipick.ui
 
-import androidx.compose.foundation.Image
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.background
@@ -331,11 +329,7 @@ internal fun CleanupScreen(
                     SectionTitle("정리", "필요한 파일을 찾아 직접 확인하고 정리하세요.")
                 }
                 if (showIllustration) {
-                    Image(
-                        painter = painterResource(R.drawable.gp_cat_organize),
-                        contentDescription = null,
-                        modifier = Modifier.size(88.dp), contentScale = ContentScale.Fit,
-                    )
+                    GalliIllustration(GalliScene.ORGANIZE, Modifier.size(88.dp))
                 }
             }
             if (onOpenDuplicates != null) {

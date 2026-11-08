@@ -18,11 +18,11 @@ internal enum class GalliScene {
 @Composable
 internal fun GalliIllustration(scene: GalliScene, modifier: Modifier = Modifier) {
     val drawable = when (scene) {
-        GalliScene.ORGANIZE -> R.drawable.gp_cat_organize
-        GalliScene.SEARCH -> R.drawable.gp_cat_search
-        GalliScene.PROTECT -> R.drawable.gp_cat_protect
-        GalliScene.COMPLETE -> R.drawable.gp_cat_complete
-        GalliScene.EMPTY -> R.drawable.gp_cat_empty
+        GalliScene.ORGANIZE -> R.drawable.gp_cat_organize_mono
+        GalliScene.SEARCH -> R.drawable.gp_cat_search_mono
+        GalliScene.PROTECT -> R.drawable.gp_cat_protect_mono
+        GalliScene.COMPLETE -> R.drawable.gp_cat_complete_mono
+        GalliScene.EMPTY -> R.drawable.gp_cat_empty_mono
     }
     Image(
         painter = painterResource(drawable),
