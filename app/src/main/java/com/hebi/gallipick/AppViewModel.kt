@@ -6,6 +6,7 @@ import android.os.StatFs
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hebi.gallipick.domain.*
+import com.hebi.gallipick.data.CachedPhotoHash
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -24,6 +25,7 @@ data class AppUiState(
     val duplicateKeepers: Map<String, String> = emptyMap(),
     val scan: ScanState = ScanState(),
     val photoAnalysis: PhotoAnalysisState = PhotoAnalysisState(),
+    val similarGroups: List<SimilarPhotoGroup> = emptyList(),
     val selected: Set<String> = emptySet(),
     val catalogError: String? = null,
     val message: String? = null,
@@ -41,6 +43,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var refreshJob: Job? = null
     private var refreshGeneration = 0L
     private val selectedDuplicateGroups = mutableMapOf<String, DuplicateGroup>()
+    private val selectedSimilarGroups = mutableMapOf<String, SimilarPhotoGroup>()
+    private var knownPhotoHashes: List<CachedPhotoHash> = emptyList()
+    private var similarGroupsJob: Job? = null
     private val selectedVersions = linkedMapOf<String, MediaItem>()
     private var catalogVerified = false
 
@@ -65,11 +70,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } }
         viewModelScope.launch { repository.scan.collect { scan -> _ui.update { it.copy(scan = scan) } } }
         viewModelScope.launch { repository.photoAnalysis.collect { analysis -> _ui.update { it.copy(photoAnalysis = analysis) } } }
+        viewModelScope.launch {
+            repository.photoHashes.collect { hashes ->
+                knownPhotoHashes = hashes
+                rebuildSimilarGroups()
+            }
+        }
     }
 
     private fun hideCatalog() {
         filterJob?.cancel()
-        _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(), duplicates = emptyList(), selected = emptySet()) }
+        similarGroupsJob?.cancel()
+        selectedSimilarGroups.clear()
+        _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(), duplicates = emptyList(), similarGroups = emptyList(), selected = emptySet()) }
     }
 
     private fun publishMedia(items: List<MediaItem>) {
@@ -80,6 +93,27 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _ui.update { it.copy(items = items, selected = selectedVersions.keys.toSet(),
             message = if (dropped > 0) "변경되었거나 접근할 수 없는 선택 ${dropped}개를 해제했습니다." else it.message) }
         updateFiltered()
+        rebuildSimilarGroups()
+    }
+
+    private fun rebuildSimilarGroups() {
+        similarGroupsJob?.cancel()
+        val items = _ui.value.items
+        val hashes = knownPhotoHashes
+        similarGroupsJob = viewModelScope.launch {
+            val groups = withContext(Dispatchers.Default) {
+                val lookup = hashes.associateBy { it.uri }
+                SimilarPhotoGrouper.groups(items.mapNotNull { item ->
+                    val record = lookup[item.uri]
+                    if (item.kind != MediaKind.PHOTO || item.isTrashed || record?.phash == null ||
+                        record.fingerprint != item.fingerprint || record.volumeVersion != item.volumeVersion) null
+                    else SimilarPhoto(item, record.phash)
+                })
+            }
+            if (catalogVerified && repository.catalogReady.value && _ui.value.items === items) {
+                _ui.update { it.copy(similarGroups = groups) }
+            }
+        }
     }
 
     fun setAccess(access: MediaAccess) {
@@ -175,6 +209,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun clearSelection() {
         selectedVersions.clear()
         selectedDuplicateGroups.clear()
+        selectedSimilarGroups.clear()
         _ui.update { it.copy(selected = emptySet()) }
     }
 
@@ -223,6 +258,62 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         SelectionPolicy.candidates(items).forEach { selectedVersions[it.uri] = it }
         rememberSafety(selectedVersions.values.toList())
         _ui.update { it.copy(selected = selectedVersions.keys.toSet()) }
+    }
+
+    fun prepareSimilarReview() {
+        clearSelection()
+        if (!catalogVerified || !repository.catalogReady.value || _ui.value.photoAnalysis.phase != PhotoAnalysisPhase.COMPLETE) {
+            showMessage("사진 분석이 완료되고 파일 상태가 확인된 뒤 비교할 수 있습니다.")
+        }
+    }
+
+    private fun similarReady(): Boolean = catalogVerified && repository.catalogReady.value &&
+        !_ui.value.loading && _ui.value.catalogError == null &&
+        _ui.value.photoAnalysis.phase == PhotoAnalysisPhase.COMPLETE
+
+    fun toggleSimilarCandidate(groupId: String, uri: String) {
+        if (!similarReady()) {
+            showMessage("사진 분석 결과를 다시 확인한 뒤 선택해 주세요.")
+            return
+        }
+        val group = _ui.value.similarGroups.firstOrNull { it.id == groupId } ?: return
+        if (uri in selectedVersions) {
+            selectedVersions.remove(uri)
+            if (group.photos.none { it.item.uri in selectedVersions }) selectedSimilarGroups.remove(groupId)
+        } else {
+            if (selectedVersions.size >= SelectionPolicy.MAX_SELECTION_SIZE) {
+                showMessage("한 번에 최대 500개까지 선택할 수 있습니다.")
+                return
+            }
+            if (!SimilarPhotoReviewPolicy.maySelect(group, selectedVersions.keys, uri, _ui.value.protectedFolders)) {
+                showMessage("보호된 사진이거나 묶음에 최소 한 장을 남겨야 합니다.")
+                return
+            }
+            val item = group.photos.first { it.item.uri == uri }.item
+            selectedVersions[uri] = item
+            selectedSimilarGroups[groupId] = group
+        }
+        _ui.update { it.copy(selected = selectedVersions.keys.toSet()) }
+    }
+
+    fun selectedSimilarCandidates(): List<MediaItem> {
+        if (!similarReady()) return emptyList()
+        val groups = _ui.value.similarGroups.associateBy { it.id }
+        return selectedSimilarGroups.values.flatMap { original ->
+            val current = groups[original.id]
+            if (current == null || original.photos.map { it.item.uri to it.item.fingerprint } !=
+                current.photos.map { it.item.uri to it.item.fingerprint }) emptyList()
+            else current.photos.map { it.item }.filter { photo ->
+                photo.uri in selectedVersions && SimilarPhotoReviewPolicy.allowed(photo, _ui.value.protectedFolders)
+            }
+        }.distinctBy { it.uri }.take(SelectionPolicy.MAX_SELECTION_SIZE)
+    }
+
+    fun selectionSafetySimilarGroups(items: List<MediaItem>): List<SimilarPhotoGroup> {
+        val selected = items.mapTo(hashSetOf()) { it.uri }
+        return selectedSimilarGroups.values.filter { group ->
+            group.photos.any { it.item.uri in selected }
+        }
     }
 
     fun prepareDuplicateReview() {
