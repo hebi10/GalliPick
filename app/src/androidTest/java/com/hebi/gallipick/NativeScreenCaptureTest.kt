@@ -149,7 +149,7 @@ class NativeScreenCaptureTest {
             compose.onNodeWithText("중복 정리").assertIsDisplayed()
             saveViewport("03-duplicates-before-scan")
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            compose.onNodeWithText("정리 후보").assertIsDisplayed()
+            compose.onNodeWithText("사진 비교").assertIsDisplayed()
             saveViewport("04-cleanup")
             navigate("설정")
             compose.onNodeWithText("다크 모드").performScrollTo().performClick().assertIsSelected()
