@@ -33,6 +33,7 @@ class MediaRepository(context: Context) {
     internal val dao = database.mediaDao()
     internal val reader = MediaStoreReader(appContext)
     private val workManager by lazy { WorkManager.getInstance(appContext) }
+    internal val photoAnalysis by lazy { PhotoAnalysisRepository(appContext) }
 
     private val catalog = Coordinator.catalog(database)
 
@@ -43,6 +44,11 @@ class MediaRepository(context: Context) {
     val protectedFolders: Flow<Set<String>> = catalog.protectedFolders
     val scan: Flow<ScanState> = dao.observeScan().map { it?.state() ?: ScanState() }
     val duplicates: Flow<List<DuplicateGroup>> = catalog.duplicates
+    val photoScan: Flow<ScanState> get() = photoAnalysis.scan
+
+    fun startPhotoAnalysis() = photoAnalysis.start()
+    fun pausePhotoAnalysis() = photoAnalysis.pause()
+    fun resumePhotoAnalysis() = photoAnalysis.resume()
 
     suspend fun refresh() = withContext(Dispatchers.IO) {
         Coordinator.refreshMutex.withLock {
