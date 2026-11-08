@@ -33,6 +33,7 @@ internal fun PhotoAnalysisScreen(
     requestAccess: () -> Unit,
     refresh: () -> Unit,
     onOpenResults: () -> Unit = {},
+    onOpenBurstResults: () -> Unit = {},
 ) {
     val scan = state.photoAnalysis
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -111,6 +112,18 @@ internal fun PhotoAnalysisScreen(
                                 filled = true, icon = Icons.Rounded.Collections)
                         } else {
                             Text("현재 확인된 유사 사진 묶음이 없습니다. 사진의 유사도는 참고용입니다.",
+                                style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
+                        Text("연속 촬영", style = MaterialTheme.typography.titleMedium, color = Primary)
+                        Text("촬영 시각과 시각적 특징이 모두 가까운 사진을 묶습니다. 추가일이 아닌 실제 촬영 시각을 기준으로 합니다.",
+                            style = MaterialTheme.typography.bodySmall, color = Muted)
+                        if (state.burstGroups.isNotEmpty()) {
+                            Text("${state.burstGroups.size}개 연속 촬영 묶음 · ${state.burstGroups.sumOf { it.photos.size }}장",
+                                style = MaterialTheme.typography.bodyMedium, color = Primary)
+                            ActionButton("연속 촬영 결과 보기", onOpenBurstResults, Modifier.fillMaxWidth(),
+                                filled = true, icon = Icons.Rounded.PhotoLibrary)
+                        } else {
+                            Text("현재 확인된 연속 촬영 사진 묶음이 없습니다. 촬영 시각이 없는 사진은 제외됩니다.",
                                 style = MaterialTheme.typography.bodySmall, color = Muted)
                         }
                         ActionButton("다시 분석", onStart, Modifier.fillMaxWidth(), icon = Icons.Rounded.Refresh)
