@@ -35,11 +35,17 @@ object PerceptualHash {
             }
         }
         // The DC (brightness) coefficient does not describe visual structure.
-        val sorted = coefficients64.drop(1).sorted()
+        val ac = coefficients64.drop(1)
+        val maxMagnitude = ac.maxOf { kotlin.math.abs(it) }
+        // Integer image data should have exactly-zero insignificant coefficients.
+        // Floating-point DCT accumulation creates noisy signs around zero; normalize them.
+        val floor = maxMagnitude * 1e-8 + 1e-6
+        val normalized = ac.map { if (kotlin.math.abs(it) <= floor) 0.0 else it }
+        val sorted = normalized.sorted()
         val median = sorted[sorted.size / 2]
         var bits = 0UL
-        for (i in 1 until coefficients64.size) {
-            if (coefficients64[i] > median) bits = bits or (1UL shl (i - 1))
+        for (i in normalized.indices) {
+            if (normalized[i] > median) bits = bits or (1UL shl i)
         }
         return bits.toString(16).padStart(16, '0')
     }
