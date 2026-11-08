@@ -27,12 +27,21 @@ data class AppUiState(
     val photoAnalysis: PhotoAnalysisState = PhotoAnalysisState(),
     val similarGroups: List<SimilarPhotoGroup> = emptyList(),
     val burstGroups: List<SimilarPhotoGroup> = emptyList(),
+    val softFocusCandidates: List<SoftFocusCandidate> = emptyList(),
+    val sharpnessPending: Int = 0,
     val selected: Set<String> = emptySet(),
     val catalogError: String? = null,
     val message: String? = null,
     val totalStorageBytes: Long = 0,
     val freeStorageBytes: Long = 0,
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+)
+
+private data class PhotoReviewSnapshot(
+    val similar: List<SimilarPhotoGroup>,
+    val burst: List<SimilarPhotoGroup>,
+    val softFocus: List<SoftFocusCandidate>,
+    val pending: Int,
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -65,7 +74,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.trashed.collect { items ->
             if (catalogVerified && repository.catalogReady.value) _ui.update { it.copy(trashed = items) }
         } }
-        viewModelScope.launch { repository.protectedFolders.collect { paths -> _ui.update { it.copy(protectedFolders = paths) } } }
+        viewModelScope.launch { repository.protectedFolders.collect { paths ->
+            _ui.update { it.copy(protectedFolders = paths) }
+            rebuildSimilarGroups()
+        } }
         viewModelScope.launch { repository.duplicates.collect { groups ->
             if (catalogVerified && repository.catalogReady.value) _ui.update { it.copy(duplicates = groups) }
         } }
@@ -83,7 +95,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         filterJob?.cancel()
         similarGroupsJob?.cancel()
         selectedSimilarGroups.clear()
-        _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(), duplicates = emptyList(), similarGroups = emptyList(), burstGroups = emptyList(), selected = emptySet()) }
+        _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(), duplicates = emptyList(), similarGroups = emptyList(), burstGroups = emptyList(), softFocusCandidates = emptyList(), sharpnessPending = 0, selected = emptySet()) }
     }
 
     private fun publishMedia(items: List<MediaItem>) {
@@ -101,6 +113,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         similarGroupsJob?.cancel()
         val items = _ui.value.items
         val hashes = knownPhotoHashes
+        val protectedFolders = _ui.value.protectedFolders
         similarGroupsJob = viewModelScope.launch {
             val groups = withContext(Dispatchers.Default) {
                 val lookup = hashes.associateBy { it.uri }
@@ -110,10 +123,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         record.fingerprint != item.fingerprint || record.volumeVersion != item.volumeVersion) null
                     else SimilarPhoto(item, record.phash)
                 }
-                SimilarPhotoGrouper.groups(photos) to BurstPhotoGrouper.groups(photos)
+                val similar = SimilarPhotoGrouper.groups(photos)
+                val scores = photos.associate { it.item.uri to lookup[it.item.uri]?.sharpnessScore }
+                PhotoReviewSnapshot(
+                    similar = similar,
+                    burst = BurstPhotoGrouper.groups(photos),
+                    softFocus = SoftFocusCandidatePolicy.candidates(photos, scores, similar, protectedFolders),
+                    pending = photos.count { scores[it.item.uri] == null },
+                )
             }
-            if (catalogVerified && repository.catalogReady.value && _ui.value.items === items) {
-                _ui.update { it.copy(similarGroups = groups.first, burstGroups = groups.second) }
+            if (catalogVerified && repository.catalogReady.value && _ui.value.items === items &&
+                _ui.value.protectedFolders == protectedFolders) {
+                _ui.update { it.copy(
+                    similarGroups = groups.similar, burstGroups = groups.burst,
+                    softFocusCandidates = groups.softFocus, sharpnessPending = groups.pending
+                ) }
             }
         }
     }
