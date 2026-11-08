@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items as listItems
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -75,6 +77,18 @@ internal fun FilesScreenContent(
     val filtered = if (catalogVisible) state.filtered else emptyList()
     val detail = visibleItems.find { it.uri == detailUri }
     val selected = filtered.filter { it.uri in state.selected && it.canTrash() }
+    val groupByDate = state.filter.groupByDate
+    val dateGroups = remember(filtered, state.filter.dateField, state.filter.sortField, state.filter.sortDirection, groupByDate) {
+        if (!groupByDate) emptyList() else {
+            val dateSortField = when (state.filter.dateField) {
+                DateField.CAPTURED -> SortField.CAPTURED
+                DateField.ADDED -> SortField.ADDED
+                DateField.MODIFIED -> SortField.MODIFIED
+            }
+            val ascending = state.filter.sortField != dateSortField || state.filter.sortDirection == SortDirection.ASCENDING
+            MediaDateGroups.group(filtered, state.filter.dateField, ascending)
+        }
+    }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             ScrollAwayHeaderLayout(
@@ -118,10 +132,23 @@ internal fun FilesScreenContent(
                                             verticalArrangement = Arrangement.spacedBy(8.dp),
                                             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
                                         ) {
-                                            items(filtered, key = { it.uri }) { item ->
-                                                MediaTile(item, item.uri in state.selected,
-                                                    { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
-                                                    state.filter.sortField)
+                                            if (groupByDate) {
+                                                dateGroups.forEach { group ->
+                                                    item(key = "date:${group.date}", span = { GridItemSpan(maxLineSpan) }) {
+                                                        DateGroupHeader(group.date, group.items.size, state.filter.dateField)
+                                                    }
+                                                    items(group.items, key = { it.uri }) { item ->
+                                                        MediaTile(item, item.uri in state.selected,
+                                                            { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
+                                                            state.filter.sortField)
+                                                    }
+                                                }
+                                            } else {
+                                                items(filtered, key = { it.uri }) { item ->
+                                                    MediaTile(item, item.uri in state.selected,
+                                                        { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
+                                                        state.filter.sortField)
+                                                }
                                             }
                                         }
                                     } else {
@@ -130,10 +157,24 @@ internal fun FilesScreenContent(
                                             verticalArrangement = Arrangement.spacedBy(6.dp),
                                             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
                                         ) {
-                                            listItems(filtered, key = { it.uri }) { item ->
-                                                MediaTile(item, item.uri in state.selected,
-                                                    { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
-                                                    state.filter.sortField, listView = true)
+                                            if (groupByDate) {
+                                                dateGroups.forEach { group ->
+                                                    item(key = "date:${group.date}") {
+                                                        DateGroupHeader(group.date, group.items.size, state.filter.dateField)
+                                                    }
+                                                    listItems(group.items, key = { it.uri }) { item ->
+                                                        MediaTile(item, item.uri in state.selected,
+                                                            { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
+                                                            state.filter.sortField, listView = true,
+                                                            dateMs = MediaQuery.dateOf(item, state.filter.dateField))
+                                                    }
+                                                }
+                                            } else {
+                                                listItems(filtered, key = { it.uri }) { item ->
+                                                    MediaTile(item, item.uri in state.selected,
+                                                        { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
+                                                        state.filter.sortField, listView = true)
+                                                }
                                             }
                                         }
                                     }
@@ -169,6 +210,24 @@ internal fun FilesScreenContent(
 }
 
 @Composable
+private fun DateGroupHeader(date: String, count: Int, field: DateField) {
+    val basis = when (field) {
+        DateField.CAPTURED -> "촬영일"
+        DateField.ADDED -> "추가일"
+        DateField.MODIFIED -> "수정일"
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("$basis $date", modifier = Modifier.weight(1f).semantics { heading() },
+            style = MaterialTheme.typography.titleSmall, color = Ink)
+        Text("${count}개", style = MaterialTheme.typography.bodySmall, color = Muted)
+    }
+}
+
+@Composable
 private fun FilesFooterSummary(items: List<MediaItem>, selectAll: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -195,6 +254,7 @@ private fun MediaTile(
     detail: () -> Unit,
     sortField: SortField,
     listView: Boolean = false,
+    dateMs: Long = item.capturedAt,
 ) {
     if (listView) {
         Row(
@@ -208,7 +268,7 @@ private fun MediaTile(
             Column(Modifier.weight(1f).plainClick(action = detail), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(item.displayName, style = MaterialTheme.typography.bodyMedium,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(item.capturedAt).substringBefore(" "),
+                Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(dateMs).substringBefore(" "),
                     style = MaterialTheme.typography.bodySmall, color = Muted)
                 if (item.kind == MediaKind.VIDEO) {
                     Text(durationLabel(item.durationMs), style = MaterialTheme.typography.labelSmall, color = Muted)
