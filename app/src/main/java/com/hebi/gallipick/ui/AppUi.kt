@@ -61,21 +61,31 @@ fun GalliPickApp(
     var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var showDuplicates by rememberSaveable { mutableStateOf(false) }
+    var showFolderStorage by rememberSaveable { mutableStateOf(false) }
     fun navigate(destinationValue: Destination) {
         showTrash = false
         showDuplicates = false
+        showFolderStorage = false
         destination = destinationValue
     }
     fun openDuplicates() {
         vm.prepareDuplicateReview()
         showTrash = false
+        showFolderStorage = false
         destination = Destination.CLEANUP
         showDuplicates = true
     }
-    BackHandler(enabled = showTrash || showDuplicates || destination != Destination.HOME) {
+    fun openFolderStorage() {
+        showTrash = false
+        showDuplicates = false
+        destination = Destination.CLEANUP
+        showFolderStorage = true
+    }
+    BackHandler(enabled = showTrash || showDuplicates || showFolderStorage || destination != Destination.HOME) {
         when {
             showTrash -> showTrash = false
             showDuplicates -> showDuplicates = false
+            showFolderStorage -> showFolderStorage = false
             else -> destination = Destination.HOME
         }
     }
@@ -89,9 +99,9 @@ fun GalliPickApp(
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    resetKey = Triple(destination, showTrash to showDuplicates, state.filter),
+                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, showFolderStorage), state.filter),
                     header = {
-                        if (destination == Destination.FILES && !showTrash && !showDuplicates) {
+                        if (destination == Destination.FILES && !showTrash && !showDuplicates && !showFolderStorage) {
                             GalliFilesHeader(state.loading, vm::refresh)
                         } else {
                             GalliAppHeader(state.loading, vm::refresh)
@@ -149,10 +159,26 @@ fun GalliPickApp(
                                             DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission)
                                         }
                                     }
+                                    showFolderStorage -> FolderStorageScreen(
+                                        state = state,
+                                        onBack = { showFolderStorage = false },
+                                        onOpenFolder = { path ->
+                                            navigateFiles(com.hebi.gallipick.domain.MediaFilter(
+                                                folder = path,
+                                                sortField = com.hebi.gallipick.domain.SortField.SIZE,
+                                                sortDirection = com.hebi.gallipick.domain.SortDirection.DESCENDING,
+                                            ))
+                                        },
+                                        requestAccess = onRequestPermission,
+                                        refresh = vm::refresh,
+                                    )
                                     else -> when (destination) {
                                         Destination.HOME -> HomeScreen(state, onRequestPermission, navigateFiles, ::openDuplicates, { navigate(Destination.CLEANUP) })
                                         Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission)
-                                        Destination.CLEANUP -> CleanupScreen(state, ::openDuplicates, navigateFiles)
+                                        Destination.CLEANUP -> CleanupScreen(
+                                            state, onOpenDuplicates = ::openDuplicates,
+                                            onOpenFolderStorage = ::openFolderStorage, browse = navigateFiles,
+                                        )
                                         Destination.SETTINGS -> SettingsScreen(state, vm, onRequestPermission, onOpenSettings, { showTrash = true })
                                     }
                                 }
