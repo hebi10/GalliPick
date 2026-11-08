@@ -37,12 +37,14 @@ object SimilarPhotoGrouper {
             val target = candidates.asSequence()
                 .mapNotNull { id ->
                     val cluster = clusters[id]
-                    val distances = cluster.map { existing ->
-                        if (!similarAspect(photo.item, existing.item)) return@mapNotNull null
-                        PerceptualHash.distance(photo.phash, existing.phash)
+                    if (cluster.any { !similarAspect(photo.item, it.item) }) null
+                    else {
+                        val distances = cluster.map { existing ->
+                            PerceptualHash.distance(photo.phash, existing.phash)
+                        }
+                        if (distances.any { it > maxDistance }) null
+                        else id to (distances.maxOrNull() ?: 0)
                     }
-                    if (distances.size != cluster.size || distances.any { it > maxDistance }) null
-                    else id to distances.maxOrNull().orEmptyDistance()
                 }.minWithOrNull(compareBy<Pair<Int,Int>> { it.second }.thenBy { it.first })?.first
             if (target != null) clusters[target] += photo
             else {
@@ -58,8 +60,6 @@ object SimilarPhotoGrouper {
             SimilarPhotoGroup(members.first().item.uri + "#" + members.first().phash, members.toList())
         }.sortedWith(compareByDescending<SimilarPhotoGroup> { it.photos.size }.thenBy { it.id })
     }
-
-    private fun Int?.orEmptyDistance() = this ?: 0
 
     private fun similarAspect(first: MediaItem, second: MediaItem): Boolean {
         val firstRatio = first.width.toDouble() / first.height
