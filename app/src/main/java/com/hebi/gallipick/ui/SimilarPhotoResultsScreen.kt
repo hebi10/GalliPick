@@ -66,7 +66,8 @@ internal fun SimilarPhotoResultsScreen(
                 items(groups, key = { it.id }) { group ->
                     Column(
                         Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(GalliUiMetrics.cardCorner))
-                            .semantics { role = Role.Button; contentDescription = "${group.photos.size}장 ${groupTitle} 비교" }
+                            .semantics { role = Role.Button; contentDescription = if (groupTitle == "유사 사진 묶음") "${group.photos.size}장 유사 사진 비교"
+                                else "${group.photos.size}장 ${groupTitle} 비교" }
                             .plainClick(action = { onCompare(group.id) })
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
