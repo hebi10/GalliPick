@@ -112,7 +112,8 @@ class Stage9GFeatureCapturesTest {
                 ),
             )
             var screen by mutableStateOf(Screen.ANALYSIS_COMPLETE)
-            var dark by mutableStateOf(false)
+            val captureTheme = InstrumentationRegistry.getArguments().getString("captureTheme")?.lowercase()
+            var dark by mutableStateOf(captureTheme == "dark")
             compose.setContent {
                 SideEffect {
                     WindowCompat.getInsetsController(context.window, context.window.decorView).apply {
@@ -206,7 +207,7 @@ class Stage9GFeatureCapturesTest {
             compose.onNodeWithText("정리 기록이 없습니다").assertExists()
             screenshot(screenshots, captured, names, "11-history-empty")
 
-            compose.runOnIdle { dark = true; screen = Screen.HISTORY_DARK }
+            compose.runOnIdle { dark = captureTheme == "dark" || captureTheme == null; screen = Screen.HISTORY_DARK }
             compose.onNodeWithText("정리 기록").assertExists()
             screenshot(screenshots, captured, names, "12-history-dark")
 
@@ -216,6 +217,7 @@ class Stage9GFeatureCapturesTest {
                 .put("fixture", "stage9g-test-owned-MediaStore-jpegs")
                 .put("captureType", "Compose feature components, not MainActivity")
                 .put("profile", arguments.getString("captureProfile") ?: "unknown")
+                .put("captureTheme", captureTheme ?: "mixed-legacy")
                 .put("count", names.size)
                 .put("captures", captured)
             File(screenshots, "stage9g-manifest.json").writeText(manifest.toString(2))
