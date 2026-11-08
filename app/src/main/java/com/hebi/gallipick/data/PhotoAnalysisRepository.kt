@@ -62,6 +62,20 @@ internal class PhotoAnalysisRepository(context: Context) {
         }
     }
 
+    /** The existing "clear analysis cache" setting clears exact and visual caches together. */
+    suspend fun clearCache() = lock.withLock {
+        val session = dao.photoScanSession() ?: PhotoScanSession()
+        dao.setPhotoScanSession(session.copy(
+            token = UUID.randomUUID().toString(),
+            phase = ScanPhase.IDLE.name,
+            completed = 0, total = 0, skipped = 0,
+            currentUri = "", currentAttempts = 0,
+            message = "사진 분석 캐시를 비웠습니다.",
+        ))
+        workManager.cancelUniqueWork(WORK_NAME).result.get()
+        dao.clearPhotoHashes()
+    }
+
     private fun control(action: suspend () -> Unit) {
         Coordinator.scope.launch {
             try { action() }
