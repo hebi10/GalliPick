@@ -34,6 +34,33 @@ class MediaSnapshotDatabaseTest {
         assertEquals(mapOf("primary" to "two", "sd" to "one"), dao.allVolumeVersions().associate { it.volume to it.version })
     }
 
+    @Test fun photoHashIsSeparateAndInvalidatedOnlyForChangedEpoch() = runBlocking {
+        val rows = listOf(media("a", "primary"), media("b", "sd"))
+        dao.replaceAccessible(rows, mapOf("primary" to "one", "sd" to "one"))
+        rows.forEach {
+            dao.putHash(CachedHash(it.uri, it.fingerprint, HASH, "one"))
+            dao.putPhotoHash(CachedPhotoHash(it.uri, it.fingerprint, "one", "1234567890abcdef"))
+        }
+        dao.setPhotoAnalysisSession(PhotoAnalysisSession(token = "photo-test", phase = "COMPLETE", total = 2, completed = 2))
+        dao.replaceAccessible(rows, mapOf("primary" to "two", "sd" to "one"))
+        assertEquals(listOf("b"), dao.allPhotoHashes().map { it.uri })
+        assertEquals(listOf("b"), dao.allHashes().map { it.uri })
+        assertEquals("photo-test", dao.photoAnalysisSession()?.token)
+        assertEquals(2, dao.photoAnalysisSession()?.completed)
+    }
+
+    @Test fun photoHashCacheNeverAltersProtectionOrExactDuplicateCache() = runBlocking {
+        val row = media("protected", "primary")
+        dao.replaceAccessible(listOf(row), mapOf("primary" to "one"))
+        dao.protect(ProtectedMedia(row.uri))
+        dao.putHash(CachedHash(row.uri, row.fingerprint, HASH, "one"))
+        dao.putPhotoHash(CachedPhotoHash(row.uri, row.fingerprint, "one", "abcdef0123456789"))
+        dao.clearPhotoHashes()
+        assertTrue(dao.allPhotoHashes().isEmpty())
+        assertEquals(1, dao.allHashes().size)
+        assertEquals(listOf(row.uri), dao.allProtection().map { it.uri })
+    }
+
     @Test fun failedReplacementRollsBackRowsEpochsAndCheckpoints() = runBlocking {
         val original = media("a", "primary")
         dao.replaceAccessible(listOf(original), mapOf("primary" to "one"))
