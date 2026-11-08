@@ -38,6 +38,7 @@ import com.hebi.gallipick.ui.GalliPickTheme
 import com.hebi.gallipick.ui.TrashReviewDialog
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -61,6 +62,7 @@ class MainActivity : ComponentActivity() {
             var pending by remember { mutableStateOf<TrashReview?>(null) }
             var restored by rememberSaveable { mutableStateOf(false) }
             var submitted by rememberSaveable { mutableStateOf("") }
+            var submittedHistoryId by rememberSaveable { mutableStateOf("") }
             var operationResult by remember { mutableStateOf<CleanupOperationResult?>(null) }
             var reviewChecking by remember { mutableStateOf(false) }
             var reviewGeneration by remember { mutableLongStateOf(0L) }
@@ -90,6 +92,8 @@ class MainActivity : ComponentActivity() {
             val trashLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
                 val identities = decodeTrashRequest(submitted)
                 val wasRestore = restored
+                val historyId = submittedHistoryId
+                submittedHistoryId = ""
                 val requestBytes = identities.fold(0L) { total, item ->
                     val size = item.sizeBytes.coerceAtLeast(0L)
                     if (size > Long.MAX_VALUE - total) Long.MAX_VALUE else total + size
@@ -107,9 +111,23 @@ class MainActivity : ComponentActivity() {
                                 CleanupOperationResult.unknown(wasRestore, 0, requestBytes)
                             } else {
                                 val outcome = vm.repository.inspectTrashOutcome(identities, wasRestore)
-                                CleanupOperationResult.verified(outcome, wasRestore, identities.size, requestBytes)
+                                val verifiedResult = CleanupOperationResult.verified(outcome, wasRestore, identities.size, requestBytes)
+                                if (outcome.completed > 0) {
+                                    try {
+                                        val saved = vm.repository.recordConfirmedCleanup(
+                                            historyId, wasRestore, identities.size, outcome
+                                        )
+                                        if (saved) vm.dismissMessage()
+                                        else vm.showMessage("파일 처리는 확인되었지만 정리 기록을 저장하지 못했습니다.")
+                                    } catch (e: CancellationException) { throw e
+                                    } catch (_: Exception) {
+                                        vm.showMessage("파일 처리는 확인되었지만 정리 기록 저장에 실패했습니다.")
+                                    }
+                                } else {
+                                    vm.dismissMessage()
+                                }
+                                verifiedResult
                             }
-                            vm.dismissMessage()
                         } catch (e: CancellationException) { throw e
                         } catch (_: Exception) {
                             checked = CleanupOperationResult.unknown(wasRestore, identities.size, requestBytes)
@@ -231,11 +249,13 @@ class MainActivity : ComponentActivity() {
                                         restored = request.restore
                                         val sender = MediaStore.createTrashRequest(contentResolver, current.map { Uri.parse(it.uri) }, !request.restore)
                                         submitted = encodeTrashRequest(current)
+                                        submittedHistoryId = UUID.randomUUID().toString()
                                         trashLauncher.launch(IntentSenderRequest.Builder(sender.intentSender).build())
                                     }
                                 } catch (e: CancellationException) { throw e
                                 } catch (_: Exception) {
                                     submitted = ""
+                                    submittedHistoryId = ""
                                     vm.showMessage("Android 휴지통 요청을 시작하지 못했습니다. 파일과 접근 권한을 확인해 주세요.")
                                     val totalBytes = request.items.fold(0L) { sum, item ->
                                         val size = item.sizeBytes.coerceAtLeast(0L)
