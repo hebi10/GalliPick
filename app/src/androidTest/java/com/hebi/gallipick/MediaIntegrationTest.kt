@@ -78,6 +78,28 @@ class MediaIntegrationTest {
         repository.refresh()
     }
 
+    @Test fun perceptualPhotoScanRunsOnLocalMediaWithoutMutatingExactDuplicateCache() = runBlocking {
+        val previous = repository.dao.photoScanSession()?.token
+        repository.startPhotoAnalysis()
+        val token = withTimeout(15_000) {
+            while (repository.dao.photoScanSession()?.token == previous) delay(100)
+            repository.dao.photoScanSession()!!.token
+        }
+        val scan = withTimeout(60_000) {
+            repository.photoScan.first { state ->
+                val current = repository.dao.photoScanSession()
+                current?.token == token && state.phase in setOf(ScanPhase.COMPLETE, ScanPhase.FAILED)
+            }
+        }
+        assertEquals(scan.message, ScanPhase.COMPLETE, scan.phase)
+        val recorded = repository.dao.allPhotoHashes().associateBy { it.uri }
+        val first = recorded[created[0].toString()]
+        val second = recorded[created[1].toString()]
+        assertNotNull("First test photo must have a cached pHash", first?.perceptualHash)
+        assertEquals(first?.perceptualHash, second?.perceptualHash)
+        assertTrue("The SHA-256 cache remains independent", repository.dao.allHashes().isEmpty())
+    }
+
     @Test fun exactScanAndLastCopyValidation() = runBlocking {
         repository.startScan()
         val scan = withTimeout(45_000) { repository.scan.first { it.phase == ScanPhase.COMPLETE || it.phase == ScanPhase.FAILED } }
