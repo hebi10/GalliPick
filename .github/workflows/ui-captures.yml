@@ -1,7 +1,7 @@
 name: Adaptive UI verification and native captures
 on:
   push:
-    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*', 'design-details-trash-stage4-*', 'design-settings-results-stage5-*', 'design-visual-verification-stage6-*', 'design-reference-system-stage1-*', 'design-reference-navigation-stage2-*', 'design-reference-home-stage3-*', 'design-reference-files-filter-stage4-*', 'design-reference-cleanup-duplicates-stage5-*', 'design-reference-stage6-*', 'design-stage7a-*', 'design-stage7b-*', 'design-stage7c-*', 'design-stage7d-*', 'design-stage7e-*', 'design-stage7f-*', 'design-stage7g-*', 'design-stage8a-*', 'design-stage8b-*', 'design-stage8c-*', 'design-stage8d-*', 'design-stage8e-*', 'design-stage8f-*', 'design-stage8g-*', 'feat/cleanup-old-downloads-*', 'design-stage9a-*']
+    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*', 'design-details-trash-stage4-*', 'design-settings-results-stage5-*', 'design-visual-verification-stage6-*', 'design-reference-system-stage1-*', 'design-reference-navigation-stage2-*', 'design-reference-home-stage3-*', 'design-reference-files-filter-stage4-*', 'design-reference-cleanup-duplicates-stage5-*', 'design-reference-stage6-*', 'design-stage7a-*', 'design-stage7b-*', 'design-stage7c-*', 'design-stage7d-*', 'design-stage7e-*', 'design-stage7f-*', 'design-stage7g-*', 'design-stage8a-*', 'design-stage8b-*', 'design-stage8c-*', 'design-stage8d-*', 'design-stage8e-*', 'design-stage8f-*', 'design-stage8g-*', 'feat/cleanup-old-downloads-*', 'design-stage9a-*', 'design-stage9g-*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -139,6 +139,9 @@ jobs:
             mkdir -p stage9a-captures
             tar -xf stage9a-payload.tar -C stage9a-captures || true
             python3 -c "from pathlib import Path; import struct; p=list(Path('stage9a-captures').glob('*.png')); assert len(p)==1, 'Expected one genuine Stage 9-A folder screen'; b=p[0].read_bytes(); assert b[:8]==bytes.fromhex('89504e470d0a1a0a'), 'Invalid PNG'; w,h=struct.unpack('>II',b[16:24]); assert (w,h)==tuple(int(n) for n in '${{ matrix.size }}'.split('x')), 'Stage 9-A viewport mismatch'"
+            adb exec-out run-as com.hebi.gallipick tar -C files/stage9g-native-captures -cf - . > stage9g-native-payload.tar || true
+            mkdir -p stage9g-native-captures
+            tar -xf stage9g-native-payload.tar -C stage9g-native-captures || true
             adb exec-out run-as com.hebi.gallipick tar -C files/test-screenshots -cf - . > adaptive-screenshots.tar || true
             mkdir -p adaptive-screenshots
             tar -xf adaptive-screenshots.tar -C adaptive-screenshots || true
@@ -152,6 +155,13 @@ jobs:
             python3 -c "import pathlib,re; t=pathlib.Path('modal-instrumentation.txt').read_text(); assert not pathlib.Path('modal-failed.txt').exists() and re.search(r'OK \\(\\d+ tests?\\)',t), 'Modal capture instrumentation did not pass'; assert len(list(pathlib.Path('modal-captures').glob('*.png'))) == 16, 'Expected 16 modal/detail screenshots'"
             python3 scripts/qa/verify_design_captures.py --native captures --modal modal-captures --profile "${{ matrix.name }}" --output qa/design-audit.json
             python3 scripts/qa/verify_stage8_captures.py --native captures --modal modal-captures --design-audit qa/design-audit.json --profile "${{ matrix.name }}" --output qa/stage8-audit.json
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.Stage9GFeatureCapturesTest -e captureProfile ${{ matrix.name }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > stage9g-instrumentation.txt || echo failed > stage9g-failed.txt
+            cat stage9g-instrumentation.txt
+            adb exec-out run-as com.hebi.gallipick tar -C files/stage9g-feature-captures -cf - . > stage9g-feature-payload.tar || true
+            mkdir -p stage9g-feature-captures
+            tar -xf stage9g-feature-payload.tar -C stage9g-feature-captures || true
+            python3 -c "import pathlib,re; t=pathlib.Path('stage9g-instrumentation.txt').read_text(); assert not pathlib.Path('stage9g-failed.txt').exists() and re.search(r'OK \\(\\d+ tests?\\)',t), 'Stage9G feature capture instrumentation did not pass'"
+            python3 scripts/qa/verify_stage9g_captures.py --stage8-audit qa/stage8-audit.json --real-native stage9g-native-captures --feature-components stage9g-feature-captures --profile "${{ matrix.name }}" --output qa/stage9g-audit.json
       - name: Upload fresh native captures and execution record
         if: always()
         uses: actions/upload-artifact@v4
@@ -160,6 +170,10 @@ jobs:
           path: |
             captures/
             stage9a-captures/
+            stage9g-native-captures/
+            stage9g-feature-captures/
+            stage9g-instrumentation.txt
+            stage9g-failed.txt
             capture-instrumentation.txt
             capture-failed.txt
             capture-progress.txt
@@ -170,5 +184,6 @@ jobs:
             modal-instrumentation.txt
             qa/design-audit.json
             qa/stage8-audit.json
+            qa/stage9g-audit.json
             modal-failed.txt
           retention-days: 14
