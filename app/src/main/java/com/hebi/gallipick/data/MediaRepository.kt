@@ -104,6 +104,7 @@ class MediaRepository(context: Context) {
                 currentUri = "", currentAttempts = 0, message = "분석 캐시를 비웠습니다."))
             workManager.cancelUniqueWork(WORK_NAME).result.get()
             dao.clearHashes()
+            photoAnalysis.clearCache()
         }
     }
 
