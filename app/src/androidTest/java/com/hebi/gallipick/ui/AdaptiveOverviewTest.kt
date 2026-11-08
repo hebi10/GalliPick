@@ -110,6 +110,32 @@ class AdaptiveOverviewTest {
         assertTrue("A narrow home should show storage before the shortcut grid", narrowStorage.bottom < narrowAction.top)
     }
 
+    @Test fun cleanupOpensWithOnlyRealActionCardsAboveCategories() {
+        var duplicateOpens = 0
+        var opened: MediaFilter? = null
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f, fontScale = 1.6f)) {
+                    Surface(Modifier.requiredSize(320.dp, 540.dp)) {
+                        CleanupScreen(
+                            state = AppUiState(access = MediaAccess.FULL),
+                            onOpenDuplicates = { duplicateOpens++ },
+                            browse = { opened = it },
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("정리할 파일을 확인해 보세요").assertDoesNotExist()
+        compose.onNodeWithText("직접 선택 가능한 후보", substring = true).assertDoesNotExist()
+        compose.onNodeWithContentDescription("중복 파일 검사 열기")
+            .performScrollTo().assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(1, duplicateOpens) }
+        compose.onNode(hasText("큰 동영상") and hasClickAction())
+            .performScrollTo().assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(MediaKind.VIDEO, opened?.kind) }
+    }
+
     @Test fun cleanupPrioritizesResultsAndKeepsEmptyCategoriesCompactAndNavigable() {
         val oldScreenshot = media(1, "Screenshot-old.jpg", MediaKind.PHOTO, "Pictures/Screenshots/", 1024)
         val recording = media(2, "Screen-recording.mp4", MediaKind.VIDEO, "Movies/ScreenRecords/", 2048)
