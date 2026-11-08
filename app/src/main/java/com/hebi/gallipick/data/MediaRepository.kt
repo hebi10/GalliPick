@@ -10,6 +10,8 @@ import com.hebi.gallipick.domain.DuplicateGroup
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.ScanPhase
 import com.hebi.gallipick.domain.ScanState
+import com.hebi.gallipick.domain.PhotoAnalysisPhase
+import com.hebi.gallipick.domain.PhotoAnalysisState
 import com.hebi.gallipick.domain.TrashIdentity
 import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.domain.TrashOutcomePolicy
@@ -43,6 +45,7 @@ class MediaRepository(context: Context) {
     val protectedFolders: Flow<Set<String>> = catalog.protectedFolders
     val scan: Flow<ScanState> = dao.observeScan().map { it?.state() ?: ScanState() }
     val duplicates: Flow<List<DuplicateGroup>> = catalog.duplicates
+    val photoAnalysis: Flow<PhotoAnalysisState> = dao.observePhotoAnalysis().map { it?.state() ?: PhotoAnalysisState() }
 
     suspend fun refresh() = withContext(Dispatchers.IO) {
         Coordinator.refreshMutex.withLock {
@@ -79,6 +82,75 @@ class MediaRepository(context: Context) {
         }
     }
 
+
+    fun startPhotoAnalysis() = launchControl { queuePhotoAnalysis(retryFailed = true) }
+    fun resumePhotoAnalysis() = launchControl { queuePhotoAnalysis(retryFailed = false) }
+
+    fun pausePhotoAnalysis() = launchControl {
+        Coordinator.controlMutex.withLock {
+            val session = dao.photoAnalysisSession() ?: PhotoAnalysisSession()
+            dao.setPhotoAnalysisSession(session.copy(
+                token = UUID.randomUUID().toString(), phase = PhotoAnalysisPhase.PAUSED.name,
+                message = "사진 분석을 일시정지했습니다."
+            ))
+            workManager.cancelUniqueWork(PHOTO_WORK_NAME).result.get()
+        }
+    }
+
+    private suspend fun queuePhotoAnalysis(retryFailed: Boolean) {
+        Coordinator.controlMutex.withLock {
+            workManager.cancelUniqueWork(PHOTO_WORK_NAME).result.get()
+            if (retryFailed) {
+                // A read failure is never considered a valid photo hash; only explicit retry clears it.
+                dao.clearFailedPhotoHashes()
+            }
+            val token = UUID.randomUUID().toString()
+            dao.setPhotoAnalysisSession(PhotoAnalysisSession(token = token, phase = PhotoAnalysisPhase.QUEUED.name,
+                message = "접근 가능한 사진을 확인하고 있습니다."))
+            enqueuePhotoAnalysis(token, ExistingWorkPolicy.REPLACE)
+        }
+    }
+
+    internal fun enqueuePhotoAnalysis(token: String, policy: ExistingWorkPolicy) {
+        workManager.enqueueUniqueWork(
+            PHOTO_WORK_NAME, policy,
+            OneTimeWorkRequestBuilder<PhotoAnalysisWorker>()
+                .setInputData(workDataOf(TOKEN_KEY to token))
+                .addTag(PHOTO_WORK_NAME).build()
+        ).result.get()
+    }
+
+    internal suspend fun updatePhotoSession(token: String, update: (PhotoAnalysisSession) -> PhotoAnalysisSession): Boolean =
+        Coordinator.controlMutex.withLock {
+            val session = dao.photoAnalysisSession() ?: return@withLock false
+            if (session.token != token || session.phase == PhotoAnalysisPhase.PAUSED.name) return@withLock false
+            dao.setPhotoAnalysisSession(update(session))
+            true
+        }
+
+    internal suspend fun savePhotoHashIfCurrent(token: String, hash: CachedPhotoHash): Boolean =
+        Coordinator.controlMutex.withLock {
+            if (dao.photoAnalysisSession()?.token != token) return@withLock false
+            database.withTransaction {
+                val item = dao.media(hash.uri)
+                if (item == null || item.isTrashed || item.kind != com.hebi.gallipick.domain.MediaKind.PHOTO.name ||
+                    item.fingerprint != hash.fingerprint || hash.volumeVersion.isBlank() ||
+                    dao.volumeVersion(item.volume) != hash.volumeVersion) return@withTransaction false
+                dao.putPhotoHash(hash)
+                true
+            }
+        }
+
+    internal suspend fun continuePhotoAnalysis(token: String) {
+        Coordinator.controlMutex.withLock {
+            val session = dao.photoAnalysisSession() ?: return@withLock
+            if (session.token != token || session.phase != PhotoAnalysisPhase.RUNNING.name) return@withLock
+            dao.setPhotoAnalysisSession(session.copy(phase = PhotoAnalysisPhase.QUEUED.name,
+                message = "완료한 사진부터 이어서 분석합니다."))
+            enqueuePhotoAnalysis(token, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        }
+    }
+
     suspend fun setProtected(uri: String, protected: Boolean) = withContext(Dispatchers.IO) {
         if (protected) dao.protect(ProtectedMedia(uri)) else dao.unprotect(uri)
     }
@@ -97,6 +169,13 @@ class MediaRepository(context: Context) {
                 phase = ScanPhase.IDLE.name, completed = 0, total = 0, skipped = 0,
                 currentUri = "", currentAttempts = 0, message = "분석 캐시를 비웠습니다."))
             workManager.cancelUniqueWork(WORK_NAME).result.get()
+            val photoSession = dao.photoAnalysisSession() ?: PhotoAnalysisSession()
+            dao.setPhotoAnalysisSession(photoSession.copy(
+                token = UUID.randomUUID().toString(), phase = PhotoAnalysisPhase.IDLE.name,
+                completed = 0, total = 0, skipped = 0, message = "사진 분석 캐시를 비웠습니다."
+            ))
+            workManager.cancelUniqueWork(PHOTO_WORK_NAME).result.get()
+            dao.clearPhotoHashes()
             dao.clearHashes()
         }
     }
@@ -220,6 +299,7 @@ class MediaRepository(context: Context) {
 
     companion object {
         internal const val WORK_NAME = "gallipick-duplicate-analysis"
+        internal const val PHOTO_WORK_NAME = "gallipick-photo-perceptual-analysis"
         internal const val TOKEN_KEY = "scan-token"
 
     }

@@ -18,6 +18,8 @@ import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.ScanPhase
 import com.hebi.gallipick.domain.ScanState
+import com.hebi.gallipick.domain.PhotoAnalysisPhase
+import com.hebi.gallipick.domain.PhotoAnalysisState
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "media_cache")
@@ -65,6 +67,30 @@ internal data class CachedHash(
     @ColumnInfo(defaultValue = "''") val volumeVersion: String = "",
 )
 
+@Entity(tableName = "photo_perceptual_hash", primaryKeys = ["uri", "fingerprint"])
+internal data class CachedPhotoHash(
+    val uri: String,
+    val fingerprint: String,
+    val volumeVersion: String,
+    val phash: String?,
+)
+
+@Entity(tableName = "photo_analysis_session")
+internal data class PhotoAnalysisSession(
+    @PrimaryKey val id: Int = 1,
+    val token: String = "",
+    val phase: String = PhotoAnalysisPhase.IDLE.name,
+    val completed: Int = 0,
+    val total: Int = 0,
+    val skipped: Int = 0,
+    val message: String = "",
+) {
+    fun state() = PhotoAnalysisState(
+        phase = runCatching { PhotoAnalysisPhase.valueOf(phase) }.getOrDefault(PhotoAnalysisPhase.IDLE),
+        completed = completed, total = total, skipped = skipped, message = message,
+    )
+}
+
 @Entity(tableName = "media_volume_version")
 internal data class MediaVolumeVersion(@PrimaryKey val volume: String, val version: String)
 
@@ -109,6 +135,25 @@ internal abstract class MediaDao {
     abstract suspend fun pruneHashes()
     @Query("DELETE FROM media_hash WHERE uri IN (SELECT uri FROM media_cache WHERE volume IN (:volumes))")
     abstract suspend fun invalidateVolumeHashes(volumes: Set<String>)
+    @Query("DELETE FROM photo_perceptual_hash WHERE NOT EXISTS (SELECT 1 FROM media_cache AS m WHERE m.uri = photo_perceptual_hash.uri AND m.fingerprint = photo_perceptual_hash.fingerprint AND m.isTrashed = 0)")
+    abstract suspend fun prunePhotoHashes()
+    @Query("DELETE FROM photo_perceptual_hash WHERE uri IN (SELECT uri FROM media_cache WHERE volume IN (:volumes))")
+    abstract suspend fun invalidateVolumePhotoHashes(volumes: Set<String>)
+    @Query("SELECT * FROM photo_perceptual_hash")
+    abstract suspend fun allPhotoHashes(): List<CachedPhotoHash>
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun putPhotoHash(hash: CachedPhotoHash)
+    @Query("DELETE FROM photo_perceptual_hash")
+    abstract suspend fun clearPhotoHashes()
+    @Query("DELETE FROM photo_perceptual_hash WHERE phash IS NULL")
+    abstract suspend fun clearFailedPhotoHashes()
+    @Query("SELECT * FROM photo_analysis_session WHERE id = 1")
+    abstract fun observePhotoAnalysis(): Flow<PhotoAnalysisSession?>
+    @Query("SELECT * FROM photo_analysis_session WHERE id = 1")
+    abstract suspend fun photoAnalysisSession(): PhotoAnalysisSession?
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun setPhotoAnalysisSession(session: PhotoAnalysisSession)
+
     @Query("SELECT * FROM media_volume_version")
     abstract fun observeVolumeVersions(): Flow<List<MediaVolumeVersion>>
     @Query("SELECT * FROM media_volume_version")
@@ -125,10 +170,14 @@ internal abstract class MediaDao {
     open suspend fun replaceAccessible(items: List<CachedMedia>, versions: Map<String, String>) {
         val previous = allVolumeVersions().associate { it.volume to it.version }
         val invalidated = MediaCachePolicy.invalidatedVolumes(previous, versions)
-        if (invalidated.isNotEmpty()) invalidateVolumeHashes(invalidated)
+        if (invalidated.isNotEmpty()) {
+            invalidateVolumeHashes(invalidated)
+            invalidateVolumePhotoHashes(invalidated)
+        }
         deleteMedia()
         insertMedia(items)
         pruneHashes()
+        prunePhotoHashes()
         deleteVolumeVersions()
         insertVolumeVersions(versions.map { (volume, version) -> MediaVolumeVersion(volume, version) })
     }
@@ -173,8 +222,9 @@ internal abstract class MediaDao {
 
 @Database(
     entities = [CachedMedia::class, CachedHash::class, ProtectedMedia::class,
-        ProtectedFolder::class, ScanSession::class, MediaVolumeVersion::class],
-    version = 2,
+        ProtectedFolder::class, ScanSession::class, MediaVolumeVersion::class,
+        CachedPhotoHash::class, PhotoAnalysisSession::class],
+    version = 3,
     exportSchema = false,
 )
 internal abstract class MediaDatabase : RoomDatabase() {
@@ -188,10 +238,17 @@ internal abstract class MediaDatabase : RoomDatabase() {
             }
         }
 
+        private val migration2To3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS photo_perceptual_hash (uri TEXT NOT NULL, fingerprint TEXT NOT NULL, volumeVersion TEXT NOT NULL, phash TEXT, PRIMARY KEY(uri, fingerprint))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS photo_analysis_session (id INTEGER NOT NULL PRIMARY KEY, token TEXT NOT NULL, phase TEXT NOT NULL, completed INTEGER NOT NULL, total INTEGER NOT NULL, skipped INTEGER NOT NULL, message TEXT NOT NULL)")
+            }
+        }
+
         @Volatile private var instance: MediaDatabase? = null
         fun get(context: Context): MediaDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext,
-                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2).build().also { instance = it }
+                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2, migration2To3).build().also { instance = it }
         }
     }
 }
