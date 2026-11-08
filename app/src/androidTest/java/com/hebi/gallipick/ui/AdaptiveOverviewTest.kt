@@ -1,6 +1,6 @@
 package com.hebi.gallipick.ui
 
-import android.graphics.BitmapFactory
+import android.graphics.drawable.VectorDrawable
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.Surface
@@ -30,11 +30,20 @@ import org.junit.runner.RunWith
 class AdaptiveOverviewTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun oldFilesShortcutUsesPackagedIconAndPreservesItsOneYearFilter() {
-        val bitmap = BitmapFactory.decodeResource(compose.activity.resources, R.drawable.gp_old_files)
-        assertEquals(256, bitmap.width)
-        assertEquals(256, bitmap.height)
-        assertEquals(0, bitmap.getPixel(0, 0) ushr 24)
+    @Test fun homeShortcutAssetsAreVectorDrawablesAndOldFilesFilterIsPreserved() {
+        val assets = listOf(
+            R.drawable.gp_home_photo,
+            R.drawable.gp_home_duplicates,
+            R.drawable.gp_home_large_file,
+            R.drawable.gp_home_old_files,
+            R.drawable.gp_brand_cat,
+        )
+        assertEquals(assets.size, assets.distinct().size)
+        assets.forEach { id ->
+            val drawable = requireNotNull(compose.activity.resources.getDrawable(id, compose.activity.theme))
+            assertTrue("10-B icons must remain resolution-independent vectors", drawable is VectorDrawable)
+            assertTrue("Icon must have intrinsic dimensions", drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0)
+        }
 
         var applied: MediaFilter? = null
         compose.setContent { GalliPickTheme {
