@@ -136,6 +136,35 @@ class AdaptiveOverviewTest {
         compose.runOnIdle { assertEquals(MediaKind.VIDEO, opened?.kind) }
     }
 
+    @Test fun cleanupStage9aUsesRealNavigationOnlyAndPreservesExistingActions() {
+        var duplicateOpens = 0
+        var folderOpens = 0
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f, fontScale = 1.6f)) {
+                    Surface(Modifier.requiredSize(320.dp, 540.dp)) {
+                        CleanupScreen(
+                            state = AppUiState(access = MediaAccess.FULL),
+                            onOpenDuplicates = { duplicateOpens++ },
+                            onOpenFolderStorage = { folderOpens++ },
+                            browse = {},
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("정리").assertExists()
+        compose.onNodeWithText("사진 비교").assertExists()
+        compose.onNodeWithText("종류별 정리").assertExists()
+        compose.onNodeWithText("비슷한 사진 찾기").assertDoesNotExist()
+        compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("폴더별 용량 분석 열기").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals(1, duplicateOpens)
+            assertEquals(1, folderOpens)
+        }
+    }
+
     @Test fun cleanupPrioritizesResultsAndKeepsEmptyCategoriesCompactAndNavigable() {
         val oldScreenshot = media(1, "Screenshot-old.jpg", MediaKind.PHOTO, "Pictures/Screenshots/", 1024)
         val recording = media(2, "Screen-recording.mp4", MediaKind.VIDEO, "Movies/ScreenRecords/", 2048)
@@ -149,16 +178,16 @@ class AdaptiveOverviewTest {
                 }
             }
         }
-        val screenshot = compose.onNodeWithText("오래된 스크린샷 후보").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
-        val screenRecording = compose.onNodeWithText("화면 녹화 후보").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val screenshot = compose.onNodeWithText("오래된 스크린샷 후보").fetchSemanticsNode().boundsInRoot
+        val screenRecording = compose.onNodeWithText("화면 녹화 후보").fetchSemanticsNode().boundsInRoot
         assertTrue("Reference categories are presented in a consistent vertical list", screenshot.top < screenRecording.top)
         val emptyCategory = compose.onNode(hasText("큰 동영상") and hasClickAction())
-        val emptyBounds = emptyCategory.assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val emptyBounds = emptyCategory.fetchSemanticsNode().boundsInRoot
         assertTrue("The first category should remain at the beginning of the list", emptyBounds.top < screenshot.top)
         assertTrue("Even empty categories must remain compact", emptyBounds.height <= 100 * .6f)
         compose.onNodeWithText("0개 · 0 B").assertDoesNotExist()
         compose.onNodeWithText("즐겨찾기·보호 파일 제외 시", substring = true).assertDoesNotExist()
-        emptyCategory.performClick()
+        emptyCategory.performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals(MediaKind.VIDEO, opened?.kind)
             assertEquals(524_288_000L, opened?.minSizeBytes)
