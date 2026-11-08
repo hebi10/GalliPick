@@ -184,6 +184,35 @@ class AdaptiveOverviewTest {
         }
     }
 
+    @Test fun cleanupOldDownloadsAndLargePhotosUseIndependentFilters() {
+        val oldDownload = media(3, "photo.jpg", MediaKind.PHOTO, "Download/", 12L * 1024 * 1024)
+            .copy(dateTakenMs = System.currentTimeMillis(), dateAddedMs = 1L)
+        var opened: MediaFilter? = null
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(360.dp, 700.dp)) {
+                        CleanupScreen(AppUiState(access = MediaAccess.FULL, items = listOf(oldDownload))) { opened = it }
+                    }
+                }
+            }
+        }
+        compose.onNode(hasText("오래된 다운로드 파일") and hasClickAction()).performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals(true, opened?.downloadsOnly)
+            assertEquals(true, opened?.groupByDate)
+            assertEquals(com.hebi.gallipick.domain.DateField.ADDED, opened?.dateField)
+            assertEquals(1L, opened?.fromDateMs)
+        }
+        compose.onNode(hasText("용량 큰 사진") and hasClickAction()).performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals(MediaKind.PHOTO, opened?.kind)
+            assertEquals(10L * 1024 * 1024, opened?.minSizeBytes)
+            assertEquals(com.hebi.gallipick.domain.SortField.SIZE, opened?.sortField)
+            assertEquals(false, opened?.downloadsOnly)
+        }
+    }
+
     @Test fun settingsKeepReadableWidthInWideWindows() {
         val vm = AppViewModel(compose.activity.application)
         compose.setContent {

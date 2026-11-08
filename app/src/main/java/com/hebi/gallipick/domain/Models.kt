@@ -50,6 +50,8 @@ data class MediaFilter(
     val protectedOnly: Boolean = false,
     val sortField: SortField = SortField.CAPTURED,
     val sortDirection: SortDirection = SortDirection.DESCENDING,
+    val downloadsOnly: Boolean = false,
+    val groupByDate: Boolean = false,
 )
 
 data class FilterPreset(val id: String, val name: String, val filter: MediaFilter)

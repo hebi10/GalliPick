@@ -148,6 +148,51 @@ class MediaQueryTest {
         assertEquals(listOf("z", "a", "b"), uris(MediaQuery.apply(items, MediaFilter(sortField = SortField.NAME, sortDirection = SortDirection.DESCENDING))))
     }
 
+    @Test
+    fun oldDownloadFilesUseAddedDateAndMatchOnlyDownloadFolderTrees() {
+        val cutoff = 1_000L
+        val downloaded = media("root").copy(relativePath = "Download/", dateTakenMs = 9_000, dateAddedMs = cutoff)
+        val nested = media("nested").copy(kind = MediaKind.VIDEO, relativePath = "Download/videos/", dateAddedMs = 500)
+        val plural = media("plural").copy(relativePath = "Downloads/", dateAddedMs = 750)
+        val mixedCase = media("case").copy(relativePath = "download/photos/", dateAddedMs = 800)
+        val outside = media("outside").copy(relativePath = "Pictures/Download/", dateAddedMs = 500)
+        val tooNew = media("new").copy(relativePath = "Download/", dateAddedMs = cutoff + 1)
+        val noDate = media("unknown").copy(relativePath = "Download/", dateAddedMs = 0)
+
+        val filter = MediaFilter(
+            downloadsOnly = true, dateField = DateField.ADDED,
+            fromDateMs = 1, toDateMs = cutoff,
+            sortField = SortField.ADDED, sortDirection = SortDirection.ASCENDING,
+            groupByDate = true,
+        )
+
+        assertEquals(
+            listOf("nested", "plural", "case", "root"),
+            uris(MediaQuery.apply(listOf(downloaded, nested, plural, mixedCase, outside, tooNew, noDate), filter)),
+        )
+        assertTrue(MediaQuery.isDownloadsFolder("Download/subfolder/"))
+        assertTrue(MediaQuery.isDownloadsFolder("DOWNLOAD/"))
+        assertTrue(!MediaQuery.isDownloadsFolder("Pictures/Downloads/"))
+        assertTrue(!MediaQuery.isDownloadsFolder("MyDownloads/"))
+    }
+
+    @Test
+    fun largePhotosStartAtTenMebibytesAndSortLargestFirst() {
+        val min = 10L * 1024 * 1024
+        val candidates = listOf(
+            media("small").copy(sizeBytes = min - 1),
+            media("boundary").copy(sizeBytes = min),
+            media("large").copy(sizeBytes = 2 * min),
+            media("video").copy(kind = MediaKind.VIDEO, sizeBytes = 5 * min),
+        )
+        val filter = MediaFilter(
+            kind = MediaKind.PHOTO, minSizeBytes = min,
+            sortField = SortField.SIZE, sortDirection = SortDirection.DESCENDING,
+        )
+
+        assertEquals(listOf("large", "boundary"), uris(MediaQuery.apply(candidates, filter)))
+    }
+
     private fun uris(items: List<MediaItem>) = items.map { it.uri }
 }
 

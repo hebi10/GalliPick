@@ -131,6 +131,8 @@ internal fun FilterDialogContent(
     var kind by remember(current) { mutableStateOf(current.kind) }
     var query by remember(current) { mutableStateOf(current.query) }
     var folder by remember(current) { mutableStateOf(current.folder) }
+    var downloadsOnly by remember(current) { mutableStateOf(current.downloadsOnly) }
+    var groupByDate by remember(current) { mutableStateOf(current.groupByDate) }
     var mimeType by remember(current) { mutableStateOf(current.mimeType) }
     var minSize by remember(current) { mutableStateOf(numberText(current.minSizeBytes, BYTES_PER_MB)) }
     var maxSize by remember(current) { mutableStateOf(numberText(current.maxSizeBytes, BYTES_PER_MB)) }
@@ -266,6 +268,10 @@ internal fun FilterDialogContent(
                 "폴더", folder.ifBlank { "모든 폴더" },
                 listOf("" to "모든 폴더") + folders.map { it to it },
             ) { folder = it }
+            FilterChoice("다운로드 폴더만 (하위 폴더 포함)", downloadsOnly) {
+                downloadsOnly = !downloadsOnly
+                if (!downloadsOnly) groupByDate = false
+            }
         }
         FilterGroup("파일 크기 · MB") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -462,6 +468,7 @@ internal fun FilterDialogContent(
                                         checkOrder(from, to, "날짜")
                                         onApply(current.copy(
                                             kind = kind, query = query.trim(), folder = folder, mimeType = mimeType,
+                                            downloadsOnly = downloadsOnly, groupByDate = groupByDate,
                                             minSizeBytes = minimumSize, maxSizeBytes = maximumSize,
                                             minDurationMs = minimumDuration, maxDurationMs = maximumDuration,
                                             dateField = dateField, fromDateMs = from, toDateMs = to,
