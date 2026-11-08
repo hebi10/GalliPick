@@ -72,6 +72,10 @@ class NativeScreenCaptureTest {
     private val arguments = InstrumentationRegistry.getArguments()
     private val profile = (arguments.getString("captureProfile") ?: "viewport")
         .replace(Regex("[^A-Za-z0-9_-]"), "_")
+    private val captureTheme = when (arguments.getString("captureTheme")?.lowercase()) {
+        "dark" -> AppThemeMode.DARK
+        else -> AppThemeMode.LIGHT
+    }
     private val capturePrefix = "native-example-media-$profile-${System.currentTimeMillis()}"
     private val outputDirectory by lazy {
         val requested = arguments.getString("additionalTestOutputDir")
@@ -104,7 +108,7 @@ class NativeScreenCaptureTest {
             // createEmptyComposeRule does not launch an activity before permissions/fixtures exist.
             recordStage("grant-media-access")
             grantMediaAccess()
-            prefs.edit().remove("default_filter").putString("theme_mode", AppThemeMode.LIGHT.name).commit()
+            prefs.edit().remove("default_filter").putString("theme_mode", captureTheme.name).commit()
             recordStage("seed-example-media")
             seedExampleMedia()
             recordStage("load-example-catalog")
@@ -174,6 +178,9 @@ class NativeScreenCaptureTest {
             saveViewport("05-settings-dark")
             compose.onNodeWithText("라이트 모드").performScrollTo().performClick().assertIsSelected()
             saveViewport("05b-settings-light")
+            if (captureTheme == AppThemeMode.DARK) {
+                compose.onNodeWithText("다크 모드").performScrollTo().performClick().assertIsSelected()
+            }
             // Capture the real app's status-bar-safe trash route, not just the standalone modal fixture.
             compose.onNodeWithText("휴지통 열기").performScrollTo().performClick()
             compose.onNodeWithText("휴지통이 비어 있습니다").assertIsDisplayed()
@@ -478,6 +485,7 @@ class NativeScreenCaptureTest {
         File(outputDirectory, "$capturePrefix-manifest.json").writeText(JSONObject()
             .put("activity", MainActivity::class.java.name)
             .put("profile", profile)
+            .put("captureTheme", captureTheme.name.lowercase())
             .put("fontScale", app.resources.configuration.fontScale)
             .put("densityDpi", app.resources.configuration.densityDpi)
             .put("captureMethod", "UiAutomation.takeScreenshot: full Android viewport")
