@@ -81,8 +81,10 @@ def audit(stage8: Path, native: Path, feature: Path, profile: str) -> dict:
     for name, info in features.items():
         by_digest.setdefault(info["sha256"], []).append(name)
     duplicates = [names for names in by_digest.values() if len(names) > 1]
-    permitted = {"01-analysis-complete", "02-analysis-scrolled"}
-    if any(set(names) != permitted for names in duplicates):
+    permitted = [{"01-analysis-complete", "02-analysis-scrolled"}]
+    if manifest.get("captureTheme") == "dark":
+        permitted.append({"09-history-records", "12-history-dark"})
+    if any(set(names) not in permitted for names in duplicates):
         raise ValueError(f"Unexpected duplicated feature screenshots: {duplicates}")
     return {
         "stage": "9-G",
