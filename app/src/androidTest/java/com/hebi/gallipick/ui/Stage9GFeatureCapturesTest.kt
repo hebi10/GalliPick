@@ -112,7 +112,8 @@ class Stage9GFeatureCapturesTest {
                 ),
             )
             var screen by mutableStateOf(Screen.ANALYSIS_COMPLETE)
-            var dark by mutableStateOf(false)
+            val captureTheme = InstrumentationRegistry.getArguments().getString("captureTheme")?.lowercase()
+            var dark by mutableStateOf(captureTheme == "dark")
             compose.setContent {
                 SideEffect {
                     WindowCompat.getInsetsController(context.window, context.window.decorView).apply {
@@ -216,6 +217,7 @@ class Stage9GFeatureCapturesTest {
                 .put("fixture", "stage9g-test-owned-MediaStore-jpegs")
                 .put("captureType", "Compose feature components, not MainActivity")
                 .put("profile", arguments.getString("captureProfile") ?: "unknown")
+                .put("captureTheme", captureTheme ?: "mixed-legacy")
                 .put("count", names.size)
                 .put("captures", captured)
             File(screenshots, "stage9g-manifest.json").writeText(manifest.toString(2))

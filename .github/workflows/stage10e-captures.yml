@@ -1,0 +1,227 @@
+name: GalliPick 10-E light-dark native captures
+on:
+  push:
+    branches: ['design-stage10e-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ui-captures-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install compile SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build current app and capture instrumentation
+        run: gradle --no-daemon -PgallipickTestSigning=true assembleDebug assembleDebugAndroidTest --stacktrace --max-workers=2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capture-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          retention-days: 3
+          if-no-files-found: error
+  capture:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: phone-portrait
+            kind: phone
+            size: 1080x2400
+            density: 420
+            font_scale: 1.0
+            theme: light
+          - name: phone-portrait
+            kind: phone
+            size: 1080x2400
+            density: 420
+            font_scale: 1.0
+            theme: dark
+          - name: phone-landscape
+            kind: phone
+            size: 2400x1080
+            density: 420
+            font_scale: 1.0
+            theme: light
+          - name: phone-landscape
+            kind: phone
+            size: 2400x1080
+            density: 420
+            font_scale: 1.0
+            theme: dark
+          - name: phone-large-text
+            kind: phone
+            size: 1080x2400
+            density: 420
+            font_scale: 1.6
+            theme: light
+          - name: phone-large-text
+            kind: phone
+            size: 1080x2400
+            density: 420
+            font_scale: 1.6
+            theme: dark
+          - name: tablet-portrait
+            kind: tablet
+            size: 1600x2560
+            density: 240
+            font_scale: 1.0
+            theme: light
+          - name: tablet-portrait
+            kind: tablet
+            size: 1600x2560
+            density: 240
+            font_scale: 1.0
+            theme: dark
+          - name: tablet-landscape
+            kind: tablet
+            size: 2560x1600
+            density: 240
+            font_scale: 1.0
+            theme: light
+          - name: tablet-landscape
+            kind: tablet
+            size: 2560x1600
+            density: 240
+            font_scale: 1.0
+            theme: dark
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: capture-apks
+          path: capture-apks
+      - name: Select an installed hardware profile
+        id: hardware
+        env:
+          DEVICE_KIND: ${{ matrix.kind }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess
+          catalog = subprocess.check_output(['avdmanager', 'list', 'device'], text=True)
+          candidates = ('pixel_6',) if os.environ['DEVICE_KIND'] == 'phone' else ('pixel_tablet', 'pixel_c', 'Nexus 10')
+          profile = next((name for name in candidates if re.search(r'id:\s*\d+\s+or\s+"' + re.escape(name) + '"', catalog)), None)
+          if profile is None:
+              raise SystemExit('Required phone/tablet hardware profile is unavailable.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('profile=' + profile + '\n')
+          print('Hardware profile:', profile)
+          PY
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          profile: ${{ steps.hardware.outputs.profile }}
+          disable-animations: true
+          script: |
+            adb shell wm size ${{ matrix.size }}
+            adb shell wm density ${{ matrix.density }}
+            adb shell settings put system accelerometer_rotation 0
+            adb shell settings put system user_rotation 0
+            adb shell settings put system font_scale ${{ matrix.font_scale }}
+            adb shell cmd uimode night ${{ matrix.theme == 'dark' && 'yes' || 'no' }}
+            adb shell settings put secure show_ime_with_hard_keyboard 1
+            adb shell am force-stop com.android.launcher3
+            adb install -r capture-apks/debug/app-debug.apk
+            adb install -r capture-apks/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.GalliDesignSystemTest,com.hebi.gallipick.ui.ShortDuplicateResultsTest,com.hebi.gallipick.ui.AdaptiveNavigationTest,com.hebi.gallipick.ui.AdaptiveFilesTest,com.hebi.gallipick.ui.AdaptiveFilterTest,com.hebi.gallipick.ui.AdaptiveOverviewTest,com.hebi.gallipick.ui.AdaptiveMediaReviewTest,com.hebi.gallipick.ui.DuplicateClarityTest,com.hebi.gallipick.ui.CleanupResultDialogTest,com.hebi.gallipick.ui.TrashEmptyLayoutTest,com.hebi.gallipick.ui.Stage6AccessibilityTest,com.hebi.gallipick.ui.ReferenceNavigationFlowTest,com.hebi.gallipick.ui.ReferenceHomeScreenTest,com.hebi.gallipick.ui.ReferenceFilesFilterTest com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > adaptive-instrumentation.txt || echo failed > adaptive-failed.txt
+            cat adaptive-instrumentation.txt
+            adb shell am instrument -w -r -e class com.hebi.gallipick.NativeScreenCaptureTest -e captureProfile ${{ matrix.name }} -e captureTheme ${{ matrix.theme }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > capture-instrumentation.txt || echo failed > capture-failed.txt
+            cat capture-instrumentation.txt
+            adb logcat -d -s NativeScreenCapture:I > capture-progress.txt
+            adb exec-out run-as com.hebi.gallipick tar -C files/native-screen-captures -cf - . > capture-payload.tar || true
+            mkdir -p captures
+            tar -xf capture-payload.tar -C captures || true
+            adb exec-out run-as com.hebi.gallipick tar -C files/stage9a-screen-captures -cf - . > stage9a-payload.tar || true
+            mkdir -p stage9a-captures
+            tar -xf stage9a-payload.tar -C stage9a-captures || true
+            python3 -c "from pathlib import Path; import struct; p=list(Path('stage9a-captures').glob('*.png')); assert len(p)==1, 'Expected one genuine Stage 9-A folder screen'; b=p[0].read_bytes(); assert b[:8]==bytes.fromhex('89504e470d0a1a0a'), 'Invalid PNG'; w,h=struct.unpack('>II',b[16:24]); assert (w,h)==tuple(int(n) for n in '${{ matrix.size }}'.split('x')), 'Stage 9-A viewport mismatch'"
+            adb exec-out run-as com.hebi.gallipick tar -C files/stage9g-native-captures -cf - . > stage9g-native-payload.tar || true
+            mkdir -p stage9g-native-captures
+            tar -xf stage9g-native-payload.tar -C stage9g-native-captures || true
+            adb exec-out run-as com.hebi.gallipick tar -C files/test-screenshots -cf - . > adaptive-screenshots.tar || true
+            mkdir -p adaptive-screenshots
+            tar -xf adaptive-screenshots.tar -C adaptive-screenshots || true
+            python3 -c "import pathlib,re; t=pathlib.Path('adaptive-instrumentation.txt').read_text(); assert not pathlib.Path('adaptive-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Adaptive UI regression tests did not pass'"
+            python3 -c "import pathlib,re,json; t=pathlib.Path('capture-instrumentation.txt').read_text(); p=pathlib.Path('captures'); m=list(p.glob('*-manifest.json')); assert not pathlib.Path('capture-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Native capture instrumentation did not pass'; assert len(list(p.glob('*.png'))) == 15, 'Expected 15 native screenshots'; assert len(m)==1 and json.loads(m[0].read_text())['photos']==24 and json.loads(m[0].read_text())['videos']==6 and json.loads(m[0].read_text())['protectedMedia']==2, 'Fixture inventory mismatch'"
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.ModalSurfaceCaptureTest -e captureTheme ${{ matrix.theme }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > modal-instrumentation.txt || echo failed > modal-failed.txt
+            cat modal-instrumentation.txt
+            adb exec-out run-as com.hebi.gallipick tar -C files/modal-screen-captures -cf - . > modal-payload.tar || true
+            mkdir -p modal-captures
+            tar -xf modal-payload.tar -C modal-captures || true
+            python3 -c "import pathlib,re; t=pathlib.Path('modal-instrumentation.txt').read_text(); assert not pathlib.Path('modal-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Modal capture instrumentation did not pass'; assert len(list(pathlib.Path('modal-captures').glob('*.png'))) == 16, 'Expected 16 modal/detail screenshots'"
+            python3 scripts/qa/verify_design_captures.py --native captures --modal modal-captures --profile "${{ matrix.name }}" --output qa/design-audit.json
+            python3 scripts/qa/verify_stage8_captures.py --native captures --modal modal-captures --design-audit qa/design-audit.json --profile "${{ matrix.name }}" --output qa/stage8-audit.json
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.Stage9GFeatureCapturesTest -e captureProfile ${{ matrix.name }} -e captureTheme ${{ matrix.theme }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > stage9g-instrumentation.txt || echo failed > stage9g-failed.txt
+            cat stage9g-instrumentation.txt
+            adb exec-out run-as com.hebi.gallipick tar -C files/stage9g-feature-captures -cf - . > stage9g-feature-payload.tar || true
+            mkdir -p stage9g-feature-captures
+            tar -xf stage9g-feature-payload.tar -C stage9g-feature-captures || true
+            python3 -c "import pathlib,re; t=pathlib.Path('stage9g-instrumentation.txt').read_text(); assert not pathlib.Path('stage9g-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Stage9G feature capture instrumentation did not pass'"
+            python3 scripts/qa/verify_stage9g_captures.py --stage8-audit qa/stage8-audit.json --real-native stage9g-native-captures --feature-components stage9g-feature-captures --profile "${{ matrix.name }}" --output qa/stage9g-audit.json
+            python3 scripts/qa/verify_stage10e_captures.py --profile "${{ matrix.name }}" --theme "${{ matrix.theme }}" --native captures --modal modal-captures --folder stage9a-captures --real stage9g-native-captures --features stage9g-feature-captures --stage9g-audit qa/stage9g-audit.json --output qa/stage10e-audit.json
+      - name: Upload fresh native captures and execution record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage10e-captures-${{ matrix.name }}-${{ matrix.theme }}
+          path: |
+            captures/
+            stage9a-captures/
+            stage9g-native-captures/
+            stage9g-feature-captures/
+            stage9g-instrumentation.txt
+            stage9g-failed.txt
+            capture-instrumentation.txt
+            capture-failed.txt
+            capture-progress.txt
+            adaptive-instrumentation.txt
+            adaptive-failed.txt
+            adaptive-screenshots/
+            modal-captures/
+            modal-instrumentation.txt
+            qa/design-audit.json
+            qa/stage8-audit.json
+            qa/stage9g-audit.json
+            qa/stage10e-audit.json
+            modal-failed.txt
+          retention-days: 14

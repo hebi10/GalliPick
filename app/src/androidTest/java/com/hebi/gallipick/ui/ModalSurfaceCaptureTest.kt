@@ -59,7 +59,9 @@ class ModalSurfaceCaptureTest {
         val group = DuplicateGroup("example", listOf(photoA, photoB))
         val trashItems = (listOf(photoB) + trashSamples).map { it.copy(isTrashed = true) }
         var current by mutableStateOf(Screen.FILTER)
-        var dark by mutableStateOf(true)
+        val captureTheme = InstrumentationRegistry.getArguments().getString("captureTheme")?.lowercase()
+        val forcedDark = when (captureTheme) { "dark" -> true; "light" -> false; else -> null }
+        var dark by mutableStateOf(forcedDark ?: true)
         val filter = MediaFilter(fromDateMs = System.currentTimeMillis() - 6L * 86_400_000)
 
         try {
@@ -91,7 +93,7 @@ class ModalSurfaceCaptureTest {
             compose.onNodeWithText("시작일 선택").assertIsDisplayed()
             compose.onNodeWithText("날짜 선택").assertIsDisplayed()
             screenshot(output, "02-calendar-dark")
-            compose.runOnIdle { dark = false; current = Screen.DETAIL }
+            compose.runOnIdle { dark = forcedDark ?: false; current = Screen.DETAIL }
             compose.onNodeWithText("정리에서 보호 중").assertIsDisplayed()
             compose.waitUntil(15_000) {
                 compose.onAllNodesWithContentDescription(photoA.displayName).fetchSemanticsNodes().isNotEmpty()
@@ -144,6 +146,11 @@ class ModalSurfaceCaptureTest {
             compose.onNodeWithText("파일 상태 확인 불가").assertIsDisplayed()
             screenshot(output, "16-cleanup-unknown")
             assertEquals("All modal/detail captures must be saved", 16, output.listFiles { file -> file.extension == "png" }?.size)
+            if (forcedDark != null) {
+                File(output, "stage10e-theme.json").writeText(
+                    """{"captureTheme":"${captureTheme}","captureType":"Compose dialog/detail fixtures","count":16}"""
+                )
+            }
         } finally {
             (listOf(photoA.uri, photoB.uri, video.uri) + trashSamples.map { it.uri }).forEach { uri ->
                 compose.activity.contentResolver.delete(Uri.parse(uri), null, null)
