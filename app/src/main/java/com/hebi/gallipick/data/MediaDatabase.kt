@@ -17,6 +17,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.ScanPhase
+import com.hebi.gallipick.domain.CleanupHistoryAction
+import com.hebi.gallipick.domain.CleanupHistoryEntry
 import com.hebi.gallipick.domain.ScanState
 import com.hebi.gallipick.domain.PhotoAnalysisPhase
 import com.hebi.gallipick.domain.PhotoAnalysisState
@@ -75,6 +77,28 @@ internal data class CachedPhotoHash(
     val phash: String?,
     val sharpnessScore: Double? = null,
 )
+
+@Entity(tableName = "cleanup_history")
+internal data class CachedCleanupHistory(
+    @PrimaryKey val id: String,
+    val occurredAtMs: Long,
+    val action: String,
+    val requestedCount: Int,
+    val confirmedCount: Int,
+    val confirmedBytes: Long,
+) {
+    fun entry() = CleanupHistoryEntry(
+        id, occurredAtMs, CleanupHistoryAction.valueOf(action),
+        requestedCount, confirmedCount, confirmedBytes
+    )
+
+    companion object {
+        fun from(entry: CleanupHistoryEntry) = CachedCleanupHistory(
+            entry.id, entry.occurredAtMs, entry.action.name,
+            entry.requestedCount, entry.confirmedCount, entry.confirmedBytes
+        )
+    }
+}
 
 @Entity(tableName = "photo_analysis_session")
 internal data class PhotoAnalysisSession(
@@ -157,6 +181,17 @@ internal abstract class MediaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun setPhotoAnalysisSession(session: PhotoAnalysisSession)
 
+    @Query("SELECT * FROM cleanup_history ORDER BY occurredAtMs DESC, id DESC")
+    abstract fun observeCleanupHistory(): Flow<List<CachedCleanupHistory>>
+    @Query("SELECT * FROM cleanup_history ORDER BY occurredAtMs DESC, id DESC")
+    abstract suspend fun allCleanupHistory(): List<CachedCleanupHistory>
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    abstract suspend fun insertCleanupHistory(entry: CachedCleanupHistory): Long
+    @Query("DELETE FROM cleanup_history WHERE id = :id")
+    abstract suspend fun deleteCleanupHistory(id: String): Int
+    @Query("DELETE FROM cleanup_history")
+    abstract suspend fun clearCleanupHistory(): Int
+
     @Query("SELECT * FROM media_volume_version")
     abstract fun observeVolumeVersions(): Flow<List<MediaVolumeVersion>>
     @Query("SELECT * FROM media_volume_version")
@@ -226,8 +261,8 @@ internal abstract class MediaDao {
 @Database(
     entities = [CachedMedia::class, CachedHash::class, ProtectedMedia::class,
         ProtectedFolder::class, ScanSession::class, MediaVolumeVersion::class,
-        CachedPhotoHash::class, PhotoAnalysisSession::class],
-    version = 4,
+        CachedPhotoHash::class, PhotoAnalysisSession::class, CachedCleanupHistory::class],
+    version = 5,
     exportSchema = false,
 )
 internal abstract class MediaDatabase : RoomDatabase() {
@@ -254,10 +289,21 @@ internal abstract class MediaDatabase : RoomDatabase() {
             }
         }
 
+        private val migration4To5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS cleanup_history " +
+                        "(id TEXT NOT NULL PRIMARY KEY, occurredAtMs INTEGER NOT NULL, " +
+                        "action TEXT NOT NULL, requestedCount INTEGER NOT NULL, " +
+                        "confirmedCount INTEGER NOT NULL, confirmedBytes INTEGER NOT NULL)"
+                )
+            }
+        }
+
         @Volatile private var instance: MediaDatabase? = null
         fun get(context: Context): MediaDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext,
-                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2, migration2To3, migration3To4).build().also { instance = it }
+                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2, migration2To3, migration3To4, migration4To5).build().also { instance = it }
         }
     }
 }

@@ -16,6 +16,8 @@ import com.hebi.gallipick.domain.PhotoAnalysisState
 import com.hebi.gallipick.domain.TrashIdentity
 import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.domain.TrashOutcomePolicy
+import com.hebi.gallipick.domain.CleanupHistoryEntry
+import com.hebi.gallipick.domain.CleanupHistoryPolicy
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -48,6 +50,8 @@ class MediaRepository(context: Context) {
     val duplicates: Flow<List<DuplicateGroup>> = catalog.duplicates
     internal val photoHashes: Flow<List<CachedPhotoHash>> = dao.observePhotoHashes()
     val photoAnalysis: Flow<PhotoAnalysisState> = dao.observePhotoAnalysis().map { it?.state() ?: PhotoAnalysisState() }
+    val cleanupHistory: Flow<List<CleanupHistoryEntry>> =
+        dao.observeCleanupHistory().map { rows -> rows.map(CachedCleanupHistory::entry) }
 
     suspend fun refresh() = withContext(Dispatchers.IO) {
         Coordinator.refreshMutex.withLock {
@@ -233,6 +237,30 @@ class MediaRepository(context: Context) {
             }
             null
         }
+
+    /**
+     * The caller must supply a MediaStore-verified outcome after Android approval.
+     * A unique request ID guarantees callback replay cannot duplicate a record.
+     */
+    suspend fun recordConfirmedCleanup(
+        operationId: String, restore: Boolean, requestedCount: Int, outcome: TrashOutcome
+    ): Boolean = withContext(Dispatchers.IO) {
+        val event = CleanupHistoryPolicy.confirmed(
+            operationId, System.currentTimeMillis(), requestedCount, restore, outcome
+        ) ?: return@withContext false
+        dao.insertCleanupHistory(CachedCleanupHistory.from(event))
+        true
+    }
+
+    suspend fun deleteCleanupHistory(id: String) = withContext(Dispatchers.IO) {
+        dao.deleteCleanupHistory(id)
+        Unit
+    }
+
+    suspend fun clearCleanupHistory() = withContext(Dispatchers.IO) {
+        dao.clearCleanupHistory()
+        Unit
+    }
 
     suspend fun inspectTrashOutcome(requested: List<TrashIdentity>, restore: Boolean): TrashOutcome = withContext(Dispatchers.IO) {
         val current = requested.distinctBy { it.uri }.associate { it.uri to reader.current(it.uri) }
