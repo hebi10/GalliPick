@@ -25,7 +25,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
@@ -192,7 +191,6 @@ internal fun DuplicatesScreenContent(
                                     compact = shortResults,
                                     onCompare = { uri -> compare(group, uri) },
                                     onSelectGroup = { actions.selectGroupCandidates(group) },
-                                    onChooseKeeper = { uri -> actions.chooseKeeper(group, uri) },
                                     onToggle = actions.toggleSelection,
                                 )
                             }
@@ -240,7 +238,6 @@ private fun DuplicateGroupCard(
     compact: Boolean,
     onCompare: (String?) -> Unit,
     onSelectGroup: () -> Unit,
-    onChooseKeeper: (String) -> Unit,
     onToggle: (String) -> Unit,
 ) {
     val ordered = remember(group.items, roles) {
@@ -297,7 +294,6 @@ private fun DuplicateGroupCard(
                     selected = selected,
                     compact = compact,
                     onCompare = { onCompare(item.uri) },
-                    onChooseKeeper = { onChooseKeeper(item.uri) },
                     onToggle = { onToggle(item.uri) },
                 )
             }
@@ -312,7 +308,6 @@ private fun DuplicateHorizontalMediaCard(
     selected: Set<String>,
     compact: Boolean,
     onCompare: () -> Unit,
-    onChooseKeeper: () -> Unit,
     onToggle: () -> Unit,
 ) {
     val isKeeper = item.uri == roles.keeper.uri
@@ -349,20 +344,6 @@ private fun DuplicateHorizontalMediaCard(
         ) {
             MediaThumbnail(item, Modifier.fillMaxSize().plainClick(action = onCompare))
             Box(Modifier.align(Alignment.TopEnd)) { candidateControl() }
-            if (!isKeeper) Box(
-                Modifier.align(Alignment.BottomStart).size(48.dp)
-                    .semantics {
-                        contentDescription = "${item.displayName} 남길 파일로 지정"
-                        role = androidx.compose.ui.semantics.Role.Button
-                    }
-                    .plainClick(action = onChooseKeeper),
-                contentAlignment = Alignment.Center,
-            ) {
-                Box(Modifier.size(28.dp).background(Panel, RoundedCornerShape(14.dp)),
-                    contentAlignment = Alignment.Center) {
-                    GalliIcon(Icons.Rounded.PushPin, null, Modifier.size(17.dp), tint = Ink)
-                }
-            }
         }
         Text(
             item.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis,
