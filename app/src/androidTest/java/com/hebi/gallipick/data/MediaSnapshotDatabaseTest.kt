@@ -49,6 +49,15 @@ class MediaSnapshotDatabaseTest {
         assertEquals(2, dao.photoAnalysisSession()?.completed)
     }
 
+    @Test fun sharpnessScoreIsPersistedAndInvalidatedAlongWithItsPhotoFingerprint() = runBlocking {
+        val item = media("sharpness", "primary")
+        dao.replaceAccessible(listOf(item), mapOf("primary" to "one"))
+        dao.putPhotoHash(CachedPhotoHash(item.uri, item.fingerprint, "one", "0123456789abcdef", 7.25))
+        assertEquals(7.25, dao.allPhotoHashes().single().sharpnessScore!!, 0.001)
+        dao.replaceAccessible(listOf(item), mapOf("primary" to "two"))
+        assertTrue(dao.allPhotoHashes().isEmpty())
+    }
+
     @Test fun photoHashCacheNeverAltersProtectionOrExactDuplicateCache() = runBlocking {
         val row = media("protected", "primary")
         dao.replaceAccessible(listOf(row), mapOf("primary" to "one"))
