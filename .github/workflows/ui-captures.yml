@@ -1,7 +1,7 @@
 name: Adaptive UI verification and native captures
 on:
   push:
-    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*', 'design-details-trash-stage4-*', 'design-settings-results-stage5-*', 'design-visual-verification-stage6-*', 'design-reference-system-stage1-*', 'design-reference-navigation-stage2-*', 'design-reference-home-stage3-*', 'design-reference-files-filter-stage4-*', 'design-reference-cleanup-duplicates-stage5-*', 'design-reference-stage6-*', 'design-stage7a-*', 'design-stage7b-*', 'design-stage7c-*', 'design-stage7d-*', 'design-stage7e-*', 'design-stage7f-*', 'design-stage7g-*', 'design-stage8a-*', 'design-stage8b-*', 'design-stage8c-*', 'design-stage8d-*', 'design-stage8e-*', 'design-stage8f-*', 'design-stage8g-*', 'feat/cleanup-old-downloads-*']
+    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*', 'design-details-trash-stage4-*', 'design-settings-results-stage5-*', 'design-visual-verification-stage6-*', 'design-reference-system-stage1-*', 'design-reference-navigation-stage2-*', 'design-reference-home-stage3-*', 'design-reference-files-filter-stage4-*', 'design-reference-cleanup-duplicates-stage5-*', 'design-reference-stage6-*', 'design-stage7a-*', 'design-stage7b-*', 'design-stage7c-*', 'design-stage7d-*', 'design-stage7e-*', 'design-stage7f-*', 'design-stage7g-*', 'design-stage8a-*', 'design-stage8b-*', 'design-stage8c-*', 'design-stage8d-*', 'design-stage8e-*', 'design-stage8f-*', 'design-stage8g-*', 'feat/cleanup-old-downloads-*', 'design-stage9a-*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -135,6 +135,10 @@ jobs:
             adb exec-out run-as com.hebi.gallipick tar -C files/native-screen-captures -cf - . > capture-payload.tar || true
             mkdir -p captures
             tar -xf capture-payload.tar -C captures || true
+            adb exec-out run-as com.hebi.gallipick tar -C files/stage9a-screen-captures -cf - . > stage9a-payload.tar || true
+            mkdir -p stage9a-captures
+            tar -xf stage9a-payload.tar -C stage9a-captures || true
+            python3 -c "from pathlib import Path; import struct; p=list(Path('stage9a-captures').glob('*.png')); assert len(p)==1, 'Expected one genuine Stage 9-A folder screen'; b=p[0].read_bytes(); assert b[:8]==bytes.fromhex('89504e470d0a1a0a'), 'Invalid PNG'; w,h=struct.unpack('>II',b[16:24]); assert (w,h)==tuple(int(n) for n in '${{ matrix.size }}'.split('x')), 'Stage 9-A viewport mismatch'"
             adb exec-out run-as com.hebi.gallipick tar -C files/test-screenshots -cf - . > adaptive-screenshots.tar || true
             mkdir -p adaptive-screenshots
             tar -xf adaptive-screenshots.tar -C adaptive-screenshots || true
@@ -155,6 +159,7 @@ jobs:
           name: native-captures-${{ matrix.name }}
           path: |
             captures/
+            stage9a-captures/
             capture-instrumentation.txt
             capture-failed.txt
             capture-progress.txt
