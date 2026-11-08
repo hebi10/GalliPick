@@ -23,6 +23,7 @@ data class AppUiState(
     val duplicates: List<DuplicateGroup> = emptyList(),
     val duplicateKeepers: Map<String, String> = emptyMap(),
     val scan: ScanState = ScanState(),
+    val photoAnalysis: PhotoAnalysisState = PhotoAnalysisState(),
     val selected: Set<String> = emptySet(),
     val catalogError: String? = null,
     val message: String? = null,
@@ -63,6 +64,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (catalogVerified && repository.catalogReady.value) _ui.update { it.copy(duplicates = groups) }
         } }
         viewModelScope.launch { repository.scan.collect { scan -> _ui.update { it.copy(scan = scan) } } }
+        viewModelScope.launch { repository.photoAnalysis.collect { analysis -> _ui.update { it.copy(photoAnalysis = analysis) } } }
     }
 
     private fun hideCatalog() {
@@ -288,6 +290,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun protectFolder(path: String, protected: Boolean) = task { repository.setFolderProtected(path, protected) }
+    fun startPhotoAnalysis() = repository.startPhotoAnalysis()
+    fun pausePhotoAnalysis() = repository.pausePhotoAnalysis()
+    fun resumePhotoAnalysis() = repository.resumePhotoAnalysis()
+
     fun startScan() = repository.startScan()
     fun pauseScan() = repository.pauseScan()
     fun resumeScan() = repository.resumeScan()
