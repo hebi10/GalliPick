@@ -1,6 +1,7 @@
 package com.hebi.gallipick.domain
 
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sqrt
 
@@ -40,7 +41,8 @@ object PhotoPerceptualHash {
         for (v in 0 until LOW) for (u in 0 until LOW) {
             var sum = 0.0
             for (y in 0 until SIDE) sum += rows[u][y] * cosine[v][y]
-            low[v * LOW + u] = sum * factors[v]
+            val value = sum * factors[v]
+            low[v * LOW + u] = if (abs(value) < 1e-7) 0.0 else value
         }
         val values = low.slice(1 until low.size).sorted()
         val median = values[values.size / 2]
