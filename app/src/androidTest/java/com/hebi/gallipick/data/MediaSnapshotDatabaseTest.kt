@@ -60,6 +60,40 @@ class MediaSnapshotDatabaseTest {
         assertTrue(dao.allHashes().isEmpty())
     }
 
+    @Test fun photoHashCacheIsIndependentOfExactHashesAndInvalidatesOnlyChangedVolume() = runBlocking {
+        val rows = listOf(media("a", "primary"), media("b", "sd"))
+        dao.replaceAccessible(rows, mapOf("primary" to "one", "sd" to "one"))
+        rows.forEach {
+            dao.putHash(CachedHash(it.uri, it.fingerprint, HASH, "one"))
+            dao.putPhotoHash(CachedPhotoHash(it.uri, it.fingerprint, "one", "0f0f0f0f0f0f0f0f"))
+        }
+        dao.replaceAccessible(rows, mapOf("primary" to "two", "sd" to "one"))
+        assertEquals(listOf("b"), dao.allPhotoHashes().map { it.uri })
+        assertEquals(listOf("b"), dao.allHashes().map { it.uri })
+    }
+
+    @Test fun photoScanSessionSurvivesCatalogReplacementAndProtectedFilesRemainUntouched() = runBlocking {
+        val row = media("a", "primary")
+        dao.replaceAccessible(listOf(row), mapOf("primary" to "one"))
+        dao.protect(ProtectedMedia("a"))
+        dao.putPhotoHash(CachedPhotoHash("a", row.fingerprint, "one", "0000000000000000"))
+        val session = PhotoScanSession(token = "photo-only", phase = "PAUSED", completed = 1, total = 1)
+        dao.setPhotoScanSession(session)
+        dao.replaceAccessible(listOf(row), mapOf("primary" to "one"))
+        assertEquals(session, dao.photoScanSession())
+        assertEquals(1, dao.allPhotoHashes().size)
+        assertTrue(dao.allProtection().any { it.uri == "a" })
+    }
+
+    @Test fun inaccessiblePhotoHashIsNotMistakenForSuccessfulAnalysis() = runBlocking {
+        val row = media("a", "primary")
+        dao.replaceAccessible(listOf(row), mapOf("primary" to "one"))
+        dao.putPhotoHash(CachedPhotoHash("a", row.fingerprint, "one", null))
+        assertNull(dao.allPhotoHashes().single().perceptualHash)
+        dao.clearFailedPhotoHashes()
+        assertTrue(dao.allPhotoHashes().isEmpty())
+    }
+
     private fun media(uri: String, volume: String) = CachedMedia.from(MediaItem(
         uri, 1, volume, "$uri.jpg", MediaKind.PHOTO, "image/jpeg", "Pictures/", 12,
         2, 3, 0, 1_000, 1_000, 1_000,
