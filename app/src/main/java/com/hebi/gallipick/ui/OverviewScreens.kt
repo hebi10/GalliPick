@@ -322,6 +322,7 @@ internal fun CleanupScreen(
     onOpenDuplicates: (() -> Unit)? = null,
     onOpenFolderStorage: (() -> Unit)? = null,
     onOpenPhotoAnalysis: (() -> Unit)? = null,
+    onOpenHistory: (() -> Unit)? = null,
     browse: (MediaFilter) -> Unit,
 ) {
     val suggestions = remember(state.items) { cleanupSuggestions(state.items) }
@@ -383,6 +384,17 @@ internal fun CleanupScreen(
                     icon = Icons.Rounded.Folder,
                     description = "폴더별 용량 분석 열기",
                     open = onOpenFolderStorage,
+                )
+            }
+            if (onOpenHistory != null) {
+                Text("정리 기록", style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { heading() })
+                CleanupNavigationRow(
+                    title = "정리 기록 보기",
+                    subtitle = "확인된 휴지통 이동·복원 내역 · ${state.cleanupHistory.size}건",
+                    icon = Icons.Rounded.History,
+                    description = "정리 기록 열기",
+                    open = onOpenHistory,
                 )
             }
             if (populated.isEmpty()) {
