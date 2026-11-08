@@ -43,7 +43,7 @@ class UiSmokeTest {
         compose.onNodeWithText("중복 정리").assertIsDisplayed()
         saveScreenshot("duplicates")
         compose.onNodeWithContentDescription("정리로 돌아가기").performClick()
-        compose.onNodeWithText("정리 후보").assertIsDisplayed()
+        compose.onNodeWithText("사진 비교").assertIsDisplayed()
         saveScreenshot("cleanup")
         compose.onAllNodesWithText("설정").onFirst().performClick()
         saveScreenshot("settings")
