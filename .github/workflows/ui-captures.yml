@@ -1,7 +1,7 @@
 name: Adaptive UI verification and native captures
 on:
   push:
-    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*', 'design-details-trash-stage4-*', 'design-settings-results-stage5-*', 'design-visual-verification-stage6-*', 'design-reference-system-stage1-*', 'design-reference-navigation-stage2-*', 'design-reference-home-stage3-*', 'design-reference-files-filter-stage4-*', 'design-reference-cleanup-duplicates-stage5-*', 'design-reference-stage6-*', 'design-stage7a-*', 'design-stage7b-*', 'design-stage7c-*', 'design-stage7d-*', 'design-stage7e-*', 'design-stage7f-*', 'design-stage7g-*', 'design-stage8a-*', 'design-stage8b-*', 'design-stage8c-*', 'design-stage8d-*', 'design-stage8e-*', 'design-stage8f-*', 'design-stage8g-*']
+    branches: ['codex/ui-captures-*', 'codex/modal-design-*', 'codex/gallipick-design-system-*', 'codex/gallipick-redesign-home-files-filter-*', 'design-cleanup-duplicates-stage3-*', 'design-details-trash-stage4-*', 'design-settings-results-stage5-*', 'design-visual-verification-stage6-*', 'design-reference-system-stage1-*', 'design-reference-navigation-stage2-*', 'design-reference-home-stage3-*', 'design-reference-files-filter-stage4-*', 'design-reference-cleanup-duplicates-stage5-*', 'design-reference-stage6-*', 'design-stage7a-*', 'design-stage7b-*', 'design-stage7c-*', 'design-stage7d-*', 'design-stage7e-*', 'design-stage7f-*', 'design-stage7g-*', 'design-stage8a-*', 'design-stage8b-*', 'design-stage8c-*', 'design-stage8d-*', 'design-stage8e-*', 'design-stage8f-*', 'design-stage8g-*', 'feat/cleanup-old-downloads-*']
   workflow_dispatch:
 permissions:
   contents: read
