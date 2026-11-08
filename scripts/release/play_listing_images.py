@@ -14,8 +14,12 @@ from pathlib import Path
 PACKAGE = 'com.hebi.gallipick'
 LANGUAGE = 'ko-KR'
 SCREENSHOTS = [
-    '01-home.png', '02-files.png', '03-duplicates.png', '04-cleanup.png',
-    '05-settings-dark.png', '06-filters.png', '07-comparison.png',
+    '01-home.png', '02-files.png', '03-duplicates.png', '04-comparison.png',
+    '05-cleanup.png', '06-date-filter.png', '07-large-files.png', '08-trash.png',
+]
+SOURCE_SCREENS = [
+    '01-home', '02-files', '09-duplicates-scanned', '10-duplicate-comparison',
+    '04-cleanup', '08-files-filter-dialog', '06-files-size-descending', '07-trash-review',
 ]
 FEATURE = 'feature-graphic.png'
 BASE = f'https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{PACKAGE}'
@@ -39,9 +43,14 @@ def validate(directory: Path):
     files = [(x['file'],x['sha256']) for x in manifest.get('screenshots',[])]
     if [x[0] for x in files] != SCREENSHOTS:
         raise ValueError('Unexpected number or order of screenshot assets')
-    primary_tabs = manifest.get('primary_tabs', [])
-    if primary_tabs != ['01-home', '02-files', '09-duplicates-scanned', '04-cleanup', '05-settings-dark']:
-        raise ValueError('Five primary navigation tabs must lead the store image sequence')
+    if manifest.get('source_screens') != SOURCE_SCREENS:
+        raise ValueError('Unexpected source screen order')
+    for screenshot, expected_scene in zip(manifest.get('screenshots', []), SOURCE_SCREENS):
+        source = screenshot.get('source', '')
+        if not isinstance(source, str) or not (
+            source == expected_scene + '.png' or source.endswith('-' + expected_scene + '.png')
+        ):
+            raise ValueError('Screenshot provenance does not match the approved scene: ' + expected_scene)
     unexpected = sorted(
         file.name for file in directory.glob('[0-9][0-9]-*.png')
         if file.name not in SCREENSHOTS
@@ -64,7 +73,7 @@ def validate(directory: Path):
             raise ValueError(f'Unexpected Play dimensions {size}: {name}')
         if path.stat().st_size > 15_000_000:
             raise ValueError(f'Image too large: {name}')
-    print(f'Validated {len(SCREENSHOTS)} real-screen composites, one feature graphic, no alpha')
+    print(f'Validated {len(SCREENSHOTS)} genuine Android screenshot composites, one feature graphic, no alpha')
     return files
 
 
@@ -107,7 +116,19 @@ def apply(directory, token):
     commit = api(token, 'POST', f'{BASE}/edits/{edit_id}:commit', {})
     if not commit.get('id'):
         raise RuntimeError('Play edit commit returned no ID')
-    print('Google Play accepted the Korean listing image edit. Check review/publishing status in Play Console.')
+    readback = api(token, 'POST', f'{BASE}/edits', {})
+    readback_id = readback.get('id')
+    if not readback_id:
+        raise RuntimeError('Committed edit but could not create a fresh readback edit; check Play Console')
+    try:
+        for image_type, names in [('phoneScreenshots', SCREENSHOTS), ('featureGraphic', [FEATURE])]:
+            endpoint = f'{BASE}/edits/{readback_id}/listings/{LANGUAGE}/{image_type}'
+            result = api(token, 'GET', endpoint)
+            if len(result.get('images', [])) != len(names):
+                raise RuntimeError(f'Google Play commit accepted but fresh {image_type} readback differs; check Play Console')
+    finally:
+        api(token, 'DELETE', f'{BASE}/edits/{readback_id}')
+    print('Google Play accepted and independently read back 8 ko-KR phone screenshots and 1 feature graphic. Review/publishing state not confirmed.')
 
 
 def main():

@@ -21,14 +21,25 @@ class PlayListingImagesTest(unittest.TestCase):
             if filename == listing.FEATURE:
                 feature = {'file': filename, 'sha256': checksum}
             else:
-                screens.append({'file': filename, 'sha256': checksum})
+                scene = listing.SOURCE_SCREENS[len(screens)]
+                screens.append({'file': filename, 'source': 'fixture-' + scene + '.png', 'sha256': checksum})
         (directory / 'manifest.json').write_text(json.dumps({'screenshots': screens, 'feature_graphic': feature,
-            'primary_tabs': ['01-home', '02-files', '09-duplicates-scanned', '04-cleanup', '05-settings-dark']}), encoding='utf-8')
+            'source_screens': listing.SOURCE_SCREENS}), encoding='utf-8')
         return directory
 
     def test_validates_exact_scoped_assets(self):
         with tempfile.TemporaryDirectory() as temp:
-            self.assertEqual(len(listing.validate(self.make_assets(temp))), 8)
+            self.assertEqual(len(listing.validate(self.make_assets(temp))), 9)
+
+    def test_refuses_incorrect_source_order(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = self.make_assets(temp)
+            path = directory / 'manifest.json'
+            manifest = json.loads(path.read_text())
+            manifest['source_screens'] = manifest['source_screens'][::-1]
+            path.write_text(json.dumps(manifest), encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'source screen order'):
+                listing.validate(directory)
 
     def test_refuses_alpha_screenshots(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -42,11 +53,12 @@ class PlayListingImagesTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'SHA-256'):
                 listing.validate(directory)
 
-    def test_navigation_tabs_precede_modal_screens(self):
+    def test_first_five_screens_cover_main_app_tasks(self):
         self.assertEqual(
             listing.SCREENSHOTS[:5],
-            ['01-home.png', '02-files.png', '03-duplicates.png', '04-cleanup.png', '05-settings-dark.png'],
+            ['01-home.png', '02-files.png', '03-duplicates.png', '04-comparison.png', '05-cleanup.png'],
         )
+        self.assertEqual(len(listing.SCREENSHOTS), 8)
 
     def test_refuses_old_unlisted_screenshots(self):
         with tempfile.TemporaryDirectory() as temp:
