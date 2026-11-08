@@ -46,39 +46,66 @@ internal fun HomeScreen(
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val tabletLayout = maxWidth >= 940.dp * fontScale
         val wide = maxWidth >= 720.dp * fontScale
         val twoColumns = maxWidth >= 330.dp * fontScale
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            Modifier.align(Alignment.TopCenter).fillMaxHeight()
+                .widthIn(max = 1220.dp).fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            HomeWelcome(cleanup)
-            if (state.access == MediaAccess.NONE) {
-                GalliCard(Modifier.fillMaxWidth()) {
-                    Text("사진·동영상 접근이 필요합니다", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "기기 안의 파일을 살펴보려면 접근을 허용해 주세요. 파일 이동 전에는 Android 확인창에서 다시 승인합니다.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Muted,
-                    )
-                    ActionButton("사진·동영상 선택", requestAccess, Modifier.fillMaxWidth(), filled = true)
-                }
-            }
-            if (wide) {
+            if (tabletLayout) {
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    HomeStorageSummary(state, Modifier.weight(1f))
-                    HomeQuickActions(browse, duplicates, Modifier.weight(1f), twoColumns = true)
+                    Column(
+                        Modifier.weight(1.1f),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        HomeWelcome(cleanup)
+                        if (state.access == MediaAccess.NONE) HomePermissionNotice(requestAccess)
+                        HomeStorageSummary(state, showBreakdown = true)
+                    }
+                    HomeQuickActions(
+                        browse, duplicates, Modifier.weight(1f),
+                        twoColumns = true, tabletTiles = true,
+                    )
                 }
             } else {
-                HomeStorageSummary(state)
-                HomeQuickActions(browse, duplicates, twoColumns = twoColumns)
+                HomeWelcome(cleanup)
+                if (state.access == MediaAccess.NONE) HomePermissionNotice(requestAccess)
+                if (wide) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        HomeStorageSummary(state, Modifier.weight(1f))
+                        HomeQuickActions(browse, duplicates, Modifier.weight(1f), twoColumns = true)
+                    }
+                } else {
+                    HomeStorageSummary(state)
+                    HomeQuickActions(browse, duplicates, twoColumns = twoColumns)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun HomePermissionNotice(requestAccess: () -> Unit) {
+    GalliCard(Modifier.fillMaxWidth()) {
+        Text("사진·동영상 접근이 필요합니다", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "기기 안의 파일을 살펴보려면 접근을 허용해 주세요. 파일 이동 전에는 Android 확인창에서 다시 승인합니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted,
+        )
+        ActionButton("사진·동영상 선택", requestAccess, Modifier.fillMaxWidth(), filled = true)
     }
 }
 
@@ -138,7 +165,11 @@ private fun HomeWelcome(cleanup: () -> Unit) {
 }
 
 @Composable
-private fun HomeStorageSummary(state: AppUiState, modifier: Modifier = Modifier) {
+private fun HomeStorageSummary(
+    state: AppUiState,
+    modifier: Modifier = Modifier,
+    showBreakdown: Boolean = false,
+) {
     val total = state.totalStorageBytes.coerceAtLeast(0L)
     val used = (total - state.freeStorageBytes).coerceIn(0L, total)
     val usedFraction = if (total > 0L) (used.toFloat() / total).coerceIn(0f, 1f) else 0f
@@ -187,6 +218,14 @@ private fun HomeStorageSummary(state: AppUiState, modifier: Modifier = Modifier)
             style = MaterialTheme.typography.bodySmall,
             color = Muted,
         )
+        if (showBreakdown && state.access != MediaAccess.NONE) {
+            val photoCount = remember(state.items) { state.items.count { it.kind == MediaKind.PHOTO } }
+            val videoCount = remember(state.items) { state.items.count { it.kind == MediaKind.VIDEO } }
+            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                Text("사진 ${photoCount}개", style = MaterialTheme.typography.bodySmall, color = Ink)
+                Text("동영상 ${videoCount}개", style = MaterialTheme.typography.bodySmall, color = Ink)
+            }
+        }
     }
 }
 
@@ -202,6 +241,7 @@ private fun HomeQuickActions(
     duplicates: () -> Unit,
     modifier: Modifier = Modifier,
     twoColumns: Boolean,
+    tabletTiles: Boolean = false,
 ) {
     val oneYearAgo = System.currentTimeMillis() - 365L * 24 * 60 * 60 * 1000
     val shortcuts = listOf(
@@ -222,7 +262,7 @@ private fun HomeQuickActions(
             shortcuts.chunked(2).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     row.forEach { shortcut ->
-                        HomeShortcutCard(shortcut, Modifier.weight(1f))
+                        HomeShortcutCard(shortcut, Modifier.weight(1f), tabletTiles = tabletTiles)
                     }
                 }
             }
@@ -235,7 +275,7 @@ private fun HomeQuickActions(
 }
 
 @Composable
-private fun HomeShortcutCard(shortcut: HomeShortcut, modifier: Modifier = Modifier, compact: Boolean = false) {
+private fun HomeShortcutCard(shortcut: HomeShortcut, modifier: Modifier = Modifier, compact: Boolean = false, tabletTiles: Boolean = false) {
     val surface = AppSurface
     if (compact) {
         Row(
@@ -251,7 +291,7 @@ private fun HomeShortcutCard(shortcut: HomeShortcut, modifier: Modifier = Modifi
         }
     } else {
         Column(
-            modifier.heightIn(min = 124.dp).galliCardSurface(surface)
+            modifier.heightIn(min = if (tabletTiles) 158.dp else 124.dp).galliCardSurface(surface)
                 .semantics { role = Role.Button }.plainClick(action = shortcut.onClick)
                 .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
