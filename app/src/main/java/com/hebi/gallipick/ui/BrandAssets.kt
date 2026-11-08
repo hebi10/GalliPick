@@ -17,12 +17,13 @@ internal enum class GalliScene {
 
 @Composable
 internal fun GalliIllustration(scene: GalliScene, modifier: Modifier = Modifier) {
+    val dark = IsGalliDark
     val drawable = when (scene) {
-        GalliScene.ORGANIZE -> R.drawable.gp_cat_organize_mono
-        GalliScene.SEARCH -> R.drawable.gp_cat_search_mono
-        GalliScene.PROTECT -> R.drawable.gp_cat_protect_mono
-        GalliScene.COMPLETE -> R.drawable.gp_cat_complete_mono
-        GalliScene.EMPTY -> R.drawable.gp_cat_empty_mono
+        GalliScene.ORGANIZE -> if (dark) R.drawable.gp_cat_organize_mono_dark else R.drawable.gp_cat_organize_mono
+        GalliScene.SEARCH -> if (dark) R.drawable.gp_cat_search_mono_dark else R.drawable.gp_cat_search_mono
+        GalliScene.PROTECT -> if (dark) R.drawable.gp_cat_protect_mono_dark else R.drawable.gp_cat_protect_mono
+        GalliScene.COMPLETE -> if (dark) R.drawable.gp_cat_complete_mono_dark else R.drawable.gp_cat_complete_mono
+        GalliScene.EMPTY -> if (dark) R.drawable.gp_cat_empty_mono_dark else R.drawable.gp_cat_empty_mono
     }
     Image(
         painter = painterResource(drawable),

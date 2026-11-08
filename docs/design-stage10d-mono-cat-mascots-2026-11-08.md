@@ -3,6 +3,7 @@
 - 기준: 2026-11-08 · 10-C 기준 커밋 `48330b7a`
 - 범위: 기존 고양이 씬 5종의 색상·실루엣 정돈, 그린/민트 장식 축소, 라이트·다크 테마 조화
 - 10-A의 뉴트럴 팔레트와 10-B 헤더 마크, 10-C 공통 기능 아이콘은 그대로 유지
+- 다크 모드는 글자와 고양이 외곽선 간 대비가 약한 영역에 **얇은 중성 회색 실루엣 아웃라인**을 보강한 전용 PNG 5종 사용. 그림자나 그라데이션이 아닌 4px 고정 윤곽을 적용한다.
 - v0.2.8 (code 19) / 패키지 / 권한 / 파일 처리 / Google Play 배포는 변경하지 않음
 
 ## 신규 캐릭터 자산
@@ -17,7 +18,7 @@
 모두 640×640px, RGBA 투명 배경으로 준비. 각 포즈는 폴더, 돋보기, 체크 방패, 완료 동작, 잠자는 고양이로 역할을 구분한다. 모자를 회색으로, 주변 녹색 바닥을 제거한 신규 일러스트이며, 이전 그림의 **픽셀 단위 색상 수정본이 아니라 별도 제작한 리디자인 에셋**임을 명시한다. 생성형 이미지 기반의 시안이므로 작은 해상도/실기기 품질·시각적 일관성은 10-E에서 최종 검수한다.
 
 ## 적용 코드
-- `BrandAssets.kt`: `GalliScene`에서 신규 PNG를 단일 매핑. 장식 이미지는 중복 음성 안내 없음.
+- `BrandAssets.kt`: `GalliScene`과 `IsGalliDark`로 라이트/다크 PNG 매핑. 장식 이미지는 중복 음성 안내 없음.
 - `OverviewScreens.kt`: 정리 화면에서 PNG 직접 참조를 `GalliIllustration(GalliScene.ORGANIZE)`로 통합.
 - `PhotoAnalysisScreen.kt`: 사진 분석 화면의 직접 PNG 참조를 `GalliIllustration(GalliScene.SEARCH)`로 통합.
 - `GalliBrandMark`의 단색 고양이 심벌은 10-B 리소스를 유지해 헤더 34dp에서 동작. 런처/스토어 대표 이미지는 변경하지 않는다.
@@ -36,6 +37,13 @@
 - protect `f5990663b676c74268319e5a35fe490266156e3e813958c387d06154ac031a84`
 - complete `1f7a1aee9b16f05fa62a39a3744ad6352798f641dade1cacf067e654eb6c383c`
 - empty `7555b4d8bb1d16189019b8dd8d584162ec21b5fce90550926f00051aca3b1e97`
+
+## 다크 테마 자산 SHA-256
+- organize `095fd52878b346c758b4881bcb826c1749790dbe116d9b889c5dfdb8a1ce59e8`
+- search `71275a091088f7e66bb8eec4f814a48a779595944da88965a39d3b9c1a71fa3f`
+- protect `ee5adadf969fc306a3c68a71e538eff9c6754a74f59c3e6c528d866b8f253d0d`
+- complete `2d94f87fd550879b9b60bfd7e5b9100ff9c73b01c633f7c65b5d026dc7dbb973`
+- empty `1834e8fb2ca64bd747d0ee5746e8537aa8902cb0a437aa7bfe8cf91e611646eb`
 
 ## 제작 및 보관
 새 이미지는 2026-11-08 이미지 생성 도구로 제작한 Mono Cat 대체 시안을 5개 장면별로 분리, 투명 여백 640px 정렬, SHA-256 및 디자인 비교판으로 검증했다. 기존 이미지 원본은 프로젝트 저장소가 출처이며, 원래 제작자의 권리/라이선스 문서는 별도 확인이 필요하다.

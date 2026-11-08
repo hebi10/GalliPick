@@ -54,6 +54,40 @@ class GalliMascotAssetTest {
         }
     }
 
+    @Test fun darkMascotsKeepTransparencyAndAddAThinContrastContour() {
+        val darkAssets = listOf(
+            R.drawable.gp_cat_organize_mono to R.drawable.gp_cat_organize_mono_dark,
+            R.drawable.gp_cat_search_mono to R.drawable.gp_cat_search_mono_dark,
+            R.drawable.gp_cat_protect_mono to R.drawable.gp_cat_protect_mono_dark,
+            R.drawable.gp_cat_complete_mono to R.drawable.gp_cat_complete_mono_dark,
+            R.drawable.gp_cat_empty_mono to R.drawable.gp_cat_empty_mono_dark,
+        )
+        darkAssets.forEach { (lightId, darkId) ->
+            val light = requireNotNull(BitmapFactory.decodeResource(resources, lightId))
+            val dark = requireNotNull(BitmapFactory.decodeResource(resources, darkId))
+            try {
+                assertEquals(640, dark.width)
+                assertEquals(640, dark.height)
+                assertEquals(0, Color.alpha(dark.getPixel(0, 0)))
+                assertEquals(0, Color.alpha(dark.getPixel(639, 639)))
+                assertTrue("Dark variant must remain transparent", countOpaque(dark) < 25000)
+                assertTrue("Dark variant must contain an additional outline", opaqueAndEdgeSamples(dark) >= opaqueAndEdgeSamples(light))
+                assertNotEquals("Dark variant must not reuse the light bitmap", colorSampleHash(light), colorSampleHash(dark))
+            } finally {
+                light.recycle()
+                dark.recycle()
+            }
+        }
+    }
+
+    private fun opaqueAndEdgeSamples(bitmap: Bitmap): Int {
+        var count = 0
+        for (y in 0 until bitmap.height step 2) for (x in 0 until bitmap.width step 2) {
+            if (Color.alpha(bitmap.getPixel(x, y)) > 24) count++
+        }
+        return count
+    }
+
     private fun mascotPairs() = listOf(
         R.drawable.gp_cat_organize to R.drawable.gp_cat_organize_mono,
         R.drawable.gp_cat_search to R.drawable.gp_cat_search_mono,
