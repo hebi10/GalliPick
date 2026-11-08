@@ -28,18 +28,24 @@ internal fun SimilarPhotoResultsScreen(
     onBack: () -> Unit,
     onCompare: (String) -> Unit,
     onReview: () -> Unit,
+    title: String = "비슷한 사진 찾기",
+    groupTitle: String = "유사 사진 묶음",
+    explanation: String = "비슷하게 보일 수 있는 사진 후보입니다. 직접 비교하여 남길 사진을 선택하세요.",
+    emptyTitle: String = "유사 사진 묶음이 없습니다",
+    emptyExplanation: String = "현재 접근 가능한 사진의 특징을 비교한 결과입니다. 분석되지 못한 사진은 포함되지 않습니다.",
+    caution: String = "유사도는 참고용이며, 자동으로 휴지통에 이동하거나 삭제하지 않습니다.",
+    showCaptureTime: Boolean = false,
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
             IconAction("사진 분석으로 돌아가기", Icons.Rounded.ArrowBack, onClick = onBack)
-            Text("비슷한 사진 찾기", style = MaterialTheme.typography.titleLarge,
+            Text(title, style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f).semantics { heading() })
         }
         val count = groups.sumOf { it.photos.size }
         val selected = groups.flatMap { it.items }.distinctBy { it.uri }.count { it.uri in selectedUris }
         if (groups.isEmpty()) {
-            EmptyState("유사 사진 묶음이 없습니다",
-                "현재 접근 가능한 사진의 특징을 비교한 결과입니다. 분석되지 못한 사진은 포함되지 않습니다.")
+            EmptyState(emptyTitle, emptyExplanation)
         } else {
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
@@ -53,23 +59,26 @@ internal fun SimilarPhotoResultsScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text("${groups.size}개 묶음 · ${count}장", style = MaterialTheme.typography.headlineSmall)
-                        Text("비슷하게 보일 수 있는 사진 후보입니다. 직접 비교하여 남길 사진을 선택하세요.",
+                        Text(explanation,
                             style = MaterialTheme.typography.bodySmall, color = Muted)
                     }
                 }
                 items(groups, key = { it.id }) { group ->
                     Column(
                         Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(GalliUiMetrics.cardCorner))
-                            .semantics { role = Role.Button; contentDescription = "${group.photos.size}장 유사 사진 비교" }
+                            .semantics { role = Role.Button; contentDescription = "${group.photos.size}장 ${groupTitle} 비교" }
                             .plainClick(action = { onCompare(group.id) })
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("유사 사진 묶음", style = MaterialTheme.typography.titleSmall)
-                                Text("사진 ${group.photos.size}장 · ${bytesLabel(group.totalBytes)}",
-                                    style = MaterialTheme.typography.bodySmall, color = Muted)
+                                Text(groupTitle, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    (if (showCaptureTime) dateLabel(group.photos.first().item.dateTakenMs) + " · " else "") +
+                                        "사진 ${group.photos.size}장 · ${bytesLabel(group.totalBytes)}",
+                                    style = MaterialTheme.typography.bodySmall, color = Muted,
+                                )
                             }
                             GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(22.dp))
                         }
@@ -92,7 +101,7 @@ internal fun SimilarPhotoResultsScreen(
                     }
                 }
                 item("caution") {
-                    Text("유사도는 참고용이며, 자동으로 휴지통에 이동하거나 삭제하지 않습니다.",
+                    Text(caution,
                         style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
             }
