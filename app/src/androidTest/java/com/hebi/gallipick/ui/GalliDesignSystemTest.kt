@@ -119,8 +119,8 @@ class GalliDesignSystemTest {
                 }
             }
         }
-        val activeGlyph = 0x00E6F2E8
-        val inactiveGlyph = 0x00B6CDB9
+        val activeGlyph = 0x00E7E9EC
+        val inactiveGlyph = 0x00B1B6BD
         for (destination in Destination.entries) {
             val node = compose.onNodeWithTag("dark-nav-${destination.title}").assertIsDisplayed()
             val bitmap = node.captureToImage().asAndroidBitmap()
@@ -136,8 +136,8 @@ class GalliDesignSystemTest {
         }
         val shield = compose.onNodeWithTag("dark-utility-shield").captureToImage().asAndroidBitmap()
         try {
-            assertTrue("Dark utility icon is invisible", countExactPixels(shield, activeGlyph) > 12)
-            assertTrue("Dark utility icon became an opaque tile", countExactPixels(shield, activeGlyph) < shield.width * shield.height * .72)
+            assertTrue("Dark utility icon is invisible", countExactPixels(shield, 0x00F5F6F7) > 12)
+            assertTrue("Dark utility icon became an opaque tile", countExactPixels(shield, 0x00F5F6F7) < shield.width * shield.height * .72)
         } finally {
             shield.recycle()
         }
@@ -174,7 +174,7 @@ class GalliDesignSystemTest {
             val bitmap = compose.onNodeWithTag("reference-tab-${destination.title}")
                 .assertIsDisplayed().captureToImage().asAndroidBitmap()
             try {
-                val expected = if (destination == Destination.HOME) 0x001F6F54 else 0x00616874
+                val expected = if (destination == Destination.HOME) 0x0023262B else 0x005D6269
                 val painted = countExactPixels(bitmap, expected)
                 assertTrue("${destination.title} light icon not visible", painted > 12)
                 assertTrue("${destination.title} light icon is a flat tile", painted < bitmap.width * bitmap.height * .72)

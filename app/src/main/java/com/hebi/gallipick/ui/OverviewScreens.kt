@@ -146,7 +146,7 @@ private fun HomeStorageSummary(state: AppUiState, modifier: Modifier = Modifier)
     val usedFraction = if (total > 0L) (used.toFloat() / total).coerceIn(0f, 1f) else 0f
     val usedPercent = (usedFraction * 100f).toInt()
     Column(
-        modifier.galliCardSurface(if (IsGalliDark) AppSurface else Color.White)
+        modifier.galliCardSurface(AppSurface)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -239,7 +239,7 @@ private fun HomeQuickActions(
 
 @Composable
 private fun HomeShortcutCard(shortcut: HomeShortcut, modifier: Modifier = Modifier, compact: Boolean = false) {
-    val surface = if (IsGalliDark) AppSurface else Color.White
+    val surface = AppSurface
     if (compact) {
         Row(
             modifier.heightIn(min = 76.dp).galliCardSurface(surface)
@@ -510,7 +510,7 @@ private fun CleanupEmptyRow(suggestion: CleanupSuggestion, open: () -> Unit) {
 private fun CleanupCategoryIcon(suggestion: CleanupSuggestion, modifier: Modifier) {
     val downloads = suggestion.filter.downloadsOnly
     val photo = suggestion.filter.kind == MediaKind.PHOTO
-    Box(modifier.background(if (downloads) Panel else if (photo) Peach else Mint, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+    Box(modifier.background(if (downloads) Panel else IconContainer, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
         GalliIcon(if (downloads) Icons.Rounded.Folder else if (photo) Icons.Rounded.Image else Icons.Rounded.Videocam, null, Modifier.size(26.dp))
     }
 }

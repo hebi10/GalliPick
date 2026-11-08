@@ -12,8 +12,10 @@ class AppThemeContrastTest {
                 assertContrast(palette.ink, surface)
                 assertContrast(palette.muted, surface)
             }
-            assertContrast(palette.ink, palette.mint)
-            assertContrast(palette.ink, palette.peach)
+            assertContrast(palette.ink, palette.selectedContainer)
+            assertContrast(palette.muted, palette.selectedContainer)
+            assertContrast(palette.ink, palette.iconContainer)
+            assertContrast(palette.muted, palette.iconContainer)
             assertContrast(palette.onPrimary, palette.primary)
         }
     }

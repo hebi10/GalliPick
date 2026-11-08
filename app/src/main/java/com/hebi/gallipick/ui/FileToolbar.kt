@@ -218,7 +218,7 @@ private fun FileKindChip(label: String, isSelected: Boolean, modifier: Modifier 
 @Composable
 private fun ToolbarChoice(label: String, description: String, state: String, active: Boolean, onClick: () -> Unit) {
     TextButton(onClick = onClick,
-        modifier = Modifier.height(48.dp).background(if (active) Mint else MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+        modifier = Modifier.height(48.dp).background(if (active) SelectedContainer else MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
             .semantics { contentDescription = description; stateDescription = state },
         contentPadding = PaddingValues(horizontal = 10.dp),
     ) {

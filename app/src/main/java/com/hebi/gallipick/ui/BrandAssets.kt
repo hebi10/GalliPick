@@ -75,7 +75,7 @@ internal fun GalliNavigationIcon(icon: ImageVector, modifier: Modifier = Modifie
         imageVector = referenceIcon,
         contentDescription = null,
         modifier = modifier,
-        tint = if (selected) (if (IsGalliDark) Ink else Primary) else Muted,
+        tint = if (selected) Primary else Muted,
     )
 }
 

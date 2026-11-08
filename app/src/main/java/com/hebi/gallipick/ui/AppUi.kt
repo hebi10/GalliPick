@@ -506,14 +506,14 @@ private fun NavItem(destination: Destination, selected: Boolean, onClick: () -> 
     ) {
         Box(
             Modifier.size(width = 54.dp, height = if (compact) 24.dp else 34.dp)
-                .background(if (selected) (if (IsGalliDark) Mint else Panel) else Color.Transparent, RoundedCornerShape(GalliUiMetrics.navigationCorner)),
+                .background(if (selected) SelectedContainer else Color.Transparent, RoundedCornerShape(GalliUiMetrics.navigationCorner)),
             contentAlignment = Alignment.Center,
         ) {
             GalliNavigationIcon(destination.icon, modifier = Modifier.size(
                 if (compact) 22.dp else GalliUiMetrics.navigationIcon,
             ), selected = selected)
         }
-        Text(destination.title, color = if (selected) (if (IsGalliDark) Ink else Primary) else Muted, style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+        Text(destination.title, color = if (selected) Primary else Muted, style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
     }
 }
@@ -572,7 +572,7 @@ internal fun EmptyState(title: String, body: String, icon: ImageVector = Icons.R
         verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing)) {
         Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) {
             GalliIllustration(scene, Modifier.size(92.dp))
-            Box(Modifier.align(Alignment.BottomEnd).size(36.dp).background(Mint, CircleShape).border(2.dp, AppBackground, CircleShape), contentAlignment = Alignment.Center) {
+            Box(Modifier.align(Alignment.BottomEnd).size(36.dp).background(IconContainer, CircleShape).border(2.dp, AppBackground, CircleShape), contentAlignment = Alignment.Center) {
                 GalliIcon(icon, null, Modifier.size(23.dp), tint = Ink)
             }
         }

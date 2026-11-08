@@ -6,15 +6,30 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ReferenceDesignTokensTest {
-    @Test fun lightPaletteMatchesApprovedDesignGuide() {
-        assertEquals(Color(0xFF1F6F54), LightPalette.primary)
-        assertEquals(Color(0xFFE6F4ED), LightPalette.panel)
-        assertEquals(Color(0xFFA4D4B4), LightPalette.mint)
-        assertEquals(Color(0xFFFFE7A3), LightPalette.peach)
-        assertEquals(Color(0xFFFFF9EF), LightPalette.background)
-        assertEquals(Color(0xFFFFF3E2), LightPalette.surface)
-        assertEquals(Color(0xFF1F2937), LightPalette.ink)
+    @Test fun lightPaletteMatchesMonoCatNeutralDesign() {
+        assertEquals(Color(0xFF23262B), LightPalette.primary)
         assertEquals(Color.White, LightPalette.onPrimary)
+        assertEquals(Color(0xFF1C1E21), LightPalette.ink)
+        assertEquals(Color(0xFF5D6269), LightPalette.muted)
+        assertEquals(Color(0xFFDDE1E5), LightPalette.line)
+        assertEquals(Color(0xFFF7F8FA), LightPalette.background)
+        assertEquals(Color.White, LightPalette.surface)
+        assertEquals(Color(0xFFECEEF1), LightPalette.panel)
+        assertEquals(Color(0xFFECEEF1), LightPalette.selectedContainer)
+        assertEquals(Color(0xFFE8EAED), LightPalette.iconContainer)
+    }
+
+    @Test fun darkPaletteMatchesMonoCatNeutralDesign() {
+        assertEquals(Color(0xFFE7E9EC), DarkPalette.primary)
+        assertEquals(Color(0xFF17191C), DarkPalette.onPrimary)
+        assertEquals(Color(0xFFF5F6F7), DarkPalette.ink)
+        assertEquals(Color(0xFFB1B6BD), DarkPalette.muted)
+        assertEquals(Color(0xFF3B4046), DarkPalette.line)
+        assertEquals(Color(0xFF111315), DarkPalette.background)
+        assertEquals(Color(0xFF1C1F22), DarkPalette.surface)
+        assertEquals(Color(0xFF292D31), DarkPalette.panel)
+        assertEquals(Color(0xFF292D31), DarkPalette.selectedContainer)
+        assertEquals(Color(0xFF34383D), DarkPalette.iconContainer)
     }
 
     @Test fun commonDimensionsKeepReferenceSpacingAndAccessibleTargets() {

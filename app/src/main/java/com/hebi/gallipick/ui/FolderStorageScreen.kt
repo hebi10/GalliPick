@@ -165,7 +165,7 @@ private fun FolderStorageSummaryCard(summary: FolderStorageSummary, compact: Boo
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(if (compact) 40.dp else 52.dp).background(Mint, RoundedCornerShape(12.dp)),
+            Modifier.size(if (compact) 40.dp else 52.dp).background(IconContainer, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
             GalliIcon(Icons.Rounded.Storage, null, Modifier.size(if (compact) 22.dp else 28.dp), tint = Ink)
