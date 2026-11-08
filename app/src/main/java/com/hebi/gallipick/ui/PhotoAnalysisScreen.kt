@@ -34,6 +34,7 @@ internal fun PhotoAnalysisScreen(
     refresh: () -> Unit,
     onOpenResults: () -> Unit = {},
     onOpenBurstResults: () -> Unit = {},
+    onOpenSoftFocusResults: () -> Unit = {},
 ) {
     val scan = state.photoAnalysis
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -125,6 +126,22 @@ internal fun PhotoAnalysisScreen(
                         } else {
                             Text("현재 확인된 연속 촬영 사진 묶음이 없습니다. 촬영 시각이 없는 사진은 제외됩니다.",
                                 style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
+                        Text("선명도 확인", style = MaterialTheme.typography.titleMedium, color = Primary)
+                        Text("사진 가장자리의 변화를 분석해 선명도가 낮을 수 있는 사진을 추정합니다. " +
+                            "의도적인 배경 흐림이나 부드러운 장면도 후보에 포함될 수 있습니다.",
+                            style = MaterialTheme.typography.bodySmall, color = Muted)
+                        if (state.sharpnessPending > 0) {
+                            Text("기존 분석 ${state.sharpnessPending}장은 선명도 재평가가 필요합니다. 다시 분석을 선택해 주세요.",
+                                style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
+                        if (state.softFocusCandidates.isNotEmpty()) {
+                            Text("선명도 확인 후보 ${state.softFocusCandidates.size}장",
+                                style = MaterialTheme.typography.bodyMedium, color = Primary)
+                            ActionButton("선명도 확인 후보 보기", onOpenSoftFocusResults,
+                                Modifier.fillMaxWidth(), filled = true)
+                        } else if (state.sharpnessPending == 0) {
+                            Text("현재 선명도 확인 후보가 없습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
                         }
                         ActionButton("다시 분석", onStart, Modifier.fillMaxWidth(), icon = Icons.Rounded.Refresh)
                     }

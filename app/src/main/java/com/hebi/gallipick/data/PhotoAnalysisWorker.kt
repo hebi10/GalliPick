@@ -8,6 +8,7 @@ import android.os.SystemClock
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.hebi.gallipick.domain.PerceptualHash
+import com.hebi.gallipick.domain.PhotoSharpness
 import com.hebi.gallipick.domain.PhotoAnalysisPhase
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -34,13 +35,16 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
             val epochs = repository.dao.allVolumeVersions().associate { it.volume to it.version }
             val eligible = photos.filter { epochs[it.volume] != null }
             val cached = repository.dao.allPhotoHashes().associateBy { Triple(it.uri, it.fingerprint, it.volumeVersion) }
-            val remaining = eligible.filter { Triple(it.uri, it.fingerprint, epochs[it.volume]) !in cached }
+            val remaining = eligible.filter {
+                cached[Triple(it.uri, it.fingerprint, epochs[it.volume])]?.sharpnessScore == null
+            }
             val completedBefore = eligible.count {
-                cached[Triple(it.uri, it.fingerprint, epochs[it.volume])]?.phash != null
+                val saved = cached[Triple(it.uri, it.fingerprint, epochs[it.volume])]
+                saved?.phash != null && saved.sharpnessScore != null
             }
             val skippedBefore = eligible.count {
                 val found = cached[Triple(it.uri, it.fingerprint, epochs[it.volume])]
-                found != null && found.phash == null
+                found != null && found.phash == null && found.sharpnessScore != null
             }
             if (!repository.updatePhotoSession(token) {
                     it.copy(total = eligible.size, completed = completedBefore,
@@ -57,32 +61,33 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
                     return@withContext Result.success()
                 }
                 val epoch = epochs[photo.volume] ?: continue
-                val phash = try {
+                val features = try {
                     val before = repository.reader.current(photo.uri)
                     if (before == null || before.isTrashed || before.fingerprint != photo.fingerprint ||
                         repository.reader.volumeVersion(photo.volume) != epoch) {
                         throw IOException("The photo changed before decoding.")
                     }
-                    val hash = imageHash(Uri.parse(photo.uri))
+                    val result = imageFeatures(Uri.parse(photo.uri))
                     coroutineContext.ensureActive()
                     val after = repository.reader.current(photo.uri)
                     if (after == null || after.isTrashed || after.fingerprint != photo.fingerprint ||
                         repository.reader.volumeVersion(photo.volume) != epoch) {
                         throw IOException("The photo changed during decoding.")
                     }
-                    hash
+                    result
                 } catch (exception: CancellationException) {
                     throw exception
                 } catch (_: Exception) {
                     null
                 }
                 if (!repository.savePhotoHashIfCurrent(token, CachedPhotoHash(
-                        photo.uri, photo.fingerprint, epoch, phash
+                        photo.uri, photo.fingerprint, epoch, features?.first,
+                        features?.second ?: PhotoSharpness.UNKNOWN_SCORE
                     ))) return@withContext Result.success()
-                if (phash == null) skipped++ else completed++
+                if (features == null) skipped++ else completed++
                 if (!repository.updatePhotoSession(token) { it.copy(
                         completed = completed, skipped = skipped,
-                        message = if (phash == null) "읽을 수 없는 사진은 제외했습니다."
+                        message = if (features == null) "읽을 수 없는 사진은 제외했습니다."
                                   else "사진의 시각적 특징을 저장했습니다."
                     ) }) return@withContext Result.success()
             }
@@ -92,7 +97,7 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
             val latestVersions = repository.dao.allVolumeVersions().associate { it.volume to it.version }
             val latestCache = repository.dao.allPhotoHashes().associateBy { Triple(it.uri, it.fingerprint, it.volumeVersion) }
             val newCandidates = latest.filter { latestVersions[it.volume] != null &&
-                Triple(it.uri, it.fingerprint, latestVersions[it.volume]) !in latestCache }
+                latestCache[Triple(it.uri, it.fingerprint, latestVersions[it.volume])]?.sharpnessScore == null }
             if (newCandidates.isNotEmpty()) {
                 repository.continuePhotoAnalysis(token)
             } else {
@@ -100,13 +105,15 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
                     phase = PhotoAnalysisPhase.COMPLETE.name,
                     total = latest.count { latestVersions[it.volume] != null },
                     completed = latest.count {
-                        latestCache[Triple(it.uri, it.fingerprint, latestVersions[it.volume])]?.phash != null
+                        latestCache[Triple(it.uri, it.fingerprint, latestVersions[it.volume])]?.let {
+                            it.phash != null && it.sharpnessScore != null
+                        } == true
                     },
                     skipped = latest.count {
                         val hash = latestCache[Triple(it.uri, it.fingerprint, latestVersions[it.volume])]
-                        hash != null && hash.phash == null
+                        hash != null && hash.phash == null && hash.sharpnessScore != null
                     },
-                    message = "사진 특징 분석을 마쳤습니다. 유사 사진 묶음 비교는 다음 단계에서 제공합니다."
+                    message = "사진 특징과 선명도 추정 분석을 마쳤습니다. 결과는 직접 확인해 주세요."
                 ) }
             }
             Result.success()
@@ -121,29 +128,38 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
         }
     }
 
-    private fun imageHash(uri: Uri): String {
+    private fun imageFeatures(uri: Uri): Pair<String, Double> {
         val source = ImageDecoder.createSource(applicationContext.contentResolver, uri)
-        val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+        val bitmap = ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-            decoder.setTargetSize(32, 32)
+            decoder.setTargetSize(PhotoSharpness.SIDE, PhotoSharpness.SIDE)
             decoder.isMutableRequired = false
         }
         return try {
-            val argb = IntArray(32 * 32)
-            bitmap.getPixels(argb, 0, 32, 0, 0, 32, 32)
-            val luminance = IntArray(argb.size) { i ->
-                val color = argb[i]
-                val alpha = color ushr 24
-                val red = (color ushr 16) and 255
-                val green = (color ushr 8) and 255
-                val blue = color and 255
-                // Composite transparent pixels onto white; avoid false negatives from hidden RGB.
-                val y = (299 * red + 587 * green + 114 * blue) / 1000
-                (y * alpha + 255 * (255 - alpha)) / 255
+            val full = luminance(bitmap)
+            val smaller = Bitmap.createScaledBitmap(bitmap, 32, 32, true)
+            try {
+                PerceptualHash.fromLuminance(luminance(smaller)) to
+                    (PhotoSharpness.score(full) ?: PhotoSharpness.UNKNOWN_SCORE)
+            } finally {
+                smaller.recycle()
             }
-            PerceptualHash.fromLuminance(luminance)
         } finally {
             bitmap.recycle()
+        }
+    }
+
+    private fun luminance(bitmap: Bitmap): IntArray {
+        val colors = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(colors, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        return IntArray(colors.size) { index ->
+            val color = colors[index]
+            val alpha = color ushr 24
+            val red = (color ushr 16) and 255
+            val green = (color ushr 8) and 255
+            val blue = color and 255
+            val y = (299 * red + 587 * green + 114 * blue) / 1000
+            (y * alpha + 255 * (255 - alpha)) / 255
         }
     }
 }

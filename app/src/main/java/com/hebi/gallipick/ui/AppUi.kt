@@ -40,7 +40,7 @@ import java.util.Locale
 
 // The reference design has four top-level destinations. Duplicate analysis
 // remains available as a child of CLEANUP and is never discarded.
-internal enum class PhotoReviewMode { SIMILAR, BURST }
+internal enum class PhotoReviewMode { SIMILAR, BURST, SOFT_FOCUS }
 
 internal enum class Destination(val title: String, val icon: ImageVector) {
     HOME("홈", Icons.Rounded.Home), FILES("파일", Icons.Rounded.GridView),
@@ -66,20 +66,23 @@ fun GalliPickApp(
     var showFolderStorage by rememberSaveable { mutableStateOf(false) }
     var showPhotoAnalysis by rememberSaveable { mutableStateOf(false) }
     var showSimilarResults by rememberSaveable { mutableStateOf(false) }
+    var showSoftFocusResults by rememberSaveable { mutableStateOf(false) }
     var similarCompareId by rememberSaveable { mutableStateOf<String?>(null) }
     var photoReviewMode by rememberSaveable { mutableStateOf(PhotoReviewMode.SIMILAR) }
     fun closeSimilarReview() {
         showSimilarResults = false
+        showSoftFocusResults = false
         similarCompareId = null
         vm.clearSelection()
     }
     fun navigate(destinationValue: Destination) {
-        if (showSimilarResults || similarCompareId != null) vm.clearSelection()
+        if (showSimilarResults || showSoftFocusResults || similarCompareId != null) vm.clearSelection()
         showTrash = false
         showDuplicates = false
         showFolderStorage = false
         showPhotoAnalysis = false
         showSimilarResults = false
+        showSoftFocusResults = false
         similarCompareId = null
         destination = destinationValue
     }
@@ -89,6 +92,7 @@ fun GalliPickApp(
         showFolderStorage = false
         showPhotoAnalysis = false
         showSimilarResults = false
+        showSoftFocusResults = false
         similarCompareId = null
         destination = Destination.CLEANUP
         showDuplicates = true
@@ -98,6 +102,7 @@ fun GalliPickApp(
         showDuplicates = false
         showPhotoAnalysis = false
         showSimilarResults = false
+        showSoftFocusResults = false
         similarCompareId = null
         destination = Destination.CLEANUP
         showFolderStorage = true
@@ -107,6 +112,7 @@ fun GalliPickApp(
         showDuplicates = false
         showFolderStorage = false
         showSimilarResults = false
+        showSoftFocusResults = false
         similarCompareId = null
         destination = Destination.CLEANUP
         showPhotoAnalysis = true
@@ -117,13 +123,13 @@ fun GalliPickApp(
         else onTrash(candidates)
     }
     BackHandler(enabled = showTrash || showDuplicates || showFolderStorage ||
-        showPhotoAnalysis || showSimilarResults || similarCompareId != null || destination != Destination.HOME) {
+        showPhotoAnalysis || showSimilarResults || showSoftFocusResults || similarCompareId != null || destination != Destination.HOME) {
         when {
             showTrash -> showTrash = false
             showDuplicates -> showDuplicates = false
             showFolderStorage -> showFolderStorage = false
             similarCompareId != null -> similarCompareId = null
-            showSimilarResults -> closeSimilarReview()
+            showSimilarResults || showSoftFocusResults -> closeSimilarReview()
             showPhotoAnalysis -> showPhotoAnalysis = false
             else -> destination = Destination.HOME
         }
@@ -138,7 +144,7 @@ fun GalliPickApp(
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage, showPhotoAnalysis, Triple(showSimilarResults, similarCompareId, photoReviewMode))), state.filter),
+                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage, showPhotoAnalysis, Triple(showSimilarResults || showSoftFocusResults, similarCompareId, photoReviewMode))), state.filter),
                     header = {
                         if (destination == Destination.FILES && !showTrash && !showDuplicates && !showFolderStorage && !showPhotoAnalysis) {
                             GalliFilesHeader(state.loading, vm::refresh)
@@ -209,6 +215,14 @@ fun GalliPickApp(
                                                     onCompare = { similarCompareId = it },
                                                     onReview = ::reviewSimilarCandidates,
                                                 )
+                                            } else if (photoReviewMode == PhotoReviewMode.SOFT_FOCUS) {
+                                                SoftFocusResultsScreen(
+                                                    state.softFocusCandidates, state.selected,
+                                                    onBack = ::closeSimilarReview,
+                                                    onCompare = { similarCompareId = it },
+                                                    onOpenMedia = onOpenMedia,
+                                                    onReview = ::reviewSimilarCandidates,
+                                                )
                                             } else {
                                                 SimilarPhotoResultsScreen(
                                                     reviewGroups, state.selected,
@@ -227,11 +241,20 @@ fun GalliPickApp(
                                             onToggleCandidate = { vm.toggleSimilarCandidate(group.id, it) },
                                             onOpenMedia = onOpenMedia,
                                             onReview = ::reviewSimilarCandidates,
-                                            title = if (photoReviewMode == PhotoReviewMode.BURST) "연속 촬영 사진 비교" else "사진 비교",
+                                            title = when (photoReviewMode) {
+                                                 PhotoReviewMode.BURST -> "연속 촬영 사진 비교"
+                                                 PhotoReviewMode.SOFT_FOCUS -> "선명도 비교"
+                                                 else -> "사진 비교"
+                                             },
                                             groupTitle = if (photoReviewMode == PhotoReviewMode.BURST) "연속 촬영 묶음" else "유사 사진 묶음",
-                                            explanation = if (photoReviewMode == PhotoReviewMode.BURST)
-                                                "촬영 시각과 장면이 가까운 사진입니다. 여러 장을 남길 수 있으며 직접 정리 후보를 선택합니다."
-                                            else "여러 장을 남길 수 있습니다. 미리보기 선택과 정리 후보 선택은 별도 동작입니다.",
+                                            explanation = when (photoReviewMode) {
+                                                PhotoReviewMode.BURST ->
+                                                    "촬영 시각과 장면이 가까운 사진입니다. 여러 장을 남길 수 있으며 직접 정리 후보를 선택합니다."
+                                                PhotoReviewMode.SOFT_FOCUS ->
+                                                    "선명도는 추정값입니다. 원본을 확인하고 여러 장을 남길 수 있으며 정리 후보는 직접 선택합니다."
+                                                else ->
+                                                    "여러 장을 남길 수 있습니다. 미리보기 선택과 정리 후보 선택은 별도 동작입니다."
+                                            },
                                         )
                                     }
                                     showSimilarResults -> {
@@ -251,6 +274,14 @@ fun GalliPickApp(
                                             )
                                         }
                                     }
+                                    showSoftFocusResults -> SoftFocusResultsScreen(
+                                        candidates = state.softFocusCandidates,
+                                        selectedUris = state.selected,
+                                        onBack = ::closeSimilarReview,
+                                        onCompare = { similarCompareId = it },
+                                        onOpenMedia = onOpenMedia,
+                                        onReview = ::reviewSimilarCandidates,
+                                    )
                                     showPhotoAnalysis -> PhotoAnalysisScreen(
                                         state = state,
                                         onBack = { showPhotoAnalysis = false },
@@ -270,6 +301,13 @@ fun GalliPickApp(
                                             photoReviewMode = PhotoReviewMode.BURST
                                             similarCompareId = null
                                             showSimilarResults = true
+                                        },
+                                        onOpenSoftFocusResults = {
+                                            vm.prepareSimilarReview()
+                                            photoReviewMode = PhotoReviewMode.SOFT_FOCUS
+                                            similarCompareId = null
+                                            showSimilarResults = false
+                                            showSoftFocusResults = true
                                         },
                                     )
                                     showFolderStorage -> FolderStorageScreen(

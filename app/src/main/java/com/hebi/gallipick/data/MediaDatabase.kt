@@ -73,6 +73,7 @@ internal data class CachedPhotoHash(
     val fingerprint: String,
     val volumeVersion: String,
     val phash: String?,
+    val sharpnessScore: Double? = null,
 )
 
 @Entity(tableName = "photo_analysis_session")
@@ -226,7 +227,7 @@ internal abstract class MediaDao {
     entities = [CachedMedia::class, CachedHash::class, ProtectedMedia::class,
         ProtectedFolder::class, ScanSession::class, MediaVolumeVersion::class,
         CachedPhotoHash::class, PhotoAnalysisSession::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 internal abstract class MediaDatabase : RoomDatabase() {
@@ -247,10 +248,16 @@ internal abstract class MediaDatabase : RoomDatabase() {
             }
         }
 
+        private val migration3To4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE photo_perceptual_hash ADD COLUMN sharpnessScore REAL")
+            }
+        }
+
         @Volatile private var instance: MediaDatabase? = null
         fun get(context: Context): MediaDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext,
-                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2, migration2To3).build().also { instance = it }
+                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2, migration2To3, migration3To4).build().also { instance = it }
         }
     }
 }
