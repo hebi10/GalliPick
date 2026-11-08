@@ -151,6 +151,18 @@ class NativeScreenCaptureTest {
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             compose.onNodeWithText("사진 비교").assertIsDisplayed()
             saveViewport("04-cleanup")
+            recordStage("stage9g-real-history")
+            compose.onNodeWithContentDescription("정리 기록 열기").performScrollTo().performClick()
+            compose.onNodeWithText("정리 기록이 없습니다").assertIsDisplayed()
+            saveStage9GMainViewport("01-cleanup-history-empty")
+            compose.onNodeWithContentDescription("정리로 돌아가기").performClick()
+            compose.onNodeWithText("사진 비교").assertIsDisplayed()
+            recordStage("stage9g-real-photo-analysis")
+            compose.onNodeWithContentDescription("유사 사진 분석 열기").performScrollTo().performClick()
+            compose.onNodeWithText("사진 분석 시작").assertIsDisplayed()
+            saveStage9GMainViewport("02-photo-analysis-idle")
+            compose.onNodeWithContentDescription("사진 분석 닫기").performClick()
+            compose.onNodeWithText("사진 비교").assertIsDisplayed()
             recordStage("stage9a-open-folder-storage")
             compose.onNodeWithContentDescription("폴더별 용량 분석 열기").performScrollTo().performClick()
             compose.onNodeWithText("폴더별 용량 분석").assertIsDisplayed()
@@ -313,6 +325,27 @@ class NativeScreenCaptureTest {
             else compose.onAllNodesWithText(label)
         if (nodes.fetchSemanticsNodes().isNotEmpty()) nodes.onFirst().performClick()
         compose.waitForIdle()
+    }
+
+    private fun saveStage9GMainViewport(name: String) {
+        recordStage("stage9g-$name")
+        compose.waitForIdle()
+        instrumentation.waitForIdleSync()
+        SystemClock.sleep(500)
+        clearKnownSystemUiAnr(name)
+        assertSystemUiAnrAbsent(name)
+        val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot()) {
+            "Android did not provide a Stage9G real-app viewport for $name"
+        }
+        try {
+            val directory = File(app.filesDir, "stage9g-native-captures")
+            check(directory.isDirectory || directory.mkdirs()) { "Could not create Stage 9-G native directory" }
+            val file = File(directory, "$name.png")
+            file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+            Log.i("NativeScreenCapture", "Saved Stage9G real-app capture $file ${bitmap.width}x${bitmap.height}")
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     private fun saveStage9AFolderViewport() {
