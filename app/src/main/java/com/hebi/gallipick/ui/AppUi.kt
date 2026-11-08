@@ -62,30 +62,42 @@ fun GalliPickApp(
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var showDuplicates by rememberSaveable { mutableStateOf(false) }
     var showFolderStorage by rememberSaveable { mutableStateOf(false) }
+    var showPhotoAnalysis by rememberSaveable { mutableStateOf(false) }
     fun navigate(destinationValue: Destination) {
         showTrash = false
         showDuplicates = false
         showFolderStorage = false
+        showPhotoAnalysis = false
         destination = destinationValue
     }
     fun openDuplicates() {
         vm.prepareDuplicateReview()
         showTrash = false
         showFolderStorage = false
+        showPhotoAnalysis = false
         destination = Destination.CLEANUP
         showDuplicates = true
     }
     fun openFolderStorage() {
         showTrash = false
         showDuplicates = false
+        showPhotoAnalysis = false
         destination = Destination.CLEANUP
         showFolderStorage = true
     }
-    BackHandler(enabled = showTrash || showDuplicates || showFolderStorage || destination != Destination.HOME) {
+    fun openPhotoAnalysis() {
+        showTrash = false
+        showDuplicates = false
+        showFolderStorage = false
+        destination = Destination.CLEANUP
+        showPhotoAnalysis = true
+    }
+    BackHandler(enabled = showTrash || showDuplicates || showFolderStorage || showPhotoAnalysis || destination != Destination.HOME) {
         when {
             showTrash -> showTrash = false
             showDuplicates -> showDuplicates = false
             showFolderStorage -> showFolderStorage = false
+            showPhotoAnalysis -> showPhotoAnalysis = false
             else -> destination = Destination.HOME
         }
     }
@@ -99,9 +111,9 @@ fun GalliPickApp(
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, showFolderStorage), state.filter),
+                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, showFolderStorage to showPhotoAnalysis), state.filter),
                     header = {
-                        if (destination == Destination.FILES && !showTrash && !showDuplicates && !showFolderStorage) {
+                        if (destination == Destination.FILES && !showTrash && !showDuplicates && !showFolderStorage && !showPhotoAnalysis) {
                             GalliFilesHeader(state.loading, vm::refresh)
                         } else {
                             GalliAppHeader(state.loading, vm::refresh)
@@ -159,6 +171,15 @@ fun GalliPickApp(
                                             DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission)
                                         }
                                     }
+                                    showPhotoAnalysis -> PhotoAnalysisScreen(
+                                        state = state,
+                                        onBack = { showPhotoAnalysis = false },
+                                        onStart = vm::startPhotoAnalysis,
+                                        onPause = vm::pausePhotoAnalysis,
+                                        onResume = vm::resumePhotoAnalysis,
+                                        requestAccess = onRequestPermission,
+                                        refresh = vm::refresh,
+                                    )
                                     showFolderStorage -> FolderStorageScreen(
                                         state = state,
                                         onBack = { showFolderStorage = false },
@@ -177,7 +198,9 @@ fun GalliPickApp(
                                         Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission)
                                         Destination.CLEANUP -> CleanupScreen(
                                             state, onOpenDuplicates = ::openDuplicates,
-                                            onOpenFolderStorage = ::openFolderStorage, browse = navigateFiles,
+                                            onOpenFolderStorage = ::openFolderStorage,
+                                            onOpenPhotoAnalysis = ::openPhotoAnalysis,
+                                            browse = navigateFiles,
                                         )
                                         Destination.SETTINGS -> SettingsScreen(state, vm, onRequestPermission, onOpenSettings, { showTrash = true })
                                     }
