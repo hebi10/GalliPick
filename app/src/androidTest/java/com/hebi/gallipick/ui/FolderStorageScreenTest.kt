@@ -36,7 +36,7 @@ class FolderStorageScreenTest {
         screen(AppUiState(access = MediaAccess.FULL, items = input), onOpenFolder = { opened = it })
         compose.onNodeWithText("접근 가능한 사진·동영상 합계").assertExists()
         compose.onNodeWithText("3.5 MB").assertExists()
-        compose.onNodeWithContentDescription("DCIM/Camera/ 폴더 파일 보기").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("DCIM/Camera 폴더 파일 보기").performScrollTo().performClick()
         compose.runOnIdle { assertEquals("DCIM/Camera/", opened) }
     }
 
