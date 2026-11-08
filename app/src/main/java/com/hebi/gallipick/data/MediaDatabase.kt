@@ -145,6 +145,8 @@ internal abstract class MediaDao {
     abstract suspend fun putPhotoHash(hash: CachedPhotoHash)
     @Query("DELETE FROM photo_perceptual_hash")
     abstract suspend fun clearPhotoHashes()
+    @Query("DELETE FROM photo_perceptual_hash WHERE phash IS NULL")
+    abstract suspend fun clearFailedPhotoHashes()
     @Query("SELECT * FROM photo_analysis_session WHERE id = 1")
     abstract fun observePhotoAnalysis(): Flow<PhotoAnalysisSession?>
     @Query("SELECT * FROM photo_analysis_session WHERE id = 1")
