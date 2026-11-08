@@ -143,6 +143,32 @@ class GalliDesignSystemTest {
         }
     }
 
+    @Test fun monoCatBrandMarkUsesThemeInkInBothPalettesWithoutAnOpaqueTile() {
+        compose.setContent {
+            Row {
+                GalliPickTheme(AppThemeMode.LIGHT) {
+                    GalliBrandMark(Modifier.size(48.dp).testTag("mono-cat-light"))
+                }
+                GalliPickTheme(AppThemeMode.DARK) {
+                    GalliBrandMark(Modifier.size(48.dp).testTag("mono-cat-dark"))
+                }
+            }
+        }
+        for ((tag, expected) in listOf(
+            "mono-cat-light" to 0x001C1E21,
+            "mono-cat-dark" to 0x00F5F6F7,
+        )) {
+            val image = compose.onNodeWithTag(tag).assertIsDisplayed().captureToImage().asAndroidBitmap()
+            try {
+                val colored = countExactPixels(image, expected)
+                assertTrue("$tag brand glyph must be visible", colored > 12)
+                assertTrue("$tag brand glyph must remain an outline", colored < image.width * image.height * .72)
+            } finally {
+                image.recycle()
+            }
+        }
+    }
+
     @Test fun referenceTypographyBrandMarkAndOutlineTabIconsRender() {
         lateinit var type: Typography
         compose.setContent {

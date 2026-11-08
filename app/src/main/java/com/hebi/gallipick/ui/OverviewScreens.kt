@@ -194,8 +194,7 @@ private fun HomeStorageSummary(state: AppUiState, modifier: Modifier = Modifier)
 
 private data class HomeShortcut(
     val title: String,
-    val imageRes: Int? = null,
-    val vectorIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    val iconRes: Int,
     val onClick: () -> Unit,
 )
 
@@ -208,12 +207,12 @@ private fun HomeQuickActions(
 ) {
     val oneYearAgo = System.currentTimeMillis() - 365L * 24 * 60 * 60 * 1000
     val shortcuts = listOf(
-        HomeShortcut("사진·영상 정리", imageRes = R.drawable.gp_photo, onClick = { browse(MediaFilter()) }),
-        HomeShortcut("중복 파일 찾기", imageRes = R.drawable.gp_duplicates, onClick = duplicates),
-        HomeShortcut("용량 큰 파일", imageRes = R.drawable.gp_video, onClick = {
+        HomeShortcut("사진·영상 정리", iconRes = R.drawable.gp_home_photo, onClick = { browse(MediaFilter()) }),
+        HomeShortcut("중복 파일 찾기", iconRes = R.drawable.gp_home_duplicates, onClick = duplicates),
+        HomeShortcut("용량 큰 파일", iconRes = R.drawable.gp_home_large_file, onClick = {
             browse(MediaFilter(minSizeBytes = 100L * 1024 * 1024, sortField = SortField.SIZE))
         }),
-        HomeShortcut("오래된 파일", imageRes = R.drawable.gp_old_files, onClick = {
+        HomeShortcut("오래된 파일", iconRes = R.drawable.gp_home_old_files, onClick = {
             browse(MediaFilter(
                 fromDateMs = 1L, toDateMs = oneYearAgo,
                 sortField = SortField.CAPTURED, sortDirection = SortDirection.ASCENDING,
@@ -271,21 +270,12 @@ private fun HomeShortcutCard(shortcut: HomeShortcut, modifier: Modifier = Modifi
 
 @Composable
 private fun HomeShortcutIcon(shortcut: HomeShortcut, modifier: Modifier = Modifier) {
-    Box(modifier, contentAlignment = Alignment.Center) {
-        if (shortcut.imageRes != null) {
-            Image(
-                painter = painterResource(shortcut.imageRes), contentDescription = null,
-                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
-            )
-        } else if (shortcut.vectorIcon != null) {
-            Box(
-                Modifier.fillMaxSize().background(Panel, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                GalliIcon(shortcut.vectorIcon, null, Modifier.fillMaxSize(.62f), tint = Primary)
-            }
-        }
-    }
+    Icon(
+        painter = painterResource(shortcut.iconRes),
+        contentDescription = null,
+        tint = Ink,
+        modifier = modifier,
+    )
 }
 
 internal data class CleanupSuggestion(val title: String, val description: String, val filter: MediaFilter, val items: List<MediaItem>)
