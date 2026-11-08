@@ -137,7 +137,7 @@ internal fun SimilarPhotoCompareScreen(
             Text("사진은 자동 삭제되지 않습니다. Android 확인창에서 최종 이동 대상을 검토합니다.",
                 style = MaterialTheme.typography.bodySmall, color = Muted)
             if (selectedCount > 0) ActionButton(
-                "선택한 사진 정리 (${selectedCount}장)", onReview,
+                "선택한 사진 정리 (${selectedUris.size}장)", onReview,
                 Modifier.fillMaxWidth().padding(bottom = 6.dp), filled = true,
             )
         }
