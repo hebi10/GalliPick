@@ -44,7 +44,7 @@ internal fun PhotoAnalysisScreen(
         val scale = LocalDensity.current.fontScale.coerceAtLeast(1f)
         val short = maxHeight < 470.dp * scale.coerceAtMost(1.3f)
         Column(
-            Modifier.fillMaxSize().widthIn(max = 760.dp)
+            Modifier.widthIn(max = 760.dp).fillMaxWidth().fillMaxHeight()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = if (short) 6.dp else 12.dp),
             verticalArrangement = Arrangement.spacedBy(if (short) 8.dp else 14.dp),
@@ -69,7 +69,7 @@ internal fun PhotoAnalysisScreen(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("비슷한 사진을 기기 안에서 분석해요",
                         style = MaterialTheme.typography.titleMedium, color = Ink)
-                    Text("크기를 변경하거나 다시 저장한 사진도 비교할 수 있도록 작은 미리보기의 특징을 계산합니다.",
+                    if (!short) Text("크기를 변경하거나 다시 저장한 사진도 비교할 수 있도록 작은 미리보기의 특징을 계산합니다.",
                         style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
                 if (!short) Image(
@@ -100,14 +100,16 @@ internal fun PhotoAnalysisScreen(
                         ScanPhase.COMPLETE -> "분석 완료"
                         ScanPhase.FAILED -> "분석 실패"
                     }
-                    Text(status, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        when (scan.phase) {
-                            ScanPhase.IDLE -> "분석을 시작하면 사진을 하나씩 확인합니다."
-                            else -> scan.message.ifBlank { status }
-                        },
-                        color = Muted, style = MaterialTheme.typography.bodyMedium,
-                    )
+                    if (!short || scan.phase != ScanPhase.IDLE) {
+                        Text(status, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            when (scan.phase) {
+                                ScanPhase.IDLE -> "분석을 시작하면 사진을 하나씩 확인합니다."
+                                else -> scan.message.ifBlank { status }
+                            },
+                            color = Muted, style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                     if (scan.phase != ScanPhase.IDLE) {
                         val total = max(0, scan.total)
                         if (total > 0) {
