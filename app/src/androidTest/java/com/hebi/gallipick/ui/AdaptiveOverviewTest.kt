@@ -136,6 +136,31 @@ class AdaptiveOverviewTest {
         compose.runOnIdle { assertEquals(MediaKind.VIDEO, opened?.kind) }
     }
 
+    @Test fun stage9bPhotoAnalysisActionIsRealAndLegacyDuplicatesRemainIndependent() {
+        var duplicates = 0
+        var photo = 0
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f, fontScale = 1.6f)) {
+                    Surface(Modifier.requiredSize(320.dp, 540.dp)) {
+                        CleanupScreen(
+                            state = AppUiState(access = MediaAccess.FULL),
+                            onOpenDuplicates = { duplicates++ },
+                            onOpenPhotoAnalysis = { photo++ },
+                            browse = {},
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("유사 사진 분석 열기").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals(1, duplicates)
+            assertEquals(1, photo)
+        }
+    }
+
     @Test fun cleanupStage9aUsesRealNavigationOnlyAndPreservesExistingActions() {
         var duplicateOpens = 0
         var folderOpens = 0
