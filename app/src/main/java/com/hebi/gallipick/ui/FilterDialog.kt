@@ -2,8 +2,8 @@ package com.hebi.gallipick.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CalendarMonth
-import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DatePicker
@@ -399,7 +399,7 @@ internal fun FilterDialogContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        IconAction("필터 닫기", Icons.Rounded.ArrowBack, onClick = onDismiss)
+                        IconAction("필터 닫기", Icons.Outlined.ArrowBack, onClick = onDismiss)
                         Text("필터", style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         TextAction("기간 선택", onClick = { calendarField = "start" })
@@ -513,7 +513,7 @@ private fun FilterDateInput(
             modifier = Modifier.weight(1f),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
         )
-        IconAction("$label 달력에서 선택", Icons.Rounded.CalendarMonth, onClick = onOpenCalendar)
+        IconAction("$label 달력에서 선택", Icons.Outlined.CalendarMonth, onClick = onOpenCalendar)
     }
 }
 

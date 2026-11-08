@@ -11,7 +11,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -84,14 +84,14 @@ internal fun FileToolbar(
                 shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
                 textStyle = MaterialTheme.typography.bodyMedium,
                 leadingIcon = {
-                    IconAction("파일 검색", Icons.Rounded.Search) {
+                    IconAction("파일 검색", Icons.Outlined.Search) {
                         focus.requestFocus()
                         keyboard?.show()
                     }
                 },
                 trailingIcon = {
                     if (filter.query.isNotEmpty()) {
-                        IconAction("검색어 지우기", Icons.Rounded.Close) {
+                        IconAction("검색어 지우기", Icons.Outlined.Close) {
                             change(filter.copy(query = ""))
                             focus.requestFocus()
                         }
@@ -122,7 +122,7 @@ internal fun FileToolbar(
             }
             IconAction(
                 if (gridView) "목록 보기" else "그리드 보기",
-                if (gridView) Icons.Rounded.ViewList else Icons.Rounded.GridView,
+                if (gridView) Icons.Outlined.ViewList else Icons.Outlined.GridView,
             ) { onGridViewChange(!gridView) }
         }
         Row(
@@ -138,7 +138,7 @@ internal fun FileToolbar(
         Box {
             ToolbarChoice(if (conditionCount == 0) "필터" else "필터 $conditionCount", "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0) { advanced() }
             DropdownMenu(expanded = menu == "conditions", onDismissRequest = { menu = null }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 420.dp)) {
-                DropdownMenuItem(text = { Text("상세 필터") }, onClick = { menu = null; advanced() }, leadingIcon = { GalliIcon(Icons.Rounded.Tune, null) })
+                DropdownMenuItem(text = { Text("상세 필터") }, onClick = { menu = null; advanced() }, leadingIcon = { GalliIcon(Icons.Outlined.Tune, null) })
                 if (conditionCount > 0) Text("적용 중: ${filterSummary(filter)}", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
                 HorizontalDivider()
                 Text("빠른 조건", Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.labelMedium, color = Muted)
@@ -146,8 +146,8 @@ internal fun FileToolbar(
                     DropdownMenuItem(text = { Text(label) }, onClick = { change(preset); menu = null })
                 }
                 HorizontalDivider()
-                DropdownMenuItem(text = { Text("즐겨찾기만") }, onClick = { change(filter.copy(favoritesOnly = !filter.favoritesOnly)); menu = null }, trailingIcon = { if (filter.favoritesOnly) GalliIcon(Icons.Rounded.Check, null) })
-                DropdownMenuItem(text = { Text("보호 파일만") }, onClick = { change(filter.copy(protectedOnly = !filter.protectedOnly)); menu = null }, trailingIcon = { if (filter.protectedOnly) GalliIcon(Icons.Rounded.Check, null) })
+                DropdownMenuItem(text = { Text("즐겨찾기만") }, onClick = { change(filter.copy(favoritesOnly = !filter.favoritesOnly)); menu = null }, trailingIcon = { if (filter.favoritesOnly) GalliIcon(Icons.Outlined.Check, null) })
+                DropdownMenuItem(text = { Text("보호 파일만") }, onClick = { change(filter.copy(protectedOnly = !filter.protectedOnly)); menu = null }, trailingIcon = { if (filter.protectedOnly) GalliIcon(Icons.Outlined.Check, null) })
                 HorizontalDivider()
                 Text("저장한 조건", Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.labelMedium, color = Muted)
                 if (presets.isEmpty()) Text("저장한 조건이 없습니다.", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -155,13 +155,13 @@ internal fun FileToolbar(
                     DropdownMenuItem(text = { Text(preset.name) }, onClick = {
                         change(MediaFilterActions.sort(preset.filter, preset.filter.sortField, preset.filter.sortDirection)); menu = null
                     }, trailingIcon = {
-                        IconAction("${preset.name} 필터 삭제", Icons.Rounded.Close, Modifier.size(44.dp)) { deletePreset(preset.id) }
+                        IconAction("${preset.name} 필터 삭제", Icons.Outlined.Close, Modifier.size(44.dp)) { deletePreset(preset.id) }
                     })
                 }
             }
         }
         Box {
-            IconAction("파일 추가 작업", Icons.Rounded.MoreVert) { menu = "more" }
+            IconAction("파일 추가 작업", Icons.Outlined.MoreVert) { menu = "more" }
             DropdownMenu(expanded = menu == "more", onDismissRequest = { menu = null }) {
                 DropdownMenuItem(text = { Text("현재 조건 저장") }, onClick = { menu = null; save() })
                 DropdownMenuItem(text = { Text("조건 초기화") }, onClick = { change(MediaFilter()); menu = null })
@@ -180,7 +180,7 @@ internal fun FileToolbar(
                                     menu = null
                                 }, trailingIcon = {
                                     if (filter.sortField == choice.field && filter.sortDirection == choice.direction) {
-                                        GalliIcon(Icons.Rounded.Check, null)
+                                        GalliIcon(Icons.Outlined.Check, null)
                                     }
                                 })
                             }
@@ -224,7 +224,7 @@ private fun ToolbarChoice(label: String, description: String, state: String, act
     ) {
         Text(label, color = Ink, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.width(4.dp))
-        GalliIcon(Icons.Rounded.KeyboardArrowDown, null, Modifier.size(18.dp), tint = Ink)
+        GalliIcon(Icons.Outlined.KeyboardArrowDown, null, Modifier.size(18.dp), tint = Ink)
     }
 }
 

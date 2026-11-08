@@ -7,7 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -46,7 +46,7 @@ internal fun PhotoAnalysisScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconAction("사진 분석 닫기", Icons.Rounded.ArrowBack, onClick = onBack)
+                IconAction("사진 분석 닫기", Icons.Outlined.ArrowBack, onClick = onBack)
                 Text("사진 분석", style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).semantics { heading() })
             }
@@ -95,12 +95,12 @@ internal fun PhotoAnalysisScreen(
                         )
                         Text("${scan.completed + scan.skipped} / ${scan.total}개 확인 · 제외 ${scan.skipped}개",
                             color = Muted, style = MaterialTheme.typography.bodyMedium)
-                        ActionButton("일시정지", onPause, Modifier.fillMaxWidth(), icon = Icons.Rounded.Pause)
+                        ActionButton("일시정지", onPause, Modifier.fillMaxWidth(), icon = Icons.Outlined.Pause)
                     }
                     PhotoAnalysisPhase.PAUSED -> {
                         Text("일시정지됨 · ${scan.completed + scan.skipped} / ${scan.total}개 확인",
                             style = MaterialTheme.typography.bodyMedium)
-                        ActionButton("분석 재개", onResume, Modifier.fillMaxWidth(), filled = true, icon = Icons.Rounded.PlayArrow)
+                        ActionButton("분석 재개", onResume, Modifier.fillMaxWidth(), filled = true, icon = Icons.Outlined.PlayArrow)
                     }
                     PhotoAnalysisPhase.COMPLETE -> {
                         Text("특징 분석 완료", style = MaterialTheme.typography.titleMedium)
@@ -110,7 +110,7 @@ internal fun PhotoAnalysisScreen(
                             Text("${state.similarGroups.size}개 유사 사진 묶음 · ${state.similarGroups.sumOf { it.photos.size }}장",
                                 style = MaterialTheme.typography.bodyMedium, color = Primary)
                             ActionButton("유사 사진 결과 보기", onOpenResults, Modifier.fillMaxWidth(),
-                                filled = true, icon = Icons.Rounded.Collections)
+                                filled = true, icon = Icons.Outlined.Collections)
                         } else {
                             Text("현재 확인된 유사 사진 묶음이 없습니다. 사진의 유사도는 참고용입니다.",
                                 style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -122,7 +122,7 @@ internal fun PhotoAnalysisScreen(
                             Text("${state.burstGroups.size}개 연속 촬영 묶음 · ${state.burstGroups.sumOf { it.photos.size }}장",
                                 style = MaterialTheme.typography.bodyMedium, color = Primary)
                             ActionButton("연속 촬영 결과 보기", onOpenBurstResults, Modifier.fillMaxWidth(),
-                                filled = true, icon = Icons.Rounded.PhotoLibrary)
+                                filled = true, icon = Icons.Outlined.PhotoLibrary)
                         } else {
                             Text("현재 확인된 연속 촬영 사진 묶음이 없습니다. 촬영 시각이 없는 사진은 제외됩니다.",
                                 style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -143,11 +143,11 @@ internal fun PhotoAnalysisScreen(
                         } else if (state.sharpnessPending == 0) {
                             Text("현재 선명도 확인 후보가 없습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
                         }
-                        ActionButton("다시 분석", onStart, Modifier.fillMaxWidth(), icon = Icons.Rounded.Refresh)
+                        ActionButton("다시 분석", onStart, Modifier.fillMaxWidth(), icon = Icons.Outlined.Refresh)
                     }
                     PhotoAnalysisPhase.FAILED -> {
                         Text("사진 분석을 완료하지 못했습니다.", style = MaterialTheme.typography.bodyMedium)
-                        ActionButton("다시 시도", onStart, Modifier.fillMaxWidth(), filled = true, icon = Icons.Rounded.Refresh)
+                        ActionButton("다시 시도", onStart, Modifier.fillMaxWidth(), filled = true, icon = Icons.Outlined.Refresh)
                     }
                 }
                 if (scan.message.isNotBlank()) {

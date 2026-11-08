@@ -15,7 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -108,7 +108,7 @@ private fun HomeWelcome(cleanup: () -> Unit) {
                 Text("필요한 파일만 직접 확인하세요", style = MaterialTheme.typography.bodySmall, color = Muted)
                 ActionButton(
                     "정리 시작하기", cleanup, Modifier.fillMaxWidth(),
-                    filled = true, icon = Icons.Rounded.ArrowForward,
+                    filled = true, icon = Icons.Outlined.ArrowForward,
                 )
             }
         } else {
@@ -131,7 +131,7 @@ private fun HomeWelcome(cleanup: () -> Unit) {
                     Text("필요한 파일만 직접 확인하세요", style = MaterialTheme.typography.bodySmall, color = Muted)
                     ActionButton(
                         "정리 시작하기", cleanup, Modifier.widthIn(max = 260.dp).fillMaxWidth(),
-                        filled = true, icon = Icons.Rounded.ArrowForward,
+                        filled = true, icon = Icons.Outlined.ArrowForward,
                     )
                 }
             }
@@ -158,7 +158,7 @@ private fun HomeStorageSummary(state: AppUiState, modifier: Modifier = Modifier)
                 Modifier.size(46.dp).background(Panel, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                GalliIcon(Icons.Rounded.Storage, null, Modifier.size(28.dp), tint = Primary)
+                GalliIcon(Icons.Outlined.Storage, null, Modifier.size(28.dp), tint = Primary)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("저장공간 사용량", style = MaterialTheme.typography.titleSmall)
@@ -249,7 +249,7 @@ private fun HomeShortcutCard(shortcut: HomeShortcut, modifier: Modifier = Modifi
         ) {
             HomeShortcutIcon(shortcut, Modifier.size(48.dp))
             Text(shortcut.title, style = MaterialTheme.typography.titleSmall, color = Ink, modifier = Modifier.weight(1f))
-            GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(20.dp), tint = Muted)
+            GalliIcon(Icons.Outlined.ChevronRight, null, Modifier.size(20.dp), tint = Muted)
         }
     } else {
         Column(
@@ -346,7 +346,7 @@ internal fun CleanupScreen(
                 CleanupNavigationRow(
                     title = "완전히 같은 파일 찾기",
                     subtitle = "내용이 100% 같은 사진·동영상을 검사하고 비교",
-                    icon = Icons.Rounded.CopyAll,
+                    icon = Icons.Outlined.CopyAll,
                     description = "중복 파일 검사 열기",
                     open = onOpenDuplicates,
                 )
@@ -355,7 +355,7 @@ internal fun CleanupScreen(
                 CleanupNavigationRow(
                     title = "비슷한 사진 찾기",
                     subtitle = "사진의 시각적 특징을 기기 안에서 분석",
-                    icon = Icons.Rounded.Collections,
+                    icon = Icons.Outlined.Collections,
                     description = "유사 사진 분석 열기",
                     open = onOpenPhotoAnalysis,
                 )
@@ -371,7 +371,7 @@ internal fun CleanupScreen(
                 CleanupNavigationRow(
                     title = "폴더별 용량 분석",
                     subtitle = "접근 가능한 사진·동영상의 폴더별 용량 확인",
-                    icon = Icons.Rounded.Folder,
+                    icon = Icons.Outlined.Folder,
                     description = "폴더별 용량 분석 열기",
                     open = onOpenFolderStorage,
                 )
@@ -382,7 +382,7 @@ internal fun CleanupScreen(
                 CleanupNavigationRow(
                     title = "정리 기록 보기",
                     subtitle = "확인된 휴지통 이동·복원 내역 · ${state.cleanupHistory.size}건",
-                    icon = Icons.Rounded.History,
+                    icon = Icons.Outlined.History,
                     description = "정리 기록 열기",
                     open = onOpenHistory,
                 )
@@ -425,7 +425,7 @@ private fun CleanupNavigationRow(
             Text(title, style = MaterialTheme.typography.titleMedium)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
         }
-        GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(22.dp))
+        GalliIcon(Icons.Outlined.ChevronRight, null, Modifier.size(22.dp))
     }
 }
 
@@ -452,7 +452,7 @@ private fun CleanupSuggestionRow(suggestion: CleanupSuggestion, open: () -> Unit
                 Text("즐겨찾기·보호 파일 제외", style = MaterialTheme.typography.labelSmall, color = Muted)
             }
         }
-        GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(22.dp))
+        GalliIcon(Icons.Outlined.ChevronRight, null, Modifier.size(22.dp))
     }
 }
 
@@ -475,7 +475,7 @@ private fun CleanupResultCard(suggestion: CleanupSuggestion, open: () -> Unit, m
                 color = Muted,
             )
         }
-        ActionButton("파일 살펴보기", open, icon = Icons.Rounded.ArrowForward)
+        ActionButton("파일 살펴보기", open, icon = Icons.Outlined.ArrowForward)
     }
 }
 
@@ -492,7 +492,7 @@ private fun CleanupEmptyRow(suggestion: CleanupSuggestion, open: () -> Unit) {
             Text(suggestion.title, style = MaterialTheme.typography.titleMedium)
             Text("현재 후보 없음 · 조건 보기", style = MaterialTheme.typography.bodySmall, color = Muted)
         }
-        GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(20.dp))
+        GalliIcon(Icons.Outlined.ChevronRight, null, Modifier.size(20.dp))
     }
 }
 
@@ -501,7 +501,7 @@ private fun CleanupCategoryIcon(suggestion: CleanupSuggestion, modifier: Modifie
     val downloads = suggestion.filter.downloadsOnly
     val photo = suggestion.filter.kind == MediaKind.PHOTO
     Box(modifier.background(if (downloads) Panel else IconContainer, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-        GalliIcon(if (downloads) Icons.Rounded.Folder else if (photo) Icons.Rounded.Image else Icons.Rounded.Videocam, null, Modifier.size(26.dp))
+        GalliIcon(if (downloads) Icons.Outlined.Folder else if (photo) Icons.Outlined.Image else Icons.Outlined.Videocam, null, Modifier.size(26.dp))
     }
 }
 
@@ -551,7 +551,7 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
             SettingsSection("미디어 접근") {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    GalliIcon(Icons.Rounded.Shield, null, Modifier.size(26.dp))
+                    GalliIcon(Icons.Outlined.Shield, null, Modifier.size(26.dp))
                     Column(Modifier.weight(1f)) {
                         Text(when (state.access) {
                             MediaAccess.NONE -> "접근 권한 없음"
@@ -579,7 +579,7 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
             SettingsSection("휴지통") {
                 Text("보관 중 ${state.trashed.size}개 · 파일 용량 ${bytesLabel(state.trashed.sumOf { it.sizeBytes })}", style = MaterialTheme.typography.bodyMedium)
                 Text("복원은 Android 시스템 확인을 거쳐 진행합니다. 영구 삭제 기능은 제공하지 않습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
-                ActionButton("휴지통 열기", openTrash, icon = Icons.Rounded.RestoreFromTrash)
+                ActionButton("휴지통 열기", openTrash, icon = Icons.Outlined.RestoreFromTrash)
             }
             SettingsSection("보호 폴더") {
                 Text("직접 보호한 폴더 ${state.protectedFolders.size}개", style = MaterialTheme.typography.bodyMedium)
@@ -659,12 +659,12 @@ internal fun ClearAnalysisCacheDialog(onConfirm: () -> Unit, onDismiss: () -> Un
 @Composable
 private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
     val icon = when (title) {
-        "화면 테마" -> Icons.Rounded.DarkMode
-        "미디어 접근" -> Icons.Rounded.PhotoLibrary
-        "휴지통" -> Icons.Rounded.RestoreFromTrash
-        "보호 폴더" -> Icons.Rounded.Folder
-        "분석 캐시" -> Icons.Rounded.CleaningServices
-        else -> Icons.Rounded.Shield
+        "화면 테마" -> Icons.Outlined.DarkMode
+        "미디어 접근" -> Icons.Outlined.PhotoLibrary
+        "휴지통" -> Icons.Outlined.RestoreFromTrash
+        "보호 폴더" -> Icons.Outlined.Folder
+        "분석 캐시" -> Icons.Outlined.CleaningServices
+        else -> Icons.Outlined.Shield
     }
     Column(
         Modifier.fillMaxWidth().galliCardSurface(AppSurface)

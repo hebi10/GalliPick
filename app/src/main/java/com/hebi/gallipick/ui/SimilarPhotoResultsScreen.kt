@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -38,7 +38,7 @@ internal fun SimilarPhotoResultsScreen(
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconAction("사진 분석으로 돌아가기", Icons.Rounded.ArrowBack, onClick = onBack)
+            IconAction("사진 분석으로 돌아가기", Icons.Outlined.ArrowBack, onClick = onBack)
             Text(title, style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f).semantics { heading() })
         }
@@ -81,7 +81,7 @@ internal fun SimilarPhotoResultsScreen(
                                     style = MaterialTheme.typography.bodySmall, color = Muted,
                                 )
                             }
-                            GalliIcon(Icons.Rounded.ChevronRight, null, Modifier.size(22.dp))
+                            GalliIcon(Icons.Outlined.ChevronRight, null, Modifier.size(22.dp))
                         }
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(7.dp),

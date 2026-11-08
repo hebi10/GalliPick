@@ -9,8 +9,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -88,7 +88,7 @@ internal fun DuplicateCompareContent(
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("중복 파일 비교", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                IconAction("비교 닫기", Icons.Rounded.Close, onClick = { coordinator.pauseActive(); onDismiss() })
+                IconAction("비교 닫기", Icons.Outlined.Close, onClick = { coordinator.pauseActive(); onDismiss() })
             }
             if (!actionsEnabled) Text(
                 "중복 결과를 다시 확인하고 있습니다. 확인 후 변경할 수 있습니다.",
@@ -202,7 +202,7 @@ private fun DuplicateComparePanel(
                         Text(if (selected) "정리 후보 · 선택됨" else "정리 후보로 선택", style = MaterialTheme.typography.labelMedium)
                     } else Text("남길 파일 · 이동 대상에서 제외", style = MaterialTheme.typography.labelMedium, color = Muted)
                     TextButton(onClick = onOpen, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$slot 외부 앱에서 파일 열기" }) {
-                        GalliIcon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp))
+                        GalliIcon(Icons.Outlined.OpenInNew, null, Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp)); Text("외부 앱에서 파일 열기")
                     }
                 }

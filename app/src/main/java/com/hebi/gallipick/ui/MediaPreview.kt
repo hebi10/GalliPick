@@ -14,12 +14,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.OpenInNew
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.ZoomIn
-import androidx.compose.material.icons.rounded.ZoomOut
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.ZoomIn
+import androidx.compose.material.icons.outlined.ZoomOut
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -108,14 +108,14 @@ internal fun MediaPreviewDialog(item: MediaItem, onDismiss: () -> Unit, onOpen: 
                         Text(item.displayName, maxLines = 1, style = MaterialTheme.typography.titleMedium)
                         Text("${if (item.kind == MediaKind.VIDEO) "동영상" else "사진"} · ${bytesLabel(item.sizeBytes)}", maxLines = 1, style = MaterialTheme.typography.bodySmall, color = Muted)
                     }
-                    IconAction("미리보기 닫기", Icons.Rounded.Close, onClick = onDismiss)
+                    IconAction("미리보기 닫기", Icons.Outlined.Close, onClick = onDismiss)
                 }
                 key(item.uri, item.fingerprint, item.volumeVersion) {
                     if (item.kind == MediaKind.PHOTO) PhotoPreview(item, Modifier.weight(1f))
                     else VideoPreview(item, Modifier.weight(1f))
                 }
                 TextButton(onClick = { onDismiss(); onOpen(item) }, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
-                    GalliIcon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp))
+                    GalliIcon(Icons.Outlined.OpenInNew, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("외부 앱에서 원본 열기")
                 }
@@ -209,9 +209,9 @@ private fun ZoomablePhoto(bitmap: Bitmap, name: String, compact: Boolean = false
                 contentScale = ContentScale.Fit)
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            IconAction("사진 축소", Icons.Rounded.ZoomOut) { scale = max(1f, scale / 1.5f); offset = boundedOffset(offset, scale) }
+            IconAction("사진 축소", Icons.Outlined.ZoomOut) { scale = max(1f, scale / 1.5f); offset = boundedOffset(offset, scale) }
             Text("${(scale * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge)
-            IconAction("사진 확대", Icons.Rounded.ZoomIn) { scale = min(6f, scale * 1.5f); offset = boundedOffset(offset, scale) }
+            IconAction("사진 확대", Icons.Outlined.ZoomIn) { scale = min(6f, scale * 1.5f); offset = boundedOffset(offset, scale) }
             TextButton(onClick = { scale = 1f; offset = Offset.Zero }) { Text("맞춤") }
         }
         if (!compact) {
@@ -374,7 +374,7 @@ private fun VideoPreviewContent(item: MediaItem, modifier: Modifier, createView:
                     playing = current.view.isPlaying
                 }
             }) {
-                GalliIcon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(20.dp))
+                GalliIcon(if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow, null, Modifier.size(20.dp))
                 Text(if (playing) "일시정지" else "재생")
             }
             Slider(value = (if (scrubbing) scrubPosition else position.toFloat()).coerceIn(0f, max(1, duration).toFloat()),

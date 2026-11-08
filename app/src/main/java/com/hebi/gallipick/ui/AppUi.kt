@@ -13,7 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -43,9 +43,9 @@ import java.util.Locale
 internal enum class PhotoReviewMode { SIMILAR, BURST, SOFT_FOCUS }
 
 internal enum class Destination(val title: String, val icon: ImageVector) {
-    HOME("홈", Icons.Rounded.Home), FILES("파일", Icons.Rounded.GridView),
-    CLEANUP("정리", Icons.Rounded.CleaningServices),
-    SETTINGS("설정", Icons.Rounded.Settings),
+    HOME("홈", Icons.Outlined.Home), FILES("파일", Icons.Outlined.PhotoLibrary),
+    CLEANUP("정리", Icons.Outlined.CleaningServices),
+    SETTINGS("설정", Icons.Outlined.Settings),
 }
 
 @Composable
@@ -179,7 +179,7 @@ fun GalliPickApp(
                                 message = "파일을 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요.",
                                 actionLabel = "다시 시도",
                                 onAction = vm::refresh,
-                                icon = Icons.Rounded.ErrorOutline,
+                                icon = Icons.Outlined.ErrorOutline,
                             )
                         }
                         if (state.message != null) {
@@ -187,7 +187,7 @@ fun GalliPickApp(
                                 message = state.message.orEmpty(),
                                 actionLabel = "알림 닫기",
                                 onAction = vm::dismissMessage,
-                                icon = Icons.Rounded.Info,
+                                icon = Icons.Outlined.Info,
                             )
                         }
                         if (state.access == MediaAccess.PARTIAL) {
@@ -195,7 +195,7 @@ fun GalliPickApp(
                                 message = "허용된 사진·동영상만 표시 중",
                                 actionLabel = "접근 변경",
                                 onAction = onRequestPermission,
-                                icon = Icons.Rounded.PhotoLibrary,
+                                icon = Icons.Outlined.PhotoLibrary,
                             )
                         }
                         Row(Modifier.weight(1f).fillMaxWidth()) {
@@ -212,7 +212,7 @@ fun GalliPickApp(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         ) {
-                                            IconAction("정리로 돌아가기", Icons.Rounded.ArrowBack,
+                                            IconAction("정리로 돌아가기", Icons.Outlined.ArrowBack,
                                                 onClick = { showDuplicates = false })
                                             Text("정리 / 중복 파일", style = MaterialTheme.typography.titleSmall)
                                         }
@@ -435,7 +435,7 @@ internal fun GalliFilesHeader(loading: Boolean, onRefresh: () -> Unit) {
         Text("파일", style = MaterialTheme.typography.titleLarge, color = Ink,
             modifier = Modifier.weight(1f))
         if (loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted)
-        IconAction("새로고침", Icons.Rounded.Refresh, onClick = onRefresh)
+        IconAction("새로고침", Icons.Outlined.Refresh, onClick = onRefresh)
     }
 }
 
@@ -453,7 +453,7 @@ internal fun GalliAppHeader(loading: Boolean, onRefresh: () -> Unit) {
             maxLines = 1, modifier = Modifier.weight(1f),
         )
         if (loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
-        IconAction("새로고침", Icons.Rounded.Refresh, onClick = onRefresh)
+        IconAction("새로고침", Icons.Outlined.Refresh, onClick = onRefresh)
     }
 }
 
@@ -566,7 +566,7 @@ internal fun SectionTitle(title: String, subtitle: String? = null) {
 }
 
 @Composable
-internal fun EmptyState(title: String, body: String, icon: ImageVector = Icons.Rounded.PhotoLibrary, action: @Composable (() -> Unit)? = null, scene: GalliScene = GalliScene.EMPTY) {
+internal fun EmptyState(title: String, body: String, icon: ImageVector = Icons.Outlined.PhotoLibrary, action: @Composable (() -> Unit)? = null, scene: GalliScene = GalliScene.EMPTY) {
     Column(Modifier.fillMaxWidth().padding(horizontal = GalliUiMetrics.cardPadding, vertical = 30.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing)) {

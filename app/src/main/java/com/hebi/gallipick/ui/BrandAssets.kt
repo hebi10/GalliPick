@@ -1,17 +1,6 @@
 package com.hebi.gallipick.ui
 
 import androidx.compose.foundation.Image
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CleaningServices as OutlinedCleaningServices
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Home as OutlinedHome
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.Settings as OutlinedSettings
-import androidx.compose.material.icons.rounded.CleaningServices
-import androidx.compose.material.icons.rounded.CopyAll
-import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon as NativeIcon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -58,21 +47,12 @@ internal fun GalliMascot(modifier: Modifier = Modifier) {
     GalliIllustration(GalliScene.ORGANIZE, modifier)
 }
 
-// The reference guide uses simple, single-color outlined icons. Keep the
-// original source PNGs in the repository, but use native vectors for controls:
-// tinting an opaque illustration would turn its background into a solid tile.
+// Call sites use Material Outlined vectors for navigation and actions.
+// Mascot illustrations and 10-B home shortcuts remain separate assets.
 @Composable
 internal fun GalliNavigationIcon(icon: ImageVector, modifier: Modifier = Modifier, selected: Boolean = false) {
-    val referenceIcon = when (icon) {
-        Icons.Rounded.Home -> Icons.Outlined.OutlinedHome
-        Icons.Rounded.GridView -> Icons.Outlined.PhotoLibrary
-        Icons.Rounded.CopyAll -> Icons.Outlined.ContentCopy
-        Icons.Rounded.CleaningServices -> Icons.Outlined.OutlinedCleaningServices
-        Icons.Rounded.Settings -> Icons.Outlined.OutlinedSettings
-        else -> icon
-    }
     NativeIcon(
-        imageVector = referenceIcon,
+        imageVector = icon,
         contentDescription = null,
         modifier = modifier,
         tint = if (selected) Primary else Muted,
