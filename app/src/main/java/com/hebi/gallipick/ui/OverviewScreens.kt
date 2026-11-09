@@ -716,7 +716,7 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
                 confirmClearOcr = false
             }, filled = true)
         },
-        dismissButton = { TextAction("취소") { confirmClearOcr = false } },
+        dismissButton = { TextAction("취소", { confirmClearOcr = false }) },
     )
 }
 
