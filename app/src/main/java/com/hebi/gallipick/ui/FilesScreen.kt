@@ -123,6 +123,7 @@ internal fun FilesScreenContent(
             ) {
                 BoxWithConstraints(Modifier.fillMaxSize()) {
                     val screenWidth = maxWidth
+                    val availableBodyHeight = maxHeight
                     val screenFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
                     val ocrSidebar = searchMode == FileSearchMode.OCR && wide &&
                         screenWidth >= 900.dp * screenFontScale
@@ -141,8 +142,8 @@ internal fun FilesScreenContent(
                             if (searchMode == FileSearchMode.OCR && !ocrSidebar) {
                                 val panelHeight = minOf(
                                     240.dp,
-                                    maxOf(84.dp, maxHeight * .42f),
-                                    maxHeight * .60f,
+                                    maxOf(84.dp, availableBodyHeight * .42f),
+                                    availableBodyHeight * .60f,
                                 )
                                 Box(
                                     Modifier.fillMaxWidth().height(panelHeight)
