@@ -126,7 +126,7 @@ internal fun PhotoAnalysisScreen(
                             "의도적인 배경 흐림이나 부드러운 장면도 후보에 포함될 수 있습니다.",
                             style = MaterialTheme.typography.bodySmall, color = Muted)
                         if (state.sharpnessPending > 0) {
-                            Text("기존 분석 ${state.sharpnessPending}장은 선명도 재평가가 필요합니다. 다시 분석을 선택해 주세요.",
+                            Text("기존 분석 ${state.sharpnessPending}장은 선명도·노출 재평가가 필요합니다. 다시 분석을 선택해 주세요.",
                                 style = MaterialTheme.typography.bodySmall, color = Muted)
                         }
                         if (state.softFocusCandidates.isNotEmpty()) {
