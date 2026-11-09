@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -136,7 +137,8 @@ internal fun SimilarPhotoCompareScreen(
             if (horizontal) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.Top) {
-                    Box(Modifier.weight(1f).height(previewHeight), contentAlignment = Alignment.Center) {
+                    Box(Modifier.weight(1f).height(previewHeight).testTag("비교 사진 미리보기"),
+                        contentAlignment = Alignment.Center) {
                         MediaThumbnail(focused, Modifier.fillMaxSize(), ContentScale.Fit)
                     }
                     Column(Modifier.weight(1f)) { details() }
