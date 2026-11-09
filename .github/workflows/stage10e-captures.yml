@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'design-stage10e-')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'design-stage10e-') || startsWith(github.head_ref, 'feature-12a-')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
