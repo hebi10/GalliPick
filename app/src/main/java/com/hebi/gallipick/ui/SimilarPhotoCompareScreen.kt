@@ -48,13 +48,15 @@ internal fun SimilarPhotoCompareScreen(
         val horizontal = maxWidth >= 700.dp && maxHeight > 400.dp
         val thumbnailWidth = if (maxWidth < 350.dp) 102.dp else 132.dp
         val previewHeight = if (horizontal) (maxHeight * .45f).coerceIn(220.dp, 340.dp) else 260.dp
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconAction("유사 사진 목록으로 돌아가기", Icons.Outlined.ArrowBack, onClick = onBack)
                 Text(title, style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).semantics { heading() })
             }
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(
                 Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(GalliUiMetrics.cardCorner))
                     .padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -139,6 +141,7 @@ internal fun SimilarPhotoCompareScreen(
                     MediaThumbnail(focused, Modifier.fillMaxWidth().height(previewHeight), ContentScale.Fit)
                     details()
                 }
+            }
             }
             Text("사진은 자동 삭제되지 않습니다. Android 확인창에서 최종 이동 대상을 검토합니다.",
                 style = MaterialTheme.typography.bodySmall, color = Muted)
