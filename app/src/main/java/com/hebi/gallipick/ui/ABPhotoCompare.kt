@@ -112,7 +112,7 @@ private fun ABPhotoCanvas(
                 }
             }.semantics {
                 contentDescription = "$slot 사진 미리보기"
-                stateDescription = "\${(transform.zoom * 100).roundToInt()}% 확대"
+                stateDescription = "${(transform.zoom * 100).roundToInt()}% 확대"
             }.testTag("AB-$slot-preview"),
         contentAlignment = Alignment.Center,
     ) {
@@ -132,7 +132,7 @@ private fun ABPhotoCanvas(
                     max(0f, (bitmap.width * fit * transform.zoom - viewport.width) / 2f) else 0f
                 val boundY = if (viewport.height > 0)
                     max(0f, (bitmap.height * fit * transform.zoom - viewport.height) / 2f) else 0f
-                Image(bitmap.asImageBitmap(), "$slot 사진: \${item.displayName}",
+                Image(bitmap.asImageBitmap(), "$slot 사진: ${item.displayName}",
                     Modifier.fillMaxSize().graphicsLayer {
                         scaleX = transform.zoom
                         scaleY = transform.zoom
@@ -199,7 +199,7 @@ internal fun ABPhotoComparison(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("A" to a, "B" to b).forEach { (slot, item) ->
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("$slot · \${item.displayName}", maxLines = 1,
+                            Text("$slot · ${item.displayName}", maxLines = 1,
                                 style = MaterialTheme.typography.labelMedium)
                             ABPhotoCanvas(item, slot, zoomFor(slot), { next ->
                                 activeSlot = slot; change(slot, next)
@@ -228,7 +228,7 @@ internal fun ABPhotoComparison(
                 IconAction("A/B 축소", Icons.Outlined.ZoomOut) {
                     change(activeSlot, zoomFor(activeSlot).zoomBy(1f / 1.5f))
                 }
-                Text("\${(zoomFor(activeSlot).zoom * 100).roundToInt()}%",
+                Text("${(zoomFor(activeSlot).zoom * 100).roundToInt()}%",
                     style = MaterialTheme.typography.labelLarge)
                 IconAction("A/B 확대", Icons.Outlined.ZoomIn) {
                     change(activeSlot, zoomFor(activeSlot).zoomBy(1.5f))
@@ -245,11 +245,11 @@ internal fun ABPhotoComparison(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("A" to a, "B" to b).forEach { (slot, item) ->
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text("$slot · \${item.displayName}", maxLines = 2,
+                        Text("$slot · ${item.displayName}", maxLines = 2,
                             style = MaterialTheme.typography.titleSmall)
-                        Text("\${item.width} × \${item.height}", style = MaterialTheme.typography.bodySmall)
+                        Text("${item.width} × ${item.height}", style = MaterialTheme.typography.bodySmall)
                         Text(bytesLabel(item.sizeBytes), style = MaterialTheme.typography.bodySmall)
-                        Text("\${if (item.dateTakenMs > 0) "촬영일" else "저장일"} \${dateLabel(item.capturedAt)}",
+                        Text("${if (item.dateTakenMs > 0) "촬영일" else "저장일"} ${dateLabel(item.capturedAt)}",
                             style = MaterialTheme.typography.bodySmall, color = Muted)
                         HorizontalDivider(color = Line)
                         val selected = item.uri in selectedUris
