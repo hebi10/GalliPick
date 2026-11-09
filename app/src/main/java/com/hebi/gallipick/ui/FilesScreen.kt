@@ -184,14 +184,20 @@ internal fun FilesScreenContent(
                                                     items(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
                                                             { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
-                                                            state.filter.sortField, tabletGrid = tabletGrid)
+                                                            state.filter.sortField, tabletGrid = tabletGrid,
+                                                            ocrText = if (searchMode == FileSearchMode.OCR)
+                                                                ocrRows[item.uri]?.recognizedText else null,
+                                                            ocrQuery = ocrQuery)
                                                     }
                                                 }
                                             } else {
                                                 items(filtered, key = { it.uri }) { item ->
                                                     MediaTile(item, item.uri in state.selected,
                                                         { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
-                                                        state.filter.sortField, tabletGrid = tabletGrid)
+                                                        state.filter.sortField, tabletGrid = tabletGrid,
+                                                            ocrText = if (searchMode == FileSearchMode.OCR)
+                                                                ocrRows[item.uri]?.recognizedText else null,
+                                                            ocrQuery = ocrQuery)
                                                 }
                                             }
                                         }
@@ -210,14 +216,20 @@ internal fun FilesScreenContent(
                                                         MediaTile(item, item.uri in state.selected,
                                                             { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
                                                             state.filter.sortField, listView = true,
-                                                            dateMs = MediaQuery.dateOf(item, state.filter.dateField))
+                                                            dateMs = MediaQuery.dateOf(item, state.filter.dateField),
+                                                            ocrText = if (searchMode == FileSearchMode.OCR)
+                                                                ocrRows[item.uri]?.recognizedText else null,
+                                                            ocrQuery = ocrQuery)
                                                     }
                                                 }
                                             } else {
                                                 listItems(filtered, key = { it.uri }) { item ->
                                                     MediaTile(item, item.uri in state.selected,
                                                         { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
-                                                        state.filter.sortField, listView = true)
+                                                        state.filter.sortField, listView = true,
+                                                        ocrText = if (searchMode == FileSearchMode.OCR)
+                                                            ocrRows[item.uri]?.recognizedText else null,
+                                                        ocrQuery = ocrQuery)
                                                 }
                                             }
                                         }
@@ -305,6 +317,8 @@ private fun MediaTile(
     listView: Boolean = false,
     dateMs: Long = item.capturedAt,
     tabletGrid: Boolean = false,
+    ocrText: String? = null,
+    ocrQuery: String = "",
 ) {
     if (listView) {
         Row(
@@ -320,6 +334,11 @@ private fun MediaTile(
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(dateMs).substringBefore(" "),
                     style = MaterialTheme.typography.bodySmall, color = Muted)
+                if (ocrText != null) {
+                    Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery),
+                        style = MaterialTheme.typography.labelSmall, color = Muted,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
                 if (item.kind == MediaKind.VIDEO) {
                     Text(durationLabel(item.durationMs), style = MaterialTheme.typography.labelSmall, color = Muted)
                 }
@@ -371,6 +390,11 @@ private fun MediaTile(
             if (tabletGrid) {
                 Text(bytesLabel(item.sizeBytes), style = MaterialTheme.typography.labelSmall,
                     color = Muted, maxLines = 1)
+            }
+            if (ocrText != null) {
+                Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery, 72),
+                    style = MaterialTheme.typography.labelSmall, color = Muted,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }
