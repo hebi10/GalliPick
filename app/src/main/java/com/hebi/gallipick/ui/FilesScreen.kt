@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -290,7 +291,9 @@ private fun MediaTile(
             )
         }
     } else {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Column(Modifier.fillMaxWidth().then(
+            if (tabletGrid) Modifier.testTag("tablet-media-${item.id}") else Modifier,
+        ), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Box(
                 Modifier.fillMaxWidth().aspectRatio(1f)
                     .clip(RoundedCornerShape(10.dp))
