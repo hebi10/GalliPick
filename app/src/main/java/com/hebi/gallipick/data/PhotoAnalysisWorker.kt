@@ -9,6 +9,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.hebi.gallipick.domain.PerceptualHash
 import com.hebi.gallipick.domain.PhotoSharpness
+import com.hebi.gallipick.domain.PhotoExposure
 import com.hebi.gallipick.domain.PhotoAnalysisPhase
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
@@ -36,15 +37,17 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
             val eligible = photos.filter { epochs[it.volume] != null }
             val cached = repository.dao.allPhotoHashes().associateBy { Triple(it.uri, it.fingerprint, it.volumeVersion) }
             val remaining = eligible.filter {
-                cached[Triple(it.uri, it.fingerprint, epochs[it.volume])]?.sharpnessScore == null
+                cached[Triple(it.uri, it.fingerprint, epochs[it.volume])]?.let { row ->
+                    row.sharpnessScore == null || row.exposureScore == null
+                } ?: true
             }
             val completedBefore = eligible.count {
                 val saved = cached[Triple(it.uri, it.fingerprint, epochs[it.volume])]
-                saved?.phash != null && saved.sharpnessScore != null
+                saved?.phash != null && saved.sharpnessScore != null && saved.exposureScore != null
             }
             val skippedBefore = eligible.count {
                 val found = cached[Triple(it.uri, it.fingerprint, epochs[it.volume])]
-                found != null && found.phash == null && found.sharpnessScore != null
+                found != null && found.phash == null && found.sharpnessScore != null && found.exposureScore != null
             }
             if (!repository.updatePhotoSession(token) {
                     it.copy(total = eligible.size, completed = completedBefore,
@@ -82,7 +85,8 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
                 }
                 if (!repository.savePhotoHashIfCurrent(token, CachedPhotoHash(
                         photo.uri, photo.fingerprint, epoch, features?.first,
-                        features?.second ?: PhotoSharpness.UNKNOWN_SCORE
+                        features?.second ?: PhotoSharpness.UNKNOWN_SCORE,
+                        features?.third ?: PhotoExposure.UNKNOWN_SCORE
                     ))) return@withContext Result.success()
                 if (features == null) skipped++ else completed++
                 if (!repository.updatePhotoSession(token) { it.copy(
@@ -97,7 +101,9 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
             val latestVersions = repository.dao.allVolumeVersions().associate { it.volume to it.version }
             val latestCache = repository.dao.allPhotoHashes().associateBy { Triple(it.uri, it.fingerprint, it.volumeVersion) }
             val newCandidates = latest.filter { latestVersions[it.volume] != null &&
-                latestCache[Triple(it.uri, it.fingerprint, latestVersions[it.volume])]?.sharpnessScore == null }
+                latestCache[Triple(it.uri, it.fingerprint, latestVersions[it.volume])]?.let { row ->
+                    row.sharpnessScore == null || row.exposureScore == null
+                } ?: true }
             if (newCandidates.isNotEmpty()) {
                 repository.continuePhotoAnalysis(token)
             } else {
@@ -106,14 +112,14 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
                     total = latest.count { latestVersions[it.volume] != null },
                     completed = latest.count {
                         latestCache[Triple(it.uri, it.fingerprint, latestVersions[it.volume])]?.let {
-                            it.phash != null && it.sharpnessScore != null
+                            it.phash != null && it.sharpnessScore != null && it.exposureScore != null
                         } == true
                     },
                     skipped = latest.count {
                         val hash = latestCache[Triple(it.uri, it.fingerprint, latestVersions[it.volume])]
-                        hash != null && hash.phash == null && hash.sharpnessScore != null
+                        hash != null && hash.phash == null && hash.sharpnessScore != null && hash.exposureScore != null
                     },
-                    message = "사진 특징과 선명도 추정 분석을 마쳤습니다. 결과는 직접 확인해 주세요."
+                    message = "사진 특징과 선명도·노출 추정 분석을 마쳤습니다. 결과는 직접 확인해 주세요."
                 ) }
             }
             Result.success()
@@ -128,7 +134,7 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
         }
     }
 
-    private fun imageFeatures(uri: Uri): Pair<String, Double> {
+    private fun imageFeatures(uri: Uri): Triple<String, Double, Double> {
         val source = ImageDecoder.createSource(applicationContext.contentResolver, uri)
         val bitmap = ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
@@ -139,8 +145,11 @@ class PhotoAnalysisWorker(context: Context, params: WorkerParameters) : Coroutin
             val full = luminance(bitmap)
             val smaller = Bitmap.createScaledBitmap(bitmap, 32, 32, true)
             try {
-                PerceptualHash.fromLuminance(luminance(smaller)) to
-                    (PhotoSharpness.score(full) ?: PhotoSharpness.UNKNOWN_SCORE)
+                Triple(
+                    PerceptualHash.fromLuminance(luminance(smaller)),
+                    PhotoSharpness.score(full) ?: PhotoSharpness.UNKNOWN_SCORE,
+                    PhotoExposure.score(full) ?: PhotoExposure.UNKNOWN_SCORE,
+                )
             } finally {
                 smaller.recycle()
             }
