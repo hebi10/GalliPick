@@ -133,7 +133,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     similar = similar,
                     burst = BurstPhotoGrouper.groups(photos),
                     softFocus = SoftFocusCandidatePolicy.candidates(photos, scores, similar, protectedFolders),
-                    pending = photos.count { scores[it.item.uri] == null },
+                    pending = photos.count { it.sharpnessScore == null || it.exposureScore == null },
                 )
             }
             if (catalogVerified && repository.catalogReady.value && _ui.value.items === items &&
