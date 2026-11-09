@@ -57,6 +57,41 @@ class AdaptiveMediaReviewTest {
         saveScreenshot("duplicate-compare-wide-dark")
     }
 
+    @Test fun exactDuplicatePhotosSupportAbComparisonWithoutAutomaticTrashSelection() {
+        val first = media(1, "original.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        val other = media(2, "copy.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        val group = DuplicateGroup("exact-ab", listOf(first, other))
+        val keeper = mutableStateOf(first.uri)
+        val selected = mutableStateOf(emptySet<String>())
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(1000.dp, 700.dp)) {
+                        DuplicateCompareContent(
+                            group, keeper.value, selected.value, emptySet(),
+                            {}, {}, { _, uri -> keeper.value = uri; selected.value = emptySet() },
+                            { uri -> selected.value = if (uri in selected.value) selected.value - uri else selected.value + uri },
+                            { _, _ -> },
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("중복 A/B 사진 비교 전환").performClick()
+        compose.onNodeWithContentDescription("A 사진 미리보기").assertExists()
+        compose.onNodeWithContentDescription("B 사진 미리보기").assertExists()
+        compose.runOnIdle { assertTrue(selected.value.isEmpty()) }
+        compose.onNodeWithText("B 정리 후보 선택").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(setOf(other.uri), selected.value) }
+        compose.onNodeWithText("B 남길 기준 파일로 지정").performScrollTo().performClick()
+        compose.runOnIdle {
+            assertEquals(other.uri, keeper.value)
+            assertTrue(selected.value.isEmpty())
+        }
+        compose.onNodeWithContentDescription("중복 A/B 사진 비교 전환").performClick()
+        compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertExists()
+    }
+
     @Test fun changingKeeperMovesItToTheFirstGalleryPositionWithoutSelectingFiles() {
         val group = DuplicateGroup("keeper-change", listOf(media(1, "first.mp4"), media(2, "second.mp4"), media(3, "third.mp4")))
         val keeper = mutableStateOf(group.items.first().uri)
