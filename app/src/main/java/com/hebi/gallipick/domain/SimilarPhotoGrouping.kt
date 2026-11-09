@@ -1,7 +1,12 @@
 package com.hebi.gallipick.domain
 
 /** Candidate photos only. Perceptual similarity never establishes byte identity or deletion eligibility. */
-data class SimilarPhoto(val item: MediaItem, val phash: String)
+data class SimilarPhoto(
+    val item: MediaItem,
+    val phash: String,
+    val sharpnessScore: Double? = null,
+    val exposureScore: Double? = null,
+)
 
 data class SimilarPhotoGroup(val id: String, val photos: List<SimilarPhoto>) {
     val items: List<MediaItem> get() = photos.map { it.item }

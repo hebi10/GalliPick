@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -20,6 +21,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.domain.SimilarPhotoGroup
+import com.hebi.gallipick.domain.BestCutRecommender
 
 @Composable
 internal fun SimilarPhotoResultsScreen(
@@ -64,6 +66,7 @@ internal fun SimilarPhotoResultsScreen(
                     }
                 }
                 items(groups, key = { it.id }) { group ->
+                    val bestCut = remember(group) { BestCutRecommender.assess(group) }
                     Column(
                         Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(GalliUiMetrics.cardCorner))
                             .semantics { role = Role.Button; contentDescription = if (groupTitle == "유사 사진 묶음") "${group.photos.size}장 유사 사진 비교"
@@ -83,6 +86,20 @@ internal fun SimilarPhotoResultsScreen(
                             }
                             GalliIcon(Icons.Outlined.ChevronRight, null, Modifier.size(22.dp))
                         }
+                        val recommended = group.photos.firstOrNull {
+                            it.item.uri == bestCut.recommendedUri
+                        }
+                        if (recommended != null) {
+                            Text("추천 사진 · ${recommended.item.displayName}",
+                                style = MaterialTheme.typography.labelMedium, color = Primary,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(bestCut.reasons.joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall, color = Muted,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        } else {
+                            Text("판단 보류 · ${bestCut.summary}",
+                                style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(7.dp),
                             contentPadding = PaddingValues(vertical = 2.dp),
@@ -92,6 +109,9 @@ internal fun SimilarPhotoResultsScreen(
                                     MediaThumbnail(photo.item, Modifier.fillMaxWidth().height(94.dp))
                                     Text(photo.item.displayName, style = MaterialTheme.typography.labelSmall,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    if (photo.item.uri == bestCut.recommendedUri) {
+                                        Text("추천", style = MaterialTheme.typography.labelSmall, color = Primary)
+                                    }
                                     if (photo.item.uri in selectedUris) {
                                         Text("정리 후보", style = MaterialTheme.typography.labelSmall, color = Primary)
                                     }

@@ -125,7 +125,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val record = lookup[item.uri]
                     if (item.kind != MediaKind.PHOTO || item.isTrashed || record?.phash == null ||
                         record.fingerprint != item.fingerprint || record.volumeVersion != item.volumeVersion) null
-                    else SimilarPhoto(item, record.phash)
+                    else SimilarPhoto(item, record.phash, record.sharpnessScore, record.exposureScore)
                 }
                 val similar = SimilarPhotoGrouper.groups(photos)
                 val scores = photos.associate { it.item.uri to lookup[it.item.uri]?.sharpnessScore }
@@ -133,7 +133,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     similar = similar,
                     burst = BurstPhotoGrouper.groups(photos),
                     softFocus = SoftFocusCandidatePolicy.candidates(photos, scores, similar, protectedFolders),
-                    pending = photos.count { scores[it.item.uri] == null },
+                    pending = photos.count { it.sharpnessScore == null || it.exposureScore == null },
                 )
             }
             if (catalogVerified && repository.catalogReady.value && _ui.value.items === items &&

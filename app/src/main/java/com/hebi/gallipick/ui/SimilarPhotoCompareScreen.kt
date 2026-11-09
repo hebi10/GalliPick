@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.domain.SimilarPhotoGroup
+import com.hebi.gallipick.domain.BestCutRecommender
 import com.hebi.gallipick.domain.SimilarPhotoReviewPolicy
 
 @Composable
@@ -47,6 +48,9 @@ internal fun SimilarPhotoCompareScreen(
     val focused = group.photos.firstOrNull { it.item.uri == focusedUri }?.item ?: group.photos.first().item
     val second = group.photos.firstOrNull { it.item.uri == secondUri && it.item.uri != focused.uri }?.item
         ?: group.photos.firstOrNull { it.item.uri != focused.uri }?.item
+    var bestReasonsExpanded by rememberSaveable(group.id) { mutableStateOf(false) }
+    val bestCut = remember(group) { BestCutRecommender.assess(group) }
+    val suggested = group.photos.firstOrNull { it.item.uri == bestCut.recommendedUri }
     val chosen = focused.uri in selectedUris
     val selectedCount = group.photos.count { it.item.uri in selectedUris }
     val keptCount = group.photos.size - selectedCount
@@ -80,6 +84,35 @@ internal fun SimilarPhotoCompareScreen(
                 Text("${group.photos.size}장 · 남길 사진 ${keptCount}장 · 정리 후보 ${selectedCount}장",
                     style = MaterialTheme.typography.bodySmall, color = Muted)
                 Text(explanation,
+                    style = MaterialTheme.typography.bodySmall, color = Muted)
+            }
+            Column(
+                Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(GalliUiMetrics.cardCorner))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(if (suggested != null) "추천 사진" else "판단 보류",
+                    style = MaterialTheme.typography.titleSmall, color = Primary)
+                if (suggested != null) {
+                    Text(suggested.item.displayName, style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(bestCut.summary, style = MaterialTheme.typography.bodySmall, color = Muted)
+                    if (suggested.item.uri in selectedUris) {
+                        Text("추천된 사진이 정리 후보에 포함되어 있습니다. 남길 사진을 다시 확인해 주세요.",
+                            style = MaterialTheme.typography.bodySmall, color = Primary)
+                    }
+                    TextButton(onClick = { bestReasonsExpanded = !bestReasonsExpanded }) {
+                        Text(if (bestReasonsExpanded) "추천 이유 접기" else "추천 이유 보기")
+                    }
+                    if (bestReasonsExpanded) {
+                        bestCut.reasons.forEach { reason ->
+                            Text(reason, style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
+                    }
+                } else {
+                    Text(bestCut.summary, style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+                Text("선명도·노출은 표본 기반 추정이며 사진 의도에 따라 다를 수 있습니다. 추천만으로 정리 후보가 선택되지는 않습니다.",
                     style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             LazyRow(Modifier.fillMaxWidth().semantics { contentDescription = "유사 사진 가로 비교 목록" },
