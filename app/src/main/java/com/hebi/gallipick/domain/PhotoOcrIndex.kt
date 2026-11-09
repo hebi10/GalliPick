@@ -53,7 +53,7 @@ object PhotoOcrIndexPolicy {
         if (plain.isEmpty()) return ""
         val term = terms(query).firstOrNull() ?: return plain.take(limit)
         val index = normalized(plain).indexOf(term)
-        val start = if (index < 0) 0 else (index - 24).coerceAtLeast(0)
+        val start = if (index < 0) 0 else (index - 24).coerceIn(0, plain.length)
         val end = (start + limit).coerceAtMost(plain.length)
         return (if (start > 0) "…" else "") +
             plain.substring(start, end) +
