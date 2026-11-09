@@ -9,6 +9,8 @@ import com.hebi.gallipick.domain.*
 import com.hebi.gallipick.data.CachedPhotoHash
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class MediaAccess { NONE, PARTIAL, FULL }
 
@@ -30,6 +32,7 @@ data class AppUiState(
     val softFocusCandidates: List<SoftFocusCandidate> = emptyList(),
     val sharpnessPending: Int = 0,
     val cleanupHistory: List<CleanupHistoryEntry> = emptyList(),
+    val reviewEntries: List<PhotoReviewEntry> = emptyList(),
     val selected: Set<String> = emptySet(),
     val catalogError: String? = null,
     val message: String? = null,
@@ -59,6 +62,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var similarGroupsJob: Job? = null
     private val selectedVersions = linkedMapOf<String, MediaItem>()
     private var catalogVerified = false
+    private val reviewWriteMutex = Mutex()
 
     init {
         viewModelScope.launch {
@@ -83,6 +87,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (catalogVerified && repository.catalogReady.value) _ui.update { it.copy(duplicates = groups) }
         } }
         viewModelScope.launch { repository.scan.collect { scan -> _ui.update { it.copy(scan = scan) } } }
+        viewModelScope.launch { repository.reviewEntries.collect { entries ->
+            _ui.update { it.copy(reviewEntries = entries) }
+        } }
         viewModelScope.launch { repository.cleanupHistory.collect { history ->
             _ui.update { it.copy(cleanupHistory = history) }
         } }
@@ -349,6 +356,79 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return selectedSimilarGroups.values.filter { group ->
             group.photos.any { it.item.uri in selected }
         }
+    }
+
+    fun markReviewDecision(groupId: String, uri: String, choice: PhotoReviewDecision) = task {
+        reviewWriteMutex.withLock {
+            if (!similarReady()) {
+                showMessage("사진 분석을 완료하고 접근 가능한 파일을 확인해 주세요.")
+                return@withLock
+            }
+            val group = reviewedPhotoGroups().firstOrNull { it.id == groupId }
+            val item = group?.photos?.firstOrNull { it.item.uri == uri }?.item
+            if (group == null || item == null) {
+                showMessage("사진 묶음이 변경됐습니다. 분석 결과를 다시 확인해 주세요.")
+                return@withLock
+            }
+            val current = repository.reviewEntries.first()
+            if (!PhotoReviewInboxPolicy.maySet(group, current, uri, choice, _ui.value.protectedFolders)) {
+                showMessage("보호 파일을 제외하고 최소 한 장을 남겨야 합니다.")
+                return@withLock
+            }
+            repository.saveReviewDecision(PhotoReviewEntry(
+                groupId, uri, item.fingerprint, item.volumeVersion,
+                choice, System.currentTimeMillis(),
+            ))
+        }
+    }
+
+    fun clearReviewInbox() = task {
+        reviewWriteMutex.withLock { repository.clearReviewDecisions() }
+    }
+
+    /**
+     * The inbox only stores notes. A separate user action requests an explicit
+     * selection; MainActivity still revalidates and asks Android for approval.
+     */
+    fun selectSavedReviewCandidates(): List<MediaItem> {
+        if (!similarReady()) {
+            showMessage("사진 분석과 파일 접근 상태를 다시 확인해 주세요.")
+            return emptyList()
+        }
+        val groups = reviewedPhotoGroups()
+        val decisions = PhotoReviewInboxPolicy.valid(groups, _ui.value.reviewEntries, _ui.value.protectedFolders)
+        val retainedUris = decisions.filter { it.decision == PhotoReviewDecision.KEEP }
+            .mapTo(hashSetOf()) { it.uri }
+        val candidates = decisions.filter { it.decision == PhotoReviewDecision.CANDIDATE }
+            .map { it.uri }.distinct().sorted()
+        clearSelection()
+        var omitted = 0
+        for (uri in candidates) {
+            val item = groups.asSequence().flatMap { it.photos.asSequence() }
+                .firstOrNull { it.item.uri == uri }?.item
+            if (item == null || uri in retainedUris ||
+                !SimilarPhotoReviewPolicy.allowed(item, _ui.value.protectedFolders) ||
+                selectedVersions.size >= SelectionPolicy.MAX_SELECTION_SIZE) {
+                omitted++
+                continue
+            }
+            val after = selectedVersions.keys + uri
+            if (groups.any { group ->
+                    group.photos.any { it.item.uri == uri } &&
+                        group.photos.none { it.item.uri !in after }
+                }) {
+                omitted++
+                continue
+            }
+            selectedVersions[uri] = item
+        }
+        val selectedUris = selectedVersions.keys
+        groups.filter { group -> group.photos.any { it.item.uri in selectedUris } }
+            .forEach { selectedSimilarGroups[it.id] = it }
+        _ui.update { it.copy(selected = selectedUris.toSet()) }
+        val safe = selectedSimilarCandidates()
+        if (omitted > 0) showMessage("보호·보존·선택 한도 또는 상태 변경으로 후보 ${omitted}장을 제외했습니다.")
+        return safe
     }
 
     fun prepareDuplicateReview() {
