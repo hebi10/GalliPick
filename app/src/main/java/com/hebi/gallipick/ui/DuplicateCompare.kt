@@ -186,6 +186,7 @@ internal fun DuplicateCompareContent(
                         onChooseKeeper = { item -> onChooseKeeper(group, item.uri) },
                         onProtect = { item -> onProtect(item, !item.isProtected) },
                         canProtect = { item -> !item.hasFolderProtection(roles.protectedFolders) },
+                        statusLabel = { item -> roles.label(item, selectedUris) },
                     )
                 } else key(focused.uri, focused.fingerprint, focused.volumeVersion) {
                     DuplicateComparePanel(
