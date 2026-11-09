@@ -1,6 +1,8 @@
 package com.hebi.gallipick.ui
 
+import android.content.ContentUris
 import android.graphics.Bitmap
+import android.provider.MediaStore
 import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
@@ -25,6 +27,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hebi.gallipick.AppThemeMode
+import com.hebi.gallipick.Stage7aFixtureMedia
 import com.hebi.gallipick.domain.*
 import org.junit.Assert.*
 import org.junit.Rule
@@ -91,32 +94,56 @@ class AdaptiveMediaReviewTest {
     }
 
     @Test fun compactPhotoComparisonUsesOnlyThePageVerticalScroll() {
-        val first = media(1, "first.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
-        val second = media(2, "second.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
-        val group = DuplicateGroup("photo-one-scroll", listOf(first, second))
-        compose.setContent {
-            GalliPickTheme {
-                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
-                    Surface(Modifier.requiredSize(360.dp, 420.dp)) {
-                        DuplicateCompareContent(
-                            group, first.uri, emptySet(), emptySet(),
-                            {}, {}, { _, _ -> }, {}, { _, _ -> },
-                        )
+        val context = compose.activity
+        val now = System.currentTimeMillis()
+        val samples = (1..2).map { index ->
+            Stage7aFixtureMedia.insert(
+                context, "EXAMPLE_compare_scroll_${index}.jpg", "image/jpeg",
+                Stage7aFixtureMedia.sceneJpeg(index), now,
+                "Pictures/GalliPick_Compare_Scroll_Test/",
+            )
+        }
+        try {
+            val files = samples.mapIndexed { index, sample ->
+                media(index + 1L, sample.name).copy(
+                    uri = sample.uri.toString(),
+                    id = ContentUris.parseId(sample.uri),
+                    volume = MediaStore.VOLUME_EXTERNAL_PRIMARY,
+                    kind = MediaKind.PHOTO,
+                    mimeType = "image/jpeg",
+                )
+            }
+            val first = files[0]
+            val group = DuplicateGroup("photo-one-scroll", files)
+            compose.setContent {
+                GalliPickTheme {
+                    CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                        Surface(Modifier.requiredSize(360.dp, 420.dp)) {
+                            DuplicateCompareContent(
+                                group, first.uri, emptySet(), emptySet(),
+                                {}, {}, { _, _ -> }, {}, { _, _ -> },
+                            )
+                        }
                     }
                 }
             }
+            compose.onNodeWithContentDescription("중복 파일 가로 비교 목록").assertIsDisplayed()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("사진 미리보기: ${first.displayName}")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            val verticalScrolls = compose.onAllNodes(
+                SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
+            ).fetchSemanticsNodes()
+            assertEquals("Loaded photo comparison must have one vertical scroller", 1, verticalScrolls.size)
+            focusComparisonFile(files[1].displayName)
+            scrollComparisonControlIntoView("선택 파일 남길 파일로 지정")
+                .assertIsDisplayed().assertIsEnabled()
+            scrollComparisonControlIntoView("선택 파일 보호")
+                .assertIsDisplayed().assertIsEnabled()
+        } finally {
+            samples.forEach { sample -> context.contentResolver.delete(sample.uri, null, null) }
         }
-        compose.onNodeWithContentDescription("중복 파일 가로 비교 목록").assertIsDisplayed()
-        compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertExists()
-        val verticalScrolls = compose.onAllNodes(
-            SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
-        ).fetchSemanticsNodes()
-        assertEquals("Photo comparison must have one vertical scroller", 1, verticalScrolls.size)
-        focusComparisonFile("second.jpg")
-        scrollComparisonControlIntoView("선택 파일 남길 파일로 지정")
-            .assertIsDisplayed().assertIsEnabled()
-        scrollComparisonControlIntoView("선택 파일 보호")
-            .assertIsDisplayed().assertIsEnabled()
     }
 
     @Test fun galleryCanBrowseFiveCopiesWithoutChangingKeeperOrTrashState() {
