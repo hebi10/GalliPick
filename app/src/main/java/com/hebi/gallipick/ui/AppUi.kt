@@ -68,6 +68,8 @@ fun GalliPickApp(
     var showPhotoAnalysis by rememberSaveable { mutableStateOf(false) }
     var showSimilarResults by rememberSaveable { mutableStateOf(false) }
     var showSoftFocusResults by rememberSaveable { mutableStateOf(false) }
+    var showReviewInbox by rememberSaveable { mutableStateOf(false) }
+    var compareFromInbox by rememberSaveable { mutableStateOf(false) }
     var similarCompareId by rememberSaveable { mutableStateOf<String?>(null) }
     var photoReviewMode by rememberSaveable { mutableStateOf(PhotoReviewMode.SIMILAR) }
     fun closeSimilarReview() {
@@ -77,7 +79,9 @@ fun GalliPickApp(
         vm.clearSelection()
     }
     fun navigate(destinationValue: Destination) {
-        if (showSimilarResults || showSoftFocusResults || similarCompareId != null) vm.clearSelection()
+        if (showSimilarResults || showSoftFocusResults || showReviewInbox || similarCompareId != null) vm.clearSelection()
+        showReviewInbox = false
+        compareFromInbox = false
         showTrash = false
         showDuplicates = false
         showFolderStorage = false
@@ -88,6 +92,25 @@ fun GalliPickApp(
         similarCompareId = null
         destination = destinationValue
     }
+    fun openReviewInbox() {
+        vm.clearSelection()
+        showTrash = false
+        showDuplicates = false
+        showFolderStorage = false
+        showCleanupHistory = false
+        showPhotoAnalysis = false
+        showSimilarResults = false
+        showSoftFocusResults = false
+        similarCompareId = null
+        compareFromInbox = false
+        destination = Destination.CLEANUP
+        showReviewInbox = true
+    }
+    fun confirmInboxCandidates() {
+        val candidates = vm.selectSavedReviewCandidates()
+        if (candidates.isEmpty()) vm.showMessage("현재 유효한 정리 후보가 없습니다. 사진 상태를 확인해 주세요.")
+        else onTrash(candidates)
+    }
     fun openDuplicates() {
         vm.prepareDuplicateReview()
         showTrash = false
@@ -96,6 +119,8 @@ fun GalliPickApp(
         showPhotoAnalysis = false
         showSimilarResults = false
         showSoftFocusResults = false
+        showReviewInbox = false
+        compareFromInbox = false
         similarCompareId = null
         destination = Destination.CLEANUP
         showDuplicates = true
@@ -138,13 +163,18 @@ fun GalliPickApp(
         else onTrash(candidates)
     }
     BackHandler(enabled = showTrash || showDuplicates || showFolderStorage ||
-        showPhotoAnalysis || showCleanupHistory || showSimilarResults || showSoftFocusResults || similarCompareId != null || destination != Destination.HOME) {
+        showPhotoAnalysis || showCleanupHistory || showSimilarResults || showSoftFocusResults ||
+        showReviewInbox || similarCompareId != null || destination != Destination.HOME) {
         when {
             showTrash -> showTrash = false
             showDuplicates -> showDuplicates = false
             showFolderStorage -> showFolderStorage = false
             showCleanupHistory -> showCleanupHistory = false
-            similarCompareId != null -> similarCompareId = null
+            similarCompareId != null -> {
+                similarCompareId = null
+                compareFromInbox = false
+            }
+            showReviewInbox -> showReviewInbox = false
             showSimilarResults || showSoftFocusResults -> closeSimilarReview()
             showPhotoAnalysis -> showPhotoAnalysis = false
             else -> destination = Destination.HOME
@@ -160,7 +190,7 @@ fun GalliPickApp(
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage || showCleanupHistory, showPhotoAnalysis, Triple(showSimilarResults || showSoftFocusResults, similarCompareId, photoReviewMode))), state.filter),
+                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage || showCleanupHistory, showPhotoAnalysis || showReviewInbox, Triple(showSimilarResults || showSoftFocusResults, similarCompareId, photoReviewMode))), state.filter),
                     header = {
                         if (destination == Destination.FILES && !showTrash && !showDuplicates && !showFolderStorage && !showPhotoAnalysis) {
                             GalliFilesHeader(state.loading, vm::refresh)
@@ -253,7 +283,10 @@ fun GalliPickApp(
                                             groupCount = reviewGroups.size,
                                             selectedUris = state.selected,
                                             protectedFolders = state.protectedFolders,
-                                            onBack = { similarCompareId = null },
+                                            onBack = {
+                                                similarCompareId = null
+                                                compareFromInbox = false
+                                            },
                                             onToggleCandidate = { vm.toggleSimilarCandidate(group.id, it) },
                                             onOpenMedia = onOpenMedia,
                                             onReview = ::reviewSimilarCandidates,
@@ -273,6 +306,25 @@ fun GalliPickApp(
                                             },
                                         )
                                     }
+                                    showReviewInbox -> PhotoReviewInboxScreen(
+                                        groups = state.similarGroups + state.burstGroups,
+                                        entries = state.reviewEntries,
+                                        protectedFolders = state.protectedFolders,
+                                        onBack = { showReviewInbox = false },
+                                        onAnalyze = {
+                                            showReviewInbox = false
+                                            openPhotoAnalysis()
+                                        },
+                                        onMark = vm::markReviewDecision,
+                                        onCompare = { id, burst ->
+                                            vm.clearSelection()
+                                            photoReviewMode = if (burst) PhotoReviewMode.BURST else PhotoReviewMode.SIMILAR
+                                            compareFromInbox = true
+                                            similarCompareId = id
+                                        },
+                                        onConfirmCandidates = ::confirmInboxCandidates,
+                                        onClear = vm::clearReviewInbox,
+                                    )
                                     showSimilarResults -> {
                                         if (photoReviewMode == PhotoReviewMode.BURST) {
                                             BurstPhotoResultsScreen(
@@ -346,13 +398,14 @@ fun GalliPickApp(
                                         refresh = vm::refresh,
                                     )
                                     else -> when (destination) {
-                                        Destination.HOME -> HomeScreen(state, onRequestPermission, navigateFiles, ::openDuplicates, { navigate(Destination.CLEANUP) })
+                                        Destination.HOME -> HomeScreen(state, onRequestPermission, navigateFiles, ::openDuplicates, { navigate(Destination.CLEANUP) }, ::openReviewInbox)
                                         Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission)
                                         Destination.CLEANUP -> CleanupScreen(
                                             state, onOpenDuplicates = ::openDuplicates,
                                             onOpenFolderStorage = ::openFolderStorage,
                                             onOpenPhotoAnalysis = ::openPhotoAnalysis,
                                             onOpenHistory = ::openCleanupHistory,
+                                            onOpenReviewInbox = ::openReviewInbox,
                                             browse = navigateFiles,
                                         )
                                         Destination.SETTINGS -> SettingsScreen(state, vm, onRequestPermission, onOpenSettings, { showTrash = true })
