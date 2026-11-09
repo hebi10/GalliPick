@@ -85,8 +85,7 @@ internal fun FilesScreenContent(
         PhotoOcrIndexPolicy.valid(visibleItems, state.ocrEntries)
     }
     val filtered = if (!catalogVisible) emptyList() else if (searchMode == FileSearchMode.OCR) {
-        val base = MediaQuery.apply(visibleItems,
-            state.filter.copy(query = "", kind = MediaKind.PHOTO))
+        val base = MediaQuery.apply(visibleItems, state.filter.copy(query = ""))
         PhotoOcrIndexPolicy.searchable(base, state.ocrEntries, ocrQuery)
     } else state.filtered
     val detail = visibleItems.find { it.uri == detailUri }
