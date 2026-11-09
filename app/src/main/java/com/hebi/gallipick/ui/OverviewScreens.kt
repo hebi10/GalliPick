@@ -43,6 +43,7 @@ internal fun HomeScreen(
     browse: (MediaFilter) -> Unit,
     duplicates: () -> Unit,
     cleanup: () -> Unit,
+    resumeReview: (() -> Unit)? = null,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
@@ -56,6 +57,17 @@ internal fun HomeScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            val reviewGroups = state.similarGroups + state.burstGroups
+            if (resumeReview != null && state.access != MediaAccess.NONE &&
+                PhotoReviewInboxPolicy.pending(reviewGroups, state.reviewEntries, state.protectedFolders)) {
+                CleanupNavigationRow(
+                    title = "사진 검토 이어서",
+                    subtitle = "남김·정리 후보·검토 보류 상태가 저장되어 있습니다.",
+                    icon = Icons.Outlined.CollectionsBookmark,
+                    description = "저장된 사진 검토함 이어서 열기",
+                    open = resumeReview,
+                )
+            }
             if (tabletLayout) {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -351,6 +363,7 @@ internal fun CleanupScreen(
     onOpenFolderStorage: (() -> Unit)? = null,
     onOpenPhotoAnalysis: (() -> Unit)? = null,
     onOpenHistory: (() -> Unit)? = null,
+    onOpenReviewInbox: (() -> Unit)? = null,
     browse: (MediaFilter) -> Unit,
 ) {
     val suggestions = remember(state.items) { cleanupSuggestions(state.items) }
@@ -392,6 +405,15 @@ internal fun CleanupScreen(
                     icon = Icons.Outlined.Collections,
                     description = "유사 사진 분석 열기",
                     open = onOpenPhotoAnalysis,
+                )
+            }
+            if (onOpenReviewInbox != null) {
+                CleanupNavigationRow(
+                    title = "사진 검토함",
+                    subtitle = "사진별 남김·정리 후보·보류 기록과 진행률, 이어보기",
+                    icon = Icons.Outlined.FactCheck,
+                    description = "스마트 사진 검토함 열기",
+                    open = onOpenReviewInbox,
                 )
             }
             Text(
