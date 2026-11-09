@@ -140,6 +140,7 @@ class AdaptiveMediaReviewTest {
     }
 
 
+@Test fun changingKeeperMovesItToTheFirstGalleryPositionWithoutSelectingFiles() {
         val group = DuplicateGroup("keeper-change", listOf(media(1, "first.mp4"), media(2, "second.mp4"), media(3, "third.mp4")))
         val keeper = mutableStateOf(group.items.first().uri)
         var moved = false
