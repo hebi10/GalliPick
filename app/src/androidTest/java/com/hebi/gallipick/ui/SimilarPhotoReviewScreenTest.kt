@@ -213,6 +213,12 @@ class SimilarPhotoReviewScreenTest {
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "225% 확대"))
             compose.onNodeWithContentDescription("B 사진 미리보기")
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "150% 확대"))
+            compose.onNodeWithContentDescription("B 확대 대상").performClick()
+            compose.onNodeWithContentDescription("A/B 확대").performClick()
+            compose.onNodeWithContentDescription("A 사진 미리보기")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "225% 확대"))
+            compose.onNodeWithContentDescription("B 사진 미리보기")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "225% 확대"))
             val scrollers = compose.onAllNodes(
                 SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
             ).fetchSemanticsNodes()
