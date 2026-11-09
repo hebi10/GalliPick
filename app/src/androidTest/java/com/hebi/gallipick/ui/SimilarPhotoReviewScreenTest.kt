@@ -155,6 +155,8 @@ class SimilarPhotoReviewScreenTest {
         compose.runOnIdle { assertEquals(setOf("catA"), selected.value) }
         compose.onNodeWithContentDescription("슬라이더 비교 모드").performScrollTo().performClick()
         compose.onNodeWithContentDescription("A/B 슬라이더 위치").assertExists()
+        compose.onNodeWithContentDescription("catB.jpg 미리보기 선택").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("A/B 슬라이더 위치").assertExists()
         compose.onNodeWithContentDescription("A/B 사진 비교 전환").performClick()
         compose.onNodeWithText("정리 후보 선택").performScrollTo().assertIsDisplayed()
     }
