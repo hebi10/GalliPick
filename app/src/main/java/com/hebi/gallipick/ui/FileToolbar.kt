@@ -35,6 +35,8 @@ import androidx.compose.ui.window.Dialog
 import com.hebi.gallipick.domain.*
 import java.util.Calendar
 
+internal enum class FileSearchMode { FILES, OCR }
+
 @Composable
 internal fun FileToolbar(
     filter: MediaFilter,
@@ -45,6 +47,10 @@ internal fun FileToolbar(
     deletePreset: (String) -> Unit,
     gridView: Boolean = true,
     onGridViewChange: (Boolean) -> Unit = {},
+    searchMode: FileSearchMode = FileSearchMode.FILES,
+    ocrQuery: String = "",
+    onSearchModeChange: (FileSearchMode) -> Unit = {},
+    onOcrQueryChange: (String) -> Unit = {},
 ) {
     var menu by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
@@ -74,12 +80,20 @@ internal fun FileToolbar(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             OutlinedTextField(
-                value = filter.query,
-                onValueChange = { change(filter.copy(query = it)) },
+                value = if (searchMode == FileSearchMode.OCR) ocrQuery else filter.query,
+                onValueChange = {
+                    if (searchMode == FileSearchMode.OCR) onOcrQueryChange(it)
+                    else change(filter.copy(query = it))
+                },
                 modifier = Modifier.weight(1f).focusRequester(focus)
                     .onFocusChanged { searchFocused = it.isFocused }
-                    .semantics { contentDescription = "파일 이름 또는 폴더 검색" },
-                placeholder = { Text("파일 이름 또는 폴더 검색") },
+                    .semantics {
+                        contentDescription =
+                            if (searchMode == FileSearchMode.OCR) "사진 속 글자 검색" else "파일 이름 또는 폴더 검색"
+                    },
+                placeholder = {
+                    Text(if (searchMode == FileSearchMode.OCR) "사진 속 글자 검색" else "파일 이름 또는 폴더 검색")
+                },
                 singleLine = true,
                 shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
                 textStyle = MaterialTheme.typography.bodyMedium,
@@ -90,9 +104,10 @@ internal fun FileToolbar(
                     }
                 },
                 trailingIcon = {
-                    if (filter.query.isNotEmpty()) {
+                    if ((if (searchMode == FileSearchMode.OCR) ocrQuery else filter.query).isNotEmpty()) {
                         IconAction("검색어 지우기", Icons.Outlined.Close) {
-                            change(filter.copy(query = ""))
+                            if (searchMode == FileSearchMode.OCR) onOcrQueryChange("")
+                            else change(filter.copy(query = ""))
                             focus.requestFocus()
                         }
                     }
@@ -103,12 +118,29 @@ internal fun FileToolbar(
                     keyboard?.hide()
                 }),
             )
-            if (searchFocused || filter.query.isNotBlank()) {
+            if (searchFocused ||
+                (if (searchMode == FileSearchMode.OCR) ocrQuery else filter.query).isNotBlank()) {
                 TextAction("검색 완료", {
                     focusManager.clearFocus()
                     keyboard?.hide()
                 })
             }
+        }
+        Row(
+            Modifier.fillMaxWidth().semantics { contentDescription = "검색 범위 선택" },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilterChip(
+                selected = searchMode == FileSearchMode.FILES,
+                onClick = { onSearchModeChange(FileSearchMode.FILES) },
+                label = { Text("파일명·폴더") },
+            )
+            FilterChip(
+                selected = searchMode == FileSearchMode.OCR,
+                onClick = { onSearchModeChange(FileSearchMode.OCR) },
+                label = { Text("사진 속 글자") },
+            )
         }
         Row(
             Modifier.fillMaxWidth().semantics { contentDescription = "파일 유형 선택" },
