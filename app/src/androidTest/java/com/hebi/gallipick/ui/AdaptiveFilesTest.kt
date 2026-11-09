@@ -59,18 +59,18 @@ class AdaptiveFilesTest {
                 }
             }
         } }
-        val first = compose.onNodeWithText("file-1.jpg").fetchSemanticsNode().boundsInRoot
-        val fifth = compose.onNodeWithText("file-5.jpg").fetchSemanticsNode().boundsInRoot
-        val sixth = compose.onNodeWithText("file-6.jpg").fetchSemanticsNode().boundsInRoot
+        val first = compose.onNodeWithTag("tablet-media-1").fetchSemanticsNode().boundsInRoot
+        val fifth = compose.onNodeWithTag("tablet-media-5").fetchSemanticsNode().boundsInRoot
+        val sixth = compose.onNodeWithTag("tablet-media-6").fetchSemanticsNode().boundsInRoot
         assertTrue("Tablet gallery should show up to five cards per row",
             kotlin.math.abs(first.top - fifth.top) < 4f)
         assertTrue("Sixth card should wrap to the next row", sixth.top > first.top + 20f)
 
         compose.onNodeWithText("file-1.jpg").performClick()
         compose.onNodeWithContentDescription("파일 상세 패널").assertIsDisplayed()
-        val reopenedFirst = compose.onAllNodesWithText("file-1.jpg").onFirst()
+        val reopenedFirst = compose.onNodeWithTag("tablet-media-1")
             .fetchSemanticsNode().boundsInRoot
-        val fourth = compose.onNodeWithText("file-4.jpg").fetchSemanticsNode().boundsInRoot
+        val fourth = compose.onNodeWithTag("tablet-media-4").fetchSemanticsNode().boundsInRoot
         assertTrue("Narrower gallery must reduce columns when detail panel is visible",
             fourth.top > reopenedFirst.top + 20f)
     }
