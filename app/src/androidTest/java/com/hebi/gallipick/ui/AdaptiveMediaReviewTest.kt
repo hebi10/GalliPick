@@ -198,6 +198,31 @@ class AdaptiveMediaReviewTest {
         saveScreenshot("duplicate-compare-tablet-portrait")
     }
 
+    @Test fun tabletDuplicateComparisonShowsLargerPreviewAndGroupedActions() {
+        val group = DuplicateGroup("tablet-meta", listOf(media(1, "first.mp4"), media(2, "second.mp4")))
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(1120.dp, 850.dp)) {
+                        DuplicateCompareContent(
+                            group, group.items.first().uri, emptySet(), emptySet(),
+                            {}, {}, { _, _ -> }, {}, { _, _ -> },
+                        )
+                    }
+                }
+            }
+        }
+        focusComparisonFile("second.mp4")
+        compose.onNodeWithContentDescription("선택 파일 영상 표시 영역")
+            .assertExists().assertHeightIsAtLeast(250.dp)
+        compose.onNodeWithText("파일 정보").performScrollTo().assertIsDisplayed()
+        scrollComparisonControlIntoView("선택 파일 남길 파일로 지정").assertIsEnabled()
+        val scrolls = compose.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
+        ).fetchSemanticsNodes()
+        assertEquals("Tablet duplicate comparison must use the single page scroller", 1, scrolls.size)
+    }
+
     @Test fun focusedFilesShowTheirOwnCaptureOrAddedDateBasis() {
         val previousZone = TimeZone.getDefault()
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
