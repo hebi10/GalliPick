@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -22,6 +23,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -30,6 +32,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -159,11 +162,12 @@ internal fun ABPhotoComparison(
     onChooseKeeper: ((MediaItem) -> Unit)? = null,
     onProtect: ((MediaItem) -> Unit)? = null,
     canProtect: (MediaItem) -> Boolean = { true },
+    statusLabel: ((MediaItem) -> String)? = null,
 ) {
-    var mode by rememberSaveable(a.uri, b.uri) { mutableStateOf("side") }
-    var synchronized by rememberSaveable(a.uri, b.uri) { mutableStateOf(true) }
-    var activeSlot by rememberSaveable(a.uri, b.uri) { mutableStateOf("A") }
-    var divider by rememberSaveable(a.uri, b.uri) { mutableFloatStateOf(.5f) }
+    var mode by rememberSaveable { mutableStateOf("side") }
+    var synchronized by rememberSaveable { mutableStateOf(true) }
+    var activeSlot by rememberSaveable { mutableStateOf("A") }
+    var divider by rememberSaveable { mutableFloatStateOf(.5f) }
     var shared by remember(a.uri, b.uri) { mutableStateOf(ABPhotoTransform()) }
     var first by remember(a.uri) { mutableStateOf(ABPhotoTransform()) }
     var second by remember(b.uri) { mutableStateOf(ABPhotoTransform()) }
@@ -200,6 +204,7 @@ internal fun ABPhotoComparison(
                     listOf("A" to a, "B" to b).forEach { (slot, item) ->
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("$slot · ${item.displayName}", maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.labelMedium)
                             ABPhotoCanvas(item, slot, zoomFor(slot), { next ->
                                 activeSlot = slot; change(slot, next)
@@ -208,13 +213,24 @@ internal fun ABPhotoComparison(
                     }
                 }
             } else {
-                Box(Modifier.fillMaxWidth().height(previewHeight)) {
+                BoxWithConstraints(Modifier.fillMaxWidth().height(previewHeight)
+                    .pointerInput(a.uri, b.uri) {
+                        detectHorizontalDragGestures { event, drag ->
+                            if (size.width > 0) {
+                                divider = (divider + drag / size.width).coerceIn(0f, 1f)
+                                event.consume()
+                            }
+                        }
+                    }.testTag("AB-slider-preview")) {
                     ABPhotoCanvas(a, "A", zoomFor("A"), { next -> change("A", next) },
                         false, Modifier.fillMaxSize())
                     ABPhotoCanvas(b, "B", zoomFor("B"), { next -> change("B", next) },
                         false, Modifier.fillMaxSize().drawWithContent {
                             clipRect(left = size.width * divider) { this@drawWithContent.drawContent() }
                         })
+                    Box(Modifier.align(Alignment.CenterStart)
+                        .offset(x = maxWidth * divider - 1.dp)
+                        .width(2.dp).fillMaxHeight().background(Primary))
                     Text("A", Modifier.align(Alignment.TopStart).padding(8.dp),
                         color = Ink, style = MaterialTheme.typography.titleSmall)
                     Text("B", Modifier.align(Alignment.TopEnd).padding(8.dp),
@@ -246,6 +262,7 @@ internal fun ABPhotoComparison(
                 listOf("A" to a, "B" to b).forEach { (slot, item) ->
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("$slot · ${item.displayName}", maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleSmall)
                         Text("${item.width} × ${item.height}", style = MaterialTheme.typography.bodySmall)
                         Text(bytesLabel(item.sizeBytes), style = MaterialTheme.typography.bodySmall)
@@ -253,7 +270,7 @@ internal fun ABPhotoComparison(
                             style = MaterialTheme.typography.bodySmall, color = Muted)
                         HorizontalDivider(color = Line)
                         val selected = item.uri in selectedUris
-                        Text(if (selected) "정리 후보 · 선택됨" else "남길 사진 · 유지",
+                        Text(statusLabel?.invoke(item) ?: if (selected) "정리 후보 · 선택됨" else "남길 사진 · 유지",
                             style = MaterialTheme.typography.labelMedium, color = Ink)
                         ActionButton(
                             if (selected) "$slot 후보 해제·남기기" else "$slot 정리 후보 선택",
