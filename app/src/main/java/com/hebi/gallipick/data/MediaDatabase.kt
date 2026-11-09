@@ -79,6 +79,16 @@ internal data class CachedPhotoHash(
     val exposureScore: Double? = null,
 )
 
+@Entity(tableName = "photo_review_choice", primaryKeys = ["groupId", "uri"])
+internal data class CachedReviewChoice(
+    val groupId: String,
+    val uri: String,
+    val fingerprint: String,
+    val volumeVersion: String,
+    val decision: String,
+    val updatedAtMs: Long,
+)
+
 @Entity(tableName = "cleanup_history")
 internal data class CachedCleanupHistory(
     @PrimaryKey val id: String,
@@ -182,6 +192,15 @@ internal abstract class MediaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun setPhotoAnalysisSession(session: PhotoAnalysisSession)
 
+    @Query("SELECT * FROM photo_review_choice ORDER BY updatedAtMs DESC")
+    abstract fun observeReviewChoices(): Flow<List<CachedReviewChoice>>
+    @Query("SELECT * FROM photo_review_choice ORDER BY updatedAtMs DESC")
+    abstract suspend fun allReviewChoices(): List<CachedReviewChoice>
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun putReviewChoice(choice: CachedReviewChoice)
+    @Query("DELETE FROM photo_review_choice")
+    abstract suspend fun clearReviewChoices(): Int
+
     @Query("SELECT * FROM cleanup_history ORDER BY occurredAtMs DESC, id DESC")
     abstract fun observeCleanupHistory(): Flow<List<CachedCleanupHistory>>
     @Query("SELECT * FROM cleanup_history ORDER BY occurredAtMs DESC, id DESC")
@@ -262,8 +281,9 @@ internal abstract class MediaDao {
 @Database(
     entities = [CachedMedia::class, CachedHash::class, ProtectedMedia::class,
         ProtectedFolder::class, ScanSession::class, MediaVolumeVersion::class,
-        CachedPhotoHash::class, PhotoAnalysisSession::class, CachedCleanupHistory::class],
-    version = 6,
+        CachedPhotoHash::class, PhotoAnalysisSession::class, CachedCleanupHistory::class,
+        CachedReviewChoice::class],
+    version = 7,
     exportSchema = false,
 )
 internal abstract class MediaDatabase : RoomDatabase() {
@@ -307,10 +327,22 @@ internal abstract class MediaDatabase : RoomDatabase() {
             }
         }
 
+        private val migration6To7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS photo_review_choice (" +
+                        "groupId TEXT NOT NULL, uri TEXT NOT NULL, " +
+                        "fingerprint TEXT NOT NULL, volumeVersion TEXT NOT NULL, " +
+                        "decision TEXT NOT NULL, updatedAtMs INTEGER NOT NULL, " +
+                        "PRIMARY KEY(groupId, uri))"
+                )
+            }
+        }
+
         @Volatile private var instance: MediaDatabase? = null
         fun get(context: Context): MediaDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext,
-                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6).build().also { instance = it }
+                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6, migration6To7).build().also { instance = it }
         }
     }
 }
