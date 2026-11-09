@@ -41,7 +41,12 @@ internal fun SimilarPhotoCompareScreen(
     explanation: String = "여러 장을 남길 수 있습니다. 미리보기 선택과 정리 후보 선택은 별도 동작입니다.",
 ) {
     var focusedUri by rememberSaveable(group.id) { mutableStateOf(group.photos.first().item.uri) }
+    var compareAB by rememberSaveable(group.id) { mutableStateOf(false) }
+    var secondUri by rememberSaveable(group.id) { mutableStateOf(group.photos.getOrNull(1)?.item?.uri.orEmpty()) }
+    var editingSlotA by rememberSaveable(group.id) { mutableStateOf(false) }
     val focused = group.photos.firstOrNull { it.item.uri == focusedUri }?.item ?: group.photos.first().item
+    val second = group.photos.firstOrNull { it.item.uri == secondUri && it.item.uri != focused.uri }?.item
+        ?: group.photos.firstOrNull { it.item.uri != focused.uri }?.item
     val chosen = focused.uri in selectedUris
     val selectedCount = group.photos.count { it.item.uri in selectedUris }
     val keptCount = group.photos.size - selectedCount
@@ -58,6 +63,12 @@ internal fun SimilarPhotoCompareScreen(
                 IconAction("유사 사진 목록으로 돌아가기", Icons.Outlined.ArrowBack, onClick = onBack)
                 Text(title, style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).semantics { heading() })
+                if (group.photos.size >= 2) {
+                    TextButton(onClick = { compareAB = !compareAB },
+                        modifier = Modifier.semantics { contentDescription = "A/B 사진 비교 전환" }) {
+                        Text(if (compareAB) "한 장 보기" else "A/B 비교")
+                    }
+                }
             }
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -76,14 +87,21 @@ internal fun SimilarPhotoCompareScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(group.photos, key = { it.item.uri }) { photo ->
-                    val active = photo.item.uri == focused.uri
+                    val active = photo.item.uri == focused.uri || compareAB && photo.item.uri == second?.uri
                     val selected = photo.item.uri in selectedUris
                     val shape = RoundedCornerShape(10.dp)
                     Column(
                         Modifier.width(thumbnailWidth)
                             .border(if (active) 2.dp else 1.dp, if (active) Primary else Line, shape)
                             .semantics { contentDescription = "${photo.item.displayName} 미리보기 선택" }
-                            .plainClick(action = { focusedUri = photo.item.uri })
+                            .plainClick(action = {
+                                if (compareAB && !editingSlotA) {
+                                    if (photo.item.uri != focused.uri) secondUri = photo.item.uri
+                                } else {
+                                    if (compareAB && photo.item.uri == second?.uri) secondUri = focused.uri
+                                    focusedUri = photo.item.uri
+                                }
+                            })
                             .padding(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -95,6 +113,30 @@ internal fun SimilarPhotoCompareScreen(
                     }
                 }
             }
+            if (compareAB && second != null) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("교체할 사진 선택", style = MaterialTheme.typography.labelMedium, color = Muted)
+                    TextButton(onClick = { editingSlotA = true },
+                        modifier = Modifier.semantics { contentDescription = "A 슬롯 선택" }) {
+                        Text(if (editingSlotA) "A 선택 중" else "사진 A", color = if (editingSlotA) Primary else Muted)
+                    }
+                    TextButton(onClick = { editingSlotA = false },
+                        modifier = Modifier.semantics { contentDescription = "B 슬롯 선택" }) {
+                        Text(if (!editingSlotA) "B 선택 중" else "사진 B", color = if (!editingSlotA) Primary else Muted)
+                    }
+                }
+                ABPhotoComparison(
+                    a = focused, b = second,
+                    selectedUris = selectedUris,
+                    canSelect = { item -> SimilarPhotoReviewPolicy.maySelect(
+                        group, selectedUris, item.uri, protectedFolders
+                    ) },
+                    onToggleCandidate = { item -> onToggleCandidate(item.uri) },
+                    onOpenMedia = onOpenMedia,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
             val details: @Composable () -> Unit = {
                 Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("선택한 사진 정보", style = MaterialTheme.typography.titleSmall, color = Muted)
@@ -148,6 +190,7 @@ internal fun SimilarPhotoCompareScreen(
                     MediaThumbnail(focused, Modifier.fillMaxWidth().height(previewHeight), ContentScale.Fit)
                     details()
                 }
+            }
             }
             }
             Text("사진은 자동 삭제되지 않습니다. Android 확인창에서 최종 이동 대상을 검토합니다.",

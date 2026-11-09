@@ -77,6 +77,13 @@ internal fun DuplicateCompareContent(
         mutableStateOf(initialItemUri?.takeIf { uri -> ordered.any { it.uri == uri } } ?: roles.keeper.uri)
     }
     val focused = ordered.firstOrNull { it.uri == focusedUri } ?: roles.keeper
+    val photos = ordered.filter { it.kind == MediaKind.PHOTO }
+    var compareAB by rememberSaveable(group.hash) { mutableStateOf(false) }
+    var secondUri by rememberSaveable(group.hash) { mutableStateOf(photos.getOrNull(1)?.uri.orEmpty()) }
+    var editingSlotA by rememberSaveable(group.hash) { mutableStateOf(false) }
+    val firstPhoto = photos.firstOrNull { it.uri == focusedUri } ?: photos.firstOrNull()
+    val secondPhoto = photos.firstOrNull { it.uri == secondUri && it.uri != firstPhoto?.uri }
+        ?: photos.firstOrNull { it.uri != firstPhoto?.uri }
     val rowState = rememberLazyListState()
     LaunchedEffect(roles.keeper.uri) { rowState.scrollToItem(0) }
     val coordinator = remember(group.hash) { PreviewPlaybackCoordinator() }
@@ -94,6 +101,10 @@ internal fun DuplicateCompareContent(
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("중복 파일 비교", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                if (photos.size >= 2) TextButton(onClick = { compareAB = !compareAB },
+                    modifier = Modifier.semantics { contentDescription = "중복 A/B 사진 비교 전환" }) {
+                    Text(if (compareAB) "한 장 보기" else "A/B 비교")
+                }
                 IconAction("비교 닫기", Icons.Outlined.Close, onClick = { coordinator.pauseActive(); onDismiss() })
             }
             if (!actionsEnabled) Text(
@@ -119,7 +130,18 @@ internal fun DuplicateCompareContent(
                         Column(
                             Modifier.width(cardWidth)
                                 .border(if (active) 2.dp else 1.dp, if (active) Primary else Line, RoundedCornerShape(10.dp))
-                                .plainClick(action = { coordinator.pauseActive(); focusedUri = item.uri })
+                                .plainClick(action = {
+                                    coordinator.pauseActive()
+                                    if (compareAB && item.kind == MediaKind.PHOTO && !editingSlotA) {
+                                        if (item.uri != firstPhoto?.uri) secondUri = item.uri
+                                    } else {
+                                        if (compareAB && item.uri == secondPhoto?.uri) {
+                                            secondUri = firstPhoto?.uri.orEmpty()
+                                        }
+                                        if (item.kind == MediaKind.VIDEO) compareAB = false
+                                        focusedUri = item.uri
+                                    }
+                                })
                                 .padding(4.dp)
                                 .semantics {
                                     contentDescription = "${item.displayName} 비교 대상"
@@ -137,7 +159,36 @@ internal fun DuplicateCompareContent(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                key(focused.uri, focused.fingerprint, focused.volumeVersion) {
+                if (compareAB && firstPhoto != null && secondPhoto != null) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("교체할 사진", style = MaterialTheme.typography.labelMedium, color = Muted)
+                        TextButton(onClick = { editingSlotA = true },
+                            modifier = Modifier.semantics { contentDescription = "중복 A 슬롯 선택" }) {
+                            Text(if (editingSlotA) "A 선택 중" else "사진 A",
+                                color = if (editingSlotA) Primary else Muted)
+                        }
+                        TextButton(onClick = { editingSlotA = false },
+                            modifier = Modifier.semantics { contentDescription = "중복 B 슬롯 선택" }) {
+                            Text(if (!editingSlotA) "B 선택 중" else "사진 B",
+                                color = if (!editingSlotA) Primary else Muted)
+                        }
+                    }
+                    ABPhotoComparison(
+                        a = firstPhoto, b = secondPhoto,
+                        selectedUris = selectedUris.intersect(roles.candidateUris),
+                        canSelect = { item -> item.uri in roles.candidateUris },
+                        onToggleCandidate = { item -> onToggleSelection(item.uri) },
+                        onOpenMedia = { item -> coordinator.pauseActive(); onOpen(item) },
+                        modifier = Modifier.fillMaxWidth(),
+                        allowEditing = actionsEnabled,
+                        keeperUri = roles.keeper.uri,
+                        onChooseKeeper = { item -> onChooseKeeper(group, item.uri) },
+                        onProtect = { item -> onProtect(item, !item.isProtected) },
+                        canProtect = { item -> !item.hasFolderProtection(roles.protectedFolders) },
+                        statusLabel = { item -> roles.label(item, selectedUris) },
+                    )
+                } else key(focused.uri, focused.fingerprint, focused.volumeVersion) {
                     DuplicateComparePanel(
                         slot = "선택 파일",
                         item = focused,
