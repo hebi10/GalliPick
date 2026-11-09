@@ -49,6 +49,30 @@ class MediaSnapshotDatabaseTest {
         assertEquals(2, dao.photoAnalysisSession()?.completed)
     }
 
+    @Test fun ocrIndexInvalidatesChangedVolumeAndClearPreservesMediaAndProtection() = runBlocking {
+        val rows = listOf(media("a", "primary"), media("b", "sd"))
+        dao.replaceAccessible(rows, mapOf("primary" to "one", "sd" to "one"))
+        rows.forEach { dao.putOcrIndex(CachedOcrIndex(
+            it.uri, it.fingerprint, "one", "서울 카페", "SUCCESS")) }
+        dao.setOcrSession(OcrScanSession(token = "ocr-test", phase = "COMPLETE", completed = 2, total = 2))
+        dao.protect(ProtectedMedia(rows[0].uri))
+        dao.replaceAccessible(rows, mapOf("primary" to "two", "sd" to "one"))
+        assertEquals(listOf("b"), dao.allOcrIndex().map { it.uri })
+        assertEquals("ocr-test", dao.ocrSession()?.token)
+        dao.clearOcrIndex()
+        assertTrue(dao.allOcrIndex().isEmpty())
+        assertEquals(2, dao.allMedia().size)
+        assertEquals(listOf("a"), dao.allProtection().map { it.uri })
+    }
+
+    @Test fun ocrIndexPrunedWhenMediaAccessNoLongerIncludesPhoto() = runBlocking {
+        val item = media("gone", "primary")
+        dao.replaceAccessible(listOf(item), mapOf("primary" to "one"))
+        dao.putOcrIndex(CachedOcrIndex(item.uri, item.fingerprint, "one", "기밀 메모", "SUCCESS"))
+        dao.replaceAccessible(emptyList(), mapOf("primary" to "one"))
+        assertTrue(dao.allOcrIndex().isEmpty())
+    }
+
     @Test fun reviewChoicesPersistAcrossCatalogRefreshAndClearSeparatelyFromProtection() = runBlocking {
         val item = media("review", "primary")
         dao.replaceAccessible(listOf(item), mapOf("primary" to "one"))
