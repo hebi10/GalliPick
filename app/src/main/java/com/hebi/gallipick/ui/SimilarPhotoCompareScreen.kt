@@ -97,6 +97,10 @@ internal fun SimilarPhotoCompareScreen(
                     Text(suggested.item.displayName, style = MaterialTheme.typography.bodyMedium,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(bestCut.summary, style = MaterialTheme.typography.bodySmall, color = Muted)
+                    if (suggested.item.uri in selectedUris) {
+                        Text("추천된 사진이 정리 후보에 포함되어 있습니다. 남길 사진을 다시 확인해 주세요.",
+                            style = MaterialTheme.typography.bodySmall, color = Primary)
+                    }
                     TextButton(onClick = { bestReasonsExpanded = !bestReasonsExpanded }) {
                         Text(if (bestReasonsExpanded) "추천 이유 접기" else "추천 이유 보기")
                     }
