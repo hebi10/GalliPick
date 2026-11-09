@@ -35,6 +35,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
+import com.hebi.gallipick.domain.PhotoOcrIndexPolicy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
@@ -145,7 +146,10 @@ internal fun SelectBox(
 }
 
 @Composable
-internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit, onOpen: (MediaItem) -> Unit, onProtect: (Boolean) -> Unit, folderProtected: Boolean = false) {
+internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit,
+    onOpen: (MediaItem) -> Unit, onProtect: (Boolean) -> Unit,
+    folderProtected: Boolean = false, ocrText: String? = null, ocrQuery: String = "",
+) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.safeDrawingPadding().widthIn(max = 1100.dp).fillMaxWidth(.96f).fillMaxHeight(.94f), shape = RoundedCornerShape(20.dp)) {
             Column {
@@ -156,14 +160,18 @@ internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit, onOpen: (
                     }
                     IconAction("닫기", Icons.Outlined.Close, onClick = onDismiss)
                 }
-                MediaDetail(item, onOpen, onProtect, Modifier.weight(1f), folderProtected)
+                MediaDetail(item, onOpen, onProtect, Modifier.weight(1f),
+                    folderProtected, ocrText = ocrText, ocrQuery = ocrQuery)
             }
         }
     }
 }
 
 @Composable
-internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect: (Boolean) -> Unit, modifier: Modifier = Modifier, folderProtected: Boolean = false) {
+internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
+    onProtect: (Boolean) -> Unit, modifier: Modifier = Modifier,
+    folderProtected: Boolean = false, ocrText: String? = null, ocrQuery: String = "",
+) {
     var previewOpen by remember(item.uri, item.fingerprint, item.volumeVersion) { mutableStateOf(false) }
     if (previewOpen) MediaPreviewDialog(item, onDismiss = { previewOpen = false }, onOpen = onOpen)
     BoxWithConstraints(modifier.fillMaxWidth()) {
@@ -177,6 +185,19 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit, onProtect
             Column(detailModifier.then(if (beside) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(item.displayName, style = MaterialTheme.typography.titleMedium)
                 Text("${if (item.kind == MediaKind.VIDEO) "동영상" else "사진"} · ${bytesLabel(item.sizeBytes)}", color = Muted, style = MaterialTheme.typography.bodySmall)
+                if (ocrText != null) {
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .background(Panel, RoundedCornerShape(GalliUiMetrics.cardCorner))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("사진 속 글자 · 검색 일치",
+                            style = MaterialTheme.typography.titleSmall, color = Ink)
+                        Text(PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery, 450),
+                            style = MaterialTheme.typography.bodySmall, color = Muted)
+                    }
+                }
                 if (!beside) previewAction(Modifier.fillMaxWidth())
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val protectLabel = if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호"
