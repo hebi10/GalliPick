@@ -213,7 +213,7 @@ internal fun ABPhotoComparison(
                         false, Modifier.fillMaxSize())
                     ABPhotoCanvas(b, "B", zoomFor("B"), { next -> change("B", next) },
                         false, Modifier.fillMaxSize().drawWithContent {
-                            clipRect(left = size.width * divider) { drawContent() }
+                            clipRect(left = size.width * divider) { this@drawWithContent.drawContent() }
                         })
                     Text("A", Modifier.align(Alignment.TopStart).padding(8.dp),
                         color = Ink, style = MaterialTheme.typography.titleSmall)
