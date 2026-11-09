@@ -119,16 +119,6 @@ internal fun FilesScreenContent(
                             onSearchModeChange = { searchMode = it; detailUri = null },
                             onOcrQueryChange = { ocrQuery = it },
                         )
-                        if (searchMode == FileSearchMode.OCR) {
-                            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                                val tabletSidebar = wide &&
-                                    maxWidth >= 900.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
-                                if (!tabletSidebar) {
-                                    PhotoOcrIndexPanel(state, actions.startOcr, actions.pauseOcr,
-                                        actions.resumeOcr, requestAccess)
-                                }
-                            }
-                        }
                     }
                 },
             ) {
@@ -149,6 +139,22 @@ internal fun FilesScreenContent(
                             }
                         }
                         Column(Modifier.weight(1f).fillMaxHeight()) {
+                            if (searchMode == FileSearchMode.OCR && !ocrSidebar) {
+                                val panelHeight = minOf(
+                                    240.dp,
+                                    maxOf(84.dp, maxHeight * .42f),
+                                    maxHeight * .60f,
+                                )
+                                Box(
+                                    Modifier.fillMaxWidth().height(panelHeight)
+                                        .verticalScroll(rememberScrollState()),
+                                ) {
+                                    PhotoOcrIndexPanel(
+                                        state, actions.startOcr, actions.pauseOcr,
+                                        actions.resumeOcr, requestAccess,
+                                    )
+                                }
+                            }
                             when {
                                 state.access == MediaAccess.NONE -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("미디어 접근이 필요합니다", "허용한 파일만 이곳에 표시됩니다.", action = { ActionButton("접근 허용", requestAccess, filled = true) })
