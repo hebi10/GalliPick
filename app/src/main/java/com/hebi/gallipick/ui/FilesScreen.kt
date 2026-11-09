@@ -245,11 +245,21 @@ internal fun FilesScreenContent(
                                     Text("파일 정보", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                     IconAction("파일 상세 닫기", Icons.Outlined.Close) { detailUri = null }
                                 }
-                                MediaDetail(detail, open, { actions.setProtected(detail, it) }, Modifier.weight(1f), detail.hasFolderProtection(state.protectedFolders))
+                                MediaDetail(detail, open, { actions.setProtected(detail, it) },
+                                    Modifier.weight(1f), detail.hasFolderProtection(state.protectedFolders),
+                                    ocrText = if (searchMode == FileSearchMode.OCR)
+                                        ocrRows[detail.uri]?.recognizedText else null,
+                                    ocrQuery = ocrQuery)
                             }
                         }
                     }
-                    if (!useSideDetail && detail != null) MediaDetailDialog(detail, { detailUri = null }, open, { actions.setProtected(detail, it) }, detail.hasFolderProtection(state.protectedFolders))
+                    if (!useSideDetail && detail != null) MediaDetailDialog(
+                        detail, { detailUri = null }, open,
+                        { actions.setProtected(detail, it) }, detail.hasFolderProtection(state.protectedFolders),
+                        ocrText = if (searchMode == FileSearchMode.OCR)
+                            ocrRows[detail.uri]?.recognizedText else null,
+                        ocrQuery = ocrQuery,
+                    )
                 }
             }
 
