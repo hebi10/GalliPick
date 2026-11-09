@@ -120,12 +120,14 @@ internal fun FilesScreenContent(
                                     EmptyState("조건에 맞는 파일이 없습니다", "접근 범위와 필터 조건을 확인해주세요.", action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) }, scene = GalliScene.SEARCH)
                                 }
                                 else -> {
-                                    val fontScale = LocalDensity.current.fontScale
+                                    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+                                    val tabletGrid = wide && maxWidth >= 720.dp
+                                    val availableGridWidth = if (sideDetail) maxWidth - detailWidth - 14.dp else maxWidth
+                                    val tabletColumns = tabletMediaGridColumns(availableGridWidth, fontScale)
                                     if (gridView) {
                                         LazyVerticalGrid(
-                                            columns = GridCells.Adaptive(
-                                                if (wide) 152.dp else if (fontScale >= 1.5f) 132.dp else 108.dp
-                                            ),
+                                            columns = if (tabletGrid) GridCells.Fixed(tabletColumns)
+                                                else GridCells.Adaptive(if (fontScale >= 1.5f) 132.dp else 108.dp),
                                             state = gridState,
                                             modifier = Modifier.weight(1f).semantics { contentDescription = "미디어 파일 목록" },
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -140,14 +142,14 @@ internal fun FilesScreenContent(
                                                     items(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
                                                             { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
-                                                            state.filter.sortField)
+                                                            state.filter.sortField, tabletGrid = tabletGrid)
                                                     }
                                                 }
                                             } else {
                                                 items(filtered, key = { it.uri }) { item ->
                                                     MediaTile(item, item.uri in state.selected,
                                                         { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
-                                                        state.filter.sortField)
+                                                        state.filter.sortField, tabletGrid = tabletGrid)
                                                 }
                                             }
                                         }
@@ -246,6 +248,11 @@ private fun FilesFooterSummary(items: List<MediaItem>, selectAll: () -> Unit) {
     }
 }
 
+internal fun tabletMediaGridColumns(availableWidth: androidx.compose.ui.unit.Dp, fontScale: Float): Int {
+    val minimumTileWidth = 212f * fontScale.coerceIn(1f, 1.5f)
+    return (availableWidth.value / minimumTileWidth).toInt().coerceIn(1, 5)
+}
+
 @Composable
 private fun MediaTile(
     item: MediaItem,
@@ -255,6 +262,7 @@ private fun MediaTile(
     sortField: SortField,
     listView: Boolean = false,
     dateMs: Long = item.capturedAt,
+    tabletGrid: Boolean = false,
 ) {
     if (listView) {
         Row(
@@ -313,8 +321,13 @@ private fun MediaTile(
                     )
                 }
             }
-            Text(item.displayName, style = MaterialTheme.typography.labelSmall, maxLines = 1,
+            Text(item.displayName, style = if (tabletGrid) MaterialTheme.typography.bodySmall
+                else MaterialTheme.typography.labelSmall, maxLines = if (tabletGrid) 2 else 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().plainClick(action = detail))
+            if (tabletGrid) {
+                Text(bytesLabel(item.sizeBytes), style = MaterialTheme.typography.labelSmall,
+                    color = Muted, maxLines = 1)
+            }
         }
     }
 }
