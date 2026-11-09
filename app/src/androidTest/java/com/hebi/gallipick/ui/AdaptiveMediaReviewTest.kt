@@ -92,7 +92,54 @@ class AdaptiveMediaReviewTest {
         compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertExists()
     }
 
-    @Test fun changingKeeperMovesItToTheFirstGalleryPositionWithoutSelectingFiles() {
+    @Test fun abRealPhotoCaptureRetainsBothPhotosAndDoesNotSelectTrashCandidates() {
+        val context = compose.activity
+        val now = System.currentTimeMillis()
+        val samples = (1..2).map { index ->
+            Stage7aFixtureMedia.insert(
+                context, "EXAMPLE_AB_capture_${index}.jpg", "image/jpeg",
+                Stage7aFixtureMedia.sceneJpeg(index), now, "Pictures/GalliPick_AB_Capture/",
+            )
+        }
+        try {
+            val photos = samples.mapIndexed { index, sample ->
+                media((index + 1).toLong(), sample.name).copy(
+                    uri = sample.uri.toString(), id = ContentUris.parseId(sample.uri),
+                    volume = MediaStore.VOLUME_EXTERNAL_PRIMARY,
+                    kind = MediaKind.PHOTO, mimeType = "image/jpeg",
+                )
+            }
+            var selected = false
+            compose.setContent {
+                GalliPickTheme {
+                    Surface(Modifier.fillMaxSize()) {
+                        DuplicateCompareContent(
+                            DuplicateGroup("ab-capture", photos), photos[0].uri,
+                            emptySet(), emptySet(), {}, {}, { _, _ -> },
+                            { selected = true }, { _, _ -> },
+                        )
+                    }
+                }
+            }
+            compose.onNodeWithContentDescription("중복 A/B 사진 비교 전환").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("A 사진: ${samples[0].name}")
+                    .fetchSemanticsNodes().isNotEmpty() &&
+                compose.onAllNodesWithContentDescription("B 사진: ${samples[1].name}")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.runOnIdle { assertFalse(selected) }
+            saveScreenshot("12-a-ab-real-side-by-side")
+            compose.onNodeWithContentDescription("슬라이더 비교 모드").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("A/B 슬라이더 위치").assertExists()
+            saveScreenshot("12-a-ab-real-slider")
+            compose.runOnIdle { assertFalse(selected) }
+        } finally {
+            samples.forEach { sample -> context.contentResolver.delete(sample.uri, null, null) }
+        }
+    }
+
+
         val group = DuplicateGroup("keeper-change", listOf(media(1, "first.mp4"), media(2, "second.mp4"), media(3, "third.mp4")))
         val keeper = mutableStateOf(group.items.first().uri)
         var moved = false
