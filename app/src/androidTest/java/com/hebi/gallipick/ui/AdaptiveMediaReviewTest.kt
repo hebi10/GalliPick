@@ -90,6 +90,35 @@ class AdaptiveMediaReviewTest {
         compose.onNode(hasText("second.mp4") and hasAnyAncestor(hasContentDescription("선택 파일 파일 비교 패널"))).assertExists()
     }
 
+    @Test fun compactPhotoComparisonUsesOnlyThePageVerticalScroll() {
+        val first = media(1, "first.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        val second = media(2, "second.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        val group = DuplicateGroup("photo-one-scroll", listOf(first, second))
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(360.dp, 420.dp)) {
+                        DuplicateCompareContent(
+                            group, first.uri, emptySet(), emptySet(),
+                            {}, {}, { _, _ -> }, {}, { _, _ -> },
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("중복 파일 가로 비교 목록").assertIsDisplayed()
+        compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertExists()
+        val verticalScrolls = compose.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
+        ).fetchSemanticsNodes()
+        assertEquals("Photo comparison must have one vertical scroller", 1, verticalScrolls.size)
+        focusComparisonFile("second.jpg")
+        scrollComparisonControlIntoView("선택 파일 남길 파일로 지정")
+            .assertIsDisplayed().assertIsEnabled()
+        scrollComparisonControlIntoView("선택 파일 보호")
+            .assertIsDisplayed().assertIsEnabled()
+    }
+
     @Test fun galleryCanBrowseFiveCopiesWithoutChangingKeeperOrTrashState() {
         val group = DuplicateGroup("five", (1L..5L).map { media(it, "copy-$it.mp4") })
         var keeperChanged = false
@@ -376,16 +405,9 @@ class AdaptiveMediaReviewTest {
     private class TestOwner : LifecycleOwner { val registry = LifecycleRegistry(this).apply { currentState = Lifecycle.State.RESUMED }; override val lifecycle get() = registry }
     private fun videoViews(view: View): List<VideoView> = when (view) { is VideoView -> listOf(view); is ViewGroup -> (0 until view.childCount).flatMap { videoViews(view.getChildAt(it)) }; else -> emptyList() }
     private fun scrollComparisonControlIntoView(description: String): SemanticsNodeInteraction {
-        val control = compose.onNodeWithContentDescription(description).performScrollTo()
-        val body = compose.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("선택 파일 파일 비교 패널")))
-        // performScrollTo only reaches the nearest detail scroller; the outer viewport can still clip it.
-        repeat(10) {
-            if (runCatching { control.assertIsDisplayed() }.isSuccess) return control
-            val aboveBody = control.fetchSemanticsNode().positionInRoot.y < body.fetchSemanticsNode().boundsInRoot.top
-            body.performTouchInput { if (aboveBody) swipeDown() else swipeUp() }
-        }
-        return control.assertIsDisplayed()
+        return compose.onNodeWithContentDescription(description).performScrollTo().assertIsDisplayed()
     }
+
     private fun saveScreenshot(name: String) {
         val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
