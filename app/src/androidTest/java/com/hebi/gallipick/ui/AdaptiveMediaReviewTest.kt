@@ -199,28 +199,54 @@ class AdaptiveMediaReviewTest {
     }
 
     @Test fun tabletDuplicateComparisonShowsLargerPreviewAndGroupedActions() {
-        val group = DuplicateGroup("tablet-meta", listOf(media(1, "first.mp4"), media(2, "second.mp4")))
-        compose.setContent {
-            GalliPickTheme {
-                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
-                    Surface(Modifier.requiredSize(1120.dp, 850.dp)) {
-                        DuplicateCompareContent(
-                            group, group.items.first().uri, emptySet(), emptySet(),
-                            {}, {}, { _, _ -> }, {}, { _, _ -> },
-                        )
+        val context = compose.activity
+        val now = System.currentTimeMillis()
+        val samples = (1..2).map { index ->
+            Stage7aFixtureMedia.insert(
+                context, "EXAMPLE_tablet_compare_${index}.jpg", "image/jpeg",
+                Stage7aFixtureMedia.sceneJpeg(index + 3), now,
+                "Pictures/GalliPick_Tablet_Compare_Test/",
+            )
+        }
+        try {
+            val files = samples.mapIndexed { index, sample ->
+                media(index + 1L, sample.name).copy(
+                    uri = sample.uri.toString(),
+                    id = ContentUris.parseId(sample.uri),
+                    volume = MediaStore.VOLUME_EXTERNAL_PRIMARY,
+                    kind = MediaKind.PHOTO,
+                    mimeType = "image/jpeg",
+                )
+            }
+            val group = DuplicateGroup("tablet-meta", files)
+            compose.setContent {
+                GalliPickTheme {
+                    CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                        Surface(Modifier.requiredSize(1120.dp, 850.dp)) {
+                            DuplicateCompareContent(
+                                group, files[0].uri, emptySet(), emptySet(),
+                                {}, {}, { _, _ -> }, {}, { _, _ -> },
+                            )
+                        }
                     }
                 }
             }
+            focusComparisonFile(files[1].displayName)
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("사진 미리보기: ${files[1].displayName}")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("사진 미리보기: ${files[1].displayName}")
+                .assertHeightIsAtLeast(250.dp)
+            compose.onNodeWithText("파일 정보").performScrollTo().assertIsDisplayed()
+            scrollComparisonControlIntoView("선택 파일 남길 파일로 지정").assertIsEnabled()
+            val scrolls = compose.onAllNodes(
+                SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
+            ).fetchSemanticsNodes()
+            assertEquals("Tablet duplicate comparison must use the single page scroller", 1, scrolls.size)
+        } finally {
+            samples.forEach { sample -> context.contentResolver.delete(sample.uri, null, null) }
         }
-        focusComparisonFile("second.mp4")
-        compose.onNodeWithContentDescription("선택 파일 영상 표시 영역")
-            .assertExists().assertHeightIsAtLeast(250.dp)
-        compose.onNodeWithText("파일 정보").performScrollTo().assertIsDisplayed()
-        scrollComparisonControlIntoView("선택 파일 남길 파일로 지정").assertIsEnabled()
-        val scrolls = compose.onAllNodes(
-            SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
-        ).fetchSemanticsNodes()
-        assertEquals("Tablet duplicate comparison must use the single page scroller", 1, scrolls.size)
     }
 
     @Test fun focusedFilesShowTheirOwnCaptureOrAddedDateBasis() {
