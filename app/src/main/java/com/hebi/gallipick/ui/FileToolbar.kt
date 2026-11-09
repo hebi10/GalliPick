@@ -22,6 +22,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.contentDescription
@@ -70,6 +71,8 @@ internal fun FileToolbar(
     ).count { it }
     var searchFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    val compactSearchScope = LocalConfiguration.current.screenHeightDp < 520 ||
+        LocalDensity.current.fontScale >= 1.5f
     Column(
         Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -118,6 +121,21 @@ internal fun FileToolbar(
                     keyboard?.hide()
                 }),
             )
+            if (compactSearchScope) {
+                Box {
+                    IconAction("검색 범위 변경", Icons.Outlined.FindInPage) { menu = "search-scope" }
+                    DropdownMenu(expanded = menu == "search-scope", onDismissRequest = { menu = null }) {
+                        DropdownMenuItem(text = { Text("파일명·폴더") }, onClick = {
+                            onSearchModeChange(FileSearchMode.FILES)
+                            menu = null
+                        })
+                        DropdownMenuItem(text = { Text("사진 속 글자") }, onClick = {
+                            onSearchModeChange(FileSearchMode.OCR)
+                            menu = null
+                        })
+                    }
+                }
+            }
             if (searchFocused ||
                 (if (searchMode == FileSearchMode.OCR) ocrQuery else filter.query).isNotBlank()) {
                 TextAction("검색 완료", {
@@ -126,21 +144,23 @@ internal fun FileToolbar(
                 })
             }
         }
-        Row(
-            Modifier.fillMaxWidth().semantics { contentDescription = "검색 범위 선택" },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            FilterChip(
-                selected = searchMode == FileSearchMode.FILES,
-                onClick = { onSearchModeChange(FileSearchMode.FILES) },
-                label = { Text("파일명·폴더") },
-            )
-            FilterChip(
-                selected = searchMode == FileSearchMode.OCR,
-                onClick = { onSearchModeChange(FileSearchMode.OCR) },
-                label = { Text("사진 속 글자") },
-            )
+        if (!compactSearchScope) {
+            Row(
+                Modifier.fillMaxWidth().semantics { contentDescription = "검색 범위 선택" },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = searchMode == FileSearchMode.FILES,
+                    onClick = { onSearchModeChange(FileSearchMode.FILES) },
+                    label = { Text("파일명·폴더") },
+                )
+                FilterChip(
+                    selected = searchMode == FileSearchMode.OCR,
+                    onClick = { onSearchModeChange(FileSearchMode.OCR) },
+                    label = { Text("사진 속 글자") },
+                )
+            }
         }
         Row(
             Modifier.fillMaxWidth().semantics { contentDescription = "파일 유형 선택" },
