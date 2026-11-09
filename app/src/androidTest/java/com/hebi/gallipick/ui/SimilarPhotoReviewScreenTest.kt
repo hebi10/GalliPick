@@ -6,6 +6,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -74,6 +75,29 @@ class SimilarPhotoReviewScreenTest {
         compose.onNodeWithContentDescription("catA.jpg 미리보기 선택").performClick()
         compose.onNodeWithText("선택 취소 · 남길 사진으로 지정").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("catB"), chosen.value) }
+    }
+
+    @Test fun photoComparisonScrollsAsOnePageAndKeepsPhotoStripHorizontal() {
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(320.dp, 420.dp)) {
+                        SimilarPhotoCompareScreen(
+                            group = group, groupIndex = 1, groupCount = 1,
+                            selectedUris = emptySet(), protectedFolders = emptySet(),
+                            onBack = {}, onToggleCandidate = {}, onOpenMedia = {}, onReview = {},
+                        )
+                    }
+                }
+            }
+        }
+        val verticalScrolls = compose.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
+        ).fetchSemanticsNodes()
+        assertEquals("Photo detail and metadata must share one vertical page scroll", 1, verticalScrolls.size)
+        compose.onNodeWithContentDescription("유사 사진 가로 비교 목록").assertExists()
+        compose.onNodeWithText("정리 후보 선택").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("원본 사진 외부 앱으로 열기").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun protectedFoldersAndFavoritesAreNeverSelectable() {
