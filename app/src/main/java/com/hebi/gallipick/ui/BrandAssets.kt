@@ -35,11 +35,11 @@ internal fun GalliIllustration(scene: GalliScene, modifier: Modifier = Modifier)
 
 @Composable
 internal fun GalliBrandMark(modifier: Modifier = Modifier) {
-    NativeIcon(
-        painter = painterResource(R.drawable.gp_brand_cat),
+    Image(
+        painter = painterResource(R.drawable.gp_brand_cat_face),
         contentDescription = null,
         modifier = modifier,
-        tint = Ink,
+        contentScale = ContentScale.Fit,
     )
 }
 

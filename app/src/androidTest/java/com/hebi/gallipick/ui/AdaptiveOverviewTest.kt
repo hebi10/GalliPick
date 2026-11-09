@@ -1,5 +1,6 @@
 package com.hebi.gallipick.ui
 
+import android.graphics.BitmapFactory
 import android.graphics.drawable.VectorDrawable
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.requiredSize
@@ -36,13 +37,23 @@ class AdaptiveOverviewTest {
             R.drawable.gp_home_duplicates,
             R.drawable.gp_home_large_file,
             R.drawable.gp_home_old_files,
-            R.drawable.gp_brand_cat,
         )
         assertEquals(assets.size, assets.distinct().size)
         assets.forEach { id ->
             val drawable = requireNotNull(compose.activity.resources.getDrawable(id, compose.activity.theme))
             assertTrue("10-B icons must remain resolution-independent vectors", drawable is VectorDrawable)
             assertTrue("Icon must have intrinsic dimensions", drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0)
+        }
+
+        val face = BitmapFactory.decodeResource(
+            compose.activity.resources, R.drawable.gp_brand_cat_face,
+        )
+        try {
+            assertEquals(192, face.width)
+            assertEquals(192, face.height)
+            assertEquals(0, android.graphics.Color.alpha(face.getPixel(0, 0)))
+        } finally {
+            face.recycle()
         }
 
         var applied: MediaFilter? = null

@@ -144,7 +144,7 @@ class GalliDesignSystemTest {
         }
     }
 
-    @Test fun monoCatBrandMarkUsesThemeInkInBothPalettesWithoutAnOpaqueTile() {
+    @Test fun monoCatBrandMarkShowsTheApprovedSmilingFaceInLightAndDark() {
         compose.setContent {
             Row {
                 GalliPickTheme(AppThemeMode.LIGHT) {
@@ -155,18 +155,46 @@ class GalliDesignSystemTest {
                 }
             }
         }
-        for ((tag, expected) in listOf(
-            "mono-cat-light" to 0x001C1E21,
-            "mono-cat-dark" to 0x00F5F6F7,
-        )) {
-            val image = compose.onNodeWithTag(tag).assertIsDisplayed().captureToImage().asAndroidBitmap()
+        for (tag in listOf("mono-cat-light", "mono-cat-dark")) {
+            val bitmap = compose.onNodeWithTag(tag).assertIsDisplayed()
+                .captureToImage().asAndroidBitmap()
             try {
-                val colored = countExactPixels(image, expected)
-                assertTrue("$tag brand glyph must be visible", colored > 12)
-                assertTrue("$tag brand glyph must remain an outline", colored < image.width * image.height * .72)
+                var darkStrokes = 0
+                var lightFace = 0
+                for (y in 0 until bitmap.height) {
+                    for (x in 0 until bitmap.width) {
+                        val pixel = bitmap.getPixel(x, y)
+                        val red = android.graphics.Color.red(pixel)
+                        val green = android.graphics.Color.green(pixel)
+                        val blue = android.graphics.Color.blue(pixel)
+                        if (red < 90 && green < 90 && blue < 90) darkStrokes++
+                        if (red > 240 && green > 235 && blue > 220) lightFace++
+                    }
+                }
+                assertTrue("$tag cat face must retain dark outline and details", darkStrokes > 24)
+                assertTrue("$tag cat face must retain a readable pale center", lightFace > 24)
             } finally {
-                image.recycle()
+                bitmap.recycle()
             }
+        }
+    }
+
+    @Test fun brandFaceAssetPreservesTransparentCornersAndSmallIconClarity() {
+        val resources = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources
+        val bitmap = android.graphics.BitmapFactory.decodeResource(
+            resources, com.hebi.gallipick.R.drawable.gp_brand_cat_face,
+        )
+        try {
+            assertEquals(192, bitmap.width)
+            assertEquals(192, bitmap.height)
+            assertEquals(0, android.graphics.Color.alpha(bitmap.getPixel(0, 0)))
+            assertTrue(
+                "Cat face center must be opaque",
+                android.graphics.Color.alpha(bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)) > 200,
+            )
+        } finally {
+            bitmap.recycle()
         }
     }
 
