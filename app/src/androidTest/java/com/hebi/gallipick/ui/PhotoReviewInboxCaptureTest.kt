@@ -103,10 +103,24 @@ class PhotoReviewInboxCaptureTest {
     }
 
     private fun capture(folder: File, name: String, manifest: JSONArray) {
-        compose.waitForIdle()
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-        SystemClock.sleep(350)
-        val bmp = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        var rendered: Bitmap? = null
+        for (attempt in 1..8) {
+            compose.waitForIdle()
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            SystemClock.sleep(280)
+            val bitmap = checkNotNull(
+                InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+            ) { "Android screenshot unavailable for $name" }
+            if (hasRenderedAppContent(bitmap)) {
+                rendered = bitmap
+                break
+            }
+            bitmap.recycle()
+            if (attempt < 8) SystemClock.sleep(320)
+        }
+        val bmp = checkNotNull(rendered) {
+            "App content did not render before screenshot for $name"
+        }
         try {
             val file = File(folder, "${name}.png")
             file.outputStream().use {
@@ -118,5 +132,22 @@ class PhotoReviewInboxCaptureTest {
         } finally {
             bmp.recycle()
         }
+    }
+
+    private fun hasRenderedAppContent(bitmap: Bitmap): Boolean {
+        val colors = HashSet<Int>()
+        val xStep = (bitmap.width / 75).coerceAtLeast(1)
+        val yStep = (bitmap.height / 100).coerceAtLeast(1)
+        for (y in bitmap.height / 10 until bitmap.height * 9 / 10 step yStep) {
+            for (x in bitmap.width / 20 until bitmap.width * 19 / 20 step xStep) {
+                val pixel = bitmap.getPixel(x, y)
+                val red = ((pixel ushr 16) and 255) / 24
+                val green = ((pixel ushr 8) and 255) / 24
+                val blue = (pixel and 255) / 24
+                colors += (red shl 8) or (green shl 4) or blue
+                if (colors.size >= 8) return true
+            }
+        }
+        return false
     }
 }
