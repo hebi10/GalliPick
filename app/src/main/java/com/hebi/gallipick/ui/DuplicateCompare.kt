@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
@@ -84,7 +85,7 @@ internal fun DuplicateCompareContent(
         val compact = maxHeight < 420.dp || maxWidth < 350.dp
         val cardWidth = if (compact) 108.dp else 136.dp
         val thumbnailHeight = if (compact) 72.dp else 106.dp
-        val panelHeight = if (maxHeight < 420.dp) 460.dp else if (maxWidth >= 720.dp) 510.dp else 550.dp
+        val previewHeight = if (maxHeight < 420.dp) 180.dp else if (maxWidth >= 720.dp) 300.dp else 260.dp
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("중복 파일 비교", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
@@ -143,7 +144,8 @@ internal fun DuplicateCompareContent(
                         onChooseKeeper = { onChooseKeeper(group, focused.uri) },
                         onToggleSelection = { onToggleSelection(focused.uri) },
                         onProtect = { onProtect(focused, !focused.isProtected) },
-                        modifier = Modifier.fillMaxWidth().height(panelHeight),
+                        previewHeight = previewHeight,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 Spacer(Modifier.height(12.dp))
@@ -164,6 +166,7 @@ private fun DuplicateComparePanel(
     onChooseKeeper: () -> Unit,
     onToggleSelection: () -> Unit,
     onProtect: () -> Unit,
+    previewHeight: Dp,
     modifier: Modifier = Modifier,
 ) {
     val candidate = item.uri in roles.candidateUris
@@ -171,18 +174,16 @@ private fun DuplicateComparePanel(
     val folderProtected = item.hasFolderProtection(roles.protectedFolders)
     Surface(modifier.border(1.dp, Line, RoundedCornerShape(16.dp)).semantics { contentDescription = "$slot 파일 비교 패널" },
         shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
             val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
             val metadataBeside = maxWidth >= 560.dp * fontScale.coerceAtMost(1.4f)
-            // A tall portrait window should bring the decision closer, not enlarge the preview indefinitely.
-            val stackedPreviewHeight = (maxHeight * .45f).coerceIn(220.dp, 280.dp)
             val header: @Composable () -> Unit = {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(roles.label(item, selectedUris), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                 }
             }
             val details: @Composable (Modifier) -> Unit = { detailModifier ->
-                Column(detailModifier.verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(detailModifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(item.displayName, style = MaterialTheme.typography.titleSmall)
                     Text(item.relativePath.ifEmpty { "기본 폴더" }, style = MaterialTheme.typography.bodySmall, color = Muted)
                     Text("${bytesLabel(item.sizeBytes)} · ${String.format(Locale.KOREA, "%,d", item.sizeBytes)} B", style = MaterialTheme.typography.bodySmall)
@@ -211,17 +212,19 @@ private fun DuplicateComparePanel(
                 if (item.kind == MediaKind.VIDEO) VideoPreview(item, previewModifier, coordinator = coordinator, controlLabel = slot)
                 else PhotoPreview(item, previewModifier, compact = true)
             }
-            Column(Modifier.fillMaxSize()) {
-                if (metadataBeside) Row(Modifier.weight(1f).fillMaxWidth()) {
-                    preview(Modifier.weight(1f).fillMaxHeight())
-                    Column(Modifier.weight(1f).fillMaxHeight()) {
-                        header()
-                        details(Modifier.weight(1f).fillMaxWidth())
+            Column(Modifier.fillMaxWidth()) {
+                if (metadataBeside) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                        preview(Modifier.weight(1f).height(previewHeight))
+                        Column(Modifier.weight(1f)) {
+                            header()
+                            details(Modifier.fillMaxWidth())
+                        }
                     }
                 } else {
                     header()
-                    preview(Modifier.height(stackedPreviewHeight).fillMaxWidth())
-                    details(Modifier.weight(1f).fillMaxWidth())
+                    preview(Modifier.fillMaxWidth().height(previewHeight))
+                    details(Modifier.fillMaxWidth())
                 }
             }
         }
