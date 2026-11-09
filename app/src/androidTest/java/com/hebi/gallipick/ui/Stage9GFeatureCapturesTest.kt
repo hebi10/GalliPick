@@ -76,11 +76,19 @@ class Stage9GFeatureCapturesTest {
             }
             val similar = SimilarPhotoGroup(
                 "similar:stage9g",
-                photos.take(2).map { SimilarPhoto(it, "0000000000000000") },
+                photos.take(2).mapIndexed { index, item ->
+                    SimilarPhoto(item, "0000000000000000",
+                        sharpnessScore = if (index == 0) 120.0 else 26.0,
+                        exposureScore = if (index == 0) 0.88 else 0.52)
+                },
             )
             val burst = SimilarPhotoGroup(
                 "burst:stage9g",
-                photos.take(2).map { SimilarPhoto(it, "0000000000000000") },
+                photos.take(2).mapIndexed { index, item ->
+                    SimilarPhoto(item, "0000000000000000",
+                        sharpnessScore = if (index == 0) 120.0 else 26.0,
+                        exposureScore = if (index == 0) 0.88 else 0.52)
+                },
             )
             val focus = listOf(
                 SoftFocusCandidate(photos[0], 4.25, similar.id),
