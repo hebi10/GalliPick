@@ -101,9 +101,10 @@ internal fun FilesScreenContent(
                 },
             ) {
                 BoxWithConstraints(Modifier.fillMaxSize()) {
-                    val useSideDetail = wide && maxWidth >= 840.dp && maxHeight >= 420.dp
+                    val screenWidth = maxWidth
+                    val useSideDetail = wide && screenWidth >= 840.dp && maxHeight >= 420.dp
                     val sideDetail = useSideDetail && detail != null
-                    val detailWidth = (maxWidth * .32f).coerceIn(280.dp, 360.dp)
+                    val detailWidth = (screenWidth * .32f).coerceIn(280.dp, 360.dp)
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Column(Modifier.weight(1f).fillMaxHeight()) {
                             when {
@@ -121,8 +122,8 @@ internal fun FilesScreenContent(
                                 }
                                 else -> {
                                     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-                                    val tabletGrid = wide && maxWidth >= 720.dp
-                                    val availableGridWidth = if (sideDetail) maxWidth - detailWidth - 14.dp else maxWidth
+                                    val tabletGrid = wide && screenWidth >= 720.dp
+                                    val availableGridWidth = if (sideDetail) screenWidth - detailWidth - 14.dp else screenWidth
                                     val tabletColumns = tabletMediaGridColumns(availableGridWidth, fontScale)
                                     if (gridView) {
                                         LazyVerticalGrid(
