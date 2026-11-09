@@ -49,6 +49,21 @@ class MediaSnapshotDatabaseTest {
         assertEquals(2, dao.photoAnalysisSession()?.completed)
     }
 
+    @Test fun reviewChoicesPersistAcrossCatalogRefreshAndClearSeparatelyFromProtection() = runBlocking {
+        val item = media("review", "primary")
+        dao.replaceAccessible(listOf(item), mapOf("primary" to "one"))
+        dao.protect(ProtectedMedia(item.uri))
+        val saved = CachedReviewChoice(
+            "similar:test", item.uri, item.fingerprint, "one", "DEFER", 1000L)
+        dao.putReviewChoice(saved)
+        dao.replaceAccessible(listOf(item), mapOf("primary" to "two"))
+        assertEquals(listOf(saved), dao.allReviewChoices())
+        assertEquals(1, dao.clearReviewChoices())
+        assertTrue(dao.allReviewChoices().isEmpty())
+        assertEquals(listOf(item), dao.allMedia())
+        assertEquals(listOf(item.uri), dao.allProtection().map { it.uri })
+    }
+
     @Test fun sharpnessAndExposureArePersistedAndInvalidatedWithPhotoFingerprint() = runBlocking {
         val item = media("sharpness", "primary")
         dao.replaceAccessible(listOf(item), mapOf("primary" to "one"))

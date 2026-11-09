@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'design-stage10e-') || startsWith(github.head_ref, 'feature-12a-') || startsWith(github.head_ref, 'feature-12b-')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'design-stage10e-') || startsWith(github.head_ref, 'feature-12a-') || startsWith(github.head_ref, 'feature-12b-') || startsWith(github.head_ref, 'feature-12c-')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -202,6 +202,13 @@ jobs:
             python3 -c "import pathlib,re; t=pathlib.Path('stage9g-instrumentation.txt').read_text(); assert not pathlib.Path('stage9g-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Stage9G feature capture instrumentation did not pass'"
             python3 scripts/qa/verify_stage9g_captures.py --stage8-audit qa/stage8-audit.json --real-native stage9g-native-captures --feature-components stage9g-feature-captures --profile "${{ matrix.name }}" --output qa/stage9g-audit.json
             python3 scripts/qa/verify_stage10e_captures.py --profile "${{ matrix.name }}" --theme "${{ matrix.theme }}" --native captures --modal modal-captures --folder stage9a-captures --real stage9g-native-captures --features stage9g-feature-captures --stage9g-audit qa/stage9g-audit.json --output qa/stage10e-audit.json
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.PhotoReviewInboxCaptureTest -e captureProfile ${{ matrix.name }} -e captureTheme ${{ matrix.theme }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > stage12c-instrumentation.txt || echo failed > stage12c-failed.txt
+            cat stage12c-instrumentation.txt
+            adb exec-out run-as com.hebi.gallipick tar -C files/stage12c-inbox-captures -cf - . > stage12c-payload.tar || true
+            mkdir -p stage12c-inbox-captures
+            tar -xf stage12c-payload.tar -C stage12c-inbox-captures || true
+            python3 -c "import pathlib,re; t=pathlib.Path('stage12c-instrumentation.txt').read_text(); assert not pathlib.Path('stage12c-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Stage12C native capture did not pass'"
+            python3 scripts/qa/verify_stage12c_captures.py --captures stage12c-inbox-captures --profile "${{ matrix.name }}" --theme "${{ matrix.theme }}" --output qa/stage12c-audit.json
       - name: Upload fresh native captures and execution record
         if: always()
         uses: actions/upload-artifact@v4
@@ -214,6 +221,10 @@ jobs:
             stage9g-feature-captures/
             stage9g-instrumentation.txt
             stage9g-failed.txt
+            stage12c-inbox-captures/
+            stage12c-instrumentation.txt
+            stage12c-failed.txt
+            qa/stage12c-audit.json
             capture-instrumentation.txt
             capture-failed.txt
             capture-progress.txt
