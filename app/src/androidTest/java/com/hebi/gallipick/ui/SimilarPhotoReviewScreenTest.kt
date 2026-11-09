@@ -1,5 +1,7 @@
 package com.hebi.gallipick.ui
 
+import android.content.ContentUris
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.Surface
@@ -13,6 +15,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.hebi.gallipick.Stage7aFixtureMedia
 import com.hebi.gallipick.domain.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -122,6 +125,97 @@ class SimilarPhotoReviewScreenTest {
             SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
         ).fetchSemanticsNodes()
         assertEquals("Tablet comparison must retain one vertical scroller", 1, verticalScrolls.size)
+    }
+
+    @Test fun abModePreservesManualSelectionAndAllowsSwitchingBack() {
+        var selectionCalls = 0
+        val selected = mutableStateOf(setOf<String>())
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(360.dp, 820.dp)) {
+                        SimilarPhotoCompareScreen(
+                            group = group, groupIndex = 1, groupCount = 1,
+                            selectedUris = selected.value, protectedFolders = emptySet(),
+                            onBack = {}, onToggleCandidate = {
+                                selectionCalls++
+                                selected.value = if (it in selected.value) selected.value - it else selected.value + it
+                            }, onOpenMedia = {}, onReview = {},
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("A/B 사진 비교 전환").performClick()
+        compose.onNodeWithContentDescription("A 사진 미리보기").assertExists()
+        compose.onNodeWithContentDescription("B 사진 미리보기").assertExists()
+        compose.onNodeWithContentDescription("catC.jpg 미리보기 선택").performClick()
+        compose.runOnIdle { assertEquals(0, selectionCalls) }
+        compose.onNodeWithText("A 정리 후보 선택").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(setOf("catA"), selected.value) }
+        compose.onNodeWithContentDescription("슬라이더 비교 모드").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("A/B 슬라이더 위치").assertExists()
+        compose.onNodeWithContentDescription("A/B 사진 비교 전환").performClick()
+        compose.onNodeWithText("정리 후보 선택").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun abZoomSyncAndTabletPreviewUseRealDecodableMedia() {
+        val context = compose.activity
+        val now = System.currentTimeMillis()
+        val samples = (1..2).map { index ->
+            Stage7aFixtureMedia.insert(
+                context, "EXAMPLE_AB_compare_${index}.jpg", "image/jpeg",
+                Stage7aFixtureMedia.sceneJpeg(index), now, "Pictures/GalliPick_AB_Test/",
+            )
+        }
+        try {
+            val photos = samples.mapIndexed { index, sample ->
+                val item = photo("real${index}", "000000000000000${index}").item.copy(
+                    uri = sample.uri.toString(), id = ContentUris.parseId(sample.uri),
+                    volume = MediaStore.VOLUME_EXTERNAL_PRIMARY, displayName = sample.name,
+                )
+                SimilarPhoto(item, "000000000000000${index}")
+            }
+            val actual = SimilarPhotoGroup("ab-fixture", photos)
+            compose.setContent {
+                GalliPickTheme {
+                    CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                        Surface(Modifier.requiredSize(1100.dp, 820.dp)) {
+                            SimilarPhotoCompareScreen(
+                                group = actual, groupIndex = 1, groupCount = 1,
+                                selectedUris = emptySet(), protectedFolders = emptySet(),
+                                onBack = {}, onToggleCandidate = {}, onOpenMedia = {}, onReview = {},
+                            )
+                        }
+                    }
+                }
+            }
+            compose.onNodeWithContentDescription("A/B 사진 비교 전환").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("A 사진: ${samples[0].name}")
+                    .fetchSemanticsNodes().isNotEmpty() &&
+                compose.onAllNodesWithContentDescription("B 사진: ${samples[1].name}")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithTag("AB-A-preview").assertIsDisplayed().assertHeightIsAtLeast(250.dp)
+            compose.onNodeWithContentDescription("A/B 확대").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("A 사진 미리보기")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "150% 확대"))
+            compose.onNodeWithContentDescription("B 사진 미리보기")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "150% 확대"))
+            compose.onNodeWithContentDescription("A/B 확대 동기화").performClick()
+            compose.onNodeWithContentDescription("A/B 확대").performClick()
+            compose.onNodeWithContentDescription("A 사진 미리보기")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "225% 확대"))
+            compose.onNodeWithContentDescription("B 사진 미리보기")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "150% 확대"))
+            val scrollers = compose.onAllNodes(
+                SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
+            ).fetchSemanticsNodes()
+            assertEquals("A/B tablet comparison must retain a single page scroller", 1, scrollers.size)
+        } finally {
+            samples.forEach { context.contentResolver.delete(it.uri, null, null) }
+        }
     }
 
     @Test fun protectedFoldersAndFavoritesAreNeverSelectable() {
