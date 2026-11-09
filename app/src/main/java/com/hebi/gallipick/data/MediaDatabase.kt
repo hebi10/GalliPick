@@ -22,6 +22,8 @@ import com.hebi.gallipick.domain.CleanupHistoryEntry
 import com.hebi.gallipick.domain.ScanState
 import com.hebi.gallipick.domain.PhotoAnalysisPhase
 import com.hebi.gallipick.domain.PhotoAnalysisState
+import com.hebi.gallipick.domain.OcrPhase
+import com.hebi.gallipick.domain.OcrScanState
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "media_cache")
@@ -78,6 +80,31 @@ internal data class CachedPhotoHash(
     val sharpnessScore: Double? = null,
     val exposureScore: Double? = null,
 )
+
+@Entity(tableName = "photo_ocr_index")
+internal data class CachedOcrIndex(
+    @PrimaryKey val uri: String,
+    val fingerprint: String,
+    val volumeVersion: String,
+    val recognizedText: String,
+    val status: String,
+)
+
+@Entity(tableName = "photo_ocr_session")
+internal data class OcrScanSession(
+    @PrimaryKey val id: Int = 1,
+    val token: String = "",
+    val phase: String = OcrPhase.IDLE.name,
+    val completed: Int = 0,
+    val total: Int = 0,
+    val skipped: Int = 0,
+    val message: String = "",
+) {
+    fun state() = OcrScanState(
+        phase = runCatching { OcrPhase.valueOf(phase) }.getOrDefault(OcrPhase.IDLE),
+        completed = completed, total = total, skipped = skipped, message = message,
+    )
+}
 
 @Entity(tableName = "photo_review_choice", primaryKeys = ["groupId", "uri"])
 internal data class CachedReviewChoice(
@@ -175,6 +202,27 @@ internal abstract class MediaDao {
     abstract suspend fun prunePhotoHashes()
     @Query("DELETE FROM photo_perceptual_hash WHERE uri IN (SELECT uri FROM media_cache WHERE volume IN (:volumes))")
     abstract suspend fun invalidateVolumePhotoHashes(volumes: Set<String>)
+    @Query("DELETE FROM photo_ocr_index WHERE NOT EXISTS (SELECT 1 FROM media_cache AS m WHERE m.uri = photo_ocr_index.uri AND m.fingerprint = photo_ocr_index.fingerprint AND m.isTrashed = 0)")
+    abstract suspend fun pruneOcrIndex()
+    @Query("DELETE FROM photo_ocr_index WHERE uri IN (SELECT uri FROM media_cache WHERE volume IN (:volumes))")
+    abstract suspend fun invalidateVolumeOcrIndex(volumes: Set<String>)
+    @Query("SELECT * FROM photo_ocr_index")
+    abstract fun observeOcrIndex(): Flow<List<CachedOcrIndex>>
+    @Query("SELECT * FROM photo_ocr_index")
+    abstract suspend fun allOcrIndex(): List<CachedOcrIndex>
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun putOcrIndex(index: CachedOcrIndex)
+    @Query("DELETE FROM photo_ocr_index")
+    abstract suspend fun clearOcrIndex()
+    @Query("DELETE FROM photo_ocr_index WHERE status = 'FAILED'")
+    abstract suspend fun clearFailedOcrIndex()
+    @Query("SELECT * FROM photo_ocr_session WHERE id = 1")
+    abstract fun observeOcrSession(): Flow<OcrScanSession?>
+    @Query("SELECT * FROM photo_ocr_session WHERE id = 1")
+    abstract suspend fun ocrSession(): OcrScanSession?
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun setOcrSession(session: OcrScanSession)
+
     @Query("SELECT * FROM photo_perceptual_hash")
     abstract fun observePhotoHashes(): Flow<List<CachedPhotoHash>>
     @Query("SELECT * FROM photo_perceptual_hash")
@@ -231,11 +279,13 @@ internal abstract class MediaDao {
         if (invalidated.isNotEmpty()) {
             invalidateVolumeHashes(invalidated)
             invalidateVolumePhotoHashes(invalidated)
+            invalidateVolumeOcrIndex(invalidated)
         }
         deleteMedia()
         insertMedia(items)
         pruneHashes()
         prunePhotoHashes()
+        pruneOcrIndex()
         deleteVolumeVersions()
         insertVolumeVersions(versions.map { (volume, version) -> MediaVolumeVersion(volume, version) })
     }
@@ -282,8 +332,8 @@ internal abstract class MediaDao {
     entities = [CachedMedia::class, CachedHash::class, ProtectedMedia::class,
         ProtectedFolder::class, ScanSession::class, MediaVolumeVersion::class,
         CachedPhotoHash::class, PhotoAnalysisSession::class, CachedCleanupHistory::class,
-        CachedReviewChoice::class],
-    version = 7,
+        CachedReviewChoice::class, CachedOcrIndex::class, OcrScanSession::class],
+    version = 8,
     exportSchema = false,
 )
 internal abstract class MediaDatabase : RoomDatabase() {
@@ -339,10 +389,28 @@ internal abstract class MediaDatabase : RoomDatabase() {
             }
         }
 
+        private val migration7To8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS photo_ocr_index (" +
+                        "uri TEXT NOT NULL PRIMARY KEY, fingerprint TEXT NOT NULL, " +
+                        "volumeVersion TEXT NOT NULL, recognizedText TEXT NOT NULL, " +
+                        "status TEXT NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS photo_ocr_session (" +
+                        "id INTEGER NOT NULL PRIMARY KEY, token TEXT NOT NULL, " +
+                        "phase TEXT NOT NULL, completed INTEGER NOT NULL, " +
+                        "total INTEGER NOT NULL, skipped INTEGER NOT NULL, " +
+                        "message TEXT NOT NULL)"
+                )
+            }
+        }
+
         @Volatile private var instance: MediaDatabase? = null
         fun get(context: Context): MediaDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext,
-                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6, migration6To7).build().also { instance = it }
+                MediaDatabase::class.java, "gallipick-local.db").addMigrations(migration1To2, migration2To3, migration3To4, migration4To5, migration5To6, migration6To7, migration7To8).build().also { instance = it }
         }
     }
 }
