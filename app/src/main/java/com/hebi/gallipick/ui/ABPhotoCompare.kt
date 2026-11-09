@@ -198,6 +198,18 @@ internal fun ABPhotoComparison(
                     synchronized = enabled
                 }, modifier = Modifier.semantics { contentDescription = "A/B 확대 동기화" })
             }
+            if (!synchronized) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("A", "B").forEach { slot ->
+                        TextButton(
+                            onClick = { activeSlot = slot },
+                            modifier = Modifier.semantics { contentDescription = "$slot 확대 대상" },
+                        ) {
+                            Text("$slot 개별 조절", color = if (activeSlot == slot) Primary else Muted)
+                        }
+                    }
+                }
+            }
             if (mode == "side") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("A" to a, "B" to b).forEach { (slot, item) ->
