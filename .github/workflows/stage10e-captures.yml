@@ -209,6 +209,13 @@ jobs:
             tar -xf stage12c-payload.tar -C stage12c-inbox-captures || true
             python3 -c "import pathlib,re; t=pathlib.Path('stage12c-instrumentation.txt').read_text(); assert not pathlib.Path('stage12c-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'Stage12C native capture did not pass'"
             python3 scripts/qa/verify_stage12c_captures.py --captures stage12c-inbox-captures --profile "${{ matrix.name }}" --theme "${{ matrix.theme }}" --output qa/stage12c-audit.json
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.PhotoOcrNativeCaptureTest -e captureProfile ${{ matrix.name }} -e captureTheme ${{ matrix.theme }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > stage13a-instrumentation.txt || echo failed > stage13a-failed.txt
+            cat stage13a-instrumentation.txt
+            adb exec-out run-as com.hebi.gallipick tar -C files/stage13a-ocr-captures -cf - . > stage13a-payload.tar || true
+            mkdir -p stage13a-ocr-captures
+            tar -xf stage13a-payload.tar -C stage13a-ocr-captures || true
+            python3 -c "import pathlib,re; t=pathlib.Path('stage13a-instrumentation.txt').read_text(); assert not pathlib.Path('stage13a-failed.txt').exists() and re.search(r'OK \(\d+ tests?\)',t), 'OCR native capture instrumentation failed'"
+            python3 scripts/qa/verify_stage13a_captures.py --captures stage13a-ocr-captures --profile "${{ matrix.name }}" --theme "${{ matrix.theme }}" --output qa/stage13a-audit.json
       - name: Upload fresh native captures and execution record
         if: always()
         uses: actions/upload-artifact@v4
@@ -224,6 +231,10 @@ jobs:
             stage12c-inbox-captures/
             stage12c-instrumentation.txt
             stage12c-failed.txt
+            stage13a-ocr-captures/
+            stage13a-instrumentation.txt
+            stage13a-failed.txt
+            qa/stage13a-audit.json
             qa/stage12c-audit.json
             capture-instrumentation.txt
             capture-failed.txt
