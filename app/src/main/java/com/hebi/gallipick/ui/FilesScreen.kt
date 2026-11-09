@@ -120,18 +120,34 @@ internal fun FilesScreenContent(
                             onOcrQueryChange = { ocrQuery = it },
                         )
                         if (searchMode == FileSearchMode.OCR) {
-                            PhotoOcrIndexPanel(state, actions.startOcr, actions.pauseOcr,
-                                actions.resumeOcr, requestAccess)
+                            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                val tabletSidebar = wide &&
+                                    maxWidth >= 900.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                                if (!tabletSidebar) {
+                                    PhotoOcrIndexPanel(state, actions.startOcr, actions.pauseOcr,
+                                        actions.resumeOcr, requestAccess)
+                                }
+                            }
                         }
                     }
                 },
             ) {
                 BoxWithConstraints(Modifier.fillMaxSize()) {
                     val screenWidth = maxWidth
-                    val useSideDetail = wide && screenWidth >= 840.dp && maxHeight >= 420.dp
+                    val screenFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+                    val ocrSidebar = searchMode == FileSearchMode.OCR && wide &&
+                        screenWidth >= 900.dp * screenFontScale
+                    val sidebarWidth = (screenWidth * .28f).coerceIn(240.dp, 320.dp)
+                    val useSideDetail = !ocrSidebar && wide && screenWidth >= 840.dp && maxHeight >= 420.dp
                     val sideDetail = useSideDetail && detail != null
                     val detailWidth = (screenWidth * .32f).coerceIn(280.dp, 360.dp)
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        if (ocrSidebar) {
+                            Box(Modifier.width(sidebarWidth).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                                PhotoOcrIndexPanel(state, actions.startOcr, actions.pauseOcr,
+                                    actions.resumeOcr, requestAccess)
+                            }
+                        }
                         Column(Modifier.weight(1f).fillMaxHeight()) {
                             when {
                                 state.access == MediaAccess.NONE -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
@@ -164,7 +180,10 @@ internal fun FilesScreenContent(
                                 else -> {
                                     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
                                     val tabletGrid = wide && screenWidth >= 720.dp
-                                    val availableGridWidth = if (sideDetail) screenWidth - detailWidth - 14.dp else screenWidth
+                                    val availableGridWidth = if (sideDetail)
+                                        screenWidth - detailWidth - 14.dp
+                                    else if (ocrSidebar) screenWidth - sidebarWidth - 14.dp
+                                    else screenWidth
                                     val tabletColumns = tabletMediaGridColumns(availableGridWidth, fontScale)
                                     if (gridView) {
                                         LazyVerticalGrid(
