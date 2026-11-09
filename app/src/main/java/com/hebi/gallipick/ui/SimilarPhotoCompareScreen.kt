@@ -47,12 +47,16 @@ internal fun SimilarPhotoCompareScreen(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val horizontal = maxWidth >= 700.dp && maxHeight > 400.dp
         val thumbnailWidth = if (maxWidth < 350.dp) 102.dp else 132.dp
-        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val previewHeight = if (horizontal) (maxHeight * .45f).coerceIn(220.dp, 340.dp) else 260.dp
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconAction("유사 사진 목록으로 돌아가기", Icons.Outlined.ArrowBack, onClick = onBack)
                 Text(title, style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).semantics { heading() })
             }
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(
                 Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(GalliUiMetrics.cardCorner))
                     .padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -125,18 +129,19 @@ internal fun SimilarPhotoCompareScreen(
                 }
             }
             if (horizontal) {
-                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                        MediaThumbnail(focused, Modifier.fillMaxWidth().fillMaxHeight(), ContentScale.Fit)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top) {
+                    Box(Modifier.weight(1f).height(previewHeight), contentAlignment = Alignment.Center) {
+                        MediaThumbnail(focused, Modifier.fillMaxSize(), ContentScale.Fit)
                     }
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { details() }
+                    Column(Modifier.weight(1f)) { details() }
                 }
             } else {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MediaThumbnail(focused, Modifier.fillMaxWidth().height(260.dp), ContentScale.Fit)
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MediaThumbnail(focused, Modifier.fillMaxWidth().height(previewHeight), ContentScale.Fit)
                     details()
                 }
+            }
             }
             Text("사진은 자동 삭제되지 않습니다. Android 확인창에서 최종 이동 대상을 검토합니다.",
                 style = MaterialTheme.typography.bodySmall, color = Muted)
