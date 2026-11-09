@@ -125,7 +125,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val record = lookup[item.uri]
                     if (item.kind != MediaKind.PHOTO || item.isTrashed || record?.phash == null ||
                         record.fingerprint != item.fingerprint || record.volumeVersion != item.volumeVersion) null
-                    else SimilarPhoto(item, record.phash)
+                    else SimilarPhoto(item, record.phash, record.sharpnessScore, record.exposureScore)
                 }
                 val similar = SimilarPhotoGrouper.groups(photos)
                 val scores = photos.associate { it.item.uri to lookup[it.item.uri]?.sharpnessScore }
