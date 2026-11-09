@@ -86,7 +86,13 @@ class PhotoOcrNativeCaptureTest {
                 }
             }
             val captures = JSONArray()
-            compose.onNodeWithText("사진 속 글자").performClick()
+            if (compose.onAllNodesWithContentDescription("검색 범위 변경")
+                    .fetchSemanticsNodes().isNotEmpty()) {
+                compose.onNodeWithContentDescription("검색 범위 변경").performClick()
+                compose.onNodeWithText("사진 속 글자").performClick()
+            } else {
+                compose.onNodeWithText("사진 속 글자").performClick()
+            }
             compose.onNodeWithText("사진 속 글자 검색 · 로컬 OCR").assertExists()
             capture(output, "01-ocr-scope", captures)
             compose.onNodeWithContentDescription("사진 속 글자 검색").performTextInput("서울")
