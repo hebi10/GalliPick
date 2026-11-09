@@ -18,6 +18,8 @@ import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.domain.TrashOutcomePolicy
 import com.hebi.gallipick.domain.CleanupHistoryEntry
 import com.hebi.gallipick.domain.CleanupHistoryPolicy
+import com.hebi.gallipick.domain.PhotoReviewDecision
+import com.hebi.gallipick.domain.PhotoReviewEntry
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +52,20 @@ class MediaRepository(context: Context) {
     val duplicates: Flow<List<DuplicateGroup>> = catalog.duplicates
     internal val photoHashes: Flow<List<CachedPhotoHash>> = dao.observePhotoHashes()
     val photoAnalysis: Flow<PhotoAnalysisState> = dao.observePhotoAnalysis().map { it?.state() ?: PhotoAnalysisState() }
+    val reviewEntries: Flow<List<PhotoReviewEntry>> = dao.observeReviewChoices().map { rows ->
+        rows.mapNotNull { row ->
+            val decision = runCatching { PhotoReviewDecision.valueOf(row.decision) }.getOrNull()
+                ?: return@mapNotNull null
+            PhotoReviewEntry(
+                groupId = row.groupId,
+                uri = row.uri,
+                fingerprint = row.fingerprint,
+                volumeVersion = row.volumeVersion,
+                decision = decision,
+                updatedAtMs = row.updatedAtMs,
+            )
+        }
+    }
     val cleanupHistory: Flow<List<CleanupHistoryEntry>> =
         dao.observeCleanupHistory().map { rows -> rows.map(CachedCleanupHistory::entry) }
 
@@ -155,6 +171,17 @@ class MediaRepository(context: Context) {
                 message = "완료한 사진부터 이어서 분석합니다."))
             enqueuePhotoAnalysis(token, ExistingWorkPolicy.APPEND_OR_REPLACE)
         }
+    }
+
+    suspend fun saveReviewDecision(entry: PhotoReviewEntry) = withContext(Dispatchers.IO) {
+        dao.putReviewChoice(CachedReviewChoice(
+            entry.groupId, entry.uri, entry.fingerprint, entry.volumeVersion,
+            entry.decision.name, entry.updatedAtMs,
+        ))
+    }
+
+    suspend fun clearReviewDecisions() = withContext(Dispatchers.IO) {
+        dao.clearReviewChoices()
     }
 
     suspend fun setProtected(uri: String, protected: Boolean) = withContext(Dispatchers.IO) {
