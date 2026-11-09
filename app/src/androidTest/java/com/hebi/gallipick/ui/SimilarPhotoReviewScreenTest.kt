@@ -31,6 +31,35 @@ class SimilarPhotoReviewScreenTest {
         photo("catC", "0000000000000003"),
     ))
 
+    @Test fun bestCutReasonCanExpandWithoutSelectingAnyCleanupCandidate() {
+        val rated = group.copy(photos = group.photos.mapIndexed { index, photo ->
+            photo.copy(
+                sharpnessScore = when (index) { 0 -> 180.0; 1 -> 25.0; else -> 10.0 },
+                exposureScore = when (index) { 0 -> 0.92; 1 -> 0.45; else -> 0.48 },
+            )
+        })
+        var selectionCalls = 0
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(360.dp, 850.dp)) {
+                        SimilarPhotoCompareScreen(
+                            group = rated, groupIndex = 1, groupCount = 1,
+                            selectedUris = emptySet(), protectedFolders = emptySet(),
+                            onBack = {}, onToggleCandidate = { selectionCalls++ },
+                            onOpenMedia = {}, onReview = {},
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("추천 사진").performScrollTo().assertExists()
+        compose.onNodeWithText("추천 이유 보기").performScrollTo().performClick()
+        compose.onNodeWithText("선명도 추정값이 상대적으로 높습니다.")
+            .performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, selectionCalls) }
+    }
+
     @Test fun groupListShowsGenuineFilesAndOnlyOpensCompareOnTap() {
         var opened: String? = null
         var trashCount = 0
