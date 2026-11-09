@@ -42,13 +42,17 @@ internal data class FilesScreenActions(
     val deletePreset: (String) -> Unit,
     val setProtected: (MediaItem, Boolean) -> Unit,
     val refresh: () -> Unit,
+    val startOcr: () -> Unit = {},
+    val pauseOcr: () -> Unit = {},
+    val resumeOcr: () -> Unit = {},
 )
 
 @Composable
 internal fun FilesScreen(state: AppUiState, vm: AppViewModel, wide: Boolean, trash: (List<MediaItem>) -> Unit, open: (MediaItem) -> Unit, requestAccess: () -> Unit) {
     FilesScreenContent(state, wide, trash, open, requestAccess, FilesScreenActions(
         vm::setFilter, vm::selectAllFiltered, vm::toggleSelection, vm::clearSelection,
-        vm::savePreset, vm::deletePreset, { item, protected -> vm.setProtected(item, protected) }, vm::refresh,
+        vm::savePreset, vm::deletePreset, { item, protected -> vm.setProtected(item, protected) },
+        vm::refresh, vm::startOcrIndex, vm::pauseOcrIndex, vm::resumeOcrIndex,
     ))
 }
 
@@ -64,6 +68,8 @@ internal fun FilesScreenContent(
     var showFilter by remember { mutableStateOf(false) }
     var showSave by remember { mutableStateOf(false) }
     var gridView by rememberSaveable { mutableStateOf(true) }
+    var searchMode by rememberSaveable { mutableStateOf(FileSearchMode.FILES) }
+    var ocrQuery by rememberSaveable { mutableStateOf("") }
     var detailUri by rememberSaveable { mutableStateOf<String?>(null) }
     val gridState = rememberLazyGridState()
     var previousFilter by remember { mutableStateOf(state.filter) }
@@ -75,7 +81,13 @@ internal fun FilesScreenContent(
     }
     val catalogVisible = !state.loading && state.catalogError == null && state.access != MediaAccess.NONE
     val visibleItems = if (catalogVisible) state.items else emptyList()
-    val filtered = if (catalogVisible) state.filtered else emptyList()
+    val ocrRows = remember(visibleItems, state.ocrEntries) {
+        PhotoOcrIndexPolicy.valid(visibleItems, state.ocrEntries)
+    }
+    val filtered = if (!catalogVisible) emptyList() else if (searchMode == FileSearchMode.OCR) {
+        val base = MediaQuery.apply(visibleItems, state.filter.copy(query = ""))
+        PhotoOcrIndexPolicy.searchable(base, state.ocrEntries, ocrQuery)
+    } else state.filtered
     val detail = visibleItems.find { it.uri == detailUri }
     val selected = filtered.filter { it.uri in state.selected && it.canTrash() }
     val groupByDate = state.filter.groupByDate
@@ -94,20 +106,55 @@ internal fun FilesScreenContent(
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             ScrollAwayHeaderLayout(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                resetKey = state.filter to (state.catalogError != null || state.access == MediaAccess.NONE),
+                resetKey = Triple(state.filter, searchMode, ocrQuery) to
+                    (state.catalogError != null || state.access == MediaAccess.NONE),
                 header = {
-                    FileToolbar(state.filter, state.presets, actions.setFilter,
-                        advanced = { showFilter = true }, save = { showSave = true }, deletePreset = actions.deletePreset,
-                        gridView = gridView, onGridViewChange = { gridView = it })
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FileToolbar(state.filter, state.presets, actions.setFilter,
+                            advanced = { showFilter = true }, save = { showSave = true },
+                            deletePreset = actions.deletePreset, gridView = gridView,
+                            onGridViewChange = { gridView = it }, searchMode = searchMode,
+                            ocrQuery = ocrQuery,
+                            onSearchModeChange = { searchMode = it; detailUri = null },
+                            onOcrQueryChange = { ocrQuery = it },
+                        )
+                    }
                 },
             ) {
                 BoxWithConstraints(Modifier.fillMaxSize()) {
                     val screenWidth = maxWidth
-                    val useSideDetail = wide && screenWidth >= 840.dp && maxHeight >= 420.dp
+                    val availableBodyHeight = maxHeight
+                    val screenFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+                    val ocrSidebar = searchMode == FileSearchMode.OCR && wide &&
+                        screenWidth >= 900.dp * screenFontScale
+                    val sidebarWidth = (screenWidth * .28f).coerceIn(240.dp, 320.dp)
+                    val useSideDetail = !ocrSidebar && wide && screenWidth >= 840.dp && maxHeight >= 420.dp
                     val sideDetail = useSideDetail && detail != null
                     val detailWidth = (screenWidth * .32f).coerceIn(280.dp, 360.dp)
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        if (ocrSidebar) {
+                            Box(Modifier.width(sidebarWidth).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                                PhotoOcrIndexPanel(state, actions.startOcr, actions.pauseOcr,
+                                    actions.resumeOcr, requestAccess)
+                            }
+                        }
                         Column(Modifier.weight(1f).fillMaxHeight()) {
+                            if (searchMode == FileSearchMode.OCR && !ocrSidebar) {
+                                val panelHeight = minOf(
+                                    240.dp,
+                                    maxOf(84.dp, availableBodyHeight * .42f),
+                                    availableBodyHeight * .60f,
+                                )
+                                Box(
+                                    Modifier.fillMaxWidth().height(panelHeight)
+                                        .verticalScroll(rememberScrollState()),
+                                ) {
+                                    PhotoOcrIndexPanel(
+                                        state, actions.startOcr, actions.pauseOcr,
+                                        actions.resumeOcr, requestAccess,
+                                    )
+                                }
+                            }
                             when {
                                 state.access == MediaAccess.NONE -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("미디어 접근이 필요합니다", "허용한 파일만 이곳에 표시됩니다.", action = { ActionButton("접근 허용", requestAccess, filled = true) })
@@ -118,13 +165,31 @@ internal fun FilesScreenContent(
                                 state.loading -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.")
                                 }
+                                searchMode == FileSearchMode.OCR && ocrQuery.isBlank() ->
+                                    Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                        EmptyState("검색어를 입력해 주세요",
+                                            "사진 속 글자 모드입니다. 분석을 마친 사진에서 한국어·영문 단어를 검색합니다.",
+                                            scene = GalliScene.SEARCH)
+                                    }
                                 filtered.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-                                    EmptyState("조건에 맞는 파일이 없습니다", "접근 범위와 필터 조건을 확인해주세요.", action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) }, scene = GalliScene.SEARCH)
+                                    if (searchMode == FileSearchMode.OCR) {
+                                        EmptyState("일치하는 사진 속 글자가 없습니다",
+                                            "현재 접근 가능하고 글자 분석을 마친 사진만 검색했습니다. 미분석·권한 제외·인식 실패 사진은 결과에 포함되지 않습니다.",
+                                            scene = GalliScene.SEARCH)
+                                    } else {
+                                        EmptyState("조건에 맞는 파일이 없습니다",
+                                            "접근 범위와 필터 조건을 확인해주세요.",
+                                            action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) },
+                                            scene = GalliScene.SEARCH)
+                                    }
                                 }
                                 else -> {
                                     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
                                     val tabletGrid = wide && screenWidth >= 720.dp
-                                    val availableGridWidth = if (sideDetail) screenWidth - detailWidth - 14.dp else screenWidth
+                                    val availableGridWidth = if (sideDetail)
+                                        screenWidth - detailWidth - 14.dp
+                                    else if (ocrSidebar) screenWidth - sidebarWidth - 14.dp
+                                    else screenWidth
                                     val tabletColumns = tabletMediaGridColumns(availableGridWidth, fontScale)
                                     if (gridView) {
                                         LazyVerticalGrid(
@@ -144,14 +209,20 @@ internal fun FilesScreenContent(
                                                     items(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
                                                             { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
-                                                            state.filter.sortField, tabletGrid = tabletGrid)
+                                                            state.filter.sortField, tabletGrid = tabletGrid,
+                                                            ocrText = if (searchMode == FileSearchMode.OCR)
+                                                                ocrRows[item.uri]?.recognizedText else null,
+                                                            ocrQuery = ocrQuery)
                                                     }
                                                 }
                                             } else {
                                                 items(filtered, key = { it.uri }) { item ->
                                                     MediaTile(item, item.uri in state.selected,
                                                         { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
-                                                        state.filter.sortField, tabletGrid = tabletGrid)
+                                                        state.filter.sortField, tabletGrid = tabletGrid,
+                                                            ocrText = if (searchMode == FileSearchMode.OCR)
+                                                                ocrRows[item.uri]?.recognizedText else null,
+                                                            ocrQuery = ocrQuery)
                                                 }
                                             }
                                         }
@@ -170,14 +241,20 @@ internal fun FilesScreenContent(
                                                         MediaTile(item, item.uri in state.selected,
                                                             { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
                                                             state.filter.sortField, listView = true,
-                                                            dateMs = MediaQuery.dateOf(item, state.filter.dateField))
+                                                            dateMs = MediaQuery.dateOf(item, state.filter.dateField),
+                                                            ocrText = if (searchMode == FileSearchMode.OCR)
+                                                                ocrRows[item.uri]?.recognizedText else null,
+                                                            ocrQuery = ocrQuery)
                                                     }
                                                 }
                                             } else {
                                                 listItems(filtered, key = { it.uri }) { item ->
                                                     MediaTile(item, item.uri in state.selected,
                                                         { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
-                                                        state.filter.sortField, listView = true)
+                                                        state.filter.sortField, listView = true,
+                                                        ocrText = if (searchMode == FileSearchMode.OCR)
+                                                            ocrRows[item.uri]?.recognizedText else null,
+                                                        ocrQuery = ocrQuery)
                                                 }
                                             }
                                         }
@@ -193,11 +270,21 @@ internal fun FilesScreenContent(
                                     Text("파일 정보", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                     IconAction("파일 상세 닫기", Icons.Outlined.Close) { detailUri = null }
                                 }
-                                MediaDetail(detail, open, { actions.setProtected(detail, it) }, Modifier.weight(1f), detail.hasFolderProtection(state.protectedFolders))
+                                MediaDetail(detail, open, { actions.setProtected(detail, it) },
+                                    Modifier.weight(1f), detail.hasFolderProtection(state.protectedFolders),
+                                    ocrText = if (searchMode == FileSearchMode.OCR)
+                                        ocrRows[detail.uri]?.recognizedText else null,
+                                    ocrQuery = ocrQuery)
                             }
                         }
                     }
-                    if (!useSideDetail && detail != null) MediaDetailDialog(detail, { detailUri = null }, open, { actions.setProtected(detail, it) }, detail.hasFolderProtection(state.protectedFolders))
+                    if (!useSideDetail && detail != null) MediaDetailDialog(
+                        detail, { detailUri = null }, open,
+                        { actions.setProtected(detail, it) }, detail.hasFolderProtection(state.protectedFolders),
+                        ocrText = if (searchMode == FileSearchMode.OCR)
+                            ocrRows[detail.uri]?.recognizedText else null,
+                        ocrQuery = ocrQuery,
+                    )
                 }
             }
 
@@ -265,6 +352,8 @@ private fun MediaTile(
     listView: Boolean = false,
     dateMs: Long = item.capturedAt,
     tabletGrid: Boolean = false,
+    ocrText: String? = null,
+    ocrQuery: String = "",
 ) {
     if (listView) {
         Row(
@@ -280,6 +369,11 @@ private fun MediaTile(
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(dateMs).substringBefore(" "),
                     style = MaterialTheme.typography.bodySmall, color = Muted)
+                if (ocrText != null) {
+                    Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery),
+                        style = MaterialTheme.typography.labelSmall, color = Muted,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
                 if (item.kind == MediaKind.VIDEO) {
                     Text(durationLabel(item.durationMs), style = MaterialTheme.typography.labelSmall, color = Muted)
                 }
@@ -331,6 +425,11 @@ private fun MediaTile(
             if (tabletGrid) {
                 Text(bytesLabel(item.sizeBytes), style = MaterialTheme.typography.labelSmall,
                     color = Muted, maxLines = 1)
+            }
+            if (ocrText != null) {
+                Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery, 72),
+                    style = MaterialTheme.typography.labelSmall, color = Muted,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }

@@ -565,6 +565,7 @@ private fun CleanupCategoryIcon(suggestion: CleanupSuggestion, modifier: Modifie
 internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: () -> Unit, openSettings: () -> Unit, openTrash: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     var confirmClear by remember { mutableStateOf(false) }
+    var confirmClearOcr by remember { mutableStateOf(false) }
     var showProtectedFolders by remember { mutableStateOf(false) }
     val folders = remember(state.items, state.protectedFolders) {
         val observed = state.items.groupBy { normalizeUiFolder(it.relativePath) }
@@ -681,6 +682,13 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
                 Text("중복 분석 결과와 해시 캐시를 비웁니다. 사진·동영상 원본은 유지됩니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 ActionButton("분석 캐시 비우기", { confirmClear = true })
             }
+            SettingsSection("사진 글자 검색 데이터") {
+                Text("기기 안에 저장된 사진 속 글자 색인 ${state.ocrEntries.size}건을 관리합니다.",
+                    color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("초기화해도 사진·동영상 원본, 기존 사진 분석 결과, 보호 설정은 유지됩니다.",
+                    color = Muted, style = MaterialTheme.typography.bodySmall)
+                ActionButton("사진 글자 색인 초기화", { confirmClearOcr = true })
+            }
             SettingsSection("개인정보") {
                 Text("미디어와 분석 결과는 외부로 전송하지 않습니다. 인터넷 연결 없이 작동하며 서버에 파일을 업로드하지 않습니다.", style = MaterialTheme.typography.bodyMedium)
                 Text("사진 위치정보 접근은 원본 사진의 중복 검사에만 사용합니다. GPS 위치를 추적하거나 현재 위치를 수집하지 않습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
@@ -697,6 +705,18 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
     if (confirmClear) ClearAnalysisCacheDialog(
         onConfirm = { vm.clearAnalysisCache(); confirmClear = false },
         onDismiss = { confirmClear = false },
+    )
+    if (confirmClearOcr) AlertDialog(
+        onDismissRequest = { confirmClearOcr = false },
+        title = { Text("사진 글자 색인 초기화") },
+        text = { Text("기기 안에 저장된 OCR 글자 검색 기록만 삭제합니다. 원본 사진과 정리 기록·보호 설정은 유지됩니다.") },
+        confirmButton = {
+            ActionButton("색인 초기화", {
+                vm.clearOcrIndex()
+                confirmClearOcr = false
+            }, filled = true)
+        },
+        dismissButton = { TextAction("취소", { confirmClearOcr = false }) },
     )
 }
 
@@ -720,6 +740,7 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
         "휴지통" -> Icons.Outlined.RestoreFromTrash
         "보호 폴더" -> Icons.Outlined.Folder
         "분석 캐시" -> Icons.Outlined.CleaningServices
+        "사진 글자 검색 데이터" -> Icons.Outlined.TextFields
         else -> Icons.Outlined.Shield
     }
     Column(

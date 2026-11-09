@@ -31,6 +31,8 @@ data class AppUiState(
     val burstGroups: List<SimilarPhotoGroup> = emptyList(),
     val softFocusCandidates: List<SoftFocusCandidate> = emptyList(),
     val sharpnessPending: Int = 0,
+    val ocrScan: OcrScanState = OcrScanState(),
+    val ocrEntries: List<PhotoOcrEntry> = emptyList(),
     val cleanupHistory: List<CleanupHistoryEntry> = emptyList(),
     val reviewEntries: List<PhotoReviewEntry> = emptyList(),
     val selected: Set<String> = emptySet(),
@@ -94,6 +96,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _ui.update { it.copy(cleanupHistory = history) }
         } }
         viewModelScope.launch { repository.photoAnalysis.collect { analysis -> _ui.update { it.copy(photoAnalysis = analysis) } } }
+        viewModelScope.launch { repository.ocrScan.collect { session ->
+            _ui.update { it.copy(ocrScan = session) }
+        } }
+        viewModelScope.launch { repository.ocrIndex.collect { entries ->
+            _ui.update { it.copy(ocrEntries = entries) }
+        } }
         viewModelScope.launch {
             repository.photoHashes.collect { hashes ->
                 knownPhotoHashes = hashes
@@ -496,6 +504,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun protectFolder(path: String, protected: Boolean) = task { repository.setFolderProtected(path, protected) }
+    fun startOcrIndex() = repository.startOcrIndex()
+    fun pauseOcrIndex() = repository.pauseOcrIndex()
+    fun resumeOcrIndex() = repository.resumeOcrIndex()
+    fun clearOcrIndex() = repository.clearOcrIndex()
+
     fun startPhotoAnalysis() = repository.startPhotoAnalysis()
     fun pausePhotoAnalysis() = repository.pausePhotoAnalysis()
     fun resumePhotoAnalysis() = repository.resumePhotoAnalysis()

@@ -18,6 +18,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import com.hebi.gallipick.domain.MediaKind
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.semantics.Role
@@ -213,20 +214,25 @@ class NativeScreenCaptureTest {
                 navigate("정리")
                 compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
                 compose.onNodeWithText("검사 시작").performScrollTo().performClick()
-                compose.waitUntil(timeoutMillis = 90_000) {
-                    compose.onAllNodesWithContentDescription("중복 묶음 1 비교")
-                        .fetchSemanticsNodes().isNotEmpty()
-                }
-                compose.onNodeWithContentDescription("중복 묶음 1 비교").performScrollTo()
                 val groups = runBlocking {
                     withTimeout(90_000) {
                         app.repository.duplicates.first { it.size >= Stage7aFixtureMedia.MIN_DUPLICATE_GROUPS }
                     }
                 }
                 assertTrue("Rich fixture must yield at least three exact-duplicate groups", groups.size >= 3)
+                compose.waitUntil(timeoutMillis = 30_000) {
+                    compose.onAllNodesWithContentDescription("중복 파일 목록")
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                // Lazy grid rows need not be composed in a short landscape viewport.
+                compose.onNodeWithContentDescription("중복 파일 목록")
+                    .performScrollToNode(hasContentDescription("중복 묶음 1 비교"))
+                compose.onNodeWithContentDescription("중복 묶음 1 비교").assertIsDisplayed()
             }
             captureDetail("10-duplicate-comparison") {
-                compose.onNodeWithContentDescription("중복 묶음 1 비교").performScrollTo().performClick()
+                compose.onNodeWithContentDescription("중복 파일 목록")
+                    .performScrollToNode(hasContentDescription("중복 묶음 1 비교"))
+                compose.onNodeWithContentDescription("중복 묶음 1 비교").performClick()
                 compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertIsDisplayed()
             }
             dismissDialogIfPresent("비교 닫기", contentDescription = true)

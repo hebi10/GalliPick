@@ -20,6 +20,10 @@ import com.hebi.gallipick.domain.CleanupHistoryEntry
 import com.hebi.gallipick.domain.CleanupHistoryPolicy
 import com.hebi.gallipick.domain.PhotoReviewDecision
 import com.hebi.gallipick.domain.PhotoReviewEntry
+import com.hebi.gallipick.domain.OcrPhase
+import com.hebi.gallipick.domain.OcrScanState
+import com.hebi.gallipick.domain.PhotoOcrEntry
+import com.hebi.gallipick.domain.OcrResultStatus
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -52,6 +56,14 @@ class MediaRepository(context: Context) {
     val duplicates: Flow<List<DuplicateGroup>> = catalog.duplicates
     internal val photoHashes: Flow<List<CachedPhotoHash>> = dao.observePhotoHashes()
     val photoAnalysis: Flow<PhotoAnalysisState> = dao.observePhotoAnalysis().map { it?.state() ?: PhotoAnalysisState() }
+    val ocrScan: Flow<OcrScanState> = dao.observeOcrSession().map { it?.state() ?: OcrScanState() }
+    val ocrIndex: Flow<List<PhotoOcrEntry>> = dao.observeOcrIndex().map { rows ->
+        rows.mapNotNull { row ->
+            val status = runCatching { OcrResultStatus.valueOf(row.status) }.getOrNull()
+                ?: return@mapNotNull null
+            PhotoOcrEntry(row.uri, row.fingerprint, row.volumeVersion, row.recognizedText, status)
+        }
+    }
     val reviewEntries: Flow<List<PhotoReviewEntry>> = dao.observeReviewChoices().map { rows ->
         rows.mapNotNull { row ->
             val decision = runCatching { PhotoReviewDecision.valueOf(row.decision) }.getOrNull()
@@ -104,6 +116,102 @@ class MediaRepository(context: Context) {
         }
     }
 
+
+    fun startOcrIndex() = launchOcrControl { queueOcrIndex(retryFailed = true) }
+    fun resumeOcrIndex() = launchOcrControl { queueOcrIndex(retryFailed = false) }
+    fun pauseOcrIndex() = launchOcrControl {
+        Coordinator.controlMutex.withLock {
+            val old = dao.ocrSession() ?: OcrScanSession()
+            dao.setOcrSession(old.copy(
+                token = UUID.randomUUID().toString(),
+                phase = OcrPhase.PAUSED.name, message = "사진 글자 분석을 일시정지했습니다.",
+            ))
+            workManager.cancelUniqueWork(OCR_WORK_NAME).result.get()
+        }
+    }
+
+    fun clearOcrIndex() = launchOcrControl {
+        Coordinator.controlMutex.withLock {
+            val old = dao.ocrSession() ?: OcrScanSession()
+            dao.setOcrSession(old.copy(
+                token = UUID.randomUUID().toString(), phase = OcrPhase.IDLE.name,
+                completed = 0, total = 0, skipped = 0,
+                message = "사진 글자 검색 기록을 초기화했습니다.",
+            ))
+            workManager.cancelUniqueWork(OCR_WORK_NAME).result.get()
+            dao.clearOcrIndex()
+        }
+    }
+
+    private suspend fun queueOcrIndex(retryFailed: Boolean) {
+        Coordinator.controlMutex.withLock {
+            workManager.cancelUniqueWork(OCR_WORK_NAME).result.get()
+            if (retryFailed) dao.clearFailedOcrIndex()
+            val token = UUID.randomUUID().toString()
+            dao.setOcrSession(OcrScanSession(
+                token = token, phase = OcrPhase.QUEUED.name,
+                message = "접근 가능한 사진의 글자 분석을 준비하고 있습니다.",
+            ))
+            enqueueOcrIndex(token, ExistingWorkPolicy.REPLACE)
+        }
+    }
+
+    private fun launchOcrControl(action: suspend () -> Unit) {
+        Coordinator.scope.launch {
+            try { action() } catch (exception: CancellationException) { throw exception
+            } catch (_: Exception) {
+                Coordinator.controlMutex.withLock {
+                    val previous = dao.ocrSession() ?: OcrScanSession()
+                    dao.setOcrSession(previous.copy(
+                        phase = OcrPhase.FAILED.name,
+                        message = "글자 분석을 시작하지 못했습니다. 다시 시도해 주세요.",
+                    ))
+                }
+            }
+        }
+    }
+
+    internal fun enqueueOcrIndex(token: String, policy: ExistingWorkPolicy) {
+        val request = OneTimeWorkRequestBuilder<PhotoOcrWorker>()
+            .setInputData(workDataOf(TOKEN_KEY to token))
+            .addTag(OCR_WORK_NAME).build()
+        workManager.enqueueUniqueWork(OCR_WORK_NAME, policy, request).result.get()
+    }
+
+    internal suspend fun updateOcrSession(
+        token: String, update: (OcrScanSession) -> OcrScanSession,
+    ): Boolean = Coordinator.controlMutex.withLock {
+        val session = dao.ocrSession() ?: return@withLock false
+        if (session.token != token || session.phase == OcrPhase.PAUSED.name) return@withLock false
+        dao.setOcrSession(update(session))
+        true
+    }
+
+    internal suspend fun saveOcrIndexIfCurrent(token: String, entry: CachedOcrIndex): Boolean =
+        Coordinator.controlMutex.withLock {
+            val session = dao.ocrSession() ?: return@withLock false
+            if (session.token != token || session.phase != OcrPhase.RUNNING.name) return@withLock false
+            database.withTransaction {
+                val item = dao.media(entry.uri) ?: return@withTransaction false
+                if (item.kind != "PHOTO" || item.isTrashed ||
+                    entry.fingerprint != item.fingerprint || entry.volumeVersion.isBlank() ||
+                    dao.volumeVersion(item.volume) != entry.volumeVersion) return@withTransaction false
+                dao.putOcrIndex(entry)
+                true
+            }
+        }
+
+    internal suspend fun continueOcrIndex(token: String) {
+        Coordinator.controlMutex.withLock {
+            val session = dao.ocrSession() ?: return@withLock
+            if (session.token != token || session.phase != OcrPhase.RUNNING.name) return@withLock
+            dao.setOcrSession(session.copy(
+                phase = OcrPhase.QUEUED.name,
+                message = "완료한 사진의 글자를 저장하고 이어서 분석합니다.",
+            ))
+            enqueueOcrIndex(token, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        }
+    }
 
     fun startPhotoAnalysis() = launchControl { queuePhotoAnalysis(retryFailed = true) }
     fun resumePhotoAnalysis() = launchControl { queuePhotoAnalysis(retryFailed = false) }
@@ -383,6 +491,7 @@ class MediaRepository(context: Context) {
     companion object {
         internal const val WORK_NAME = "gallipick-duplicate-analysis"
         internal const val PHOTO_WORK_NAME = "gallipick-photo-perceptual-analysis"
+        internal const val OCR_WORK_NAME = "gallipick-photo-local-ocr-index"
         internal const val TOKEN_KEY = "scan-token"
 
     }
