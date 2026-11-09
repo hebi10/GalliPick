@@ -100,6 +100,30 @@ class SimilarPhotoReviewScreenTest {
         compose.onNodeWithText("원본 사진 외부 앱으로 열기").performScrollTo().assertIsDisplayed()
     }
 
+    @Test fun tabletComparisonShowsLargePreviewAndReadableMetadataWithoutNestedScroll() {
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Surface(Modifier.requiredSize(1200.dp, 850.dp)) {
+                        SimilarPhotoCompareScreen(
+                            group = group, groupIndex = 1, groupCount = 1,
+                            selectedUris = emptySet(), protectedFolders = emptySet(),
+                            onBack = {}, onToggleCandidate = {}, onOpenMedia = {}, onReview = {},
+                        )
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("비교 사진 미리보기").assertIsDisplayed().assertHeightIsAtLeast(360.dp)
+        compose.onNodeWithContentDescription("유사 사진 가로 비교 목록").assertExists()
+        compose.onNodeWithText("선택한 사진 정보").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("정리 후보 선택").performScrollTo().assertIsDisplayed()
+        val verticalScrolls = compose.onAllNodes(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
+        ).fetchSemanticsNodes()
+        assertEquals("Tablet comparison must retain one vertical scroller", 1, verticalScrolls.size)
+    }
+
     @Test fun protectedFoldersAndFavoritesAreNeverSelectable() {
         val favoriteGroup = group.copy(photos = group.photos.mapIndexed { i, entry ->
             if (i == 0) entry.copy(item = entry.item.copy(isFavorite = true)) else entry
