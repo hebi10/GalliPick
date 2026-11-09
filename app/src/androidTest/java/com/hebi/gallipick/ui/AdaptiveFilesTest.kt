@@ -14,6 +14,7 @@ import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -42,6 +43,36 @@ class AdaptiveFilesTest {
         compose.onNodeWithContentDescription("파일 상세 패널").assertDoesNotExist()
         val closed = compose.onNodeWithContentDescription("미디어 파일 목록").fetchSemanticsNode().boundsInRoot
         assertTrue("Closing details restores the list", closed.width >= original.width - 1f)
+    }
+
+    @Test fun tabletGridShowsFiveReadableColumnsAndReflowsWhenDetailsOpen() {
+        assertEquals(5, tabletMediaGridColumns(1600.dp, 1f))
+        assertEquals(3, tabletMediaGridColumns(750.dp, 1f))
+        assertEquals(2, tabletMediaGridColumns(800.dp, 1.6f))
+
+        val items = (1L..12L).map(::media)
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                Box(Modifier.requiredSize(1100.dp, 700.dp)) {
+                    FilesScreenContent(AppUiState(access = MediaAccess.FULL, items = items, filtered = items),
+                        true, {}, {}, {}, actions())
+                }
+            }
+        } }
+        val first = compose.onNodeWithText("file-1.jpg").fetchSemanticsNode().boundsInRoot
+        val fifth = compose.onNodeWithText("file-5.jpg").fetchSemanticsNode().boundsInRoot
+        val sixth = compose.onNodeWithText("file-6.jpg").fetchSemanticsNode().boundsInRoot
+        assertTrue("Tablet gallery should show up to five cards per row",
+            kotlin.math.abs(first.top - fifth.top) < 4f)
+        assertTrue("Sixth card should wrap to the next row", sixth.top > first.top + 20f)
+
+        compose.onNodeWithText("file-1.jpg").performClick()
+        compose.onNodeWithContentDescription("파일 상세 패널").assertIsDisplayed()
+        val reopenedFirst = compose.onAllNodesWithText("file-1.jpg").onFirst()
+            .fetchSemanticsNode().boundsInRoot
+        val fourth = compose.onNodeWithText("file-4.jpg").fetchSemanticsNode().boundsInRoot
+        assertTrue("Narrower gallery must reduce columns when detail panel is visible",
+            fourth.top > reopenedFirst.top + 20f)
     }
 
     @Test fun selectAllStaysNextToCountRatherThanFarAcrossWideWindow() {
