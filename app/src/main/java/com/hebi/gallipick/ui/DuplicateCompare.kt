@@ -83,9 +83,14 @@ internal fun DuplicateCompareContent(
     DisposableEffect(coordinator) { onDispose { coordinator.pauseActive() } }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val compact = maxHeight < 420.dp || maxWidth < 350.dp
-        val cardWidth = if (compact) 108.dp else 136.dp
-        val thumbnailHeight = if (compact) 72.dp else 106.dp
-        val previewHeight = if (maxHeight < 420.dp) 180.dp else if (maxWidth >= 720.dp) 300.dp else 260.dp
+        val cardWidth = if (compact) 108.dp else if (maxWidth >= 900.dp) 164.dp else 136.dp
+        val thumbnailHeight = if (compact) 72.dp else if (maxWidth >= 900.dp) 124.dp else 106.dp
+        val previewHeight = when {
+            maxHeight < 420.dp -> 180.dp
+            maxWidth >= 900.dp -> 380.dp
+            maxWidth >= 720.dp -> 320.dp
+            else -> 260.dp
+        }
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("중복 파일 비교", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
@@ -183,7 +188,8 @@ private fun DuplicateComparePanel(
                 }
             }
             val details: @Composable (Modifier) -> Unit = { detailModifier ->
-                Column(detailModifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(detailModifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("파일 정보", style = MaterialTheme.typography.titleSmall, color = Muted)
                     Text(item.displayName, style = MaterialTheme.typography.titleSmall)
                     Text(item.relativePath.ifEmpty { "기본 폴더" }, style = MaterialTheme.typography.bodySmall, color = Muted)
                     Text("${bytesLabel(item.sizeBytes)} · ${String.format(Locale.KOREA, "%,d", item.sizeBytes)} B", style = MaterialTheme.typography.bodySmall)
@@ -191,6 +197,7 @@ private fun DuplicateComparePanel(
                     Text("${if (item.dateTakenMs > 0) "촬영일" else "저장일"} ${dateLabel(item.capturedAt)}", style = MaterialTheme.typography.bodySmall)
                     if (!candidate) Text(roles.reason(item), style = MaterialTheme.typography.bodySmall, color = Muted)
                     else Text(if (selected) "정리 대상으로 선택했습니다. 아직 휴지통으로 이동하지 않았습니다." else "남길 파일을 확인한 뒤 필요한 사본만 정리 대상으로 선택하세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    HorizontalDivider(color = Line)
                     if (item.uri == roles.keeper.uri) Text("이 묶음에서 남길 기준 파일", style = MaterialTheme.typography.labelMedium, color = Ink)
                     else ActionButton("이 파일 남기기", onChooseKeeper, Modifier.fillMaxWidth().semantics { contentDescription = "$slot 남길 파일로 지정" }, filled = true, enabled = actionsEnabled)
                     TextButton(onClick = onProtect,

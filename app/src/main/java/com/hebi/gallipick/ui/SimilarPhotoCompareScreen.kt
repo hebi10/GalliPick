@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,11 +45,14 @@ internal fun SimilarPhotoCompareScreen(
     val chosen = focused.uri in selectedUris
     val selectedCount = group.photos.count { it.item.uri in selectedUris }
     val keptCount = group.photos.size - selectedCount
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val horizontal = maxWidth >= 700.dp && maxHeight > 400.dp
-        val thumbnailWidth = if (maxWidth < 350.dp) 102.dp else 132.dp
-        val previewHeight = if (horizontal) (maxHeight * .45f).coerceIn(220.dp, 340.dp) else 260.dp
-        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp),
+        val thumbnailWidth = if (maxWidth >= 900.dp) 164.dp else if (maxWidth < 350.dp) 102.dp else 132.dp
+        val thumbnailHeight = if (maxWidth >= 900.dp) 124.dp else 100.dp
+        val previewHeight = if (horizontal && maxWidth >= 900.dp)
+            (maxHeight * .58f).coerceIn(280.dp, 420.dp)
+        else if (horizontal) (maxHeight * .45f).coerceIn(220.dp, 340.dp) else 260.dp
+        Column(Modifier.fillMaxHeight().widthIn(max = 1220.dp).fillMaxWidth().padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconAction("유사 사진 목록으로 돌아가기", Icons.Outlined.ArrowBack, onClick = onBack)
@@ -83,7 +87,7 @@ internal fun SimilarPhotoCompareScreen(
                             .padding(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        MediaThumbnail(photo.item, Modifier.fillMaxWidth().height(100.dp))
+                        MediaThumbnail(photo.item, Modifier.fillMaxWidth().height(thumbnailHeight))
                         Text(photo.item.displayName, style = MaterialTheme.typography.labelSmall,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(if (selected) "정리 후보" else "남길 사진", style = MaterialTheme.typography.labelSmall,
@@ -92,7 +96,8 @@ internal fun SimilarPhotoCompareScreen(
                 }
             }
             val details: @Composable () -> Unit = {
-                Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("선택한 사진 정보", style = MaterialTheme.typography.titleSmall, color = Muted)
                     Text(focused.displayName, style = MaterialTheme.typography.titleSmall,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text("${bytesLabel(focused.sizeBytes)} · ${focused.width} × ${focused.height}",
@@ -101,6 +106,7 @@ internal fun SimilarPhotoCompareScreen(
                         style = MaterialTheme.typography.bodySmall, color = Muted)
                     Text(focused.relativePath.ifBlank { "폴더 정보 없음" }, style = MaterialTheme.typography.bodySmall,
                         color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    HorizontalDivider(color = Line)
                     Text(if (chosen) "정리 후보 · 선택됨" else "남길 사진 · 유지",
                         style = MaterialTheme.typography.titleSmall, color = Primary)
                     val eligible = SimilarPhotoReviewPolicy.allowed(focused, protectedFolders)
@@ -131,7 +137,8 @@ internal fun SimilarPhotoCompareScreen(
             if (horizontal) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.Top) {
-                    Box(Modifier.weight(1f).height(previewHeight), contentAlignment = Alignment.Center) {
+                    Box(Modifier.weight(1f).height(previewHeight).testTag("비교 사진 미리보기"),
+                        contentAlignment = Alignment.Center) {
                         MediaThumbnail(focused, Modifier.fillMaxSize(), ContentScale.Fit)
                     }
                     Column(Modifier.weight(1f)) { details() }
