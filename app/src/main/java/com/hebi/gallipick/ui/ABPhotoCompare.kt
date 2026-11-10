@@ -255,7 +255,8 @@ internal fun ABPhotoComparison(
                 Slider(value = divider, onValueChange = { divider = it },
                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = "A/B 슬라이더 위치" })
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp),
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(
+                if (maxWidth < 400.dp * fontScale) 2.dp else 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 IconAction("A/B 축소", Icons.Outlined.ZoomOut) {
                     change(activeSlot, zoomFor(activeSlot).zoomBy(1f / 1.5f))
@@ -270,8 +271,10 @@ internal fun ABPhotoComparison(
                 }
                 IconAction("A/B 전체 화면", Icons.Outlined.Fullscreen) { fullscreen = true }
                 Spacer(Modifier.weight(1f))
-                Text(if (synchronized) "양쪽 동기화" else "$activeSlot 조절",
-                    style = MaterialTheme.typography.labelSmall, color = Muted)
+                if (maxWidth >= 400.dp * fontScale) {
+                    Text(if (synchronized) "양쪽 동기화" else "$activeSlot 조절",
+                        style = MaterialTheme.typography.labelSmall, color = Muted)
+                }
             }
             Text("비교 정보 · 미리보기는 긴 변 최대 2,048px",
                 color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -333,8 +336,9 @@ internal fun ABPhotoComparison(
                         Text("전체 화면 비교", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                         IconAction("A/B 전체 화면 닫기", Icons.Outlined.Close) { fullscreen = false }
                     }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         TextButton(onClick = { mode = "side" },
                             modifier = Modifier.semantics { contentDescription = "전체 화면 나란히 비교 모드" }) {
                             Text("나란히", color = if (mode == "side") Primary else Muted)
@@ -344,12 +348,15 @@ internal fun ABPhotoComparison(
                             Text("슬라이더", color = if (mode == "slider") Primary else Muted)
                         }
                         Spacer(Modifier.weight(1f))
-                        Text("동기화", style = MaterialTheme.typography.labelSmall, color = Muted)
+                        if (maxWidth >= 430.dp * fontScale) {
+                            Text("동기화", style = MaterialTheme.typography.labelSmall, color = Muted)
+                        }
                         Switch(checked = synchronized, onCheckedChange = { enabled ->
                             if (enabled) shared = if (activeSlot == "A") first else second
                             else { first = shared; second = shared }
                             synchronized = enabled
                         }, modifier = Modifier.semantics { contentDescription = "전체 화면 A/B 확대 동기화" })
+                        }
                     }
                     if (!synchronized) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -406,7 +413,7 @@ internal fun ABPhotoComparison(
                             })
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        horizontalArrangement = Arrangement.Center) {
                         IconAction("전체 화면 A/B 축소", Icons.Outlined.ZoomOut) {
                             change(activeSlot, zoomFor(activeSlot).zoomBy(1f / 1.5f))
                         }
@@ -418,9 +425,6 @@ internal fun ABPhotoComparison(
                         IconAction("전체 화면 A/B 화면 맞춤", Icons.Outlined.CenterFocusStrong) {
                             change(activeSlot, ABPhotoTransform())
                         }
-                        Spacer(Modifier.weight(1f))
-                        Text(if (synchronized) "양쪽 동기화" else "$activeSlot 조절",
-                            style = MaterialTheme.typography.labelSmall, color = Muted)
                     }
                 }
             }
