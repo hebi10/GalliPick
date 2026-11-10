@@ -262,8 +262,10 @@ internal fun ABPhotoComparison(
                 IconAction("A/B 축소", Icons.Outlined.ZoomOut) {
                     change(activeSlot, zoomFor(activeSlot).zoomBy(1f / 1.5f))
                 }
-                Text("${(zoomFor(activeSlot).zoom * 100).roundToInt()}%",
-                    style = MaterialTheme.typography.labelLarge)
+                if (availableWidth >= 300.dp * fontScale) {
+                    Text("${(zoomFor(activeSlot).zoom * 100).roundToInt()}%",
+                        style = MaterialTheme.typography.labelLarge)
+                }
                 IconAction("A/B 확대", Icons.Outlined.ZoomIn) {
                     change(activeSlot, zoomFor(activeSlot).zoomBy(1.5f))
                 }
@@ -341,7 +343,7 @@ internal fun ABPhotoComparison(
                         val controlsWidth = maxWidth
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(onClick = { mode = "side" },
+                            TextButton(onClick = { mode = "side" },
                             modifier = Modifier.semantics { contentDescription = "전체 화면 나란히 비교 모드" }) {
                             Text("나란히", color = if (mode == "side") Primary else Muted)
                         }
@@ -349,11 +351,11 @@ internal fun ABPhotoComparison(
                             modifier = Modifier.semantics { contentDescription = "전체 화면 슬라이더 비교 모드" }) {
                             Text("슬라이더", color = if (mode == "slider") Primary else Muted)
                         }
-                        Spacer(Modifier.weight(1f))
-                        if (controlsWidth >= 430.dp * fontScale) {
+                            Spacer(Modifier.weight(1f))
+                            if (controlsWidth >= 430.dp * fontScale) {
                             Text("동기화", style = MaterialTheme.typography.labelSmall, color = Muted)
                         }
-                        Switch(checked = synchronized, onCheckedChange = { enabled ->
+                            Switch(checked = synchronized, onCheckedChange = { enabled ->
                             if (enabled) shared = if (activeSlot == "A") first else second
                             else { first = shared; second = shared }
                             synchronized = enabled
