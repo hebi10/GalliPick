@@ -67,13 +67,10 @@ internal fun SimilarPhotoCompareScreen(
                 IconAction("유사 사진 목록으로 돌아가기", Icons.Outlined.ArrowBack, onClick = onBack)
                 Text(title, style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).semantics { heading() })
-                if (group.photos.size >= 2) {
-                    TextButton(onClick = { compareAB = !compareAB },
-                        modifier = Modifier.semantics { contentDescription = "A/B 사진 비교 전환" }) {
-                        Text(if (compareAB) "한 장 보기" else "A/B 비교")
-                    }
-                }
             }
+            if (group.photos.size >= 2) ABComparisonViewSelector(
+                compareAB, { compareAB = it }, "A/B 사진 비교 전환",
+            )
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(

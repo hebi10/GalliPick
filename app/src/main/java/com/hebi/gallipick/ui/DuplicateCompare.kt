@@ -101,12 +101,12 @@ internal fun DuplicateCompareContent(
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("중복 파일 비교", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                if (photos.size >= 2) TextButton(onClick = { compareAB = !compareAB },
-                    modifier = Modifier.semantics { contentDescription = "중복 A/B 사진 비교 전환" }) {
-                    Text(if (compareAB) "한 장 보기" else "A/B 비교")
-                }
                 IconAction("비교 닫기", Icons.Outlined.Close, onClick = { coordinator.pauseActive(); onDismiss() })
             }
+            if (photos.size >= 2) ABComparisonViewSelector(
+                compareAB, { compareAB = it }, "중복 A/B 사진 비교 전환",
+                Modifier.padding(bottom = 8.dp),
+            )
             if (!actionsEnabled) Text(
                 "중복 결과를 다시 확인하고 있습니다. 확인 후 변경할 수 있습니다.",
                 style = MaterialTheme.typography.bodySmall,
