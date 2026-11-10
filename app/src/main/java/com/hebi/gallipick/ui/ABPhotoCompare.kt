@@ -182,7 +182,8 @@ internal fun ABPhotoComparison(
     }
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val tablet = maxWidth >= 700.dp * fontScale
+        val availableWidth = maxWidth
+        val tablet = availableWidth >= 700.dp * fontScale
         val previewHeight = if (tablet) 340.dp else 270.dp
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -256,7 +257,7 @@ internal fun ABPhotoComparison(
                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = "A/B 슬라이더 위치" })
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(
-                if (maxWidth < 400.dp * fontScale) 2.dp else 4.dp),
+                if (availableWidth < 400.dp * fontScale) 2.dp else 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 IconAction("A/B 축소", Icons.Outlined.ZoomOut) {
                     change(activeSlot, zoomFor(activeSlot).zoomBy(1f / 1.5f))
@@ -271,7 +272,7 @@ internal fun ABPhotoComparison(
                 }
                 IconAction("A/B 전체 화면", Icons.Outlined.Fullscreen) { fullscreen = true }
                 Spacer(Modifier.weight(1f))
-                if (maxWidth >= 400.dp * fontScale) {
+                if (availableWidth >= 400.dp * fontScale) {
                     Text(if (synchronized) "양쪽 동기화" else "$activeSlot 조절",
                         style = MaterialTheme.typography.labelSmall, color = Muted)
                 }
@@ -337,6 +338,7 @@ internal fun ABPhotoComparison(
                         IconAction("A/B 전체 화면 닫기", Icons.Outlined.Close) { fullscreen = false }
                     }
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val controlsWidth = maxWidth
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         TextButton(onClick = { mode = "side" },
@@ -348,7 +350,7 @@ internal fun ABPhotoComparison(
                             Text("슬라이더", color = if (mode == "slider") Primary else Muted)
                         }
                         Spacer(Modifier.weight(1f))
-                        if (maxWidth >= 430.dp * fontScale) {
+                        if (controlsWidth >= 430.dp * fontScale) {
                             Text("동기화", style = MaterialTheme.typography.labelSmall, color = Muted)
                         }
                         Switch(checked = synchronized, onCheckedChange = { enabled ->
