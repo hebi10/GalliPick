@@ -344,22 +344,22 @@ internal fun ABPhotoComparison(
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             TextButton(onClick = { mode = "side" },
-                            modifier = Modifier.semantics { contentDescription = "전체 화면 나란히 비교 모드" }) {
-                            Text("나란히", color = if (mode == "side") Primary else Muted)
-                        }
-                        TextButton(onClick = { mode = "slider" },
-                            modifier = Modifier.semantics { contentDescription = "전체 화면 슬라이더 비교 모드" }) {
-                            Text("슬라이더", color = if (mode == "slider") Primary else Muted)
-                        }
+                                modifier = Modifier.semantics { contentDescription = "전체 화면 나란히 비교 모드" }) {
+                                Text("나란히", color = if (mode == "side") Primary else Muted)
+                            }
+                            TextButton(onClick = { mode = "slider" },
+                                modifier = Modifier.semantics { contentDescription = "전체 화면 슬라이더 비교 모드" }) {
+                                Text("슬라이더", color = if (mode == "slider") Primary else Muted)
+                            }
                             Spacer(Modifier.weight(1f))
                             if (controlsWidth >= 430.dp * fontScale) {
-                            Text("동기화", style = MaterialTheme.typography.labelSmall, color = Muted)
-                        }
+                                Text("동기화", style = MaterialTheme.typography.labelSmall, color = Muted)
+                            }
                             Switch(checked = synchronized, onCheckedChange = { enabled ->
-                            if (enabled) shared = if (activeSlot == "A") first else second
-                            else { first = shared; second = shared }
-                            synchronized = enabled
-                        }, modifier = Modifier.semantics { contentDescription = "전체 화면 A/B 확대 동기화" })
+                                if (enabled) shared = if (activeSlot == "A") first else second
+                                else { first = shared; second = shared }
+                                synchronized = enabled
+                            }, modifier = Modifier.semantics { contentDescription = "전체 화면 A/B 확대 동기화" })
                         }
                     }
                     if (!synchronized) {
