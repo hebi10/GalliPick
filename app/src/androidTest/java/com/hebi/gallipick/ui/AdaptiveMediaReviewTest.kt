@@ -92,6 +92,35 @@ class AdaptiveMediaReviewTest {
         compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertExists()
     }
 
+
+    @Test fun abFullscreenRetainsZoomAndCompareModeWithoutSelectingTrash() {
+        val first = media(1, "original.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        val second = media(2, "copy.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        val selected = mutableStateOf(emptySet<String>())
+        compose.setContent {
+            GalliPickTheme {
+                Surface(Modifier.fillMaxSize()) {
+                    ABPhotoComparison(first, second, selected.value, { true },
+                        { item -> selected.value = selected.value + item.uri }, {})
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("A/B 확대").performClick()
+        compose.onNodeWithContentDescription("A/B 전체 화면").performClick()
+        compose.onNodeWithTag("AB-fullscreen").assertIsDisplayed()
+        compose.onNode(hasContentDescription("A 사진 미리보기") and
+            hasAnyAncestor(hasTestTag("AB-fullscreen")))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "150% 확대"))
+        compose.onNodeWithContentDescription("전체 화면 슬라이더 비교 모드").performClick()
+        compose.onNode(hasContentDescription("A/B 슬라이더 위치") and
+            hasAnyAncestor(hasTestTag("AB-fullscreen"))).assertExists()
+        compose.runOnIdle { assertTrue(selected.value.isEmpty()) }
+        compose.onNodeWithContentDescription("A/B 전체 화면 닫기").performClick()
+        compose.onNodeWithTag("AB-fullscreen").assertDoesNotExist()
+        compose.onNodeWithContentDescription("A/B 슬라이더 위치").assertExists()
+        compose.runOnIdle { assertTrue(selected.value.isEmpty()) }
+    }
+
     @Test fun abRealPhotoCaptureRetainsBothPhotosAndDoesNotSelectTrashCandidates() {
         val context = compose.activity
         val now = System.currentTimeMillis()
