@@ -107,7 +107,9 @@ class AdaptiveMediaReviewTest {
         }
         compose.onNodeWithContentDescription("A/B 확대").performClick()
         compose.onNodeWithContentDescription("A/B 전체 화면").performClick()
-        compose.onNodeWithTag("AB-fullscreen").assertIsDisplayed()
+        compose.onNodeWithTag("AB-fullscreen").assertExists()
+        compose.onNodeWithText("전체 화면 비교").assertIsDisplayed()
+        compose.onNodeWithContentDescription("A/B 전체 화면 닫기").assertIsDisplayed()
         compose.onNode(hasContentDescription("A 사진 미리보기") and
             hasAnyAncestor(hasTestTag("AB-fullscreen")))
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "150% 확대"))
@@ -163,7 +165,9 @@ class AdaptiveMediaReviewTest {
             compose.onNodeWithContentDescription("A/B 슬라이더 위치").assertExists()
             saveScreenshot("12-a-ab-real-slider")
             compose.onNodeWithContentDescription("A/B 전체 화면").performScrollTo().performClick()
-            compose.onNodeWithTag("AB-fullscreen").assertIsDisplayed()
+            compose.onNodeWithTag("AB-fullscreen").assertExists()
+        compose.onNodeWithText("전체 화면 비교").assertIsDisplayed()
+        compose.onNodeWithContentDescription("A/B 전체 화면 닫기").assertIsDisplayed()
             compose.onNodeWithContentDescription("전체 화면 나란히 비교 모드").performClick()
             compose.waitUntil(15_000) {
                 listOf("A" to samples[0].name, "B" to samples[1].name).all { (slot, name) ->
