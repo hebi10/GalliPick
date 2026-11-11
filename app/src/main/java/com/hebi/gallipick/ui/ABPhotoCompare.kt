@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CenterFocusStrong
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material.icons.outlined.ZoomOut
 import androidx.compose.material3.*
@@ -34,6 +36,8 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -164,6 +168,7 @@ internal fun ABPhotoComparison(
     statusLabel: ((MediaItem) -> String)? = null,
 ) {
     var mode by rememberSaveable { mutableStateOf("side") }
+    var fullscreen by rememberSaveable(a.uri, b.uri) { mutableStateOf(false) }
     var synchronized by rememberSaveable { mutableStateOf(true) }
     var activeSlot by rememberSaveable { mutableStateOf("A") }
     var divider by rememberSaveable { mutableFloatStateOf(.5f) }
@@ -177,7 +182,8 @@ internal fun ABPhotoComparison(
     }
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val tablet = maxWidth >= 700.dp * fontScale
+        val availableWidth = maxWidth
+        val tablet = availableWidth >= 700.dp * fontScale
         val previewHeight = if (tablet) 340.dp else 270.dp
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -250,22 +256,28 @@ internal fun ABPhotoComparison(
                 Slider(value = divider, onValueChange = { divider = it },
                     modifier = Modifier.fillMaxWidth().semantics { contentDescription = "A/B 슬라이더 위치" })
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp),
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(
+                if (availableWidth < 400.dp * fontScale) 2.dp else 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 IconAction("A/B 축소", Icons.Outlined.ZoomOut) {
                     change(activeSlot, zoomFor(activeSlot).zoomBy(1f / 1.5f))
                 }
-                Text("${(zoomFor(activeSlot).zoom * 100).roundToInt()}%",
-                    style = MaterialTheme.typography.labelLarge)
+                if (availableWidth >= 300.dp * fontScale) {
+                    Text("${(zoomFor(activeSlot).zoom * 100).roundToInt()}%",
+                        style = MaterialTheme.typography.labelLarge)
+                }
                 IconAction("A/B 확대", Icons.Outlined.ZoomIn) {
                     change(activeSlot, zoomFor(activeSlot).zoomBy(1.5f))
                 }
                 IconAction("A/B 화면 맞춤", Icons.Outlined.CenterFocusStrong) {
                     change(activeSlot, ABPhotoTransform())
                 }
+                IconAction("A/B 전체 화면", Icons.Outlined.Fullscreen) { fullscreen = true }
                 Spacer(Modifier.weight(1f))
-                Text(if (synchronized) "양쪽 동기화" else "$activeSlot 조절",
-                    style = MaterialTheme.typography.labelSmall, color = Muted)
+                if (availableWidth >= 400.dp * fontScale) {
+                    Text(if (synchronized) "양쪽 동기화" else "$activeSlot 조절",
+                        style = MaterialTheme.typography.labelSmall, color = Muted)
+                }
             }
             Text("비교 정보 · 미리보기는 긴 변 최대 2,048px",
                 color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -310,6 +322,116 @@ internal fun ABPhotoComparison(
             }
             Text("사진을 보는 것만으로 정리 후보가 선택되지 않습니다. 실제 이동은 Android 확인창에서 승인합니다.",
                 style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
+    }
+
+    if (fullscreen) {
+        Dialog(
+            onDismissRequest = { fullscreen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            Surface(Modifier.fillMaxSize().testTag("AB-fullscreen"), color = MaterialTheme.colorScheme.surface) {
+                Column(
+                    Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("전체 화면 비교", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                        IconAction("A/B 전체 화면 닫기", Icons.Outlined.Close) { fullscreen = false }
+                    }
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val controlsWidth = maxWidth
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = { mode = "side" },
+                                modifier = Modifier.semantics { contentDescription = "전체 화면 나란히 비교 모드" }) {
+                                Text("나란히", color = if (mode == "side") Primary else Muted)
+                            }
+                            TextButton(onClick = { mode = "slider" },
+                                modifier = Modifier.semantics { contentDescription = "전체 화면 슬라이더 비교 모드" }) {
+                                Text("슬라이더", color = if (mode == "slider") Primary else Muted)
+                            }
+                            Spacer(Modifier.weight(1f))
+                            if (controlsWidth >= 430.dp * fontScale) {
+                                Text("동기화", style = MaterialTheme.typography.labelSmall, color = Muted)
+                            }
+                            Switch(checked = synchronized, onCheckedChange = { enabled ->
+                                if (enabled) shared = if (activeSlot == "A") first else second
+                                else { first = shared; second = shared }
+                                synchronized = enabled
+                            }, modifier = Modifier.semantics { contentDescription = "전체 화면 A/B 확대 동기화" })
+                        }
+                    }
+                    if (!synchronized) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("A", "B").forEach { slot ->
+                                TextButton(onClick = { activeSlot = slot },
+                                    modifier = Modifier.semantics { contentDescription = "전체 화면 $slot 확대 대상" }) {
+                                    Text("$slot 개별 조절", color = if (activeSlot == slot) Primary else Muted)
+                                }
+                            }
+                        }
+                    }
+                    if (mode == "side") {
+                        Row(Modifier.fillMaxWidth().weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("A" to a, "B" to b).forEach { (slot, item) ->
+                                Column(Modifier.weight(1f).fillMaxHeight(),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("$slot · ${item.displayName}", maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.labelMedium)
+                                    ABPhotoCanvas(item, slot, zoomFor(slot), { next ->
+                                        activeSlot = slot; change(slot, next)
+                                    }, true, Modifier.fillMaxWidth().weight(1f))
+                                }
+                            }
+                        }
+                    } else {
+                        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)
+                            .pointerInput(a.uri, b.uri) {
+                                detectHorizontalDragGestures { event, drag ->
+                                    if (size.width > 0) {
+                                        divider = (divider + drag / size.width).coerceIn(0f, 1f)
+                                        event.consume()
+                                    }
+                                }
+                            }.testTag("AB-fullscreen-slider")) {
+                            ABPhotoCanvas(a, "A", zoomFor("A"), { next -> change("A", next) },
+                                false, Modifier.fillMaxSize())
+                            ABPhotoCanvas(b, "B", zoomFor("B"), { next -> change("B", next) },
+                                false, Modifier.fillMaxSize().drawWithContent {
+                                    clipRect(left = size.width * divider) { this@drawWithContent.drawContent() }
+                                })
+                            Box(Modifier.align(Alignment.CenterStart)
+                                .offset(x = maxWidth * divider - 1.dp)
+                                .width(2.dp).fillMaxHeight().background(Primary))
+                            Text("A", Modifier.align(Alignment.TopStart).padding(8.dp),
+                                color = Ink, style = MaterialTheme.typography.titleSmall)
+                            Text("B", Modifier.align(Alignment.TopEnd).padding(8.dp),
+                                color = Ink, style = MaterialTheme.typography.titleSmall)
+                        }
+                        Slider(value = divider, onValueChange = { divider = it },
+                            modifier = Modifier.fillMaxWidth().semantics {
+                                contentDescription = "A/B 슬라이더 위치"
+                            })
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center) {
+                        IconAction("전체 화면 A/B 축소", Icons.Outlined.ZoomOut) {
+                            change(activeSlot, zoomFor(activeSlot).zoomBy(1f / 1.5f))
+                        }
+                        Text("${(zoomFor(activeSlot).zoom * 100).roundToInt()}%",
+                            style = MaterialTheme.typography.labelLarge)
+                        IconAction("전체 화면 A/B 확대", Icons.Outlined.ZoomIn) {
+                            change(activeSlot, zoomFor(activeSlot).zoomBy(1.5f))
+                        }
+                        IconAction("전체 화면 A/B 화면 맞춤", Icons.Outlined.CenterFocusStrong) {
+                            change(activeSlot, ABPhotoTransform())
+                        }
+                    }
+                }
+            }
         }
     }
 }

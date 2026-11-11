@@ -9,6 +9,8 @@ import android.view.ViewGroup
 import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
@@ -92,6 +94,39 @@ class AdaptiveMediaReviewTest {
         compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertExists()
     }
 
+
+    @Test fun abFullscreenRetainsZoomAndCompareModeWithoutSelectingTrash() {
+        val first = media(1, "original.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        val second = media(2, "copy.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        val selected = mutableStateOf(emptySet<String>())
+        compose.setContent {
+            GalliPickTheme {
+                Surface(Modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        ABPhotoComparison(first, second, selected.value, { true },
+                            { item -> selected.value = selected.value + item.uri }, {})
+                    }
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("A/B 확대").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("A/B 전체 화면").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithTag("AB-fullscreen").assertExists()
+        compose.onNodeWithText("전체 화면 비교").assertIsDisplayed()
+        compose.onNodeWithContentDescription("A/B 전체 화면 닫기").assertIsDisplayed()
+        compose.onNode(hasContentDescription("A 사진 미리보기") and
+            hasAnyAncestor(hasTestTag("AB-fullscreen")))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "150% 확대"))
+        compose.onNodeWithContentDescription("전체 화면 슬라이더 비교 모드").performClick()
+        compose.onNode(hasContentDescription("A/B 슬라이더 위치") and
+            hasAnyAncestor(hasTestTag("AB-fullscreen"))).assertExists()
+        compose.runOnIdle { assertTrue(selected.value.isEmpty()) }
+        compose.onNodeWithContentDescription("A/B 전체 화면 닫기").performClick()
+        compose.onNodeWithTag("AB-fullscreen").assertDoesNotExist()
+        compose.onNodeWithContentDescription("A/B 슬라이더 위치").assertExists()
+        compose.runOnIdle { assertTrue(selected.value.isEmpty()) }
+    }
+
     @Test fun abRealPhotoCaptureRetainsBothPhotosAndDoesNotSelectTrashCandidates() {
         val context = compose.activity
         val now = System.currentTimeMillis()
@@ -133,6 +168,23 @@ class AdaptiveMediaReviewTest {
             compose.onNodeWithContentDescription("슬라이더 비교 모드").performScrollTo().performClick()
             compose.onNodeWithContentDescription("A/B 슬라이더 위치").assertExists()
             saveScreenshot("12-a-ab-real-slider")
+            compose.onNodeWithContentDescription("A/B 전체 화면").performScrollTo().performClick()
+            compose.onNodeWithTag("AB-fullscreen").assertExists()
+        compose.onNodeWithText("전체 화면 비교").assertIsDisplayed()
+        compose.onNodeWithContentDescription("A/B 전체 화면 닫기").assertIsDisplayed()
+            compose.onNodeWithContentDescription("전체 화면 나란히 비교 모드").performClick()
+            compose.waitUntil(15_000) {
+                listOf("A" to samples[0].name, "B" to samples[1].name).all { (slot, name) ->
+                    compose.onAllNodes(hasContentDescription("$slot 사진: $name") and
+                        hasAnyAncestor(hasTestTag("AB-fullscreen"))).fetchSemanticsNodes().isNotEmpty()
+                }
+            }
+            saveScreenshot("ab-fullscreen-real-side", compose.onNodeWithTag("AB-fullscreen"))
+            compose.onNodeWithContentDescription("전체 화면 슬라이더 비교 모드").performClick()
+            compose.onNodeWithTag("AB-fullscreen-slider").assertExists()
+            saveScreenshot("ab-fullscreen-real-slider", compose.onNodeWithTag("AB-fullscreen"))
+            compose.onNodeWithContentDescription("A/B 전체 화면 닫기").performClick()
+            compose.onNodeWithTag("AB-fullscreen").assertDoesNotExist()
             compose.runOnIdle { assertFalse(selected) }
         } finally {
             samples.forEach { sample -> context.contentResolver.delete(sample.uri, null, null) }
@@ -569,8 +621,8 @@ class AdaptiveMediaReviewTest {
         return compose.onNodeWithContentDescription(description).performScrollTo().assertIsDisplayed()
     }
 
-    private fun saveScreenshot(name: String) {
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+    private fun saveScreenshot(name: String, node: SemanticsNodeInteraction? = null) {
+        val bitmap = (node ?: compose.onRoot()).captureToImage().asAndroidBitmap()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val directory = (InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")?.let(::File) ?: File(instrumentation.targetContext.filesDir, "test-screenshots")).apply { mkdirs() }
         File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
