@@ -9,6 +9,8 @@ import android.view.ViewGroup
 import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
@@ -100,13 +102,15 @@ class AdaptiveMediaReviewTest {
         compose.setContent {
             GalliPickTheme {
                 Surface(Modifier.fillMaxSize()) {
-                    ABPhotoComparison(first, second, selected.value, { true },
-                        { item -> selected.value = selected.value + item.uri }, {})
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        ABPhotoComparison(first, second, selected.value, { true },
+                            { item -> selected.value = selected.value + item.uri }, {})
+                    }
                 }
             }
         }
-        compose.onNodeWithContentDescription("A/B 확대").performClick()
-        compose.onNodeWithContentDescription("A/B 전체 화면").performClick()
+        compose.onNodeWithContentDescription("A/B 확대").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("A/B 전체 화면").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithTag("AB-fullscreen").assertExists()
         compose.onNodeWithText("전체 화면 비교").assertIsDisplayed()
         compose.onNodeWithContentDescription("A/B 전체 화면 닫기").assertIsDisplayed()
