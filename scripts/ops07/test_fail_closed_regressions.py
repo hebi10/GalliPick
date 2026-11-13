@@ -332,6 +332,20 @@ class GalliPickStoreInputRegressionTests(unittest.TestCase):
         self.assertTrue(any("STORE_BINDING: GalliPick OPS06_CONFIRMATION" in item
                             for item in issues), issues)
 
+    def test_icon_publisher_uses_manual_store_confirmation(self):
+        read_file = audit.read
+        path = ".github/workflows/play-store-icon.yml"
+        original = read_file(path)
+        expected = "OPS06_CONFIRMATION: ${{ inputs.ops06_confirmation }}"
+        self.assertIn(expected, original)
+        forged = original.replace(expected,
+                                  "OPS06_CONFIRMATION: APPLY_VERIFIED_PLAY_STORE_ASSETS")
+        with patch.object(audit, "read", side_effect=lambda name:
+                          forged if name == path else read_file(name)):
+            issues = audit.findings()
+        self.assertTrue(any("STORE_BINDING: GalliPick OPS06_CONFIRMATION in play-store-icon.yml"
+                            in issue for issue in issues), issues)
+
     def test_store_guard_binding_cannot_be_satisfied_by_an_unrelated_step(self):
         original = audit.read(".github/workflows/play-listing-images.yml")
         binding = "OPS06_CONFIRMATION: ${{ inputs.ops06_confirmation }}"
