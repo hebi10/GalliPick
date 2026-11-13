@@ -2,6 +2,23 @@ name: GalliPick Korean Play listing images
 on:
   workflow_dispatch:
     inputs:
+      ops06_store_approved:
+        description: 'Final planned work/QA complete; separately approve store assets update'
+        type: boolean
+        required: true
+        default: false
+      ops06_confirmation:
+        description: 'For upload, type APPLY_VERIFIED_PLAY_STORE_ASSETS'
+        type: string
+        required: false
+      ops06_expected_main_sha:
+        description: 'Reviewed exact main commit SHA (40 hex chars)'
+        type: string
+        required: false
+      ops06_batch_id:
+        description: 'KST release batch YYYY-MM-DD-gallipick'
+        type: string
+        required: false
       ops01_release_approved:
         description: 'OPS-01: explicit approval after all planned work and final QA'
         required: true
@@ -31,8 +48,10 @@ jobs:
   upload:
     needs: validate
     if: >-
-      github.event_name == 'workflow_dispatch' && inputs.ops01_release_approved == true &&
-      (github.event_name == 'push' || inputs.mode == 'upload')
+      github.repository == 'hebi10/GalliPick' && github.ref == 'refs/heads/main' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.mode == 'upload' && inputs.ops01_release_approved == true &&
+      inputs.ops06_store_approved == true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -42,6 +61,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: OPS-06 verify separate store update approval and exact main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPS06_STORE_APPROVED: ${{ inputs.ops06_store_approved }}
+          OPS06_CONFIRMATION: ${{ inputs.ops06_confirmation }}
+          OPS06_EXPECTED_MAIN_SHA: ${{ inputs.ops06_expected_main_sha }}
+          OPS06_BATCH_ID: ${{ inputs.ops06_batch_id }}
+        run: python3 scripts/ops06/store_gate.py apply
       - name: Check configured Play authentication
         id: config
         env:
