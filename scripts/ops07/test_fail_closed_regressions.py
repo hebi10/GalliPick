@@ -286,5 +286,37 @@ class InterpreterOptionsRegressionTests(unittest.TestCase):
         self.assertTrue(any("STORE_GUARD" in item for item in issues), issues)
 
 
+class ShellConditionalApprovalRegressionTests(unittest.TestCase):
+    def test_conditional_store_approval_does_not_authorize_upload(self):
+        source = store_workflow(
+            guard_run="|\n"
+                      "          if false; then\n"
+                      "            python3 scripts/ops06/store_gate.py apply\n"
+                      "          fi")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            folder = root / ".github/workflows"
+            folder.mkdir(parents=True)
+            (folder / "play-listing-images.yml").write_text(source, encoding="utf-8")
+            with patch.object(audit, "ROOT", root):
+                issues = audit.store_guard_findings()
+        self.assertTrue(any("STORE_OPTIONAL" in issue for issue in issues), issues)
+
+    def test_shell_conditional_provenance_guard_does_not_authorize_upload(self):
+        workflow = ("on:\n  workflow_dispatch:\njobs:\n"
+                    "  verify:\n    steps:\n"
+                    "      - run: python3 scripts/ops04/internal.py guard\n"
+                    "  publish:\n    steps:\n"
+                    "      - run: |\n"
+                    "          if false; then\n"
+                    "            python3 scripts/ops04/internal.py guard\n"
+                    "          fi\n")
+        with patch.object(audit, "read", side_effect=lambda path:
+                          workflow if path == ".github/workflows/play-internal-release.yml"
+                          else None):
+            issues = audit.findings()
+        self.assertTrue(any("PROVENANCE:" in issue for issue in issues), issues)
+
+
 if __name__ == "__main__":
     unittest.main()
