@@ -1,15 +1,12 @@
 name: GalliPick Korean Play listing images
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'assets/play-store/ko-KR/0*.png'
-      - 'assets/play-store/ko-KR/feature-graphic.png'
-      - 'assets/play-store/ko-KR/manifest.json'
-      - 'scripts/release/play_listing_images.py'
-      - '.github/workflows/play-listing-images.yml'
   workflow_dispatch:
     inputs:
+      ops01_release_approved:
+        description: 'OPS-01: explicit approval after all planned work and final QA'
+        required: true
+        type: boolean
+        default: false
       mode:
         description: Validate files or upload images to Google Play
         type: choice
@@ -33,7 +30,9 @@ jobs:
         run: python3 scripts/release/play_listing_images.py
   upload:
     needs: validate
-    if: github.event_name == 'push' || inputs.mode == 'upload'
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.ops01_release_approved == true &&
+      (github.event_name == 'push' || inputs.mode == 'upload')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

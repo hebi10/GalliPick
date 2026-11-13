@@ -1,8 +1,7 @@
 name: GalliPick v0.2.6 closed alpha recovery
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/play-v026-resumable-recovery.yml']
+  workflow_dispatch:
+
 permissions:
   contents: read
   actions: read
@@ -13,9 +12,12 @@ concurrency:
 jobs:
   recover:
     if: >-
+      false &&
+      (
       github.repository == 'hebi10/GalliPick' &&
       github.ref == 'refs/heads/main' &&
       contains(github.event.head_commit.message, '[recover-v026-alpha]')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

@@ -1,10 +1,13 @@
 name: Public APK release
 run-name: GalliPick ${{ inputs.version || github.ref_name }}
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
     inputs:
+      ops01_release_approved:
+        description: 'OPS-01: explicit approval after all planned work and final QA'
+        required: true
+        type: boolean
+        default: false
       version:
         description: 'Release tag matching the app version, for example v0.1.6'
         required: true
@@ -55,7 +58,9 @@ jobs:
       ref: ${{ needs.prepare.outputs.commit }}
   publish:
     needs: [prepare, verify, device]
-    if: github.repository == 'hebi10/GalliPick'
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.ops01_release_approved == true &&
+      (github.repository == 'hebi10/GalliPick')
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
