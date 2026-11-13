@@ -101,6 +101,28 @@ class AppContracts(unittest.TestCase):
         with self.assertRaises(mod.Stop):
             mod.make_plan(tracks,[{"versionCode":19,"sha256":"b"*64}],req)
 
+    def test_closed_promotion_inputs_cannot_be_forged(self):
+        source_path = ".github/workflows/play-closed-release.yml"
+        original_read = audit.read
+        original = original_read(source_path)
+        variants = (
+            ("FINAL_BATCH_APPROVED", "final_batch_approved", "'true'"),
+            ("APPROVAL_PHRASE", "approval_phrase", "PROMOTE_VERIFIED_INTERNAL_VERSION"),
+            ("EXPECTED_MAIN_SHA", "expected_main_sha", "$" + "{{ github.sha }}"),
+            ("CLOSED_TRACK", "closed_track", "alpha"),
+            ("AAB_SHA256", "aab_sha256", "'" + "0" * 64 + "'"),
+        )
+        for key, field, forged in variants:
+            with self.subTest(key=key):
+                expected = key + ": " + "$" + "{{ inputs." + field + " }}"
+                self.assertIn(expected, original)
+                changed = original.replace(expected, key + ": " + forged, 1)
+                with patch.object(audit, "read", side_effect=lambda path:
+                                  changed if path == source_path else original_read(path)):
+                    blockers = audit.findings()
+                self.assertTrue(any("CLOSED_BINDING: GalliPick " + key in item
+                                    for item in blockers), blockers)
+
     def test_missing_existing_aab_cannot_be_published(self):
         mod=module("scripts/ops04/internal.py")
         self.assertIsNotNone(mod, "OPS-04 immutable AAB guard missing")
