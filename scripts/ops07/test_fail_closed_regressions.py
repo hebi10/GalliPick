@@ -318,5 +318,38 @@ class ShellConditionalApprovalRegressionTests(unittest.TestCase):
         self.assertTrue(any("PROVENANCE:" in issue for issue in issues), issues)
 
 
+class GalliPickStoreInputRegressionTests(unittest.TestCase):
+    def test_approved_store_confirmation_must_come_from_manual_input(self):
+        original = audit.read(".github/workflows/play-listing-images.yml")
+        binding = "OPS06_CONFIRMATION: ${{ inputs.ops06_confirmation }}"
+        self.assertIn(binding, original)
+        forged = original.replace(binding, "OPS06_CONFIRMATION: APPLY_VERIFIED_PLAY_STORE_ASSETS")
+        read_file = audit.read
+        with patch.object(audit, "read", side_effect=lambda path:
+                          forged if path == ".github/workflows/play-listing-images.yml"
+                          else read_file(path)):
+            issues = audit.findings()
+        self.assertTrue(any("STORE_BINDING: GalliPick OPS06_CONFIRMATION" in item
+                            for item in issues), issues)
+
+    def test_store_guard_binding_cannot_be_satisfied_by_an_unrelated_step(self):
+        original = audit.read(".github/workflows/play-listing-images.yml")
+        binding = "OPS06_CONFIRMATION: ${{ inputs.ops06_confirmation }}"
+        self.assertIn(binding, original)
+        forged = original.replace(binding, "OPS06_CONFIRMATION: APPLY_VERIFIED_PLAY_STORE_ASSETS")
+        forged = forged.replace("      - name: Check configured Play authentication",
+                                "      - name: Unrelated diagnostic\n"
+                                "        env:\n          OPS06_CONFIRMATION: ${{ inputs.ops06_confirmation }}\n"
+                                "        run: echo no-publication\n"
+                                "      - name: Check configured Play authentication", 1)
+        read_file = audit.read
+        with patch.object(audit, "read", side_effect=lambda path:
+                          forged if path == ".github/workflows/play-listing-images.yml"
+                          else read_file(path)):
+            issues = audit.findings()
+        self.assertTrue(any("STORE_BINDING: GalliPick OPS06_CONFIRMATION" in item
+                            for item in issues), issues)
+
+
 if __name__ == "__main__":
     unittest.main()
