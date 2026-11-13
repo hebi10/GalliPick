@@ -365,5 +365,46 @@ class GalliPickStoreInputRegressionTests(unittest.TestCase):
                             for item in issues), issues)
 
 
+class GalliPickInternalApprovalBindingTests(unittest.TestCase):
+    def test_internal_approval_must_use_dispatched_values(self):
+        read_file = audit.read
+        path = ".github/workflows/play-internal-release.yml"
+        original = read_file(path)
+        for key, field, forged in (
+            ("FINAL_RELEASE_APPROVED", "final_release_approved", "'true'"),
+            ("APPROVAL_PHRASE", "approval_phrase", "PUBLISH_VERIFIED_INTERNAL_AAB"),
+            ("EXPECTED_MAIN_SHA", "expected_main_sha", "${{ github.sha }}"),
+            ("AAB_SHA256", "aab_sha256", "'" + "0" * 64 + "'"),
+        ):
+            with self.subTest(key=key):
+                approved = key + ": " + "$" + "{{ inputs." + field + " }}"
+                self.assertIn(approved, original)
+                changed = original.replace(approved, key + ": " + forged, 1)
+                with patch.object(audit, "read", side_effect=lambda name:
+                                  changed if name == path else read_file(name)):
+                    issues = audit.findings()
+                self.assertTrue(any("INTERNAL_BINDING: GalliPick " + key in issue
+                                    for issue in issues), issues)
+
+    def test_unrelated_step_cannot_supply_approval_binding(self):
+        read_file = audit.read
+        path = ".github/workflows/play-internal-release.yml"
+        original = read_file(path)
+        approved = "APPROVAL_PHRASE: " + "$" + "{{ inputs.approval_phrase }}"
+        self.assertIn(approved, original)
+        changed = original.replace(approved, "APPROVAL_PHRASE: PUBLISH_VERIFIED_INTERNAL_AAB", 1)
+        changed = changed.replace(
+            "      - name: Verify current main, explicit authorization, source run and artifact",
+            "      - name: Unrelated check\n"
+            "        env:\n          " + approved + "\n"
+            "        run: echo check\n"
+            "      - name: Verify current main, explicit authorization, source run and artifact", 1)
+        with patch.object(audit, "read", side_effect=lambda name:
+                          changed if name == path else read_file(name)):
+            issues = audit.findings()
+        self.assertTrue(any("INTERNAL_BINDING: GalliPick APPROVAL_PHRASE" in issue
+                            for issue in issues), issues)
+
+
 if __name__ == "__main__":
     unittest.main()
