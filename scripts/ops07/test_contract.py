@@ -101,6 +101,25 @@ class AppContracts(unittest.TestCase):
         with self.assertRaises(mod.Stop):
             mod.make_plan(tracks,[{"versionCode":19,"sha256":"b"*64}],req)
 
+    def test_ops03_signed_build_request_cannot_forge_approval_or_source(self):
+        path = ".github/workflows/release-build.yml"
+        original_read = audit.read
+        original = original_read(path)
+        variants = (
+            ("FINAL_BATCH_APPROVED", "final_batch_approved", "'true'"),
+            ("EXPECTED_MAIN_SHA", "expected_main_sha", "$" + "{{ github.sha }}"),
+        )
+        for key, field, forged in variants:
+            with self.subTest(key=key):
+                expected = key + ": " + "$" + "{{ inputs." + field + " }}"
+                self.assertIn(expected, original)
+                changed = original.replace(expected, key + ": " + forged, 1)
+                with patch.object(audit, "read", side_effect=lambda target:
+                                  changed if target == path else original_read(target)):
+                    blockers = audit.findings()
+                self.assertTrue(any("OPS03_BINDING: GalliPick " + key in item
+                                    for item in blockers), blockers)
+
     def test_closed_promotion_inputs_cannot_be_forged(self):
         source_path = ".github/workflows/play-closed-release.yml"
         original_read = audit.read
