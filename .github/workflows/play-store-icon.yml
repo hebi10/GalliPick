@@ -1,15 +1,12 @@
 name: GalliPick Play icon
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'app/src/main/res/drawable/ic_launcher_foreground.xml'
-      - 'app/src/main/res/drawable/ic_launcher_monochrome.xml'
-      - 'scripts/design/GenerateStoreIcon.java'
-      - 'scripts/release/play_store_icon.py'
-      - '.github/workflows/play-store-icon.yml'
   workflow_dispatch:
     inputs:
+      ops01_release_approved:
+        description: 'OPS-01: explicit approval after all planned work and final QA'
+        required: true
+        type: boolean
+        default: false
       mode:
         description: 'Validate the generated icon or submit to the Korean store listing'
         type: choice
@@ -48,7 +45,9 @@ jobs:
           if-no-files-found: error
   upload:
     needs: validate
-    if: github.repository == 'hebi10/GalliPick' && (github.event_name == 'push' || inputs.mode == 'upload')
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.ops01_release_approved == true &&
+      (github.repository == 'hebi10/GalliPick' && (github.event_name == 'push' || inputs.mode == 'upload'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

@@ -1,12 +1,13 @@
 name: Play testing deployment
 run-name: GalliPick Play ${{ inputs.mode || 'deploy' }} · ${{ inputs.target || (contains(github.event.head_commit.message, '[deploy-closed]') && 'closed') || 'internal' }} · ${{ github.ref_name }}
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
-    paths: ['app/build.gradle.kts']
   workflow_dispatch:
     inputs:
+      ops01_release_approved:
+        description: 'OPS-01: explicit approval after all planned work and final QA'
+        required: true
+        type: boolean
+        default: false
       mode:
         description: 'Check configuration, build signed files, or deploy to the selected testing track'
         required: true
@@ -369,7 +370,9 @@ jobs:
 
   deploy:
     needs: [prepare, build]
-    if: needs.prepare.outputs.mode == 'deploy'
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.ops01_release_approved == true &&
+      (needs.prepare.outputs.mode == 'deploy')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
