@@ -476,6 +476,24 @@ def findings():
                 continue
             if not any(approved.fullmatch(atom) for atom in _guaranteed_atoms(job_condition(body))):
                 problems.append("APPROVAL: " + filename + ": " + job + " lacks mandatory OPS-01 approval")
+    if REPOSITORY == "hebi10/GalliPick":
+        store = read(".github/workflows/play-listing-images.yml")
+        upload = jobs(store).get("upload") if store else None
+        steps = _workflow_steps(upload or "")
+        approval = [step for step in steps
+                    if re.search(r"(?m)^[ \t]*(?:-[ \t]+)?run:[ \t]*python3[ \t]+scripts/ops06/store_gate\.py[ \t]+apply[ \t]*(?:#.*)?$", step)]
+        if len(approval) != 1:
+            problems.append("STORE_BINDING: GalliPick requires one executable OPS-06 approval step")
+        else:
+            guard = approval[0]
+            for key, field in (("OPS06_STORE_APPROVED", "ops06_store_approved"),
+                               ("OPS06_CONFIRMATION", "ops06_confirmation"),
+                               ("OPS06_EXPECTED_MAIN_SHA", "ops06_expected_main_sha"),
+                               ("OPS06_BATCH_ID", "ops06_batch_id")):
+                expected = "$" + "{{ inputs." + field + " }}"
+                values = re.findall(r"(?m)^[ \t]+" + re.escape(key) + r":[ \t]*([^\n#]+)", guard)
+                if len(values) != 1 or values[0].strip() != expected:
+                    problems.append("STORE_BINDING: GalliPick " + key + " must bind to dispatch input")
     if REPOSITORY == "hebi10/HomeCrew":
         source = read(".github/workflows/play-internal.yml")
         release = jobs(source).get("release") if source else None
