@@ -231,8 +231,8 @@ def store_guard_findings():
                 problems.append("STORE_ORDER: " + filename + ": job " + name
                                 + " authenticates Play before approval")
             for match in re.finditer(
-                r"(?im)^\s*(?:run:\s*)?(?:python(?:3)?|node)\s+[^\n]*"
-                r"(?:--apply|--publish|--r09-final|\bpublish\b)", body
+                r"(?im)^\s*(?:-\s*)?(?:run:\s*)?(?:python(?:3)?|node)\s+\S+"
+                r"[^\n]*(?:--apply\b|--publish\b|--r09-final\b|\s+publish(?:\s|$))", body
             ):
                 if match.start() < guard_index:
                     problems.append("STORE_ORDER: " + filename + ": job " + name
