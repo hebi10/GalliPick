@@ -103,9 +103,12 @@ def automatic_mutations(filename, source):
     events = triggers(source) & AUTO
     if not events:
         return []
-    # Non-Play web/Firebase production pipelines have separate approval systems.
-    if ("firebase" in filename or "hosting" in filename or "public-wedding" in filename) \
-            and "androidpublisher" not in source:
+    # Limit publish-job detection to Play/store and explicit GitHub APK release workflows.
+    # Web/Firebase/privacy/compatibility QA jobs named 'deploy' or 'release' are unrelated.
+    relevant_name = (re.search(r"play|store|closed|promote|alpha|listing|publisher", filename, re.I)
+                     or filename in {"release.yml", "mobile-release.yml", "android-release.yml",
+                                     "public-release.yml", "ui-r09-full-release.yml"})
+    if not relevant_name and "androidpublisher.googleapis.com" not in source:
         return []
     issues = []
     for name, body in jobs(source).items():
