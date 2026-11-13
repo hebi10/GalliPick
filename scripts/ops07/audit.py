@@ -497,6 +497,26 @@ def findings():
                 if len(values) != 1 or values[0].strip() != expected:
                     problems.append("STORE_BINDING: GalliPick " + key
                                     + " in " + filename + " must bind to dispatch input")
+    if REPOSITORY == "hebi10/GalliPick":
+        internal = read(".github/workflows/play-internal-release.yml") or ""
+        env_match = re.search(r"(?m)^env:[ \t]*(?:#.*)?$", internal)
+        env = ""
+        if env_match:
+            for line in internal[env_match.end():].splitlines():
+                if line.strip() and len(line) - len(line.lstrip()) == 0:
+                    break
+                env += line + "\n"
+        for key, field in (("FINAL_RELEASE_APPROVED", "final_release_approved"),
+                           ("APPROVAL_PHRASE", "approval_phrase"),
+                           ("EXPECTED_MAIN_SHA", "expected_main_sha"),
+                           ("AAB_SHA256", "aab_sha256")):
+            expected = "$" + "{{ inputs." + field + " }}"
+            values = re.findall(r"(?m)^[ \t]+" + re.escape(key) + r":[ \t]*([^\n#]+)", internal)
+            bound = re.search(r"(?m)^  " + re.escape(key) + r":[ \t]*"
+                              + re.escape(expected) + r"[ \t]*(?:#.*)?$", env)
+            if len(values) != 1 or values[0].strip() != expected or not bound:
+                problems.append("INTERNAL_BINDING: GalliPick " + key
+                                + " must come from the approved dispatch input")
     if REPOSITORY == "hebi10/HomeCrew":
         source = read(".github/workflows/play-internal.yml")
         release = jobs(source).get("release") if source else None
