@@ -335,9 +335,11 @@ def _safe_store_step(guard_step, mutation_steps, body, filename):
     guard_command = r"(?m)^[ \t]*(?:-[ \t]+)?(?:run:[ \t]*)?python(?:3)?\s+scripts/ops06/store_gate\.py\s+apply"
     if not re.search(guard_command + r"(?:\s|$)", guard_step):
         return False
-    if re.search(guard_command + r"[^\n]*(?:\|\||;[ \t]*true\b|\|(?!\|))", guard_step):
+    if re.search(guard_command + r"[^\n]*(?:&&|\|\||;[ \t]*true\b|\|(?!\|))", guard_step):
         return False
     if re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?set[ \t]+\+e\b", guard_step):
+        return False
+    if re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?(?:if[ \t]+|(?:elif|else|fi)\b)", guard_step):
         return False
     guard_cond = _step_condition(guard_step)
     if not guard_cond:
@@ -494,8 +496,9 @@ def findings():
                 continue
             index, guard = guards[0]
             if (_step_condition(guard) or re.search(r"(?m)^[ \t]+(?:-[ \t]+)?continue-on-error[ \t]*:", guard)
-                    or re.search(guard_command + r"[^\n]*(?:\|\||;[ \t]*true\b|\|(?!\|))", guard)
-                    or re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?set[ \t]+\+e\b", guard)):
+                    or re.search(guard_command + r"[^\n]*(?:&&|\|\||;[ \t]*true\b|\|(?!\|))", guard)
+                    or re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?set[ \t]+\+e\b", guard)
+                    or re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?(?:if[ \t]+|(?:elif|else|fi)\b)", guard)):
                 problems.append("PROVENANCE: OPS-04 " + stage + " guard must run and stop on failure")
             if any("actions/download-artifact@" in step or "google-github-actions/auth@" in step
                    for step in steps[:index]):
