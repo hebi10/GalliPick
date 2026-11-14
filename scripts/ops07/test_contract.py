@@ -231,6 +231,28 @@ class AppContracts(unittest.TestCase):
                 self.assertTrue(any("CLOSED_BINDING: GalliPick " + key in item
                                     for item in blockers), blockers)
 
+    def test_closed_promotion_rejects_fresh_binary_upload(self):
+        path = ".github/workflows/play-closed-release.yml"
+        original_read = audit.read
+        original = original_read(path)
+        insert_before = "      - name: Store sanitized Play commit/readback receipt"
+        self.assertIn(insert_before, original)
+        variants = (
+            "python3 scripts/release/play_publish.py deploy --track alpha --bundle /tmp/new.aab",
+            "python3 -m scripts.release.play_publish deploy --track alpha --bundle /tmp/new.aab",
+            "curl -X POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.hebi.gallipick/edits/123/bundles",
+        )
+        for command in variants:
+            with self.subTest(command=command):
+                altered = original.replace(
+                    insert_before,
+                    "      - name: Unexpected fresh AAB publishing\n"
+                    "        run: " + command + "\n" + insert_before, 1)
+                with patch.object(audit, "read", side_effect=lambda target:
+                                  altered if target == path else original_read(target)):
+                    issues = audit.findings()
+                self.assertTrue(any("CLOSED_UPLOAD:" in item for item in issues), issues)
+
     def test_missing_existing_aab_cannot_be_published(self):
         mod=module("scripts/ops04/internal.py")
         self.assertIsNotNone(mod, "OPS-04 immutable AAB guard missing")

@@ -495,6 +495,14 @@ def findings():
                 problems.append("CLOSED: separate approved same-version promotion missing")
             if any(k in source for k in ("bundleRelease", "assembleRelease", "uploadType")):
                 problems.append("CLOSED: no binary upload/build permitted")
+            # Permit only the dedicated OPS-05 existing-version promotion commands.
+            # All other Play publisher entrypoints remain prohibited in this workflow.
+            promotion_only = re.sub(
+                r"(?m)^[ \t]*(?:-[ \t]+)?(?:run:[ \t]*)?python3[ \t]+scripts/ops05/promotion\.py[ \t]+(?:guard|check|promote)[ \t]*(?:#.*)?$",
+                "", source,
+            )
+            if _publishing_command(promotion_only):
+                problems.append("CLOSED_UPLOAD: fresh AAB publishing is forbidden in closed promotion")
     manual = read("AGENTS.md")
     if manual is not None and not all(k in manual for k in ("Release Batch", "Play")):
         problems.append("AGENTS: common release freeze and daily batch policy missing")
