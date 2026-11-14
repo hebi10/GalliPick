@@ -437,6 +437,36 @@ def findings():
                 if len(values) != 1 or values[0].strip() != expected_input or not bound:
                     problems.append("OPS03_BINDING: GalliPick " + name
                                     + " must bind to the caller-approved dispatch input")
+            required_ci = "'[\"Android verification\",\"Android device tests\"]'"
+            ci_values = re.findall(r"(?m)^      REQUIRED_CI_JSON:[ \t]*([^\n#]+)", request)
+            if len(ci_values) != 1 or ci_values[0].strip() != required_ci:
+                problems.append("OPS03_REQUIRED_CI: GalliPick must require Android verification and device tests")
+            steps = _workflow_steps(request)
+            gates = [(i, step) for i, step in enumerate(steps)
+                     if re.search(r"(?m)^[ \t]*-[ \t]+name:[ \t]*"
+                                  r"Gate release batch, main SHA and required CI[ \t]*(?:#.*)?$", step)]
+            dispatches = [(i, step) for i, step in enumerate(steps)
+                          if "gh api --method POST" in step and "/dispatches" in step]
+            if len(gates) != 1 or len(dispatches) != 1 or gates[0][0] >= dispatches[0][0]:
+                problems.append("OPS03_PREFLIGHT: GalliPick signed build approval must precede dispatch")
+            else:
+                gate, dispatch = gates[0][1], dispatches[0][1]
+                essential = (
+                    "python3 - <<'PY'",
+                    'if os.environ["FINAL_BATCH_APPROVED"]!="true"',
+                    'sha!=os.environ["GITHUB_SHA"]',
+                    'required=json.loads(os.environ["REQUIRED_CI_JSON"])',
+                    'if not matching: refuse("Missing exact-main CI: "+name)',
+                    'if latest.get("status")!="completed" or latest.get("conclusion")!="success"',
+                )
+                if (_step_condition(gate)
+                        or re.search(r"(?m)^[ \t]*(?:-[ \t]+)?continue-on-error[ \t]*:", gate)
+                        or re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?set[ \t]+\+e\b", gate)
+                        or not re.search(r"(?m)^[ \t]*(?:-[ \t]+)?run:[ \t]*\|[ \t]*(?:#.*)?$", gate)
+                        or not all(check in gate for check in essential)):
+                    problems.append("OPS03_PREFLIGHT: GalliPick approval/CI gate must execute and fail closed")
+                if re.search(r"\b(?:always|failure|cancelled)\s*\(", _step_condition(dispatch)):
+                    problems.append("OPS03_DISPATCH_BYPASS: GalliPick build can dispatch after failed approval")
             if re.search(r"(?i)inputs\[(?:mode|deploy)\]\s*=\s*(?:deploy|initialize|publish|promote|apply|upload|true)\b", source):
                 problems.append("BUILD: Play publishing mode is forbidden in build-only dispatch")
             for body in jobs(source).values():
