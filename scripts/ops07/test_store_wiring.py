@@ -38,6 +38,17 @@ class StoreWiringTests(unittest.TestCase):
     def test_valid_store_gate_precedes_authentication(self):
         self.assertEqual(self.findings(store_workflow()), [])
 
+    def test_python_module_listing_publisher_requires_approval(self):
+        source = store_workflow().replace(
+            "python3 scripts/play/listing_images.py --apply",
+            "python3 -m scripts.release.play_listing_images --apply", 1)
+        self.assertEqual(self.findings(source), [])
+        source = source.replace(
+            "      - name: OPS-06 separate store approval\n"
+            "        run: python3 scripts/ops06/store_gate.py apply\n", "", 1)
+        self.assertTrue(any("STORE_GUARD:" in item for item in self.findings(source)),
+                        self.findings(source))
+
     def test_missing_store_gate_blocks(self):
         source = store_workflow().replace(
             "      - name: OPS-06 separate store approval\n"
