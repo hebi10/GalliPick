@@ -224,6 +224,16 @@ class AppContracts(unittest.TestCase):
                 " 'event': 'push', 'status': 'completed', 'conclusion': 'success',"
                 " 'run_number': 1, 'run_attempt': 1, 'id': idx}"
                 " for idx, name in enumerate(('Android verification', 'Android device tests'), 1)]\n"
+                "    mode = os.environ.get('GH_FIXTURE_MODE', 'success')\n"
+                "    if mode == 'missing':\n"
+                "        runs = []\n"
+                "    elif mode == 'failed':\n"
+                "        runs[0]['conclusion'] = 'failure'\n"
+                "    elif mode == 'running':\n"
+                "        runs[0]['status'] = 'in_progress'\n"
+                "        runs[0]['conclusion'] = None\n"
+                "    elif mode == 'partial':\n"
+                "        runs = runs[:1]\n"
                 "    print(json.dumps({'workflow_runs': runs}))\n"
                 "else:\n"
                 "    sys.exit(3)\n",
@@ -246,6 +256,19 @@ class AppContracts(unittest.TestCase):
             self.assertNotEqual(denied.returncode, 0)
             self.assertIn("Final planned work and QA must be explicitly approved",
                           denied.stdout + denied.stderr)
+            for mode, expected_message in (
+                ("missing", "Missing exact-main CI: Android verification"),
+                ("failed", "Required CI not successful: Android verification"),
+                ("running", "Required CI not successful: Android verification"),
+                ("partial", "Missing exact-main CI: Android device tests"),
+            ):
+                with self.subTest(required_ci=mode):
+                    rejected = subprocess.run(
+                        [sys.executable, "-c", code],
+                        env={**env, "GH_FIXTURE_MODE": mode},
+                        capture_output=True, text=True, timeout=10)
+                    self.assertNotEqual(rejected.returncode, 0, rejected.stdout + rejected.stderr)
+                    self.assertIn(expected_message, rejected.stdout + rejected.stderr)
 
     def test_internal_only_approval_cannot_target_closed_track(self):
         path = ".github/workflows/play-internal-release.yml"

@@ -463,6 +463,7 @@ def findings():
                     'if os.environ["FINAL_BATCH_APPROVED"]!="true"',
                     'sha!=os.environ["GITHUB_SHA"]',
                     'required=json.loads(os.environ["REQUIRED_CI_JSON"])',
+                    'if required:',
                     'if not matching: refuse("Missing exact-main CI: "+name)',
                     'if latest.get("status")!="completed" or latest.get("conclusion")!="success"',
                 )
