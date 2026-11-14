@@ -120,6 +120,33 @@ class AppContracts(unittest.TestCase):
                 self.assertTrue(any("OPS03_BINDING: GalliPick " + key in item
                                     for item in blockers), blockers)
 
+    def test_ops03_signed_build_gate_runs_and_required_ci_is_not_skipped(self):
+        path = ".github/workflows/release-build.yml"
+        original_read = audit.read
+        original = original_read(path)
+        gate = "      - name: Gate release batch, main SHA and required CI\n"
+        dispatch = "      - name: Dispatch existing signed AAB build-only mode\n"
+        required = """REQUIRED_CI_JSON: '["Android verification","Android device tests"]'"""
+        for value in (gate, dispatch, required):
+            self.assertIn(value, original)
+        variants = (
+            ("removed", original.replace(gate, "", 1)),
+            ("skipped", original.replace(gate, gate + "        if: false\n", 1)),
+            ("ignored_failure", original.replace(gate, gate + "        continue-on-error: true\n", 1)),
+            ("dispatch_on_failure", original.replace(dispatch, dispatch + "        if: always()\n", 1)),
+            ("empty_ci", original.replace(required, "REQUIRED_CI_JSON: '[]'", 1)),
+            ("no_ci_success", original.replace(
+                'if latest.get("status")!="completed" or latest.get("conclusion")!="success": refuse("Required CI not successful: "+name)',
+                "if False: refuse('unreachable')", 1)),
+        )
+        for label, altered in variants:
+            with self.subTest(label=label):
+                with patch.object(audit, "read", side_effect=lambda target:
+                                  altered if target == path else original_read(target)):
+                    blockers = audit.findings()
+                self.assertTrue(any(item.startswith(("OPS03_PREFLIGHT:", "OPS03_REQUIRED_CI:",
+                                                       "OPS03_DISPATCH_BYPASS:")) for item in blockers), blockers)
+
     def test_closed_promotion_inputs_cannot_be_forged(self):
         source_path = ".github/workflows/play-closed-release.yml"
         original_read = audit.read
