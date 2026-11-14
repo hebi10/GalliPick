@@ -1,5 +1,8 @@
 """Offline OPS-07 automatic-event and release authorization negative fixtures."""
 import importlib.util
+import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -185,12 +188,64 @@ class AppContracts(unittest.TestCase):
         conditional = conditional.replace(
             gate_end, "          PY\n          fi\n      - name: Dispatch existing signed AAB build-only mode", 1)
         early_exit = original.replace(first, "          exit 0\n" + first, 1)
-        for label, altered in (("conditional_skip", conditional), ("early_exit", early_exit)):
+        approval_line = ('          if os.environ["FINAL_BATCH_APPROVED"]!="true": '
+                         'refuse("Final planned work and QA must be explicitly approved")')
+        self.assertIn(approval_line, original)
+        commented = original.replace(approval_line, "          # " + approval_line.strip(), 1)
+        for label, altered in (("conditional_skip", conditional),
+                               ("early_exit", early_exit), ("commented_approval", commented)):
             with self.subTest(label=label):
                 with patch.object(audit, "read", side_effect=lambda target:
                                   altered if target == path else original_read(target)):
                     issues = audit.findings()
                 self.assertTrue(any(item.startswith("OPS03_PREFLIGHT:") for item in issues), issues)
+
+    def test_ops03_approval_is_enforced_by_executable_python_preflight(self):
+        source = audit.read(".github/workflows/release-build.yml")
+        request = audit.jobs(source)["request"]
+        gate = next(step for step in audit._workflow_steps(request)
+                    if "Gate release batch, main SHA and required CI" in step)
+        entry = "          python3 - <<'PY'\n"
+        self.assertIn(entry, gate)
+        self.assertIn("\n          PY", gate)
+        code = gate.split(entry, 1)[1].split("\n          PY", 1)[0]
+        code = "\n".join(line[10:] for line in code.splitlines())
+        with tempfile.TemporaryDirectory() as tmp:
+            gh = Path(tmp) / "gh"
+            gh.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, sys\n"
+                "sha = os.environ['GITHUB_SHA']\n"
+                "endpoint = sys.argv[-1]\n"
+                "if endpoint.endswith('/git/ref/heads/main'):\n"
+                "    print(json.dumps({'object': {'sha': sha}}))\n"
+                "elif '/actions/runs?' in endpoint:\n"
+                "    runs = [{'name': name, 'head_sha': sha, 'head_branch': 'main',"
+                " 'event': 'push', 'status': 'completed', 'conclusion': 'success',"
+                " 'run_number': 1, 'run_attempt': 1, 'id': idx}"
+                " for idx, name in enumerate(('Android verification', 'Android device tests'), 1)]\n"
+                "    print(json.dumps({'workflow_runs': runs}))\n"
+                "else:\n"
+                "    sys.exit(3)\n",
+                encoding="utf-8",
+            )
+            gh.chmod(0o700)
+            env = {**os.environ, "PATH": str(tmp) + os.pathsep + os.environ.get("PATH", ""),
+                   "GITHUB_SHA": "a" * 40, "EXPECTED_MAIN_SHA": "a" * 40,
+                   "GITHUB_REPOSITORY": audit.REPOSITORY,
+                   "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
+                   "FINAL_BATCH_APPROVED": "true", "BATCH_ID": "2026-11-14-gallipick",
+                   "REQUIRED_CI_JSON": '["Android verification","Android device tests"]',
+                   "RELEASE_TAG": "v0.2.11", "VERSION_CODE": ""}
+            valid = subprocess.run([sys.executable, "-c", code], env=env,
+                                   capture_output=True, text=True, timeout=10)
+            self.assertEqual(valid.returncode, 0, valid.stdout + valid.stderr)
+            denied = subprocess.run([sys.executable, "-c", code],
+                                    env={**env, "FINAL_BATCH_APPROVED": "false"},
+                                    capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(denied.returncode, 0)
+            self.assertIn("Final planned work and QA must be explicitly approved",
+                          denied.stdout + denied.stderr)
 
     def test_internal_only_approval_cannot_target_closed_track(self):
         path = ".github/workflows/play-internal-release.yml"

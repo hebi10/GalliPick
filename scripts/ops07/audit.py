@@ -470,13 +470,14 @@ def findings():
                 first_command = (next((line.strip() for line in gate[gate_run.end():].splitlines()
                                        if line.strip() and not line.lstrip().startswith("#")), None)
                                  if gate_run else None)
+                executable_gate = "\n".join(line.split("#", 1)[0] for line in gate.splitlines())
                 if (first_command != "python3 - <<'PY'"
                         or _step_condition(gate)
                         or re.search(r"(?m)^[ \t]*(?:-[ \t]+)?continue-on-error[ \t]*:", gate)
                         or re.search(r"(?m)^[ \t]*python3[ \t]+-[ \t]+<<'PY'[ \t]*(?:\|\||;|\|(?!\|))", gate)
                         or re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?set[ \t]+\+e\b", gate)
                         or not re.search(r"(?m)^[ \t]*(?:-[ \t]+)?run:[ \t]*\|[ \t]*(?:#.*)?$", gate)
-                        or not all(check in gate for check in essential)):
+                        or not all(check in executable_gate for check in essential)):
                     problems.append("OPS03_PREFLIGHT: GalliPick approval/CI gate must execute and fail closed")
                 if re.search(r"\b(?:always|failure|cancelled)\s*\(", _step_condition(dispatch)):
                     problems.append("OPS03_DISPATCH_BYPASS: GalliPick build can dispatch after failed approval")
