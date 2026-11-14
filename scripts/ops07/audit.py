@@ -420,7 +420,10 @@ def findings():
         if "github.ref" not in source and "GITHUB_REF" not in source:
             problems.append("SOURCE: " + file + " missing main ref gate")
         if file == "release-build.yml":
-            request = jobs(source).get("request") or ""
+            build_jobs = jobs(source)
+            if set(build_jobs) != {"request"}:
+                problems.append("OPS03_SCOPE: GalliPick signed-build workflow needs exactly one gated request job")
+            request = build_jobs.get("request") or ""
             header = re.search(r"(?m)^    env:[ \t]*(?:#.*)?$", request)
             scoped_env = ""
             if header:
@@ -438,7 +441,7 @@ def findings():
                     problems.append("OPS03_BINDING: GalliPick " + name
                                     + " must bind to the caller-approved dispatch input")
             required_ci = "'[\"Android verification\",\"Android device tests\"]'"
-            ci_values = re.findall(r"(?m)^      REQUIRED_CI_JSON:[ \t]*([^\n#]+)", request)
+            ci_values = re.findall(r"(?m)^[ \t]+REQUIRED_CI_JSON:[ \t]*([^\n#]+)", request)
             if len(ci_values) != 1 or ci_values[0].strip() != required_ci:
                 problems.append("OPS03_REQUIRED_CI: GalliPick must require Android verification and device tests")
             steps = _workflow_steps(request)
@@ -461,6 +464,7 @@ def findings():
                 )
                 if (_step_condition(gate)
                         or re.search(r"(?m)^[ \t]*(?:-[ \t]+)?continue-on-error[ \t]*:", gate)
+                        or re.search(r"(?m)^[ \t]*python3[ \t]+-[ \t]+<<'PY'[ \t]*(?:\|\||;|\|(?!\|))", gate)
                         or re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?set[ \t]+\+e\b", gate)
                         or not re.search(r"(?m)^[ \t]*(?:-[ \t]+)?run:[ \t]*\|[ \t]*(?:#.*)?$", gate)
                         or not all(check in gate for check in essential)):
