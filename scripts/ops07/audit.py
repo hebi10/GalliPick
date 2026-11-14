@@ -89,6 +89,14 @@ def jobs(source):
     indentation = min((depth for depth, match in candidates if match is not None), default=None)
     if indentation is None:
         return {"__unparsed_jobs__": source}
+    # A flow-style job alongside normal jobs must not inherit another job's if gate.
+    for line in children:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        depth = len(line) - len(line.lstrip())
+        if depth == indentation and not re.fullmatch(
+                r"""(['"]?)[A-Za-z][\w-]*\1\s*:\s*(?:#.*)?""", line.strip()):
+            return {"__unparsed_jobs__": source}
     result, name, buffer = {}, None, []
     for line in children:
         depth = len(line) - len(line.lstrip())
@@ -198,6 +206,7 @@ def _publishing_command(body):
     commands = "\n".join(line for line in body.splitlines()
                          if not line.lstrip().startswith(("- name:", "name:", "#")))
     commands = re.sub(r"\\\s*\n\s*", " ", commands)
+    commands = re.sub(r"\s*(?:&&|\|\||;|\|)\s*", "\n", commands)
     if re.search(r"(?i)\bgh\s+release\s+create\b|softprops/action-gh-release|upload-google-play@", commands):
         return True
     if "androidpublisher.googleapis.com" in commands and re.search(
@@ -214,12 +223,14 @@ def _publishing_command(body):
                     r"|play_internal\.py|play_closed\.py|promote_internal\.py"
                     r"|play_images\.py|store_icon\.py")
     for line in commands.splitlines():
-        match = re.search(r"\b(?:python(?:3(?:\.\d+)?)?|node|bash|sh)\s+([^\s;|]+)([^\n]*)", line)
+        match = re.search(r"\b(?:python(?:3(?:\.\d+)?)?|node|bash|sh)\s+(?:(?:-[uBIESOqv]+|--unbuffered)\s+)*(?:(-m)\s+)?([^\s;|]+)([^\n]*)", line)
         if not match:
             continue
-        script, args = match.group(1).lower(), match.group(2).lower()
+        script, args = match.group(2).lower(), match.group(3).lower()
+        if match.group(1) == "-m":
+            script = script.replace(".", "/") + ".py"
         # These existing publisher entrypoints mutate by default, even without --publish.
-        if re.search(r"(?:^|/)(?:store_icon|publish-mobile-play|publish_mobile_play)[.]py$", script):
+        if re.search(r"(?:^|/)(?:store_icon|images_only|publish-mobile-play|publish_mobile_play)[.]py$", script):
             return True
         if not re.search(script_names, script):
             continue
@@ -242,6 +253,8 @@ def automatic_mutations(filename, source):
                                      "public-release.yml", "ui-r09-full-release.yml"})
     issues = []
     workflow_jobs = jobs(source)
+    if "__unparsed_jobs__" in workflow_jobs:
+        return [filename + ": cannot safely parse publishing jobs"]
     for name, body in workflow_jobs.items():
         explicit = _publishing_command(body)
         possible = explicit or (relevant_file and MUTATOR.search(name) is not None
@@ -263,6 +276,7 @@ def automatic_mutations(filename, source):
 
 def _store_mutating_command(body):
     normalized = re.sub(r"\\\s*\n\s*", " ", body)
+    normalized = re.sub(r"\s*(?:&&|\|\||;)\s*", "\n", normalized)
     for line in normalized.splitlines():
         if line.lstrip().startswith(("- name:", "name:", "#")):
             continue
@@ -270,11 +284,15 @@ def _store_mutating_command(body):
                 r"(?i)(?:/images|/listings/|:commit)\b", line) and re.search(
                 r"(?i)\b(?:POST|PUT|PATCH|DELETE)\b", line):
             return True
-        match = re.search(r"\b(?:python(?:3(?:\.\d+)?)?|node)\s+([^\s;|]+)([^\n]*)", line)
+        match = re.search(r"\b(?:python(?:3(?:\.\d+)?)?|node)\s+(?:(?:-[uBIESOqv]+|--unbuffered)\s+)*(?:(-m)\s+)?([^\s;|]+)([^\n]*)", line)
         if not match:
             continue
-        script, args = match.group(1).lower(), match.group(2).lower()
-        if re.search(r"(?:^|/)store_icon[.]py$", script):
+        script, args = match.group(2).lower(), match.group(3).lower()
+        if match.group(1) == "-m":
+            script = script.replace(".", "/") + ".py"
+        if script.endswith("/ops06/store_gate.py"):
+            continue
+        if re.search(r"(?:^|/)(?:store_icon|images_only)[.]py$", script):
             return True
         if "publish_play_store_refresh" in script:
             return True
@@ -288,7 +306,7 @@ def _store_mutating_command(body):
 
 
 def _workflow_steps(body):
-    found = list(re.finditer(r"(?m)^( +)- (?:name|uses|run):", body))
+    found = list(re.finditer(r"(?m)^( +)- [A-Za-z][\w-]*:", body))
     if not found:
         return []
     depth = min(len(item.group(1)) for item in found)
@@ -298,20 +316,34 @@ def _workflow_steps(body):
 
 
 def _step_condition(body):
-    match = re.search(r"(?m)^\s+if:\s*([^\n]+)", body)
+    match = re.search(r"(?m)^([ \t]+)(-[ \t]+)?if:[ \t]*([^\n]+)", body)
     if not match:
         return ""
-    return match.group(1).strip()
+    condition = match.group(3).strip().split(" #", 1)[0].strip()
+    if condition not in (">", ">-", ">+", "|", "|-", "|+"):
+        return condition
+    indent = len(match.group(1)) + len(match.group(2) or "")
+    parts = []
+    for line in body[match.end():].splitlines():
+        if not line.strip():
+            continue
+        if len(line) - len(line.lstrip()) <= indent:
+            break
+        parts.append(line.strip())
+    return " ".join(parts) if parts else "__unparsed_condition__"
 
 
 def _safe_store_step(guard_step, mutation_steps, body, filename):
-    if re.search(r"(?m)^\s+continue-on-error\s*:\s*(?!false\s*$)[^\n]+", guard_step):
+    if re.search(r"(?m)^[ \t]+(?:-[ \t]+)?continue-on-error[ \t]*:[ \t]*(?!false[ \t]*(?:#.*)?$)[^\n]+", guard_step):
         return False
-    executable = re.search(r"(?m)^\s*(?:run:\s*)?python(?:3)?\s+scripts/ops06/store_gate\.py\s+apply(?:\s|$)",
-                           guard_step)
-    if not executable:
+    guard_command = r"(?m)^[ \t]*(?:-[ \t]+)?(?:run:[ \t]*)?python(?:3)?\s+scripts/ops06/store_gate\.py\s+apply"
+    if not re.search(guard_command + r"(?:\s|$)", guard_step):
         return False
-    if re.search(r"(?m)^\s*(?:run:\s*)?python(?:3)?\s+scripts/ops06/store_gate\.py\s+apply[^\n]*(?:\|\||;\s*true\b|\|\s*cat)", guard_step):
+    if re.search(guard_command + r"[^\n]*(?:&&|\|\||;[ \t]*true\b|\|(?!\|))", guard_step):
+        return False
+    if re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?set[ \t]+\+e\b", guard_step):
+        return False
+    if re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?(?:if[ \t]+|(?:elif|else|fi)\b)", guard_step):
         return False
     guard_cond = _step_condition(guard_step)
     if not guard_cond:
@@ -360,8 +392,16 @@ def store_guard_findings():
             guard = steps[index]
             if not _safe_store_step(guard, [steps[i] for i in mutations], body, filename):
                 problems.append("STORE_OPTIONAL: " + filename + ": approval is optional, ignored or not executable")
+            if index in mutations:
+                problems.append("STORE_ORDER: " + filename + ": approval and publication share one step")
             if any(i < index for i in mutations):
                 problems.append("STORE_ORDER: " + filename + ": publication precedes approval")
+            for downstream in steps[index + 1:]:
+                if not (_store_mutating_command(downstream) or "google-github-actions/auth@" in downstream):
+                    continue
+                if re.search(r"\b(?:always|failure|cancelled)\s*\(", _step_condition(downstream)):
+                    problems.append("STORE_BYPASS: " + filename + ": publication may continue after rejected approval")
+                    break
             if any("google-github-actions/auth@" in step for step in steps[:index]):
                 problems.append("STORE_ORDER: " + filename + ": Play authentication precedes approval")
             if any(_publishing_command(step) and ("androidpublisher.googleapis.com" in step
@@ -384,6 +424,64 @@ def findings():
         if "github.ref" not in source and "GITHUB_REF" not in source:
             problems.append("SOURCE: " + file + " missing main ref gate")
         if file == "release-build.yml":
+            build_jobs = jobs(source)
+            if set(build_jobs) != {"request"}:
+                problems.append("OPS03_SCOPE: GalliPick signed-build workflow needs exactly one gated request job")
+            request = build_jobs.get("request") or ""
+            header = re.search(r"(?m)^    env:[ \t]*(?:#.*)?$", request)
+            scoped_env = ""
+            if header:
+                for line in request[header.end():].splitlines():
+                    if line.strip() and len(line) - len(line.lstrip()) <= 4:
+                        break
+                    scoped_env += line + "\n"
+            for name, field in (("FINAL_BATCH_APPROVED", "final_batch_approved"),
+                                ("EXPECTED_MAIN_SHA", "expected_main_sha")):
+                expected_input = "$" + "{{ inputs." + field + " }}"
+                values = re.findall(r"(?m)^[ \t]+" + re.escape(name) + r":[ \t]*([^\n#]+)", request)
+                bound = re.search(r"(?m)^      " + re.escape(name) + r":[ \t]*"
+                                  + re.escape(expected_input) + r"[ \t]*(?:#.*)?$", scoped_env)
+                if len(values) != 1 or values[0].strip() != expected_input or not bound:
+                    problems.append("OPS03_BINDING: GalliPick " + name
+                                    + " must bind to the caller-approved dispatch input")
+            required_ci = "'[\"Android verification\",\"Android device tests\"]'"
+            ci_values = re.findall(r"(?m)^[ \t]+REQUIRED_CI_JSON:[ \t]*([^\n#]+)", request)
+            if len(ci_values) != 1 or ci_values[0].strip() != required_ci:
+                problems.append("OPS03_REQUIRED_CI: GalliPick must require Android verification and device tests")
+            steps = _workflow_steps(request)
+            gates = [(i, step) for i, step in enumerate(steps)
+                     if re.search(r"(?m)^[ \t]*-[ \t]+name:[ \t]*"
+                                  r"Gate release batch, main SHA and required CI[ \t]*(?:#.*)?$", step)]
+            dispatches = [(i, step) for i, step in enumerate(steps)
+                          if "gh api --method POST" in step and "/dispatches" in step]
+            if len(gates) != 1 or len(dispatches) != 1 or gates[0][0] >= dispatches[0][0]:
+                problems.append("OPS03_PREFLIGHT: GalliPick signed build approval must precede dispatch")
+            else:
+                gate, dispatch = gates[0][1], dispatches[0][1]
+                essential = (
+                    "python3 - <<'PY'",
+                    'if os.environ["FINAL_BATCH_APPROVED"]!="true"',
+                    'sha!=os.environ["GITHUB_SHA"]',
+                    'required=json.loads(os.environ["REQUIRED_CI_JSON"])',
+                    'if required:',
+                    'if not matching: refuse("Missing exact-main CI: "+name)',
+                    'if latest.get("status")!="completed" or latest.get("conclusion")!="success"',
+                )
+                gate_run = re.search(r"(?m)^[ \t]*(?:-[ \t]+)?run:[ \t]*\|[ \t]*(?:#.*)?$", gate)
+                first_command = (next((line.strip() for line in gate[gate_run.end():].splitlines()
+                                       if line.strip() and not line.lstrip().startswith("#")), None)
+                                 if gate_run else None)
+                executable_gate = "\n".join(line.split("#", 1)[0] for line in gate.splitlines())
+                if (first_command != "python3 - <<'PY'"
+                        or _step_condition(gate)
+                        or re.search(r"(?m)^[ \t]*(?:-[ \t]+)?continue-on-error[ \t]*:", gate)
+                        or re.search(r"(?m)^[ \t]*python3[ \t]+-[ \t]+<<'PY'[ \t]*(?:\|\||;|\|(?!\|))", gate)
+                        or re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?set[ \t]+\+e\b", gate)
+                        or not re.search(r"(?m)^[ \t]*(?:-[ \t]+)?run:[ \t]*\|[ \t]*(?:#.*)?$", gate)
+                        or not all(check in executable_gate for check in essential)):
+                    problems.append("OPS03_PREFLIGHT: GalliPick approval/CI gate must execute and fail closed")
+                if re.search(r"\b(?:always|failure|cancelled)\s*\(", _step_condition(dispatch)):
+                    problems.append("OPS03_DISPATCH_BYPASS: GalliPick build can dispatch after failed approval")
             if re.search(r"(?i)inputs\[(?:mode|deploy)\]\s*=\s*(?:deploy|initialize|publish|promote|apply|upload|true)\b", source):
                 problems.append("BUILD: Play publishing mode is forbidden in build-only dispatch")
             for body in jobs(source).values():
@@ -404,6 +502,14 @@ def findings():
                 problems.append("CLOSED: separate approved same-version promotion missing")
             if any(k in source for k in ("bundleRelease", "assembleRelease", "uploadType")):
                 problems.append("CLOSED: no binary upload/build permitted")
+            # Permit only the dedicated OPS-05 existing-version promotion commands.
+            # All other Play publisher entrypoints remain prohibited in this workflow.
+            promotion_only = re.sub(
+                r"(?m)^[ \t]*(?:-[ \t]+)?(?:run:[ \t]*)?python3[ \t]+scripts/ops05/promotion\.py[ \t]+(?:guard|check|promote)[ \t]*(?:#.*)?$",
+                "", source,
+            )
+            if _publishing_command(promotion_only):
+                problems.append("CLOSED_UPLOAD: fresh AAB publishing is forbidden in closed promotion")
     manual = read("AGENTS.md")
     if manual is not None and not all(k in manual for k in ("Release Batch", "Play")):
         problems.append("AGENTS: common release freeze and daily batch policy missing")
@@ -440,6 +546,80 @@ def findings():
                 continue
             if not any(approved.fullmatch(atom) for atom in _guaranteed_atoms(job_condition(body))):
                 problems.append("APPROVAL: " + filename + ": " + job + " lacks mandatory OPS-01 approval")
+    if REPOSITORY == "hebi10/GalliPick":
+        for filename in ("play-listing-images.yml", "play-store-icon.yml"):
+            store = read(".github/workflows/" + filename)
+            upload = jobs(store).get("upload") if store else None
+            steps = _workflow_steps(upload or "")
+            approval = [step for step in steps if re.search(
+                r"(?m)^[ \t]*(?:-[ \t]+)?run:[ \t]*python3[ \t]+scripts/ops06/store_gate\.py[ \t]+apply[ \t]*(?:#.*)?$", step)]
+            if len(approval) != 1:
+                problems.append("STORE_BINDING: GalliPick " + filename
+                                + " requires exactly one executable OPS-06 approval")
+                continue
+            guard = approval[0]
+            for key, field in (("OPS06_STORE_APPROVED", "ops06_store_approved"),
+                               ("OPS06_CONFIRMATION", "ops06_confirmation"),
+                               ("OPS06_EXPECTED_MAIN_SHA", "ops06_expected_main_sha"),
+                               ("OPS06_BATCH_ID", "ops06_batch_id")):
+                expected = "$" + "{{ inputs." + field + " }}"
+                values = re.findall(r"(?m)^[ \t]+" + re.escape(key) + r":[ \t]*([^\n#]+)", guard)
+                if len(values) != 1 or values[0].strip() != expected:
+                    problems.append("STORE_BINDING: GalliPick " + key
+                                    + " in " + filename + " must bind to dispatch input")
+    if REPOSITORY == "hebi10/GalliPick":
+        internal = read(".github/workflows/play-internal-release.yml") or ""
+        env_match = re.search(r"(?m)^env:[ \t]*(?:#.*)?$", internal)
+        env = ""
+        if env_match:
+            for line in internal[env_match.end():].splitlines():
+                if line.strip() and len(line) - len(line.lstrip()) == 0:
+                    break
+                env += line + "\n"
+        for key, field in (("FINAL_RELEASE_APPROVED", "final_release_approved"),
+                           ("APPROVAL_PHRASE", "approval_phrase"),
+                           ("EXPECTED_MAIN_SHA", "expected_main_sha"),
+                           ("AAB_SHA256", "aab_sha256")):
+            expected = "$" + "{{ inputs." + field + " }}"
+            values = re.findall(r"(?m)^[ \t]+" + re.escape(key) + r":[ \t]*([^\n#]+)", internal)
+            bound = re.search(r"(?m)^  " + re.escape(key) + r":[ \t]*"
+                              + re.escape(expected) + r"[ \t]*(?:#.*)?$", env)
+            if len(values) != 1 or values[0].strip() != expected or not bound:
+                problems.append("INTERNAL_BINDING: GalliPick " + key
+                                + " must come from the approved dispatch input")
+    if REPOSITORY == "hebi10/GalliPick":
+        internal_workflow = read(".github/workflows/play-internal-release.yml")
+        publisher = jobs(internal_workflow).get("publish") if internal_workflow else None
+        for operation in ("check", "deploy"):
+            commands = re.findall(
+                r"(?m)^[ \t]*(?:run:[ \t]*)?python3[ \t]+scripts/release/play_publish\.py[ \t]+"
+                + operation + r"[^\n]*", publisher or "")
+            tracks = (re.findall(r"(?<!\S)--track(?:[ \t]+|=)([A-Za-z0-9_-]+)(?=\s|$)",
+                                 commands[0]) if len(commands) == 1 else [])
+            if len(commands) != 1 or tracks != ["internal"]:
+                problems.append("INTERNAL_TRACK: GalliPick " + operation
+                                + " must remain internal-only under OPS-04 approval")
+    if REPOSITORY == "hebi10/GalliPick":
+        closed = read(".github/workflows/play-closed-release.yml") or ""
+        env_match = re.search(r"(?m)^env:[ \t]*(?:#.*)?$", closed)
+        env = ""
+        if env_match:
+            for line in closed[env_match.end():].splitlines():
+                if line.strip() and len(line) - len(line.lstrip()) == 0:
+                    break
+                env += line + "\n"
+        for key, field in (("FINAL_BATCH_APPROVED", "final_batch_approved"),
+                           ("APPROVAL_PHRASE", "approval_phrase"),
+                           ("EXPECTED_MAIN_SHA", "expected_main_sha"),
+                           ("CLOSED_TRACK", "closed_track"),
+                           ("AAB_SHA256", "aab_sha256")):
+            expected = "$" + "{{ inputs." + field + " }}"
+            values = re.findall(r"(?m)^[ \t]+" + re.escape(key) + r":[ \t]*([^\n#]+)", closed)
+            bound = re.search(r"(?m)^  " + re.escape(key) + r":[ \t]*"
+                              + re.escape(expected) + r"[ \t]*(?:#.*)?$", env)
+            if len(values) != 1 or values[0].strip() != expected or not bound:
+                problems.append("CLOSED_BINDING: GalliPick " + key
+                                + " must come from the approved dispatch input")
     if REPOSITORY == "hebi10/HomeCrew":
         source = read(".github/workflows/play-internal.yml")
         release = jobs(source).get("release") if source else None
@@ -447,10 +627,40 @@ def findings():
         if not release or guard not in release or not re.search(
                 r'if \[\[ "\$FINAL_RELEASE_APPROVAL" != "HOMECREW_FINAL_RELEASE_APPROVED" \]\]; then', release):
             problems.append("APPROVAL: HomeCrew final release authorization gate missing")
+    internal = read(".github/workflows/play-internal-release.yml")
+    if internal is not None:
+        for stage in ("verify", "publish"):
+            body = jobs(internal).get(stage)
+            steps = _workflow_steps(body or "")
+            guard_command = r"(?m)^[ \t]*(?:-[ \t]+)?(?:run:[ \t]*)?python3\s+scripts/ops04/internal\.py\s+guard\b"
+            guards = [(index, step) for index, step in enumerate(steps)
+                      if re.search(guard_command, step)]
+            if len(guards) != 1:
+                problems.append("PROVENANCE: OPS-04 " + stage + " requires an executable signed-source guard")
+                continue
+            index, guard = guards[0]
+            if (_step_condition(guard) or re.search(r"(?m)^[ \t]+(?:-[ \t]+)?continue-on-error[ \t]*:", guard)
+                    or re.search(guard_command + r"[^\n]*(?:&&|\|\||;[ \t]*true\b|\|(?!\|))", guard)
+                    or re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?set[ \t]+\+e\b", guard)
+                    or re.search(r"(?m)^[ \t]*(?:run:[ \t]*)?(?:if[ \t]+|(?:elif|else|fi)\b)", guard)):
+                problems.append("PROVENANCE: OPS-04 " + stage + " guard must run and stop on failure")
+            if any("actions/download-artifact@" in step or "google-github-actions/auth@" in step
+                   for step in steps[:index]):
+                problems.append("PROVENANCE: OPS-04 " + stage + " guard must precede artifact access")
+            for downstream in steps[index + 1:]:
+                if (re.search(r"\b(?:always|failure|cancelled)\s*\(", _step_condition(downstream))
+                        and ("google-github-actions/auth@" in downstream
+                             or _publishing_command(downstream))):
+                    problems.append("PROVENANCE_BYPASS: OPS-04 " + stage + " can publish after a failed guard")
+                    break
     if REPOSITORY == "hebi10/TripCanvas":
-        internal = read(".github/workflows/play-internal-release.yml") or ""
-        if internal.count("scripts/ops04/internal.py guard") < 2:
-            problems.append("PROVENANCE: OPS-04 requires guard in both verify and publish jobs")
+        promote = jobs(read(".github/workflows/play-promote.yml")).get("promote")
+        if not promote or "inputs.final_release_confirmed == true" not in _guaranteed_atoms(job_condition(promote)):
+            problems.append("APPROVAL: TripCanvas legacy closed promotion lacks mandatory final approval")
+    if REPOSITORY == "hebi10/PetWorld":
+        closed = read(".github/workflows/play-closed-release.yml") or ""
+        if re.search(r"(?i)publisher[.]py\s+deploy[^\n]*--bundle", closed):
+            problems.append("CLOSED: PetWorld promotion must not upload a new binary")
     return problems
 
 
