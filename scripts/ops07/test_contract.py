@@ -147,6 +147,32 @@ class AppContracts(unittest.TestCase):
                 self.assertTrue(any(item.startswith(("OPS03_PREFLIGHT:", "OPS03_REQUIRED_CI:",
                                                        "OPS03_DISPATCH_BYPASS:")) for item in blockers), blockers)
 
+    def test_ops03_gate_is_not_ignored_overridden_or_bypassed_by_new_job(self):
+        path = ".github/workflows/release-build.yml"
+        original_read = audit.read
+        original = original_read(path)
+        token = "          GH_TOKEN: " + "$" + "{{ github.token }}"
+        self.assertIn(token, original)
+        self.assertIn("python3 - <<'PY'", original)
+        variants = (
+            ("step_ci_override", original.replace(
+                token, token + "\n          REQUIRED_CI_JSON: '[]'", 1)),
+            ("masked_preflight", original.replace(
+                "python3 - <<'PY'", "python3 - <<'PY' || true", 1)),
+            ("independent_dispatch", original + "\n  bypass:\n"
+             "    runs-on: ubuntu-latest\n"
+             "    permissions:\n      actions: write\n"
+             "    steps:\n"
+             "      - run: gh api --method POST repos/x/actions/workflows/play-bundle.yml/dispatches\n"),
+        )
+        for label, altered in variants:
+            with self.subTest(label=label):
+                with patch.object(audit, "read", side_effect=lambda target:
+                                  altered if target == path else original_read(target)):
+                    issues = audit.findings()
+                self.assertTrue(any(item.startswith(("OPS03_REQUIRED_CI:", "OPS03_PREFLIGHT:",
+                                                       "OPS03_SCOPE:")) for item in issues), issues)
+
     def test_closed_promotion_inputs_cannot_be_forged(self):
         source_path = ".github/workflows/play-closed-release.yml"
         original_read = audit.read
