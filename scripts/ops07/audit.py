@@ -573,10 +573,11 @@ def findings():
         publisher = jobs(internal_workflow).get("publish") if internal_workflow else None
         for operation in ("check", "deploy"):
             commands = re.findall(
-                r"(?m)^[ \t]*python3[ \t]+scripts/release/play_publish\.py[ \t]+"
+                r"(?m)^[ \t]*(?:run:[ \t]*)?python3[ \t]+scripts/release/play_publish\.py[ \t]+"
                 + operation + r"[^\n]*", publisher or "")
-            if (len(commands) != 1
-                    or not re.search(r"(?:^|\s)--track(?:\s+|=)internal(?:\s|$)", commands[0])):
+            tracks = (re.findall(r"(?<!\S)--track(?:[ \t]+|=)([A-Za-z0-9_-]+)(?=\s|$)",
+                                 commands[0]) if len(commands) == 1 else [])
+            if len(commands) != 1 or tracks != ["internal"]:
                 problems.append("INTERNAL_TRACK: GalliPick " + operation
                                 + " must remain internal-only under OPS-04 approval")
     if REPOSITORY == "hebi10/GalliPick":
