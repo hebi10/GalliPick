@@ -37,7 +37,9 @@ class FinalPolicyTests(unittest.TestCase):
                       ".github/workflows/release-build.yml",
                       ".github/workflows/play-internal-release.yml",
                       ".github/workflows/play-closed-release.yml",
-                      "scripts/ops06/store_gate.py"):
+                      "scripts/ops06/store_gate.py",
+                      "scripts/ops07/test_contract.py",
+                      "scripts/ops07/test_fail_closed_regressions.py"):
             with self.subTest(path=value):
                 self.assertIn(value, files)
 

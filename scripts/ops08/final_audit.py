@@ -24,6 +24,8 @@ REQUIRED = (
     "scripts/ops07/test_hardening.py",
     "scripts/ops07/test_store_wiring.py",
     "scripts/ops07/test_advanced.py",
+    "scripts/ops07/test_contract.py",
+    "scripts/ops07/test_fail_closed_regressions.py",
     "scripts/ops04/internal.py",
     "scripts/ops05/promotion.py",
     "scripts/ops06/store_gate.py",
