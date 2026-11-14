@@ -193,6 +193,22 @@ class AppContracts(unittest.TestCase):
                 self.assertTrue(any("INTERNAL_TRACK: GalliPick " + operation in item
                                     for item in issues), issues)
 
+    def test_internal_track_rejects_duplicate_later_override(self):
+        path = ".github/workflows/play-internal-release.yml"
+        original_read = audit.read
+        original = original_read(path)
+        check = "play_publish.py check --track internal"
+        deploy = "play_publish.py deploy --track internal"
+        for operation, needle in (("check", check), ("deploy", deploy)):
+            with self.subTest(operation=operation):
+                self.assertIn(needle, original)
+                changed = original.replace(needle, needle + " --track alpha", 1)
+                with patch.object(audit, "read", side_effect=lambda target:
+                                  changed if target == path else original_read(target)):
+                    issues = audit.findings()
+                self.assertTrue(any("INTERNAL_TRACK: GalliPick " + operation in item
+                                    for item in issues), issues)
+
     def test_closed_promotion_inputs_cannot_be_forged(self):
         source_path = ".github/workflows/play-closed-release.yml"
         original_read = audit.read
