@@ -173,6 +173,26 @@ class AppContracts(unittest.TestCase):
                 self.assertTrue(any(item.startswith(("OPS03_REQUIRED_CI:", "OPS03_PREFLIGHT:",
                                                        "OPS03_SCOPE:")) for item in issues), issues)
 
+    def test_internal_only_approval_cannot_target_closed_track(self):
+        path = ".github/workflows/play-internal-release.yml"
+        original_read = audit.read
+        original = original_read(path)
+        self.assertIn("play_publish.py check --track internal", original)
+        self.assertIn("play_publish.py deploy --track internal", original)
+        variants = (
+            ("check", original.replace("play_publish.py check --track internal",
+                                       "play_publish.py check --track alpha", 1)),
+            ("deploy", original.replace("play_publish.py deploy --track internal",
+                                        "play_publish.py deploy --track alpha", 1)),
+        )
+        for operation, altered in variants:
+            with self.subTest(operation=operation):
+                with patch.object(audit, "read", side_effect=lambda target:
+                                  altered if target == path else original_read(target)):
+                    issues = audit.findings()
+                self.assertTrue(any("INTERNAL_TRACK: GalliPick " + operation in item
+                                    for item in issues), issues)
+
     def test_closed_promotion_inputs_cannot_be_forged(self):
         source_path = ".github/workflows/play-closed-release.yml"
         original_read = audit.read
