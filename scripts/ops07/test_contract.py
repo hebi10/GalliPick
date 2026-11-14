@@ -173,6 +173,25 @@ class AppContracts(unittest.TestCase):
                 self.assertTrue(any(item.startswith(("OPS03_REQUIRED_CI:", "OPS03_PREFLIGHT:",
                                                        "OPS03_SCOPE:")) for item in issues), issues)
 
+    def test_ops03_preflight_cannot_be_skipped_by_shell_control_flow(self):
+        path = ".github/workflows/release-build.yml"
+        original_read = audit.read
+        original = original_read(path)
+        first = "          python3 - <<'PY'\n"
+        gate_end = "          PY\n      - name: Dispatch existing signed AAB build-only mode"
+        self.assertIn(first, original)
+        self.assertIn(gate_end, original)
+        conditional = original.replace(first, "          if false; then\n" + first, 1)
+        conditional = conditional.replace(
+            gate_end, "          PY\n          fi\n      - name: Dispatch existing signed AAB build-only mode", 1)
+        early_exit = original.replace(first, "          exit 0\n" + first, 1)
+        for label, altered in (("conditional_skip", conditional), ("early_exit", early_exit)):
+            with self.subTest(label=label):
+                with patch.object(audit, "read", side_effect=lambda target:
+                                  altered if target == path else original_read(target)):
+                    issues = audit.findings()
+                self.assertTrue(any(item.startswith("OPS03_PREFLIGHT:") for item in issues), issues)
+
     def test_internal_only_approval_cannot_target_closed_track(self):
         path = ".github/workflows/play-internal-release.yml"
         original_read = audit.read
