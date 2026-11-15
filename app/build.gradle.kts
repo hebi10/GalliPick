@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.util.Properties
@@ -8,6 +9,73 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+val galliPickApplicationId = "com.hebi.gallipick"
+val cloudTestFirebaseProjectId = "gallipick-dev"
+val cloudConfigResourceNames = listOf(
+    "cloud_firebase_app_id", "cloud_firebase_api_key",
+    "cloud_firebase_project_id", "cloud_google_web_client_id",
+)
+val playCloudPilot = providers.gradleProperty("gallipickPlayCloudPilot").map { value ->
+    value.toBooleanStrictOrNull() ?: throw GradleException("gallipickPlayCloudPilot must be true or false.")
+}.getOrElse(false)
+
+fun normalizedSha1(value: String?): String? = value?.replace(":", "")?.lowercase()
+    ?.takeIf { it.matches(Regex("[a-f0-9]{40}")) }
+
+fun readCloudFirebaseConfig(json: String, playSigningSha1: String? = null): Map<String, String> {
+    fun Map<*, *>.objectField(name: String): Map<*, *> = this[name] as? Map<*, *> ?: emptyMap<Any, Any>()
+    fun Map<*, *>.objectArray(name: String): List<Map<*, *>> =
+        (this[name] as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
+
+    val config = JsonSlurper().parseText(json) as Map<*, *>
+    val projectId = config.objectField("project_info")["project_id"]
+    require(projectId == cloudTestFirebaseProjectId)
+    val client = config.objectArray("client").single {
+        it.objectField("client_info").objectField("android_client_info")["package_name"] == galliPickApplicationId
+    }
+    val oauthClients = client.objectArray("oauth_client")
+    val webClient = oauthClients.first { (it["client_type"] as? Number)?.toInt() == 3 }
+    if (playSigningSha1 != null) {
+        require(oauthClients.any {
+            val androidClient = it.objectField("android_info")
+            (it["client_type"] as? Number)?.toInt() == 1 &&
+                androidClient["package_name"] == galliPickApplicationId &&
+                normalizedSha1(androidClient["certificate_hash"] as? String) == playSigningSha1
+        })
+    }
+    val values = listOf(
+        client.objectField("client_info")["mobilesdk_app_id"],
+        client.objectArray("api_key").first()["current_key"],
+        projectId,
+        webClient["client_id"],
+    ).map { it as String }
+    require(values.all { it.matches(Regex("[a-zA-Z0-9_.:-]+")) })
+    require(values.last().endsWith(".apps.googleusercontent.com"))
+    return cloudConfigResourceNames.zip(values).toMap()
+}
+
+val debugFirebaseConfig = providers.fileContents(layout.projectDirectory.file("src/debug/google-services.json")).asText
+    .map { json ->
+        try {
+            readCloudFirebaseConfig(json)
+        } catch (_: Exception) {
+            logger.warn("GalliPick cloud sign-in is disabled. Check the debug Firebase Android app configuration and Google sign-in provider.")
+            emptyMap()
+        }
+    }
+
+val playCloudFirebaseConfig = if (playCloudPilot) {
+    val json = providers.fileContents(layout.projectDirectory.file("src/release/google-services.json")).asText.orNull
+        ?: throw GradleException("The Play cloud pilot requires app/src/release/google-services.json.")
+    val signingSha1 = normalizedSha1(providers.gradleProperty("gallipickPlayAppSigningSha1").orNull)
+        ?: throw GradleException("The Play cloud pilot requires a valid gallipickPlayAppSigningSha1.")
+    try {
+        readCloudFirebaseConfig(json, signingSha1)
+    } catch (_: Exception) {
+        throw GradleException("Invalid Play cloud pilot Firebase configuration. Check the GalliPick Dev project, app package, and Google OAuth clients including the Play app signing certificate.")
+    }
+} else emptyMap()
 
 val testSigning = providers.gradleProperty("gallipickTestSigning").orNull == "true"
 val signingPropertiesFile = providers.environmentVariable("GALLIPICK_SIGNING_PROPERTIES").orNull
@@ -54,7 +122,7 @@ android {
     namespace = "com.hebi.gallipick"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.hebi.gallipick"
+        applicationId = galliPickApplicationId
         minSdk = 30
         targetSdk = 36
         versionCode = 23
@@ -80,6 +148,10 @@ android {
         debug {
             if (!testSigning) signingConfig = signingConfigs.getByName("galliPick")
             resValue("string", "app_name", "GalliPick")
+            val firebaseConfig = debugFirebaseConfig.getOrElse(emptyMap())
+            cloudConfigResourceNames.forEach { name ->
+                resValue("string", name, firebaseConfig[name].orEmpty())
+            }
         }
         release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("galliPick") }
         create("playPreparation") {
@@ -88,6 +160,22 @@ android {
             matchingFallbacks += listOf("release")
             isDebuggable = false
         }
+        getByName("release") {
+            playCloudFirebaseConfig.forEach { (name, value) -> resValue("string", name, value) }
+        }
+    }
+    sourceSets {
+        getByName("debug") {
+            java.srcDir("src/cloud/java")
+            manifest.srcFile("src/cloud/AndroidManifest.xml")
+        }
+        getByName("release") {
+            if (playCloudPilot) {
+                java.srcDir("src/cloud/java")
+                manifest.srcFile("src/cloud/AndroidManifest.xml")
+            } else java.srcDir("src/localOnly/java")
+        }
+        getByName("playPreparation").java.srcDir("src/localOnly/java")
     }
     testOptions { unitTests.isReturnDefaultValues = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
@@ -107,6 +195,17 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    val cloudDependencies = listOf(
+        "com.google.firebase:firebase-auth:24.0.1",
+        "com.android.billingclient:billing:9.1.0",
+        "androidx.credentials:credentials:1.3.0",
+        "androidx.credentials:credentials-play-services-auth:1.3.0",
+        "com.google.android.libraries.identity.googleid:googleid:1.1.1",
+    )
+    cloudDependencies.forEach { dependency ->
+        debugImplementation(dependency)
+        if (playCloudPilot) add("releaseImplementation", dependency)
+    }
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("androidx.room:room-runtime:2.8.3")

@@ -26,6 +26,11 @@ on:
         required: false
         default: ''
         type: string
+      cloud_pilot:
+        description: 'Include the development Firebase cloud pilot for Play testing'
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -45,6 +50,7 @@ jobs:
       FINAL_BATCH_APPROVED: ${{ inputs.final_batch_approved }}
       REQUIRED_CI_JSON: '["Android verification","Android device tests"]'
       RELEASE_TAG: ${{ inputs.release_tag }}
+      CLOUD_PILOT: ${{ inputs.cloud_pilot }}
       VERSION_CODE: ${{ inputs.version_code }}
       BUILD_WORKFLOW: 'play-bundle.yml'
     steps:
@@ -94,6 +100,9 @@ jobs:
           set -euo pipefail
           args=(-f ref=main)
           args+=(-f "inputs[version]=$RELEASE_TAG")
+          if [[ "$CLOUD_PILOT" == true ]]; then
+            args+=(-F 'inputs[cloud_pilot]=true')
+          fi
           gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/$BUILD_WORKFLOW/dispatches" "${args[@]}"
           actual="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
           if [[ "$actual" != "$EXPECTED_MAIN_SHA" ]]; then
@@ -106,7 +115,7 @@ jobs:
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
-          data={"schema":"ops03-build-request-v1","repo":os.environ["GITHUB_REPOSITORY"],"main_sha":os.environ["EXPECTED_MAIN_SHA"],"batch_id":os.environ["BATCH_ID"],"builder_workflow":os.environ["BUILD_WORKFLOW"],"request_run_id":os.environ["GITHUB_RUN_ID"],"requested_at_kst":datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),"status":"dispatched_unverified","aab_built":False,"play_uploaded":False,"version_code_request":os.environ["VERSION_CODE"],"release_tag_request":os.environ["RELEASE_TAG"]}
+          data={"schema":"ops03-build-request-v1","repo":os.environ["GITHUB_REPOSITORY"],"main_sha":os.environ["EXPECTED_MAIN_SHA"],"batch_id":os.environ["BATCH_ID"],"builder_workflow":os.environ["BUILD_WORKFLOW"],"request_run_id":os.environ["GITHUB_RUN_ID"],"requested_at_kst":datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),"status":"dispatched_unverified","aab_built":False,"play_uploaded":False,"version_code_request":os.environ["VERSION_CODE"],"release_tag_request":os.environ["RELEASE_TAG"],"cloud_pilot":os.environ["CLOUD_PILOT"]=="true"}
           Path("ops03/request.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
           PY
           {

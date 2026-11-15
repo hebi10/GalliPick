@@ -33,6 +33,13 @@ import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.TrashIdentity
 import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.ui.CleanupOperationResult
+import com.hebi.gallipick.ui.CloudAccountSettings
+import com.hebi.gallipick.ui.CloudAutoBackupSection
+import com.hebi.gallipick.ui.CloudBackupSection
+import com.hebi.gallipick.ui.CloudBillingSection
+import com.hebi.gallipick.ui.CloudLibrarySection
+import com.hebi.gallipick.ui.CloudSpaceSection
+import com.hebi.gallipick.data.cloud.CloudSpaceBackupProof
 import com.hebi.gallipick.ui.GalliPickApp
 import com.hebi.gallipick.ui.GalliPickTheme
 import com.hebi.gallipick.ui.TrashReviewDialog
@@ -48,6 +55,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val cloudAccount = (application as GalliPickApplication).cloudAccount
         setContent {
           val uiState by vm.ui.collectAsState()
           val useDarkTheme = uiState.themeMode.isDark(isSystemInDarkTheme())
@@ -213,6 +221,31 @@ class MainActivity : ComponentActivity() {
                 onRestore = { review(it, true) },
                 result = operationResult,
                 onDismissResult = { operationResult = null },
+                cloudContent = if (cloudAccount != null) {
+                    {
+                        CloudAccountSettings(cloudAccount, this@MainActivity)
+                        CloudBackupSection(cloudAccount, uiState) {
+                            permissionLauncher.launch(requiredPermissions())
+                        }
+                        CloudLibrarySection(cloudAccount, onRestored = { vm.refresh() }) { uri, mimeType ->
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, mimeType)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                })
+                            } catch (_: Exception) { vm.showMessage("복원한 파일을 열 수 있는 앱이 없습니다.") }
+                        }
+                        CloudBillingSection(cloudAccount, this@MainActivity)
+                        cloudAccount.backup?.let { backup ->
+                            CloudSpaceSection(cloudAccount, uiState, vm.repository) { uid ->
+                                backup.listOriginals(uid).map { CloudSpaceBackupProof(it.sizeBytes, it.sha256) }.toSet()
+                            }
+                        }
+                        CloudAutoBackupSection(cloudAccount, uiState) {
+                            permissionLauncher.launch(requiredPermissions())
+                        }
+                    }
+                } else null,
             )
 
             pending?.let { request ->

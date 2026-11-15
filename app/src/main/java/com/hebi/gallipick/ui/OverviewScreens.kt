@@ -562,7 +562,13 @@ private fun CleanupCategoryIcon(suggestion: CleanupSuggestion, modifier: Modifie
 }
 
 @Composable
-internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: () -> Unit, openSettings: () -> Unit, openTrash: () -> Unit) {
+internal fun SettingsScreen(
+    state: AppUiState,
+    vm: AppViewModel,
+    requestAccess: () -> Unit,
+    openSettings: () -> Unit,
+    openTrash: () -> Unit,
+) {
     val uriHandler = LocalUriHandler.current
     var confirmClear by remember { mutableStateOf(false) }
     var confirmClearOcr by remember { mutableStateOf(false) }
