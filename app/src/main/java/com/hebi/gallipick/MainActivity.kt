@@ -34,6 +34,7 @@ import com.hebi.gallipick.domain.TrashIdentity
 import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.ui.CleanupOperationResult
 import com.hebi.gallipick.ui.CloudAccountSettings
+import com.hebi.gallipick.ui.CloudBackupSection
 import com.hebi.gallipick.ui.GalliPickApp
 import com.hebi.gallipick.ui.GalliPickTheme
 import com.hebi.gallipick.ui.TrashReviewDialog
@@ -218,6 +219,9 @@ class MainActivity : ComponentActivity() {
                 cloudContent = if (cloudAccount != null) {
                     {
                         CloudAccountSettings(cloudAccount, this@MainActivity)
+                        CloudBackupSection(cloudAccount, uiState) {
+                            permissionLauncher.launch(requiredPermissions())
+                        }
                     }
                 } else null,
             )

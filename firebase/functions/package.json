@@ -1,0 +1,12 @@
+{
+  "name": "gallipick-cloud02-functions",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "scripts": { "test": "node --test", "probe:gcs": "node probe-storage.js" },
+  "dependencies": {
+    "firebase-admin": "14.5.1",
+    "firebase-functions": "7.4.0"
+  }
+}

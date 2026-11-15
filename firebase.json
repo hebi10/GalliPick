@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "source": "firebase/functions",
+    "codebase": "cloud02",
+    "runtime": "nodejs22",
+    "predeploy": ["npm --prefix \"$RESOURCE_DIR\" test"]
+  },
+  "firestore": { "rules": "firebase/firestore.rules" },
+  "storage": { "rules": "firebase/storage.rules" }
+}

@@ -25,6 +25,7 @@ import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 internal fun createCloudAccountConnection(context: Context): CloudAccountConnection {
     val appId = context.getString(R.string.cloud_firebase_app_id)
@@ -44,9 +45,36 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
         .build()
     val firebaseApp = FirebaseApp.initializeApp(context, options, "gallipick-cloud-test")
     val credentials = CredentialManager.create(context)
-    val backend = FirebaseCloudAccountBackend(FirebaseAuth.getInstance(firebaseApp), credentials)
-    return CloudAccountConnection(CloudAccountSession(backend)) { activity ->
+    val auth = FirebaseAuth.getInstance(firebaseApp)
+    val session = CloudAccountSession(FirebaseCloudAccountBackend(auth, credentials))
+    val backup = CloudBackup(
+        context = context,
+        account = session.account,
+        currentUid = { auth.currentUser?.uid },
+        tokenFor = { uid -> backupIdToken(auth, uid) },
+        transport = CloudBackupTransport(
+            endpoint = "https://asia-northeast3-gallipick-dev.cloudfunctions.net",
+            buckets = setOf("gallipick-dev.firebasestorage.app"),
+        ),
+    )
+    return CloudAccountConnection(session, backup) { activity ->
         googleIdToken(credentials, activity, webClientId)
+    }
+}
+
+private suspend fun backupIdToken(auth: FirebaseAuth, uid: String): String {
+    val user = auth.currentUser?.takeIf { it.uid == uid } ?: failBackup(CloudBackupResult.ACCOUNT_CHANGED)
+    return suspendCancellableCoroutine { continuation ->
+        user.getIdToken(false).addOnCompleteListener { task ->
+            if (!continuation.isActive) return@addOnCompleteListener
+            val token = if (task.isSuccessful) task.result?.token else null
+            when {
+                auth.currentUser?.uid != uid -> continuation.resumeWithException(CloudBackupException(CloudBackupResult.ACCOUNT_CHANGED))
+                !token.isNullOrBlank() -> continuation.resume(token)
+                task.exception is FirebaseNetworkException -> continuation.resumeWithException(CloudBackupException(CloudBackupResult.NETWORK_ERROR))
+                else -> continuation.resumeWithException(CloudBackupException(CloudBackupResult.TEST_ACCESS_REQUIRED))
+            }
+        }
     }
 }
 
