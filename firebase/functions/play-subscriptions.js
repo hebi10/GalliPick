@@ -20,7 +20,11 @@ export function createPlaySubscriptions(getClient = scopedPlayClient) {
             return (await (await client).request({ ...options, timeout: 10_000 })).data;
         } catch (error) {
             // Auth failures and provider errors can contain the token in their HTTP URL.
-            if ([400, 404, 410].includes(error?.response?.status)) {
+            const status = error?.response?.status;
+            if (options.method === 'GET' && status === 410) {
+                throw new BackupError('not-found', 'The Play subscription is no longer available.');
+            }
+            if ([400, 404, 410].includes(status)) {
                 throw new BackupError('failed-precondition', 'The subscription could not be found or confirmed by Play.');
             }
             throw new BackupError('unavailable', 'The Google Play verification service is unavailable.');

@@ -47,10 +47,42 @@ class CloudSpacePolicyTest {
         val third = media(3, bytes = 2_000_000_000L)
         val files = listOf(first, first, second, third)
 
-        val target = CloudSpacePolicy.recommend(files, CloudSpaceTarget.FIVE_GB)
-        assertEquals(listOf(first, second), target.files)
-        assertEquals(7_000_000_000L, target.bytes)
-        assertEquals(9_000_000_000L, CloudSpacePolicy.recommend(files, CloudSpaceTarget.MAXIMUM).bytes)
+        val target = CloudSpacePolicy.recommend(files, emptyList(), CloudSpaceTarget.FIVE_GB, 200 * DAY)
+        assertEquals(listOf(first, second), target.candidates.map { it.file })
+        assertEquals(7_000_000_000L, target.potentialBytes)
+        assertEquals(0L, target.verifiedBackupBytes)
+        val maximum = CloudSpacePolicy.recommend(files, emptyList(), CloudSpaceTarget.MAXIMUM, 200 * DAY)
+        assertEquals(9_000_000_000L, maximum.potentialBytes)
+    }
+
+    @Test
+    fun listsVerifiedOriginalsBeforeOldVideosAndOtherOldMedia() {
+        val oldPhoto = media(1, bytes = 500)
+        val oldVideo = media(2, name = "older.mp4", mimeType = "video/mp4", bytes = 400).copy(kind = MediaKind.VIDEO)
+        val smallerOldVideo = oldVideo.copy(uri = "video-3", id = 3, sizeBytes = 300)
+        val recent = media(4, bytes = 200).copy(dateTakenMs = 199 * DAY)
+        val verified = media(5, bytes = 100).copy(dateTakenMs = 198 * DAY)
+        val files = listOf(recent, oldPhoto, smallerOldVideo, oldVideo, verified)
+
+        val result = CloudSpacePolicy.recommend(files, listOf(verified), CloudSpaceTarget.MAXIMUM, 200 * DAY)
+
+        assertEquals(listOf(verified, oldVideo, smallerOldVideo, oldPhoto), result.candidates.map { it.file })
+        assertEquals(listOf(true, false, false, false), result.candidates.map { it.verifiedBackup })
+        assertEquals(1_300L, result.potentialBytes)
+        assertEquals(100L, result.verifiedBackupBytes)
+    }
+
+    @Test
+    fun aChangedOldFileIsOnlyAPotentialCandidateAfterVerification() {
+        val original = media(1, bytes = 200)
+        val changed = original.copy(generationModified = 3)
+
+        val result = CloudSpacePolicy.recommend(listOf(changed), listOf(original), CloudSpaceTarget.MAXIMUM, 200 * DAY)
+
+        assertEquals(listOf(changed), result.candidates.map { it.file })
+        assertFalse(result.candidates.single().verifiedBackup)
+        assertEquals(200L, result.potentialBytes)
+        assertEquals(0L, result.verifiedBackupBytes)
     }
 
     @Test

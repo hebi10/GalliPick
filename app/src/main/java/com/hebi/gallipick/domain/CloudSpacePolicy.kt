@@ -13,12 +13,18 @@ internal data class CloudSpaceMatchedFiles(
     val files: List<MediaItem>, val scannedCount: Int, val matchingSizeCount: Int,
 )
 
-internal data class CloudSpaceRecommendations(val files: List<MediaItem>, val bytes: Long)
+internal data class CloudSpaceCandidate(val file: MediaItem, val verifiedBackup: Boolean)
+
+internal data class CloudSpaceRecommendations(
+    val candidates: List<CloudSpaceCandidate>,
+    val potentialBytes: Long,
+    val verifiedBackupBytes: Long,
+)
 
 internal object CloudSpacePolicy {
     private const val MAX_SCAN_FILES = 24
     private const val MAX_SCAN_BYTES = 256L * 1024L * 1024L
-    private const val OLD_VIDEO_AGE_MS = 90L * 24L * 60L * 60L * 1000L
+    private const val OLD_MEDIA_AGE_MS = 90L * 24L * 60L * 60L * 1000L
     private val photoExtensions = setOf("jpg", "jpeg", "heic", "heif", "png", "webp", "gif")
     private val videoExtensions = setOf("mp4", "m4v", "mov", "webm", "3gp", "3gpp")
 
@@ -49,7 +55,7 @@ internal object CloudSpacePolicy {
         eligible: List<MediaItem>, cloudSizes: Set<Long>, nowMs: Long,
         maxBytes: Long = MAX_SCAN_BYTES, maxFiles: Int = MAX_SCAN_FILES,
     ): List<MediaItem> {
-        val oldVideoThreshold = nowMs - OLD_VIDEO_AGE_MS
+        val oldVideoThreshold = nowMs - OLD_MEDIA_AGE_MS
         val candidates = eligible.asSequence().filter { it.sizeBytes > 0 && it.sizeBytes in cloudSizes }
             .sortedWith(compareByDescending<MediaItem> {
                 it.kind == MediaKind.VIDEO && it.capturedAt in 1..oldVideoThreshold
@@ -65,17 +71,35 @@ internal object CloudSpacePolicy {
         }
     }
 
-    fun recommend(matchedInPriorityOrder: List<MediaItem>, target: CloudSpaceTarget): CloudSpaceRecommendations {
-        var bytes = 0L
+    fun recommend(
+        eligible: List<MediaItem>,
+        verifiedMatches: List<MediaItem>,
+        target: CloudSpaceTarget,
+        nowMs: Long,
+    ): CloudSpaceRecommendations {
+        val verifiedByUri = verifiedMatches.associateBy { it.uri }
+        val oldMediaThreshold = nowMs - OLD_MEDIA_AGE_MS
+        val ordered = eligible.asSequence().filter { it.sizeBytes > 0 }.distinctBy { it.uri }
+            .mapNotNull { file ->
+                val verified = verifiedByUri[file.uri]?.let { sameOriginal(it, file) } == true
+                if (verified || file.capturedAt in 1..oldMediaThreshold) CloudSpaceCandidate(file, verified) else null
+            }.sortedWith(compareByDescending<CloudSpaceCandidate> { it.verifiedBackup }
+                .thenByDescending { it.file.kind == MediaKind.VIDEO }
+                .thenByDescending { it.file.sizeBytes }
+                .thenBy { it.file.capturedAt }
+                .thenBy { it.file.uri })
+        var potentialBytes = 0L
+        var verifiedBackupBytes = 0L
         val files = buildList {
-            for (file in matchedInPriorityOrder.distinctBy { it.uri }) {
-                if (target.bytes?.let { bytes >= it } == true) break
-                if (file.sizeBytes <= 0) continue
-                add(file)
-                bytes += minOf(file.sizeBytes, Long.MAX_VALUE - bytes)
+            for (candidate in ordered) {
+                if (target.bytes?.let { potentialBytes >= it } == true) break
+                val bytes = minOf(candidate.file.sizeBytes, Long.MAX_VALUE - potentialBytes)
+                add(candidate)
+                potentialBytes += bytes
+                if (candidate.verifiedBackup) verifiedBackupBytes += bytes
             }
         }
-        return CloudSpaceRecommendations(files, bytes)
+        return CloudSpaceRecommendations(files, potentialBytes, verifiedBackupBytes)
     }
 
     fun sameOriginal(expected: MediaItem, live: MediaItem): Boolean =

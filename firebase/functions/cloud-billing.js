@@ -10,8 +10,9 @@ const BASE_PLAN_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const PURCHASE_TOKEN = /^[\x21-\x7e]{8,4096}$/;
 const ACCEPTED_SUBSCRIPTION_STATES = new Set(['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD',
     'SUBSCRIPTION_STATE_CANCELED']);
-const INACTIVE_SUBSCRIPTION_STATES = new Set(['SUBSCRIPTION_STATE_PENDING', 'SUBSCRIPTION_STATE_PAUSED',
-    'SUBSCRIPTION_STATE_ON_HOLD', 'SUBSCRIPTION_STATE_EXPIRED', 'SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED']);
+const INACTIVE_SUBSCRIPTION_STATES = new Set(['SUBSCRIPTION_STATE_PAUSED', 'SUBSCRIPTION_STATE_ON_HOLD',
+    'SUBSCRIPTION_STATE_EXPIRED']);
+const UNCOMPLETED_SUBSCRIPTION_STATES = new Set(['SUBSCRIPTION_STATE_PENDING', 'SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED']);
 const ACK_PENDING = 'ACKNOWLEDGEMENT_STATE_PENDING';
 const ACK_COMPLETE = 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED';
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -46,10 +47,11 @@ function inspectPurchase(purchase, owner, products, now) {
         throw new BackupError('failed-precondition', 'The purchase does not match an enabled test plan.');
     }
     const active = ACCEPTED_SUBSCRIPTION_STATES.has(purchase.subscriptionState);
+    const uncompleted = UNCOMPLETED_SUBSCRIPTION_STATES.has(purchase.subscriptionState);
     const expiresAtMs = Date.parse(item.expiryTime);
     const eligible = active && expiresAtMs > now;
     const acknowledgement = purchase.acknowledgementState;
-    if ((!active && !INACTIVE_SUBSCRIPTION_STATES.has(purchase.subscriptionState))
+    if ((!active && !uncompleted && !INACTIVE_SUBSCRIPTION_STATES.has(purchase.subscriptionState))
         || (active && !Number.isFinite(expiresAtMs)) || (eligible && acknowledgement !== ACK_PENDING && acknowledgement !== ACK_COMPLETE)) {
         throw new BackupError('failed-precondition', 'The Play subscription status could not be verified.');
     }
@@ -61,7 +63,7 @@ function inspectPurchase(purchase, owner, products, now) {
         plan,
         entitlement: eligible ? { ...plan, expiresAtMs, checkedAtMs: now } : null,
         acknowledge: eligible && acknowledgement === ACK_PENDING,
-        linkedHash: typeof linked === 'string' ? hash(linked) : null,
+        linkedHash: !uncompleted && typeof linked === 'string' ? hash(linked) : null,
     };
 }
 
@@ -117,8 +119,9 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             const binding = (await transaction.get(token)).data();
             if (current?.revision !== revision) throw new BackupError('aborted', 'A newer billing check completed. Try again.');
             if (binding && binding.owner !== owner) throw new BackupError('permission-denied', 'The purchase belongs to another account.');
-            if (binding?.retiredBy) return false;
-            const prior = purchase.entitlement && purchase.linkedHash ? tokenRef(purchase.linkedHash) : null;
+            if (binding?.retiredBy || binding?.invalidated) return false;
+            if (!purchase && !binding) throw new BackupError('not-found', 'The Play subscription is no longer available.');
+            const prior = purchase?.linkedHash ? tokenRef(purchase.linkedHash) : null;
             const oldBinding = prior ? (await transaction.get(prior)).data() : null;
             if (oldBinding && (oldBinding.owner !== owner || (oldBinding.retiredBy && oldBinding.retiredBy !== tokenHash))) {
                 throw new BackupError('permission-denied', 'The previous subscription belongs to another purchase.');
@@ -127,23 +130,31 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             const time = now();
             const entitlements = Object.fromEntries(Object.entries(current.entitlements ?? {}).filter(([key, item]) =>
                 HASH.test(key) && Number.isSafeInteger(item?.expiresAtMs) && item.expiresAtMs > time));
-            if (purchase.entitlement && purchase.entitlement.expiresAtMs > time) entitlements[tokenHash] = purchase.entitlement;
+            if (purchase?.entitlement && purchase.entitlement.expiresAtMs > time) entitlements[tokenHash] = purchase.entitlement;
             else delete entitlements[tokenHash];
             if (prior) delete entitlements[purchase.linkedHash];
             if (Object.keys(entitlements).length > MAX_CURRENT_TOKENS) {
                 throw new BackupError('resource-exhausted', 'Too many test subscriptions are active.');
             }
             transaction.set(account, { revision, entitlements });
-            transaction.set(token, { owner });
+            transaction.set(token, purchase ? { owner } : { owner, invalidated: true });
             if (prior) transaction.set(prior, { owner, retiredBy: tokenHash });
-            return purchase.acknowledge && Object.hasOwn(entitlements, tokenHash);
+            return purchase?.acknowledge === true && Object.hasOwn(entitlements, tokenHash);
         });
     }
 
     async function reconcile(owner, purchaseToken) {
         const tokenHash = hash(purchaseToken);
         const revision = await nextRevision(owner);
-        const purchase = inspectPurchase(await play.get(purchaseToken), owner, settings.products, now());
+        let result;
+        try {
+            result = await play.get(purchaseToken);
+        } catch (error) {
+            if (!(error instanceof BackupError) || error.code !== 'not-found') throw error;
+            await persist(owner, tokenHash, revision, null);
+            return;
+        }
+        const purchase = inspectPurchase(result, owner, settings.products, now());
         if (purchase.linkedHash === tokenHash) throw new BackupError('data-loss', 'The Play subscription replacement is invalid.');
         if (await persist(owner, tokenHash, revision, purchase)) {
             try {
@@ -175,7 +186,7 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
                 ?? (notification.voidedPurchaseNotification?.productType === 1 ? notification.voidedPurchaseNotification.purchaseToken : null);
             if (typeof token !== 'string' || !PURCHASE_TOKEN.test(token)) return false;
             const binding = (await tokenRef(hash(token)).get()).data();
-            if (binding?.retiredBy) return false;
+            if (binding?.retiredBy || binding?.invalidated) return false;
             const owner = binding?.owner ?? (await play.get(token))?.externalAccountIdentifiers?.obfuscatedExternalAccountId;
             if (!pilotOwners.has(owner)) return false;
             // Re-fetch after reserving the revision. The notification is only a refresh signal.

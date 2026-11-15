@@ -25,3 +25,12 @@ test('does not expose upstream token-bearing request details in a Play error', a
     } }));
     await assert.rejects(play.get(token), error => error.code === 'unavailable' && !error.message.includes(token));
 });
+
+test('identifies a permanently unavailable subscription only on Play lookups', async () => {
+    const play = createPlaySubscriptions(async () => ({ async request({ url }) {
+        throw Object.assign(new Error(url), { response: { status: 410 } });
+    } }));
+    const token = 'synthetic-permanently-invalid-token';
+    await assert.rejects(play.get(token), error => error.code === 'not-found' && !error.message.includes(token));
+    await assert.rejects(play.acknowledge(token, 'cloud_test'), error => error.code === 'failed-precondition');
+});

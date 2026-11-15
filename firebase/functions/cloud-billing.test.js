@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
+import { BackupError } from './backup.js';
 import { billingSettings, createBillingService, PILOT_ACCOUNT_QUOTA_BYTES } from './cloud-billing.js';
 
 const products = [
@@ -128,6 +129,23 @@ test('paid replacement retires the older token without a stale callback regranti
     assert.equal((await service.verify(user('owner-a'), { purchaseToken: token(1) })).activeProductId, products[0].productId);
 });
 
+test('a replacement already on hold retires the older entitlement', async () => {
+    const { purchases, service } = createHarness();
+    purchases.set(token(1), subscription({ product: products[1] }));
+    purchases.set(token(2), subscription({ state: 'ON_HOLD', linkedPurchaseToken: token(1) }));
+    await service.verify(user('owner-a'), { purchaseToken: token(1) });
+    assert.equal((await service.verify(user('owner-a'), { purchaseToken: token(2) })).uploadAllowed, false);
+    assert.equal((await service.verify(user('owner-a'), { purchaseToken: token(1) })).uploadAllowed, false);
+});
+
+test('a canceled pending payment leaves the previous subscription available', async () => {
+    const { purchases, service } = createHarness();
+    purchases.set(token(1), subscription({ product: products[1] }));
+    purchases.set(token(2), subscription({ state: 'PENDING_PURCHASE_CANCELED', linkedPurchaseToken: token(1) }));
+    await service.verify(user('owner-a'), { purchaseToken: token(1) });
+    assert.equal((await service.verify(user('owner-a'), { purchaseToken: token(2) })).quotaBytes, 200);
+});
+
 test('later verification wins if a stale Play result returns after the newer result', async () => {
     const { purchases, service } = createHarness();
     let release;
@@ -156,6 +174,29 @@ test('Play notifications use canonical state and do not process another Android 
     purchases.set(token(1), subscription({ state: 'EXPIRED', expires: now - 1 }));
     assert.equal(await service.reconcileNotification(event), true);
     assert.equal((await service.getPlan(user('owner-a'))).uploadAllowed, false);
+});
+
+test('a permanently unavailable Play token removes the saved quota for its bound account', async () => {
+    const { purchases, service } = createHarness();
+    const event = { packageName: 'com.hebi.gallipick', subscriptionNotification: { purchaseToken: token(1) } };
+    purchases.set(token(1), subscription());
+    await service.verify(user('owner-a'), { purchaseToken: token(1) });
+    purchases.set(token(1), () => { throw new BackupError('not-found', 'Purchase permanently unavailable'); });
+    await assert.rejects(service.verify(user('owner-b'), { purchaseToken: token(1) }), isCode('permission-denied'));
+    assert.equal((await service.getPlan(user('owner-a'))).quotaBytes, 100);
+    assert.equal(await service.reconcileNotification(event), true);
+    assert.equal((await service.getPlan(user('owner-a'))).quotaBytes, 0);
+    purchases.set(token(1), subscription());
+    assert.equal(await service.reconcileNotification(event), false);
+    assert.equal((await service.verify(user('owner-a'), { purchaseToken: token(1) })).quotaBytes, 0);
+});
+
+test('permanent provider errors cannot create a binding for an unseen token', async () => {
+    const { purchases, service } = createHarness();
+    purchases.set(token(1), () => { throw new BackupError('not-found', 'Purchase permanently unavailable'); });
+    await assert.rejects(service.verify(user('owner-a'), { purchaseToken: token(1) }), isCode('not-found'));
+    purchases.set(token(1), subscription({ uid: 'owner-b' }));
+    assert.equal((await service.verify(user('owner-b'), { purchaseToken: token(1) })).quotaBytes, 100);
 });
 
 test('a confirmed plan remains available until its Play expiry without a new device verification', async () => {

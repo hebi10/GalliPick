@@ -1,5 +1,6 @@
 package com.hebi.gallipick.ui
 
+import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.data.MediaRepository
+import com.hebi.gallipick.data.cloud.CLOUD_BACKUP_MAX_BYTES
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudSpaceAnalysis
 import com.hebi.gallipick.data.cloud.CloudSpaceBackupProof
@@ -37,6 +39,8 @@ import com.hebi.gallipick.domain.PhotoReviewDecision
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+
+private const val CLOUD_SPACE_PAGE_SIZE = 20
 
 @Composable
 internal fun CloudSpaceSection(
@@ -73,6 +77,8 @@ private fun CloudSpaceControls(
     loadVerifiedBackups: suspend () -> Set<CloudSpaceBackupProof>,
 ) {
     val context = LocalContext.current
+    fun sizeLabel(bytes: Long): String = Formatter.formatFileSize(context, bytes)
+
     val analysis = remember(context, repository) { CloudSpaceAnalysis(context, repository) }
     val scope = rememberCoroutineScope()
     var target by remember { mutableStateOf(CloudSpaceTarget.FIVE_GB) }
@@ -96,14 +102,10 @@ private fun CloudSpaceControls(
         CloudSpacePolicy.eligible(state.items, state.protectedFolders, keepUris)
     }
     val recommendations = remember(matched, eligible, target, state.loading, state.catalogError) {
-        matched?.takeIf { !state.loading && state.catalogError == null }?.let { result ->
-            val current = eligible.associateBy { it.uri }
-            val unchanged = result.files.mapNotNull { matchedFile ->
-                current[matchedFile.uri]?.takeIf { CloudSpacePolicy.sameOriginal(matchedFile, it) }
-            }
-            CloudSpacePolicy.recommend(unchanged, target)
-        }
+        if (state.loading || state.catalogError != null) null
+        else CloudSpacePolicy.recommend(eligible, matched?.files.orEmpty(), target, System.currentTimeMillis())
     }
+    var visibleLimit by remember(recommendations) { mutableStateOf(CLOUD_SPACE_PAGE_SIZE) }
 
     CloudSpaceTarget.entries.chunked(2).forEach { targets ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -145,20 +147,33 @@ private fun CloudSpaceControls(
     }
     notice?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Muted) }
     recommendations?.let { result ->
-        Text("검토 용량 ${bytesLabel(result.bytes)} · ${result.files.size}개",
+        val unverifiedBytes = result.potentialBytes - result.verifiedBackupBytes
+        Text("정리 후보 ${sizeLabel(result.potentialBytes)} · ${result.candidates.size}개",
             style = MaterialTheme.typography.bodyMedium)
-        Text("현재 확보한 용량 0 B", color = Muted, style = MaterialTheme.typography.bodySmall)
-        if (result.files.isEmpty()) {
+        Text("백업 확인 ${sizeLabel(result.verifiedBackupBytes)} · 백업 미확인 ${sizeLabel(unverifiedBytes)}",
+            color = Muted, style = MaterialTheme.typography.bodySmall)
+        Text("현재 확보한 용량 ${sizeLabel(0)}", color = Muted, style = MaterialTheme.typography.bodySmall)
+        if (matched != null && result.verifiedBackupBytes == 0L) {
             Text("비교 범위에서 원본이 일치하는 백업을 찾지 못했습니다.", color = Muted)
-        } else if (target.bytes?.let { result.bytes < it } == true) {
-            Text("이번 비교에서 확인한 용량이 목표보다 적습니다.", color = Muted)
+        }
+        if (target.bytes?.let { result.potentialBytes < it } == true) {
+            Text("현재 정리 후보의 용량이 목표보다 적습니다.", color = Muted)
         }
         matched?.takeIf { it.scannedCount < it.matchingSizeCount }?.let {
             Text("크기가 일치하는 ${it.matchingSizeCount}개 중 ${it.scannedCount}개를 비교했습니다.",
                 color = Muted, style = MaterialTheme.typography.bodySmall)
         }
-        for (file in result.files) {
-            Text("${file.displayName} · ${bytesLabel(file.sizeBytes)}", style = MaterialTheme.typography.bodySmall)
+        for (candidate in result.candidates.take(visibleLimit)) {
+            val file = candidate.file
+            val status = when {
+                candidate.verifiedBackup -> "백업 확인"
+                file.sizeBytes > CLOUD_BACKUP_MAX_BYTES -> "시험 백업 64 MiB 한도 초과"
+                else -> "백업 미확인"
+            }
+            Text("${file.displayName} · ${sizeLabel(file.sizeBytes)} · $status", style = MaterialTheme.typography.bodySmall)
+        }
+        if (result.candidates.size > visibleLimit) {
+            ActionButton("후보 더 보기", { visibleLimit += CLOUD_SPACE_PAGE_SIZE }, Modifier.fillMaxWidth())
         }
     }
 }
