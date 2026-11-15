@@ -25,7 +25,7 @@ async function verifyPilotBucket() {
     console.log(`Synthetic fixture path: gs://${DEV_BACKUP_BUCKET}/${key}`);
     const incompleteHeaders = { ...headers };
     delete incompleteHeaders['x-goog-content-length-range'];
-    assert.equal(await put(fixture, incompleteHeaders), 403, 'Changing signed headers must be rejected');
+    assert.equal(await put(fixture, incompleteHeaders), 400, 'Missing signed headers must be rejected');
     assert.deepEqual(await file.exists(), [false]);
     assert.equal(await put(fixture.subarray(1)), 400, 'Short PUT must be rejected');
     assert.deepEqual(await file.exists(), [false]);
@@ -39,20 +39,33 @@ async function verifyPilotBucket() {
     assert.equal(await put(Buffer.alloc(fixture.length)), 412, 'Existing generation must block overwrites');
     const [after] = await file.getMetadata();
     assert.equal(after.generation, generation);
-    assert.deepEqual(await readOriginal(bucket.file(key, { generation }).createReadStream({ decompress: false }), fixture.length),
-        await readOriginal([fixture], fixture.length));
+    const original = bucket.file(key, { generation });
+    const expected = await readOriginal([fixture], fixture.length);
+    assert.deepEqual(await readOriginal(original.createReadStream({ decompress: false }), fixture.length), expected);
+
+    const [downloadUrl] = await original.getSignedUrl({
+        version: 'v4', action: 'read', expires: Date.now() + 120_000, queryParams: { generation },
+    });
+    const download = await fetch(downloadUrl, { redirect: 'error' });
+    assert.equal(download.status, 200, 'The signed URL must download the verified generation');
+    assert.deepEqual(await readOriginal([Buffer.from(await download.arrayBuffer())], fixture.length), expected);
 
     const anonymousUrl = new URL(uploadUrl);
     anonymousUrl.search = '';
     const anonymous = await fetch(anonymousUrl, { redirect: 'error' });
     await anonymous.body?.cancel();
     assert.equal(anonymous.status, 403, 'Anonymous object reads must be denied');
-    console.log('PASS: exact upload size, create-only generation and private object access');
+    console.log('PASS: exact upload size, create-only generation, signed restore integrity and private object access');
 }
 
 verifyPilotBucket().catch(error => {
     // Network and signer errors can contain signed request URLs.
     console.error(`GalliPick synthetic upload verification failed (${error.name}).`);
-    if (error instanceof assert.AssertionError) console.error(error.message.split('\n')[0]);
+    if (error instanceof assert.AssertionError) {
+        console.error(error.message.split('\n')[0]);
+        if (Number.isInteger(error.actual) && Number.isInteger(error.expected)) {
+            console.error(`Actual: ${error.actual}. Expected: ${error.expected}.`);
+        }
+    }
     process.exitCode = 1;
 });

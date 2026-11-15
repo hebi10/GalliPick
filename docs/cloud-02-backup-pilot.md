@@ -52,6 +52,14 @@ npm --prefix firebase/functions run probe:gcs
 firebase deploy --only functions:cloud02,firestore:rules,storage --project gallipick-dev
 ```
 
+### 신규 백업 일시 중지
+
+복원 접근을 유지하며 신규 백업을 막으려면 `GALLIPICK_BACKUP_UPLOADS_ENABLED=true` 상태에서 `GALLIPICK_BACKUP_UPLOADS_PAUSED=true`를 설정합니다. 승인된 배포에서 Functions 설정을 반영한 뒤 이전 버전으로 향하는 트래픽이 종료됐는지 확인합니다. `beginBackup`은 새 예약과 기존 예약의 PUT URL 재발급을 거부합니다. 허용된 계정은 기존 카탈로그를 조회하고 원본을 복원할 수 있으며, 이미 전송한 원본은 `finishBackup`으로 무결성 검증을 마칠 수 있습니다. 요금제 응답에는 신규 업로드가 불가능하다고 표시됩니다.
+
+이미 발급된 PUT URL은 발급 시점부터 최대 5분간 유효합니다. 만료 전에 수락된 전송은 이후에도 완료될 수 있습니다. 합성 파일로 예약과 URL 재발급 거부, 기존 원본 복원, 전송한 원본의 검증 완료를 확인합니다.
+
+신규 백업을 재개하려면 `GALLIPICK_BACKUP_UPLOADS_PAUSED=false`를 설정하거나 이 값을 제거합니다. 복원을 포함해 시험 기능을 끄려면 `GALLIPICK_BACKUP_UPLOADS_ENABLED=false`를 사용합니다. 설정 변경은 Functions에 다시 배포한 뒤 적용됩니다.
+
 ## 합성 파일로 확인할 항목
 
 | 확인 | 기대 결과 |

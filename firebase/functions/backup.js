@@ -135,7 +135,7 @@ async function verifiedOriginal(bucket, key, record) {
 }
 
 export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 1024 * MIB, pilotLimit = 2048 * MIB,
-    requestsPerHour = 120, uploadQuota = async (_transaction, _owner, limit) => limit }) {
+    requestsPerHour = 120, uploadQuota = async (_transaction, _owner, limit) => limit, uploadsPaused = false }) {
     const pilotAllocation = db.doc('gallipickBackupControl/pilot');
     const ownerPath = owner => `gallipickBackupAccounts/${owner}`;
     const objectRecord = (owner, uploadId) => db.doc(`${ownerPath(owner)}/originals/${uploadId}`);
@@ -159,6 +159,7 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
 
         async begin(auth, input) {
             const owner = authorize(auth, pilotUsers);
+            if (uploadsPaused) throw new BackupError('failed-precondition', 'New backup uploads are temporarily paused.');
             const request = originalInput(input);
             const uploadId = `${request.sha256}-${request.sizeBytes}`;
             const recordRef = objectRecord(owner, uploadId);

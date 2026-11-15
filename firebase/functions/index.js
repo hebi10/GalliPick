@@ -23,22 +23,24 @@ function services() {
     const db = getFirestore(app);
     const billing = createBillingService({ db, pilotUsers: settings.users, settings: billingSettings(project, process.env),
         play: createPlaySubscriptions() });
-    const backup = createBackupService({ db, pilotUsers: settings.users, uploadQuota: billing.uploadQuota, getBucket: async () => {
-        const bucket = getStorage(app).bucket(settings.bucketName);
-        const [metadata] = await bucket.getMetadata();
-        requirePrivateBucket(metadata);
-        return bucket;
-    } });
-    return { backup, billing };
+    const backup = createBackupService({ db, pilotUsers: settings.users, uploadQuota: billing.uploadQuota,
+        uploadsPaused: settings.uploadsPaused, getBucket: async () => {
+            const bucket = getStorage(app).bucket(settings.bucketName);
+            const [metadata] = await bucket.getMetadata();
+            requirePrivateBucket(metadata);
+            return bucket;
+        } });
+    return { backup, billing, uploadsPaused: settings.uploadsPaused };
 }
 
 function endpoint(operation, billingRequest = false) {
     return onCall(options, async request => {
         try {
             if (!request.auth) throw new BackupError('unauthenticated', 'Sign in to start a backup.');
-            const { backup, billing } = services();
+            const { backup, billing, uploadsPaused } = services();
             if (billingRequest) await backup.countBillingRequest(request.auth);
-            return await (billingRequest ? billing : backup)[operation](request.auth, request.data);
+            const result = await (billingRequest ? billing : backup)[operation](request.auth, request.data);
+            return billingRequest && uploadsPaused ? { ...result, uploadAllowed: false } : result;
         } catch (error) {
             if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
             // Provider errors can include request details and signed capabilities.

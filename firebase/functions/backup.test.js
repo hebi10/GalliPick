@@ -69,9 +69,9 @@ function createHarness({ ownerLimit = 1024, pilotLimit = 2048, requestsPerHour, 
             };
         },
     };
-    const service = createBackupService({ db, getBucket: async () => bucket,
-        pilotUsers: new Set(['owner-a', 'owner-b']), ownerLimit, pilotLimit, requestsPerHour, uploadQuota });
-    return { service, signedOptions, bucketObjects, records };
+    const createService = uploadsPaused => createBackupService({ db, getBucket: async () => bucket,
+        pilotUsers: new Set(['owner-a', 'owner-b']), ownerLimit, pilotLimit, requestsPerHour, uploadQuota, uploadsPaused });
+    return { service: createService(), createService, signedOptions, bucketObjects, records };
 }
 
 test('only allowlisted Google accounts may reserve an original within pilot limits', async () => {
@@ -176,6 +176,52 @@ test('the Firebase pilot defaults to unavailable and validates project and priva
         isCode('failed-precondition'));
     assert.equal(pilotSettings('gallipick-dev', env).bucketName, env.GALLIPICK_BACKUP_BUCKET);
     assert.doesNotThrow(() => requirePrivateBucket(metadata));
+});
+
+test('the upload pause requires explicit configuration in an enabled dev pilot', () => {
+    const env = { GALLIPICK_BACKUP_UPLOADS_ENABLED: 'true', GALLIPICK_BACKUP_TEST_UIDS: 'owner-a,owner-b',
+        GALLIPICK_BACKUP_BUCKET: 'gallipick-dev.firebasestorage.app' };
+    const pause = { GALLIPICK_BACKUP_UPLOADS_PAUSED: 'true' };
+    assert.equal(pilotSettings('gallipick-dev', env).uploadsPaused, false);
+    assert.equal(pilotSettings('gallipick-dev', { ...env, GALLIPICK_BACKUP_UPLOADS_PAUSED: 'false' }).uploadsPaused, false);
+    assert.equal(pilotSettings('gallipick-dev', { ...env, ...pause }).uploadsPaused, true);
+    assert.throws(() => pilotSettings('gallipick-dev', { ...env, GALLIPICK_BACKUP_UPLOADS_PAUSED: 'TRUE' }),
+        isCode('failed-precondition'));
+    assert.throws(() => pilotSettings('gallipick-dev', { ...env, ...pause, GALLIPICK_BACKUP_UPLOADS_ENABLED: 'false' }),
+        isCode('failed-precondition'));
+    assert.throws(() => pilotSettings('gallipick-dev', { ...env, ...pause, GALLIPICK_BACKUP_TEST_UIDS: '' }),
+        isCode('failed-precondition'));
+});
+
+test('paused uploads grant no new write capability while the owner can finish and restore', async () => {
+    const { service, createService, signedOptions, bucketObjects, records } = createHarness();
+    const owner = googleUser('owner-a');
+    const otherOwner = googleUser('owner-b');
+    const { uploadId } = await service.begin(owner, data);
+    const before = new Map(records);
+    const paused = createService(true);
+    await assert.rejects(paused.begin(null, data), isCode('unauthenticated'));
+    await assert.rejects(paused.begin(googleUser('unknown'), data), isCode('permission-denied'));
+    await assert.rejects(paused.begin(owner, { ...data, sha256: 'a'.repeat(64) }), isCode('failed-precondition'));
+    await assert.rejects(paused.begin(owner, data), isCode('failed-precondition'));
+    assert.deepEqual(records, before);
+    assert.equal(signedOptions.length, 1);
+
+    const key = signedOptions[0].key;
+    const generation = '1740000000000000';
+    bucketObjects.set(key, { generation, bytes: Buffer.alloc(photo.length), mimeType: data.mimeType });
+    await assert.rejects(paused.finish(owner, { uploadId }), isCode('data-loss'));
+    assert.deepEqual(await paused.list(owner), { items: [] });
+    bucketObjects.set(key, { generation, bytes: photo, mimeType: data.mimeType });
+    await assert.rejects(paused.finish(otherOwner, { uploadId }), isCode('not-found'));
+    assert.deepEqual(await paused.finish(owner, { uploadId }), { state: 'VERIFIED' });
+    assert.deepEqual(await paused.finish(owner, { uploadId }), { state: 'VERIFIED' });
+    const { items } = await paused.list(owner);
+    assert.deepEqual(items.map(item => item.uploadId), [uploadId]);
+    assert.deepEqual(await paused.list(otherOwner), { items: [] });
+    await assert.rejects(paused.download(otherOwner, { uploadId }), isCode('not-found'));
+    assert.equal((await paused.download(owner, { uploadId })).generation, generation);
+    assert.deepEqual(signedOptions.map(({ action }) => action), ['write', 'read']);
 });
 
 test('an account cannot mint additional upload URLs after exhausting its request allowance', async () => {
