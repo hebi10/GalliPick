@@ -58,6 +58,7 @@ fun GalliPickApp(
     onRestore: (List<MediaItem>) -> Unit = {},
     result: CleanupOperationResult? = null,
     onDismissResult: () -> Unit = {},
+    cloudSettings: (@Composable () -> Unit)? = null,
 ) {
     val state by vm.ui.collectAsState()
     var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
@@ -408,7 +409,9 @@ fun GalliPickApp(
                                             onOpenReviewInbox = ::openReviewInbox,
                                             browse = navigateFiles,
                                         )
-                                        Destination.SETTINGS -> SettingsScreen(state, vm, onRequestPermission, onOpenSettings, { showTrash = true })
+                                        Destination.SETTINGS -> SettingsScreen(
+                                            state, vm, onRequestPermission, onOpenSettings, { showTrash = true }, cloudSettings,
+                                        )
                                     }
                                 }
                             }

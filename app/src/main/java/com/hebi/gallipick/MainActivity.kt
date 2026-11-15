@@ -33,6 +33,7 @@ import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.TrashIdentity
 import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.ui.CleanupOperationResult
+import com.hebi.gallipick.ui.CloudAccountSettings
 import com.hebi.gallipick.ui.GalliPickApp
 import com.hebi.gallipick.ui.GalliPickTheme
 import com.hebi.gallipick.ui.TrashReviewDialog
@@ -48,6 +49,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val cloudAccount = (application as GalliPickApplication).cloudAccount
         setContent {
           val uiState by vm.ui.collectAsState()
           val useDarkTheme = uiState.themeMode.isDark(isSystemInDarkTheme())
@@ -213,6 +215,9 @@ class MainActivity : ComponentActivity() {
                 onRestore = { review(it, true) },
                 result = operationResult,
                 onDismissResult = { operationResult = null },
+                cloudSettings = if (cloudAccount != null) {
+                    { CloudAccountSettings(cloudAccount, this@MainActivity) }
+                } else null,
             )
 
             pending?.let { request ->

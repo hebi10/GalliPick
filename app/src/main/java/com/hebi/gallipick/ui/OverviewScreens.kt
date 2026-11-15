@@ -562,7 +562,14 @@ private fun CleanupCategoryIcon(suggestion: CleanupSuggestion, modifier: Modifie
 }
 
 @Composable
-internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: () -> Unit, openSettings: () -> Unit, openTrash: () -> Unit) {
+internal fun SettingsScreen(
+    state: AppUiState,
+    vm: AppViewModel,
+    requestAccess: () -> Unit,
+    openSettings: () -> Unit,
+    openTrash: () -> Unit,
+    cloudSettings: (@Composable () -> Unit)? = null,
+) {
     val uriHandler = LocalUriHandler.current
     var confirmClear by remember { mutableStateOf(false) }
     var confirmClearOcr by remember { mutableStateOf(false) }
@@ -581,6 +588,9 @@ internal fun SettingsScreen(state: AppUiState, vm: AppViewModel, requestAccess: 
             verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
         ) {
             SectionTitle("설정", "화면·권한·파일 관리")
+            if (cloudSettings != null) {
+                SettingsSection("클라우드") { cloudSettings() }
+            }
             SettingsSection("화면 테마") {
                 Text("기기 설정을 따르거나 모드를 직접 선택하세요.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -735,6 +745,7 @@ internal fun ClearAnalysisCacheDialog(onConfirm: () -> Unit, onDismiss: () -> Un
 @Composable
 private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
     val icon = when (title) {
+        "클라우드" -> Icons.Outlined.Cloud
         "화면 테마" -> Icons.Outlined.DarkMode
         "미디어 접근" -> Icons.Outlined.PhotoLibrary
         "휴지통" -> Icons.Outlined.RestoreFromTrash

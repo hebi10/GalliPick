@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.util.Properties
@@ -8,6 +9,41 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
+
+val galliPickApplicationId = "com.hebi.gallipick"
+val cloudTestFirebaseProjectId = "gallipick-dev"
+val cloudConfigResourceNames = listOf(
+    "cloud_firebase_app_id", "cloud_firebase_api_key",
+    "cloud_firebase_project_id", "cloud_google_web_client_id",
+)
+val debugFirebaseConfig = providers.fileContents(layout.projectDirectory.file("src/debug/google-services.json")).asText
+    .map { json ->
+        fun Map<*, *>.objectField(name: String) = this[name] as? Map<*, *> ?: emptyMap<Any, Any>()
+        fun Map<*, *>.objectArray(name: String) = (this[name] as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
+        try {
+            val config = JsonSlurper().parseText(json) as Map<*, *>
+            val projectId = config.objectField("project_info")["project_id"]
+            require(projectId == cloudTestFirebaseProjectId)
+            val client = config.objectArray("client").single {
+                it.objectField("client_info").objectField("android_client_info")["package_name"] == galliPickApplicationId
+            }
+            val webClient = client.objectArray("oauth_client").first {
+                (it["client_type"] as? Number)?.toInt() == 3
+            }
+            val values = listOf(
+                client.objectField("client_info")["mobilesdk_app_id"],
+                client.objectArray("api_key").first()["current_key"],
+                projectId,
+                webClient["client_id"],
+            ).map { it as String }
+            require(values.all { it.matches(Regex("[a-zA-Z0-9_.:-]+")) })
+            require(values.last().endsWith(".apps.googleusercontent.com"))
+            cloudConfigResourceNames.zip(values).toMap()
+        } catch (_: Exception) {
+            logger.warn("GalliPick cloud sign-in is disabled. Check the debug Firebase Android app configuration and Google sign-in provider.")
+            emptyMap()
+        }
+    }
 
 val testSigning = providers.gradleProperty("gallipickTestSigning").orNull == "true"
 val signingPropertiesFile = providers.environmentVariable("GALLIPICK_SIGNING_PROPERTIES").orNull
@@ -54,7 +90,7 @@ android {
     namespace = "com.hebi.gallipick"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.hebi.gallipick"
+        applicationId = galliPickApplicationId
         minSdk = 30
         targetSdk = 36
         versionCode = 23
@@ -80,6 +116,10 @@ android {
         debug {
             if (!testSigning) signingConfig = signingConfigs.getByName("galliPick")
             resValue("string", "app_name", "GalliPick")
+            val firebaseConfig = debugFirebaseConfig.getOrElse(emptyMap())
+            cloudConfigResourceNames.forEach { name ->
+                resValue("string", name, firebaseConfig[name].orEmpty())
+            }
         }
         release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("galliPick") }
         create("playPreparation") {
@@ -88,6 +128,10 @@ android {
             matchingFallbacks += listOf("release")
             isDebuggable = false
         }
+    }
+    sourceSets {
+        getByName("release").java.srcDir("src/localOnly/java")
+        getByName("playPreparation").java.srcDir("src/localOnly/java")
     }
     testOptions { unitTests.isReturnDefaultValues = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
@@ -107,6 +151,10 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("com.google.firebase:firebase-auth:25.0.0")
+    debugImplementation("androidx.credentials:credentials:1.3.0")
+    debugImplementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    debugImplementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("androidx.room:room-runtime:2.8.3")

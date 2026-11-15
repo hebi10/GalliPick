@@ -7,4 +7,5 @@ local.properties
 *.keystore
 *.p12
 signing.properties
+google-services.json
 .superpowers/
