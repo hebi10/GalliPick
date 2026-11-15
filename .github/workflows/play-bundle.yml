@@ -8,6 +8,11 @@ on:
         required: true
         default: v0.1.7
         type: string
+      cloud_pilot:
+        description: 'Include the development Firebase cloud pilot for Play testing'
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -34,6 +39,21 @@ jobs:
             exit 1
           fi
           python3 scripts/release/verify_apk.py source --tag "$RELEASE_TAG"
+      - name: Prepare cloud pilot build configuration
+        if: inputs.cloud_pilot
+        env:
+          CLOUD_CONFIG_BASE64: ${{ secrets.GALLIPICK_PLAY_CLOUD_CONFIG_BASE64 }}
+          PLAY_APP_SIGNING_SHA1: ${{ vars.GALLIPICK_PLAY_APP_SIGNING_SHA1 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$CLOUD_CONFIG_BASE64" || -z "$PLAY_APP_SIGNING_SHA1" ]]; then
+            echo 'Cloud pilot build configuration or Play app-signing fingerprint is missing.' >&2
+            exit 1
+          fi
+          umask 077
+          mkdir -p app/src/release
+          printf '%s' "$CLOUD_CONFIG_BASE64" | base64 --decode > app/src/release/google-services.json
       - name: Restore fixed signing key privately
         env:
           GALLIPICK_SIGNING_BUNDLE_BASE64: ${{ secrets.GALLIPICK_SIGNING_BUNDLE_BASE64 }}
@@ -62,16 +82,22 @@ jobs:
       - name: Test release verification tools
         run: python3 -m unittest discover -s scripts/release -p 'test_*.py'
       - name: Build fixed-key release bundle
+        env:
+          ORG_GRADLE_PROJECT_gallipickPlayCloudPilot: ${{ inputs.cloud_pilot }}
+          ORG_GRADLE_PROJECT_gallipickPlayAppSigningSha1: ${{ vars.GALLIPICK_PLAY_APP_SIGNING_SHA1 }}
         run: gradle --no-daemon --no-configuration-cache :app:verifyGalliPickSigning :app:testDebugUnitTest :app:lintRelease :app:bundleRelease --max-workers=2
       - name: Verify and stage Play bundle
         run: python3 scripts/release/verify_aab.py --tag "$RELEASE_TAG" --bundle app/build/outputs/bundle/release/app-release.aab --bundletool "$RUNNER_TEMP/bundletool.jar" --output play-dist
       - name: Save verified Play upload files
         uses: actions/upload-artifact@v4
         with:
-          name: GalliPick-${{ inputs.version }}-play-bundle
+          name: GalliPick-${{ inputs.version }}${{ inputs.cloud_pilot && '-cloud-pilot' || '' }}-play-bundle
           path: play-dist/
           if-no-files-found: error
           retention-days: 14
       - name: Remove private signing files
         if: always()
         run: python3 scripts/release/signing_bundle.py cleanup
+      - name: Remove the temporary cloud pilot configuration
+        if: always() && inputs.cloud_pilot
+        run: rm -f -- app/src/release/google-services.json
