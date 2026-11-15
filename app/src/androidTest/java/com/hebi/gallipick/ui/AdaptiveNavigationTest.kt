@@ -25,10 +25,10 @@ class AdaptiveNavigationTest {
         var opened: Destination? = null
         showRail(height = 280.dp, onNavigate = { opened = it })
 
-        assertEquals(listOf("홈", "파일", "정리", "설정"), Destination.entries.map { it.title })
+        assertEquals(listOf("홈", "파일", "정리", "설정"), visibleDestinations().map { it.title })
         compose.onNode(hasText("중복") and hasClickAction()).assertDoesNotExist()
         val rail = compose.onNodeWithTag("destination-rail").fetchSemanticsNode().boundsInRoot
-        Destination.entries.forEach { destination ->
+        visibleDestinations().forEach { destination ->
             val tab = tab(destination).assertIsDisplayed().assertHeightIsAtLeast(48.dp).assertWidthIsAtLeast(48.dp)
             val bounds = tab.fetchSemanticsNode().boundsInRoot
             assertTrue("${destination.title} must fit completely inside the short rail", bounds.top >= rail.top && bounds.bottom <= rail.bottom)
@@ -51,7 +51,7 @@ class AdaptiveNavigationTest {
         var opened: Destination? = null
         showRail(height = 700.dp, onNavigate = { opened = it })
 
-        Destination.entries.forEach { destination ->
+        visibleDestinations().forEach { destination ->
             tab(destination).assertIsDisplayed().assertHeightIsAtLeast(60.dp)
         }
         tab(Destination.HOME).assertIsSelected()
@@ -59,9 +59,19 @@ class AdaptiveNavigationTest {
         compose.runOnIdle { assertEquals(Destination.SETTINGS, opened) }
     }
 
+    @Test fun cloudTabCanScrollIntoViewInShortLargeFontRail() {
+        var opened: Destination? = null
+        showRail(height = 180.dp, fontScale = 1.6f, cloudEnabled = true, onNavigate = { opened = it })
+
+        tab(Destination.CLOUD).performScrollTo()
+            .assertIsDisplayed().assertHeightIsAtLeast(48.dp).assertWidthIsAtLeast(48.dp).performClick()
+        compose.runOnIdle { assertEquals(Destination.CLOUD, opened) }
+        tab(Destination.SETTINGS).performScrollTo().assertIsDisplayed()
+    }
+
     private fun tab(destination: Destination) = compose.onNode(hasText(destination.title) and hasClickAction())
 
-    private fun showRail(height: Dp, fontScale: Float = 1f, onNavigate: (Destination) -> Unit) {
+    private fun showRail(height: Dp, fontScale: Float = 1f, cloudEnabled: Boolean = false, onNavigate: (Destination) -> Unit) {
         compose.setContent {
             GalliPickTheme {
                 CompositionLocalProvider(LocalDensity provides Density(.6f, fontScale)) {
@@ -69,6 +79,7 @@ class AdaptiveNavigationTest {
                         current = Destination.HOME,
                         onNavigate = onNavigate,
                         modifier = Modifier.requiredSize(100.dp, height).testTag("destination-rail"),
+                        destinations = visibleDestinations(cloudEnabled),
                     )
                 }
             }

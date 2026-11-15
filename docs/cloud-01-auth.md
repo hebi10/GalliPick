@@ -1,6 +1,6 @@
 # CLOUD-01 · Google 로그인 테스트
 
-GalliPick Dev는 `com.hebi.gallipick` 디버그 앱에서 계정 연결을 검증하는 Firebase 프로젝트다. 설정의 **클라우드**에서 Google 계정을 연결, 전환하거나 로그아웃할 수 있다. Firebase 설정이 없는 디버그 빌드에서도 기존 로컬 사진·영상 기능을 이용할 수 있다. 출시 및 Play 준비 빌드는 로컬 기능을 제공한다.
+GalliPick Dev는 `com.hebi.gallipick` 디버그 앱에서 계정 연결을 검증하는 Firebase 프로젝트다. **클라우드** 탭에서 Google 계정을 연결, 전환하거나 로그아웃할 수 있다. Firebase 설정이 없는 디버그 빌드에서도 기존 로컬 사진·영상 기능을 이용할 수 있다. 출시 및 Play 준비 빌드는 로컬 기능을 제공한다.
 
 ## 테스트 빌드 설정
 
@@ -12,7 +12,7 @@ GalliPick Dev는 `com.hebi.gallipick` 디버그 앱에서 계정 연결을 검�
    ```
 
 3. [Authentication 로그인 방법](https://console.firebase.google.com/project/gallipick-dev/authentication/providers)에서 Google을 확인한다. Firebase에서 다운로드한 최신 `google-services.json`을 `app/src/debug/google-services.json`에 저장한다. 이 파일은 Git 추적 대상에서 제외된다.
-4. 아래 명령으로 테스트 서명 APK를 빌드한다. Google Play 서비스가 있는 테스트 기기에서 **설정 → 클라우드**를 연다.
+4. 아래 명령으로 테스트 서명 APK를 빌드한다. Google Play 서비스가 있는 테스트 기기에서 **클라우드** 탭을 연다.
 
    ```powershell
    .\gradlew.bat -PgallipickTestSigning=true :app:assembleDebug

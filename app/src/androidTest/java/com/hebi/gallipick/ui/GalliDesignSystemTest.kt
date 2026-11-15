@@ -87,9 +87,9 @@ class GalliDesignSystemTest {
                 AppDestinationRail(Destination.FILES, {}, Modifier.requiredSize(100.dp, 280.dp))
             }
         }
-        assertEquals(listOf("홈", "파일", "정리", "설정"), Destination.entries.map { it.title })
+        assertEquals(listOf("홈", "파일", "정리", "설정"), visibleDestinations().map { it.title })
         compose.onNode(hasText("중복") and hasClickAction()).assertDoesNotExist()
-        Destination.entries.forEach { destination ->
+        visibleDestinations().forEach { destination ->
             compose.onNode(hasText(destination.title) and hasClickAction())
                 .performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         }
@@ -218,8 +218,8 @@ class GalliDesignSystemTest {
         (actions + destinations).forEach { icon ->
             assertTrue("${icon.name} must be an Outlined material icon", icon.name.startsWith("Outlined."))
         }
-        assertEquals(4, destinations.distinct().size)
-        assertEquals(listOf("홈", "파일", "정리", "설정"), Destination.entries.map { it.title })
+        assertEquals(5, destinations.distinct().size)
+        assertEquals(listOf("홈", "파일", "정리", "클라우드", "설정"), visibleDestinations(cloudEnabled = true).map { it.title })
     }
 
     @Test fun highRiskIconsStayVisibleAndDistinctInDarkMode() {

@@ -38,15 +38,17 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// The reference design has four top-level destinations. Duplicate analysis
-// remains available as a child of CLEANUP and is never discarded.
 internal enum class PhotoReviewMode { SIMILAR, BURST, SOFT_FOCUS }
 
 internal enum class Destination(val title: String, val icon: ImageVector) {
     HOME("홈", Icons.Outlined.Home), FILES("파일", Icons.Outlined.PhotoLibrary),
     CLEANUP("정리", Icons.Outlined.CleaningServices),
+    CLOUD("클라우드", Icons.Outlined.Cloud),
     SETTINGS("설정", Icons.Outlined.Settings),
 }
+
+internal fun visibleDestinations(cloudEnabled: Boolean = false): List<Destination> =
+    Destination.entries.filter { it != Destination.CLOUD || cloudEnabled }
 
 @Composable
 fun GalliPickApp(
@@ -58,10 +60,13 @@ fun GalliPickApp(
     onRestore: (List<MediaItem>) -> Unit = {},
     result: CleanupOperationResult? = null,
     onDismissResult: () -> Unit = {},
-    cloudSettings: (@Composable () -> Unit)? = null,
+    cloudContent: (@Composable () -> Unit)? = null,
 ) {
     val state by vm.ui.collectAsState()
-    var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
+    val cloudEnabled = cloudContent != null
+    val destinations = remember(cloudEnabled) { visibleDestinations(cloudEnabled) }
+    var selectedDestination by rememberSaveable { mutableStateOf(Destination.HOME) }
+    val destination = if (selectedDestination in destinations) selectedDestination else Destination.HOME
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var showDuplicates by rememberSaveable { mutableStateOf(false) }
     var showFolderStorage by rememberSaveable { mutableStateOf(false) }
@@ -91,7 +96,7 @@ fun GalliPickApp(
         showSimilarResults = false
         showSoftFocusResults = false
         similarCompareId = null
-        destination = destinationValue
+        selectedDestination = destinationValue
     }
     fun openReviewInbox() {
         vm.clearSelection()
@@ -104,7 +109,7 @@ fun GalliPickApp(
         showSoftFocusResults = false
         similarCompareId = null
         compareFromInbox = false
-        destination = Destination.CLEANUP
+        selectedDestination = Destination.CLEANUP
         showReviewInbox = true
     }
     fun confirmInboxCandidates() {
@@ -123,7 +128,7 @@ fun GalliPickApp(
         showReviewInbox = false
         compareFromInbox = false
         similarCompareId = null
-        destination = Destination.CLEANUP
+        selectedDestination = Destination.CLEANUP
         showDuplicates = true
     }
     fun openFolderStorage() {
@@ -133,7 +138,7 @@ fun GalliPickApp(
         showSimilarResults = false
         showSoftFocusResults = false
         similarCompareId = null
-        destination = Destination.CLEANUP
+        selectedDestination = Destination.CLEANUP
         showFolderStorage = true
     }
     fun openCleanupHistory() {
@@ -144,7 +149,7 @@ fun GalliPickApp(
         showSimilarResults = false
         showSoftFocusResults = false
         similarCompareId = null
-        destination = Destination.CLEANUP
+        selectedDestination = Destination.CLEANUP
         showCleanupHistory = true
     }
     fun openPhotoAnalysis() {
@@ -155,7 +160,7 @@ fun GalliPickApp(
         showSimilarResults = false
         showSoftFocusResults = false
         similarCompareId = null
-        destination = Destination.CLEANUP
+        selectedDestination = Destination.CLEANUP
         showPhotoAnalysis = true
     }
     fun reviewSimilarCandidates() {
@@ -178,7 +183,7 @@ fun GalliPickApp(
             showReviewInbox -> showReviewInbox = false
             showSimilarResults || showSoftFocusResults -> closeSimilarReview()
             showPhotoAnalysis -> showPhotoAnalysis = false
-            else -> destination = Destination.HOME
+            else -> selectedDestination = Destination.HOME
         }
     }
     val navigateFiles: (com.hebi.gallipick.domain.MediaFilter) -> Unit = {
@@ -188,6 +193,7 @@ fun GalliPickApp(
     Surface(Modifier.fillMaxSize(), color = AppBackground) {
         BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             val wide = maxWidth >= 650.dp
+            val compactBottomNavigation = cloudEnabled && maxWidth < 380.dp * LocalDensity.current.fontScale
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -231,7 +237,7 @@ fun GalliPickApp(
                         }
                         Row(Modifier.weight(1f).fillMaxWidth()) {
                             if (wide) {
-                                AppDestinationRail(destination, ::navigate)
+                                AppDestinationRail(destination, ::navigate, destinations = destinations)
                             }
                             Box(Modifier.weight(1f).fillMaxHeight()) {
                                 when {
@@ -409,8 +415,9 @@ fun GalliPickApp(
                                             onOpenReviewInbox = ::openReviewInbox,
                                             browse = navigateFiles,
                                         )
+                                        Destination.CLOUD -> if (cloudContent != null) CloudScreen(cloudContent)
                                         Destination.SETTINGS -> SettingsScreen(
-                                            state, vm, onRequestPermission, onOpenSettings, { showTrash = true }, cloudSettings,
+                                            state, vm, onRequestPermission, onOpenSettings, { showTrash = true },
                                         )
                                     }
                                 }
@@ -423,10 +430,12 @@ fun GalliPickApp(
                         Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(
                             topStart = GalliUiMetrics.navigationCorner, topEnd = GalliUiMetrics.navigationCorner,
                         ))
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                            .selectableGroup().padding(horizontal = 8.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
-                        Destination.entries.forEach { NavItem(it, destination == it, { navigate(it) }, Modifier.weight(1f)) }
+                        destinations.forEach {
+                            NavItem(it, destination == it, { navigate(it) }, Modifier.weight(1f), compactBottomNavigation)
+                        }
                     }
                 }
             }
@@ -533,17 +542,20 @@ internal fun GalliCard(
 }
 
 @Composable
-internal fun AppDestinationRail(current: Destination, onNavigate: (Destination) -> Unit, modifier: Modifier = Modifier) {
+internal fun AppDestinationRail(
+    current: Destination,
+    onNavigate: (Destination) -> Unit,
+    modifier: Modifier = Modifier,
+    destinations: List<Destination> = visibleDestinations(),
+) {
     BoxWithConstraints(modifier.width(100.dp).fillMaxHeight()) {
-        // Base the rail on its remaining height after app banners/header, including text scaling.
-        // Four reference tabs still allow 48 dp targets in short landscape windows.
-        val compact = maxHeight < 360.dp * LocalDensity.current.fontScale
+        val compact = maxHeight < (90.dp * destinations.size) * LocalDensity.current.fontScale
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).selectableGroup()
                 .padding(start = 12.dp, top = if (compact) 8.dp else 12.dp, bottom = if (compact) 8.dp else 12.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
         ) {
-            Destination.entries.forEach { destination ->
+            destinations.forEach { destination ->
                 NavItem(destination, current == destination, { onNavigate(destination) }, Modifier.fillMaxWidth(), compact)
             }
         }
@@ -570,7 +582,7 @@ private fun NavItem(destination: Destination, selected: Boolean, onClick: () -> 
             ), selected = selected)
         }
         Text(destination.title, color = if (selected) Primary else Muted, style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, textAlign = TextAlign.Center)
     }
 }
 

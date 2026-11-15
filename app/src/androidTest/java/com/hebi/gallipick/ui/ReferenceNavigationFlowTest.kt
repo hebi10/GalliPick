@@ -1,6 +1,7 @@
 package com.hebi.gallipick.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.material3.Text
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.semantics.Role
@@ -19,6 +20,27 @@ class ReferenceNavigationFlowTest {
     private val tabMatcher = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
     private fun tab(label: String) = compose.onNode(tabMatcher and hasText(label))
 
+    @Test fun cloudManagementAppearsOnlyInItsOwnTab() {
+        val vm = AppViewModel(compose.activity.application)
+        val managementLabel = "클라우드 계정 관리 테스트"
+        compose.setContent {
+            GalliPickTheme {
+                GalliPickApp(vm, {}, {}, {}, {}, cloudContent = { Text(managementLabel) })
+            }
+        }
+
+        compose.onAllNodes(tabMatcher).assertCountEquals(5)
+        tab("설정").performClick()
+        compose.onNodeWithText(managementLabel).assertDoesNotExist()
+        tab("클라우드").performClick()
+        tab("클라우드").assertIsSelected()
+        compose.onNodeWithText(managementLabel).assertIsDisplayed()
+
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        tab("홈").assertIsSelected()
+        compose.onNodeWithText(managementLabel).assertDoesNotExist()
+    }
+
     @Test fun fourMainTabsAndCleanupDuplicateChildKeepBackAndSelectionCorrect() {
         val vm = AppViewModel(compose.activity.application)
         compose.setContent {
@@ -27,7 +49,7 @@ class ReferenceNavigationFlowTest {
             }
         }
 
-        assertEquals(listOf("홈", "파일", "정리", "설정"), Destination.entries.map { it.title })
+        assertEquals(listOf("홈", "파일", "정리", "설정"), visibleDestinations().map { it.title })
         compose.onAllNodes(tabMatcher).assertCountEquals(4)
         compose.onNode(tabMatcher and hasText("중복")).assertDoesNotExist()
 
