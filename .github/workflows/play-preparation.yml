@@ -1,9 +1,6 @@
 name: Play unsigned preparation
 run-name: GalliPick unsigned Play ${{ inputs.version || github.ref_name }}
 on:
-  push:
-    branches: [main, 'codex/play-external-signing-*']
-    paths-ignore: ['docs/**', 'README.md']
   workflow_dispatch:
     inputs:
       version:
@@ -18,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   prepare:
-    if: github.repository == 'hebi10/GalliPick'
+    if: github.repository == 'hebi10/GalliPick' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
