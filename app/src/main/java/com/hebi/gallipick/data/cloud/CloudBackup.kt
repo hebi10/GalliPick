@@ -3,6 +3,7 @@ package com.hebi.gallipick.data.cloud
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
+import android.net.Network
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -47,6 +48,8 @@ internal enum class CloudBackupResult {
 
 internal class CloudBackupException(val result: CloudBackupResult) : Exception()
 
+internal data class CloudAutoBackupTransfer(val folder: CloudAutoBackupFolder, val wifiNetwork: Network)
+
 internal fun failBackup(result: CloudBackupResult): Nothing = throw CloudBackupException(result)
 
 internal class CloudBackup(
@@ -66,6 +69,7 @@ internal class CloudBackup(
     suspend fun upload(
         item: MediaItem,
         expectedUid: String,
+        automatic: CloudAutoBackupTransfer? = null,
         onPhase: (CloudBackupPhase) -> Unit = {},
     ): CloudBackupResult {
         val mimeType = item.mimeType.lowercase(Locale.ROOT)
@@ -74,8 +78,9 @@ internal class CloudBackup(
         }
         if (!mutex.tryLock()) return CloudBackupResult.FAILED
         return try {
-            forAccount(expectedUid, 180_000L) { check -> transfer(item, mimeType, expectedUid, onPhase, check) }
-                .also { if (it == CloudBackupResult.VERIFIED) _catalogRevision.update { current -> current + 1 } }
+            forAccount(expectedUid, 180_000L) { check ->
+                transfer(item, mimeType, expectedUid, automatic, onPhase, check)
+            }.also { if (it == CloudBackupResult.VERIFIED) _catalogRevision.update { current -> current + 1 } }
         } catch (error: CloudBackupException) {
             error.result
         } finally {
@@ -168,15 +173,17 @@ internal class CloudBackup(
         item: MediaItem,
         mimeType: String,
         uid: String,
+        automatic: CloudAutoBackupTransfer?,
         onPhase: (CloudBackupPhase) -> Unit,
         checkAccount: () -> Unit,
     ): CloudBackupResult {
+        val requiredFolder = automatic?.folder
         var original: FileInputStream? = null
         return try {
             checkAccount()
             onPhase(CloudBackupPhase.READING_ORIGINAL)
             val hash = withContext(Dispatchers.IO) {
-                assertOriginal(item)
+                assertOriginal(item, requiredFolder)
                 try {
                     val temporary = File.createTempFile("original-", ".tmp", appContext.cacheDir)
                     try {
@@ -199,17 +206,17 @@ internal class CloudBackup(
                     failBackup(CloudBackupResult.ORIGINAL_UNAVAILABLE)
                 }
             }
-            assertOriginal(item)
+            assertOriginal(item, requiredFolder)
             checkAccount()
             val beginToken = tokenFor(uid)
             checkAccount()
             val target = transport.begin(uid, beginToken, hash, item.sizeBytes, mimeType, item.displayName)
             checkAccount()
-            assertOriginal(item)
+            assertOriginal(item, requiredFolder)
             checkAccount()
             if (target != null) {
                 onPhase(CloudBackupPhase.UPLOADING)
-                transport.put(target, checkNotNull(original), item.sizeBytes, checkAccount)
+                transport.put(target, checkNotNull(original), item.sizeBytes, automatic?.wifiNetwork, checkAccount)
                 checkAccount()
                 onPhase(CloudBackupPhase.VERIFYING)
                 val finishToken = tokenFor(uid)
@@ -231,12 +238,10 @@ internal class CloudBackup(
 
     private fun ownsAccount(uid: String): Boolean = account.value?.uid == uid && currentUid() == uid
 
-    private suspend fun assertOriginal(expected: MediaItem) {
-        val current = reader.current(expected.uri)
-        if (current == null || current.isTrashed || expected.isTrashed || expected.volumeVersion.isBlank() ||
-            current.fingerprint != expected.fingerprint || current.volumeVersion != expected.volumeVersion ||
-            current.kind != expected.kind || current.mimeType != expected.mimeType
-        ) failBackup(CloudBackupResult.ORIGINAL_UNAVAILABLE)
+    private suspend fun assertOriginal(expected: MediaItem, requiredFolder: CloudAutoBackupFolder?) {
+        if (!matchesCloudBackupOriginal(expected, reader.current(expected.uri), requiredFolder)) {
+            failBackup(CloudBackupResult.ORIGINAL_UNAVAILABLE)
+        }
     }
 
     private fun <T> readOriginal(item: MediaItem, read: (InputStream) -> T): T {

@@ -1,11 +1,13 @@
 package com.hebi.gallipick.data.cloud
 
+import android.net.Network
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
+import java.net.URLConnection
 import javax.net.ssl.HttpsURLConnection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +18,14 @@ import org.json.JSONException
 import org.json.JSONObject
 
 internal data class CloudUploadTarget(val id: String, val url: URI, val headers: Map<String, String>)
+
+internal fun openCloudBackupConnection(
+    url: URL,
+    openOnNetwork: ((URL) -> URLConnection)?,
+): HttpsURLConnection {
+    val connection = if (openOnNetwork == null) url.openConnection() else openOnNetwork(url)
+    return connection as HttpsURLConnection
+}
 
 internal class CloudBackupTransport(
     private val endpoint: String,
@@ -40,8 +50,14 @@ internal class CloudBackupTransport(
         return CloudUploadTarget(id, url, headers)
     }
 
-    suspend fun put(target: CloudUploadTarget, source: InputStream, size: Long, checkAccount: () -> Unit) {
-        exchange(target.url.toURL()) { connection, ensureActive ->
+    suspend fun put(
+        target: CloudUploadTarget,
+        source: InputStream,
+        size: Long,
+        wifiNetwork: Network?,
+        checkAccount: () -> Unit,
+    ) {
+        exchange(target.url.toURL(), wifiNetwork) { connection, ensureActive ->
             connection.requestMethod = "PUT"
             target.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
             connection.doOutput = true
@@ -156,11 +172,12 @@ internal class CloudBackupTransport(
 
     private suspend fun <T> exchange(
         url: URL,
+        wifiNetwork: Network? = null,
         block: (HttpsURLConnection, ensureActive: () -> Unit) -> T,
     ): T = withContext(Dispatchers.IO) {
         suspendCancellableCoroutine { continuation ->
             val connection = try {
-                url.openConnection() as HttpsURLConnection
+                openCloudBackupConnection(url, wifiNetwork?.let { it::openConnection })
             } catch (_: IOException) {
                 continuation.resumeWith(Result.failure(CloudBackupException(CloudBackupResult.NETWORK_ERROR)))
                 return@suspendCancellableCoroutine

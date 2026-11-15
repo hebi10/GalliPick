@@ -34,6 +34,7 @@ import com.hebi.gallipick.domain.TrashIdentity
 import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.ui.CleanupOperationResult
 import com.hebi.gallipick.ui.CloudAccountSettings
+import com.hebi.gallipick.ui.CloudAutoBackupSection
 import com.hebi.gallipick.ui.CloudBackupSection
 import com.hebi.gallipick.ui.CloudBillingSection
 import com.hebi.gallipick.ui.CloudLibrarySection
@@ -239,6 +240,9 @@ class MainActivity : ComponentActivity() {
                             CloudSpaceSection(cloudAccount, uiState, vm.repository) { uid ->
                                 backup.listOriginals(uid).map { CloudSpaceBackupProof(it.sizeBytes, it.sha256) }.toSet()
                             }
+                        }
+                        CloudAutoBackupSection(cloudAccount, uiState) {
+                            permissionLauncher.launch(requiredPermissions())
                         }
                     }
                 } else null,
