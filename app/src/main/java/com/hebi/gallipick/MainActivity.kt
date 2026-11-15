@@ -37,6 +37,8 @@ import com.hebi.gallipick.ui.CloudAccountSettings
 import com.hebi.gallipick.ui.CloudBackupSection
 import com.hebi.gallipick.ui.CloudBillingSection
 import com.hebi.gallipick.ui.CloudLibrarySection
+import com.hebi.gallipick.ui.CloudSpaceSection
+import com.hebi.gallipick.data.cloud.CloudSpaceBackupProof
 import com.hebi.gallipick.ui.GalliPickApp
 import com.hebi.gallipick.ui.GalliPickTheme
 import com.hebi.gallipick.ui.TrashReviewDialog
@@ -233,6 +235,11 @@ class MainActivity : ComponentActivity() {
                             } catch (_: Exception) { vm.showMessage("복원한 파일을 열 수 있는 앱이 없습니다.") }
                         }
                         CloudBillingSection(cloudAccount, this@MainActivity)
+                        cloudAccount.backup?.let { backup ->
+                            CloudSpaceSection(cloudAccount, uiState, vm.repository) { uid ->
+                                backup.listOriginals(uid).map { CloudSpaceBackupProof(it.sizeBytes, it.sha256) }.toSet()
+                            }
+                        }
                     }
                 } else null,
             )
