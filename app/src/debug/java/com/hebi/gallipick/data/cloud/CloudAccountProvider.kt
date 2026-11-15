@@ -47,17 +47,19 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
     val credentials = CredentialManager.create(context)
     val auth = FirebaseAuth.getInstance(firebaseApp)
     val session = CloudAccountSession(FirebaseCloudAccountBackend(auth, credentials))
+    val transport = CloudBackupTransport(
+        endpoint = "https://asia-northeast3-gallipick-dev.cloudfunctions.net",
+        buckets = setOf("gallipick-dev.firebasestorage.app"),
+    )
     val backup = CloudBackup(
         context = context,
         account = session.account,
         currentUid = { auth.currentUser?.uid },
         tokenFor = { uid -> backupIdToken(auth, uid) },
-        transport = CloudBackupTransport(
-            endpoint = "https://asia-northeast3-gallipick-dev.cloudfunctions.net",
-            buckets = setOf("gallipick-dev.firebasestorage.app"),
-        ),
+        transport = transport,
     )
-    return CloudAccountConnection(session, backup) { activity ->
+    val billing = PlayCloudBilling(context, { auth.currentUser?.uid }, { uid -> backupIdToken(auth, uid) }, transport)
+    return CloudAccountConnection(session, backup, billing = billing) { activity ->
         googleIdToken(credentials, activity, webClientId)
     }
 }

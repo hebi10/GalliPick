@@ -11,7 +11,7 @@ const data = { sha256, sizeBytes: photo.length, mimeType: 'image/jpeg' };
 const googleUser = uid => ({ uid, token: { firebase: { sign_in_provider: 'google.com' } } });
 const isCode = code => error => error.code === code;
 
-function createHarness({ ownerLimit = 1024, pilotLimit = 2048, requestsPerHour } = {}) {
+function createHarness({ ownerLimit = 1024, pilotLimit = 2048, requestsPerHour, uploadQuota } = {}) {
     const records = new Map();
     const bucketObjects = new Map();
     const signedOptions = [];
@@ -70,7 +70,7 @@ function createHarness({ ownerLimit = 1024, pilotLimit = 2048, requestsPerHour }
         },
     };
     const service = createBackupService({ db, getBucket: async () => bucket,
-        pilotUsers: new Set(['owner-a', 'owner-b']), ownerLimit, pilotLimit, requestsPerHour });
+        pilotUsers: new Set(['owner-a', 'owner-b']), ownerLimit, pilotLimit, requestsPerHour, uploadQuota });
     return { service, signedOptions, bucketObjects, records };
 }
 
@@ -115,6 +115,22 @@ test('same bytes in a different account consume a separate reservation and globa
     assert.notEqual(signedOptions[0].key, signedOptions[1].key);
     await assert.rejects(service.begin(googleUser('owner-b'), { ...data, sha256: 'a'.repeat(64) }),
         isCode('resource-exhausted'));
+});
+
+test('an expired plan blocks reservation and retry signing while verified originals stay available', async () => {
+    let quota = 0;
+    const { service, signedOptions, bucketObjects } = createHarness({ uploadQuota: async () => quota });
+    const owner = googleUser('owner-a');
+    await assert.rejects(service.begin(owner, data), isCode('resource-exhausted'));
+    quota = photo.length;
+    const { uploadId } = await service.begin(owner, data);
+    quota = photo.length - 1;
+    await assert.rejects(service.begin(owner, data), isCode('resource-exhausted'));
+    assert.equal(signedOptions.length, 1);
+    bucketObjects.set(signedOptions[0].key, { generation: '1740000000000000', bytes: photo, mimeType: data.mimeType });
+    assert.deepEqual(await service.finish(owner, { uploadId }), { state: 'VERIFIED' });
+    assert.deepEqual(await service.begin(owner, data), { state: 'VERIFIED' });
+    assert.equal((await service.list(owner)).items.length, 1);
 });
 
 test('completion requires a generation-pinned exact original and makes concurrent retries idempotent', async () => {

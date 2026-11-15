@@ -135,7 +135,7 @@ async function verifiedOriginal(bucket, key, record) {
 }
 
 export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 1024 * MIB, pilotLimit = 2048 * MIB,
-    requestsPerHour = 120 }) {
+    requestsPerHour = 120, uploadQuota = async (_transaction, _owner, limit) => limit }) {
     const pilotAllocation = db.doc('gallipickBackupControl/pilot');
     const ownerPath = owner => `gallipickBackupAccounts/${owner}`;
     const objectRecord = (owner, uploadId) => db.doc(`${ownerPath(owner)}/originals/${uploadId}`);
@@ -155,6 +155,8 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
     }
 
     return {
+        async countBillingRequest(auth) { await countRequest(authorize(auth, pilotUsers)); },
+
         async begin(auth, input) {
             const owner = authorize(auth, pilotUsers);
             const request = originalInput(input);
@@ -166,11 +168,17 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
 
             const record = await db.runTransaction(async transaction => {
                 const existing = (await transaction.get(recordRef)).data();
-                if (existing) return existing;
+                if (existing?.state === 'VERIFIED') return existing;
 
                 const ownerUsage = (await transaction.get(ownerAllocation)).data();
+                const quota = await uploadQuota(transaction, owner, ownerLimit);
+                if (!Number.isSafeInteger(quota) || quota <= 0 || quota > ownerLimit
+                    || (ownerUsage?.allocatedBytes ?? 0) > quota) {
+                    throw new BackupError('resource-exhausted', 'The account does not have available upload storage.');
+                }
+                if (existing) return existing;
                 const pilotUsage = (await transaction.get(pilotAllocation)).data();
-                const nextOwner = checkAllocation(ownerUsage, ownerLimit, MAX_OWNER_FILES, request.sizeBytes);
+                const nextOwner = checkAllocation(ownerUsage, quota, MAX_OWNER_FILES, request.sizeBytes);
                 const nextPilot = checkAllocation(pilotUsage, pilotLimit, 500, request.sizeBytes);
                 const reservation = { ...request, state: 'RESERVED', createdAt: new Date() };
                 transaction.set(ownerAllocation, nextOwner);

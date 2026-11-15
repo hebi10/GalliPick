@@ -152,6 +152,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("com.google.firebase:firebase-auth:24.0.1")
+    debugImplementation("com.android.billingclient:billing:9.1.0")
     debugImplementation("androidx.credentials:credentials:1.3.0")
     debugImplementation("androidx.credentials:credentials-play-services-auth:1.3.0")
     debugImplementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
