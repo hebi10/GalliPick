@@ -35,6 +35,7 @@ import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.ui.CleanupOperationResult
 import com.hebi.gallipick.ui.CloudAccountSettings
 import com.hebi.gallipick.ui.CloudBackupSection
+import com.hebi.gallipick.ui.CloudLibrarySection
 import com.hebi.gallipick.ui.GalliPickApp
 import com.hebi.gallipick.ui.GalliPickTheme
 import com.hebi.gallipick.ui.TrashReviewDialog
@@ -221,6 +222,14 @@ class MainActivity : ComponentActivity() {
                         CloudAccountSettings(cloudAccount, this@MainActivity)
                         CloudBackupSection(cloudAccount, uiState) {
                             permissionLauncher.launch(requiredPermissions())
+                        }
+                        CloudLibrarySection(cloudAccount, onRestored = { vm.refresh() }) { uri, mimeType ->
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, mimeType)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                })
+                            } catch (_: Exception) { vm.showMessage("복원한 파일을 열 수 있는 앱이 없습니다.") }
                         }
                     }
                 } else null,

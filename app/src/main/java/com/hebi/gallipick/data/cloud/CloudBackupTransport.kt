@@ -2,6 +2,7 @@ package com.hebi.gallipick.data.cloud
 
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -20,8 +21,9 @@ internal class CloudBackupTransport(
     private val endpoint: String,
     private val buckets: Set<String>,
 ) {
-    suspend fun begin(uid: String, token: String, hash: String, size: Long, mimeType: String): CloudUploadTarget? {
+    suspend fun begin(uid: String, token: String, hash: String, size: Long, mimeType: String, displayName: String): CloudUploadTarget? {
         val data = JSONObject().put("sha256", hash).put("sizeBytes", size).put("mimeType", mimeType)
+        cloudOriginalBasename(displayName).takeIf { it.isNotEmpty() }?.let { data.put("displayName", it) }
         val result = call("beginBackup", token, data)
         when (result.optString("state")) {
             "VERIFIED" -> return null
@@ -42,6 +44,7 @@ internal class CloudBackupTransport(
         exchange(target.url.toURL()) { connection, ensureActive ->
             connection.requestMethod = "PUT"
             target.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+            connection.doOutput = true
             connection.setFixedLengthStreamingMode(size)
             checkAccount()
             connection.outputStream.use { output ->
@@ -67,18 +70,64 @@ internal class CloudBackupTransport(
         if (result.optString("state") != "VERIFIED") failBackup(CloudBackupResult.FAILED)
     }
 
-    private suspend fun call(route: String, token: String, data: JSONObject): JSONObject {
+    suspend fun listOriginals(token: String): List<CloudOriginal> {
+        val items = call("listBackups", token, JSONObject(), MAX_CATALOG_RESPONSE_BYTES).optJSONArray("items")
+            ?: failBackup(CloudBackupResult.FAILED)
+        val count = items.length()
+        if (count > MAX_CATALOG_ITEMS) failBackup(CloudBackupResult.FAILED)
+        val catalog = List(count) { index ->
+            val item = items.optJSONObject(index) ?: failBackup(CloudBackupResult.FAILED)
+            val verifiedAtMs = item.optLong("verifiedAtMs", -1)
+            if (verifiedAtMs < 0) failBackup(CloudBackupResult.FAILED)
+            item.cloudOriginal(verifiedAtMs)
+        }
+        if (catalog.distinctBy(CloudOriginal::uploadId).size != count) failBackup(CloudBackupResult.FAILED)
+        return catalog
+    }
+
+    suspend fun getDownload(uid: String, token: String, item: CloudOriginal): CloudDownloadTarget {
+        val result = call("getBackupDownload", token, JSONObject().put("uploadId", item.uploadId))
+        val returned = result.cloudOriginal(item.verifiedAtMs)
+        if (returned != item) failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        val generation = result.optString("generation")
+        val target = validateBackupDownload(result.optString("downloadUrl"), item.uploadId, uid, generation, buckets)
+            ?: failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        return CloudDownloadTarget(target, generation)
+    }
+
+    suspend fun download(target: CloudDownloadTarget, item: CloudOriginal, output: OutputStream, checkAccount: () -> Unit) {
+        exchange(target.url.toURL()) { connection, ensureActive ->
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Accept-Encoding", "identity")
+            checkAccount()
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) failBackup(CloudBackupResult.FAILED)
+            val length = connection.getHeaderField("Content-Length")
+            if (connection.getHeaderField("x-goog-generation") != target.generation ||
+                connection.getHeaderField("Content-Encoding")?.equals("identity", ignoreCase = true) == false ||
+                (length != null && length.toLongOrNull() != item.sizeBytes)
+            ) failBackup(CloudBackupResult.INTEGRITY_ERROR)
+            connection.inputStream.use { source ->
+                copyAndVerifyCloudOriginal(source, output, item.sizeBytes, item.sha256) {
+                    ensureActive()
+                    checkAccount()
+                }
+            }
+        }
+    }
+
+    internal suspend fun call(route: String, token: String, data: JSONObject, maxResponseBytes: Int = MAX_RESPONSE_BYTES): JSONObject {
         val body = JSONObject().put("data", data).toString().toByteArray(Charsets.UTF_8)
         return exchange(URL("$endpoint/$route")) { connection, ensureActive ->
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.doOutput = true
             connection.setFixedLengthStreamingMode(body.size)
             connection.outputStream.use { it.write(body) }
             val status = connection.responseCode
             val input = if (status == HttpURLConnection.HTTP_OK) connection.inputStream else connection.errorStream
             val response = input?.use { stream ->
-                val bytes = ByteArray(MAX_RESPONSE_BYTES + 1)
+                val bytes = ByteArray(maxResponseBytes + 1)
                 var size = 0
                 while (size < bytes.size) {
                     ensureActive()
@@ -86,7 +135,7 @@ internal class CloudBackupTransport(
                     if (count < 0) break
                     size += count
                 }
-                if (size > MAX_RESPONSE_BYTES) failBackup(CloudBackupResult.FAILED)
+                if (size > maxResponseBytes) failBackup(CloudBackupResult.FAILED)
                 try {
                     JSONObject(String(bytes, 0, size, Charsets.UTF_8))
                 } catch (_: JSONException) {
@@ -123,7 +172,6 @@ internal class CloudBackupTransport(
                 connection.readTimeout = 30_000
                 connection.instanceFollowRedirects = false
                 connection.useCaches = false
-                connection.doOutput = true
                 val result = block(connection) { continuation.context.ensureActive() }
                 continuation.resumeWith(Result.success(result))
             } catch (error: CancellationException) {
@@ -140,7 +188,22 @@ internal class CloudBackupTransport(
         }
     }
 
+    private fun JSONObject.cloudOriginal(verifiedAtMs: Long): CloudOriginal {
+        val sha256 = optString("sha256")
+        val uploadId = optString("uploadId")
+        val size = optLong("sizeBytes", -1)
+        val mimeType = optString("mimeType")
+        val name = cloudOriginalBasename(optString("displayName"))
+        if (!SHA256.matches(sha256) || uploadId != "$sha256-$size" ||
+            size !in 1..CLOUD_BACKUP_MAX_BYTES || !CLOUD_MEDIA_MIME_TYPE.matches(mimeType) || name.isBlank()
+        ) failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        return CloudOriginal(uploadId, name, mimeType, size, sha256, verifiedAtMs)
+    }
+
     private companion object {
+        val SHA256 = Regex("[a-f0-9]{64}")
+        const val MAX_CATALOG_ITEMS = 250
+        const val MAX_CATALOG_RESPONSE_BYTES = 256 * 1024
         const val MAX_RESPONSE_BYTES = 32 * 1024
     }
 }

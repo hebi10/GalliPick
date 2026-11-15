@@ -127,6 +127,8 @@ private fun CloudBackupControls(
                 CloudBackupResult.QUOTA_REACHED -> "테스트 저장 한도에 도달했습니다."
                 CloudBackupResult.TEST_ACCESS_REQUIRED -> "원본 백업 권한이 있는 테스트 계정으로 로그인해 주세요."
                 CloudBackupResult.NETWORK_ERROR -> "네트워크 연결을 확인한 뒤 같은 파일로 다시 시도해 주세요."
+                CloudBackupResult.INTEGRITY_ERROR -> "원본 크기 또는 해시를 확인하지 못했습니다."
+                CloudBackupResult.DEVICE_STORAGE_ERROR -> "기기 저장공간을 확인해 주세요."
                 CloudBackupResult.FAILED -> "원본 보관을 확인하지 못했습니다. 다시 시도해 주세요."
                 null -> null
             }

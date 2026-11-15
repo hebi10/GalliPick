@@ -37,3 +37,5 @@ function backupEndpoint(operation) {
 
 export const beginBackup = backupEndpoint('begin');
 export const finishBackup = backupEndpoint('finish');
+export const listBackups = backupEndpoint('list');
+export const getBackupDownload = backupEndpoint('download');

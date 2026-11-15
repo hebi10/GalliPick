@@ -2,12 +2,15 @@ import { createHash } from 'node:crypto';
 
 const MIB = 1024 * 1024;
 export const MAX_FILE_BYTES = 64 * MIB;
+const MAX_OWNER_FILES = 250;
 const SIGNED_UPLOAD_MS = 5 * 60 * 1000;
+const SIGNED_DOWNLOAD_MS = 2 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const SHA256 = /^[a-f0-9]{64}$/;
 const MEDIA_TYPE = /^(image|video)\/[a-z0-9][a-z0-9.+-]{0,62}$/;
 const UPLOAD_ID = /^[a-f0-9]{64}-[1-9][0-9]{0,7}$/;
 const VERIFIED = { state: 'VERIFIED' };
+const ORIGINAL_EXTENSIONS = new Map([['jpeg', 'jpg'], ['quicktime', 'mov'], ['svg+xml', 'svg']]);
 
 export class BackupError extends Error {
     constructor(code, message) {
@@ -27,12 +30,41 @@ export function authorize(auth, pilotUsers) {
 }
 
 function originalInput(data) {
-    const { sha256, sizeBytes, mimeType } = data ?? {};
+    const { sha256, sizeBytes, mimeType, displayName } = data ?? {};
     if (typeof sha256 !== 'string' || !SHA256.test(sha256) || !Number.isSafeInteger(sizeBytes)
         || sizeBytes <= 0 || sizeBytes > MAX_FILE_BYTES || typeof mimeType !== 'string' || !MEDIA_TYPE.test(mimeType)) {
         throw new BackupError('invalid-argument', 'Choose a photo or video no larger than 64 MiB.');
     }
-    return { sha256, sizeBytes, mimeType };
+    return { sha256, sizeBytes, mimeType, displayName: safeOriginalName(displayName, sha256, mimeType) };
+}
+
+function safeOriginalName(displayName, sha256, mimeType) {
+    if (typeof displayName === 'string' && displayName.length <= 400) {
+        const basename = displayName.split(/[/\\]/).at(-1).normalize('NFC')
+            .replace(/[\p{Cc}\p{Cf}]/gu, '').replace(/[<>:"|?*]/g, '_').trim();
+        const trimmed = Array.from(basename).slice(0, 60).join('').replace(/^[. ]+|[. ]+$/g, '');
+        if (trimmed) return trimmed;
+    }
+    const subtype = mimeType.split('/')[1];
+    const extension = ORIGINAL_EXTENSIONS.get(subtype)
+        ?? (/^[a-z0-9]{1,12}$/.test(subtype) ? subtype : 'bin');
+    return `original-${sha256.slice(0, 12)}.${extension}`;
+}
+
+function validGeneration(generation) {
+    return typeof generation === 'string' && /^[1-9][0-9]*$/.test(generation)
+        && Number.isSafeInteger(Number(generation));
+}
+
+function catalogOriginal(uploadId, record) {
+    if (typeof record.sha256 !== 'string' || !SHA256.test(record.sha256)
+        || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes <= 0 || record.sizeBytes > MAX_FILE_BYTES
+        || typeof record.mimeType !== 'string' || !MEDIA_TYPE.test(record.mimeType)
+        || uploadId !== `${record.sha256}-${record.sizeBytes}` || !validGeneration(record.generation)) {
+        throw new BackupError('data-loss', 'The backup catalog entry is invalid.');
+    }
+    const { sha256, sizeBytes, mimeType } = record;
+    return { uploadId, displayName: safeOriginalName(record.displayName, sha256, mimeType), mimeType, sizeBytes, sha256 };
 }
 
 function checkAllocation(current, byteLimit, countLimit, requestedBytes) {
@@ -74,8 +106,7 @@ async function verifyOriginal(bucket, key, record) {
     try {
         const [{ generation, size, contentType, contentEncoding, metadata }] = await bucket.file(key).getMetadata();
         // The Storage SDK translates this option to a JavaScript number when building the request.
-        if (typeof generation !== 'string' || !/^[1-9][0-9]*$/.test(generation)
-            || !Number.isSafeInteger(Number(generation)) || Number(size) !== record.sizeBytes || contentType !== record.mimeType
+        if (!validGeneration(generation) || Number(size) !== record.sizeBytes || contentType !== record.mimeType
             || contentEncoding || Object.keys(metadata ?? {}).length > 0) {
             throw new BackupError('data-loss', 'The uploaded metadata differs from the reservation.');
         }
@@ -91,8 +122,7 @@ async function verifyOriginal(bucket, key, record) {
 }
 
 async function verifiedOriginal(bucket, key, record) {
-    if (typeof record.generation !== 'string' || !/^[1-9][0-9]*$/.test(record.generation)
-        || !Number.isSafeInteger(Number(record.generation))) {
+    if (!validGeneration(record.generation)) {
         throw new BackupError('data-loss', 'The verified original generation is unavailable.');
     }
     try {
@@ -140,7 +170,7 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
 
                 const ownerUsage = (await transaction.get(ownerAllocation)).data();
                 const pilotUsage = (await transaction.get(pilotAllocation)).data();
-                const nextOwner = checkAllocation(ownerUsage, ownerLimit, 250, request.sizeBytes);
+                const nextOwner = checkAllocation(ownerUsage, ownerLimit, MAX_OWNER_FILES, request.sizeBytes);
                 const nextPilot = checkAllocation(pilotUsage, pilotLimit, 500, request.sizeBytes);
                 const reservation = { ...request, state: 'RESERVED', createdAt: new Date() };
                 transaction.set(ownerAllocation, nextOwner);
@@ -184,6 +214,54 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
                 transaction.set(recordRef, { ...latest, state: 'VERIFIED', generation, verifiedAt: new Date() });
                 return VERIFIED;
             });
+        },
+
+        async list(auth) {
+            const owner = authorize(auth, pilotUsers);
+            await countRequest(owner);
+            const { docs } = await db.collection(`${ownerPath(owner)}/originals`)
+                .where('state', '==', 'VERIFIED').limit(MAX_OWNER_FILES + 1).get();
+            if (docs.length > MAX_OWNER_FILES) throw new BackupError('data-loss', 'The backup catalog exceeds its limit.');
+            const items = docs.map(snapshot => {
+                const record = snapshot.data();
+                const verifiedAtMs = record.verifiedAt instanceof Date
+                    ? record.verifiedAt.getTime() : record.verifiedAt?.toMillis?.();
+                if (!Number.isSafeInteger(verifiedAtMs) || verifiedAtMs < 0) {
+                    throw new BackupError('data-loss', 'The backup catalog timestamp is invalid.');
+                }
+                return { ...catalogOriginal(snapshot.id, record), verifiedAtMs };
+            });
+            items.sort((left, right) => right.verifiedAtMs - left.verifiedAtMs || left.uploadId.localeCompare(right.uploadId));
+            return { items };
+        },
+
+        async download(auth, input) {
+            const owner = authorize(auth, pilotUsers);
+            const uploadId = input?.uploadId;
+            if (typeof uploadId !== 'string' || !UPLOAD_ID.test(uploadId)) {
+                throw new BackupError('invalid-argument', 'A valid backup ID is required.');
+            }
+            await countRequest(owner);
+            const record = (await objectRecord(owner, uploadId).get()).data();
+            if (record?.state !== 'VERIFIED') throw new BackupError('not-found', 'The verified original was not found.');
+            const original = catalogOriginal(uploadId, record);
+            const bucket = await getBucket();
+            const generation = record.generation;
+            const file = bucket.file(objectKey(owner, uploadId), { generation });
+            try {
+                const [metadata] = await file.getMetadata();
+                if (metadata.generation === generation && Number(metadata.size) === record.sizeBytes
+                    && metadata.contentType === record.mimeType && !metadata.contentEncoding) {
+                    const [downloadUrl] = await file.getSignedUrl({
+                        version: 'v4', action: 'read', expires: Date.now() + SIGNED_DOWNLOAD_MS,
+                        queryParams: { generation },
+                    });
+                    return { ...original, generation, downloadUrl };
+                }
+            } catch (error) {
+                if (error.code !== 404) throw error;
+            }
+            throw new BackupError('data-loss', 'The verified original is unavailable.');
         },
     };
 }

@@ -18,6 +18,19 @@ function createHarness({ ownerLimit = 1024, pilotLimit = 2048, requestsPerHour }
     let pendingTransaction = Promise.resolve();
     const db = {
         doc: path => ({ path, get: async () => ({ data: () => records.get(path) }) }),
+        collection: path => ({
+            where: (key, operator, value) => ({
+                limit: limit => ({
+                    async get() {
+                        assert.equal(operator, '==');
+                        const prefix = `${path}/`;
+                        return { docs: [...records].filter(([id, record]) =>
+                            id.startsWith(prefix) && !id.slice(prefix.length).includes('/') && record[key] === value)
+                            .slice(0, limit).map(([id, record]) => ({ id: id.slice(prefix.length), data: () => record })) };
+                    },
+                }),
+            }),
+        }),
         runTransaction(run) {
             const running = pendingTransaction.then(async () => {
                 const writes = new Map();
@@ -42,7 +55,9 @@ function createHarness({ ownerLimit = 1024, pilotLimit = 2048, requestsPerHour }
                 },
                 async getMetadata() {
                     const object = bucketObjects.get(key);
-                    if (!object) throw Object.assign(new Error('Not found'), { code: 404 });
+                    if (!object || (options.generation && options.generation !== object.generation)) {
+                        throw Object.assign(new Error('Not found'), { code: 404 });
+                    }
                     return [{ size: String(object.bytes.length), generation: object.generation,
                         contentType: object.mimeType }];
                 },
@@ -154,5 +169,56 @@ test('an account cannot mint additional upload URLs after exhausting its request
     await assert.rejects(service.begin(owner, data), isCode('resource-exhausted'));
     await assert.rejects(service.finish(owner, { uploadId }), isCode('resource-exhausted'));
     await service.begin(googleUser('owner-b'), data);
+    assert.equal(signedOptions.length, 2);
+});
+
+test('the owner catalog includes only verified originals and sanitizes names with a legacy fallback', async () => {
+    const { service, signedOptions, bucketObjects } = createHarness();
+    const owner = googleUser('owner-a');
+    const { uploadId } = await service.begin(owner, { ...data, displayName: 'private/location/겨울\u202e 사진.jpg' });
+    await service.begin(owner, { ...data, sha256: 'a'.repeat(64) });
+    assert.deepEqual(await service.list(owner), { items: [] });
+    assert.deepEqual(await service.list(googleUser('owner-b')), { items: [] });
+    await assert.rejects(service.list(googleUser('unknown')), isCode('permission-denied'));
+    const generation = '1740000000000000';
+    bucketObjects.set(signedOptions[0].key, { generation, bytes: photo, mimeType: data.mimeType });
+    await service.finish(owner, { uploadId });
+    const otherOwner = googleUser('owner-b');
+    const other = await service.begin(otherOwner, data);
+    bucketObjects.set(signedOptions[2].key, { generation, bytes: photo, mimeType: data.mimeType });
+    await service.finish(otherOwner, { uploadId: other.uploadId });
+    const [visible] = (await service.list(owner)).items;
+    const [legacy] = (await service.list(otherOwner)).items;
+    assert.deepEqual(visible, { uploadId, displayName: '겨울 사진.jpg', mimeType: data.mimeType,
+        sizeBytes: photo.length, sha256, verifiedAtMs: visible.verifiedAtMs });
+    assert.ok(Number.isSafeInteger(visible.verifiedAtMs));
+    assert.equal(legacy.displayName, `original-${sha256.slice(0, 12)}.jpg`);
+});
+
+test('download capabilities are short-lived, generation-pinned and owner-scoped', async () => {
+    const { service, signedOptions, bucketObjects } = createHarness();
+    const owner = googleUser('owner-a');
+    const { uploadId } = await service.begin(owner, data);
+    await assert.rejects(service.download(owner, { uploadId }), isCode('not-found'));
+    const key = signedOptions[0].key;
+    const generation = '1740000000000000';
+    bucketObjects.set(key, { generation, bytes: photo, mimeType: data.mimeType });
+    await service.finish(owner, { uploadId });
+    await assert.rejects(service.download(googleUser('owner-b'), { uploadId }), isCode('not-found'));
+
+    const startedAt = Date.now();
+    const downloaded = await service.download(owner, { uploadId });
+    const signed = signedOptions.at(-1);
+    assert.deepEqual(downloaded, { uploadId, displayName: `original-${sha256.slice(0, 12)}.jpg`,
+        mimeType: data.mimeType, sizeBytes: photo.length, sha256, generation,
+        downloadUrl: `https://storage.googleapis.com/test/${key}?signed=test` });
+    assert.deepEqual(signed.queryParams, { generation });
+    assert.equal(signed.action, 'read');
+    assert.equal(signed.version, 'v4');
+    assert.equal(signed.key, key);
+    assert.ok(signed.expires >= startedAt + 120_000 && signed.expires <= Date.now() + 120_000);
+
+    bucketObjects.set(key, { generation: '1740000000000001', bytes: photo, mimeType: data.mimeType });
+    await assert.rejects(service.download(owner, { uploadId }), isCode('data-loss'));
     assert.equal(signedOptions.length, 2);
 });
