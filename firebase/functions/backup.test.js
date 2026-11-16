@@ -308,6 +308,10 @@ test('source-folder metadata survives verification and a deduplicated second fol
         { state: 'VERIFIED' });
     const [updated] = (await service.list(owner)).items;
     assert.deepEqual(updated.sourceFolders, ['DCIM/Camera', 'Pictures/Pets']);
+    await assert.rejects(service.begin(owner, { ...data, mimeType: 'image/png', sourceFolder: 'Movies/' }),
+        isCode('failed-precondition'));
+    assert.deepEqual((await service.list(owner)).items[0].sourceFolders,
+        ['DCIM/Camera', 'Pictures/Pets']);
     assert.equal(records.get('gallipickBackupAccounts/' +
         createHash('sha256').update('owner-a').digest('hex')).allocatedBytes, allocationBefore);
     assert.equal(signedOptions.filter(options => options.action === 'write').length, 1);
