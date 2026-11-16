@@ -48,9 +48,10 @@ internal data class GalleryEntry(
     val sizeBytes: Long get() = device?.sizeBytes ?: checkNotNull(cloud).sizeBytes
     val capturedAtMs: Long get() = device?.capturedAt?.takeIf { it > 0 }
         ?: cloud?.capturedAtMs ?: cloud?.verifiedAtMs ?: 0L
-    val sourceFolders: List<String> get() = device?.relativePath
-        ?.let(::normalizeCloudFolderPath)?.let(::listOf)
-        ?: cloud?.sourceFolders.orEmpty()
+    val sourceFolders: List<String> get() = (
+        listOfNotNull(device?.relativePath?.let(::normalizeCloudFolderPath)) +
+            cloud?.sourceFolders.orEmpty()
+    ).distinct()
 }
 
 /**
