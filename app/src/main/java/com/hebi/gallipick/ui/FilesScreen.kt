@@ -251,7 +251,9 @@ internal fun FilesScreenContent(
                                                     gridView = gridView, wide = wide, availableWidth = availableGridWidth,
                                                     gridState = gridState, selected = state.selected,
                                                     toggleDevice = actions.toggleSelection, openDevice = { detailUri = it },
-                                                    openCloud = { chosenCloud = it }, modifier = Modifier.weight(1f),
+                                                    openCloud = { chosenCloud = it },
+                                                    backup = cloudFiles.backup, accountUid = cloudFiles.accountUid,
+                                                    modifier = Modifier.weight(1f),
                                                 )
                                             }
                                         }
@@ -403,7 +405,19 @@ internal fun FilesScreenContent(
         }, { showFilter = false })
         if (showSave) SavePresetDialog({ actions.savePreset(it); showSave = false }, { showSave = false })
         chosenCloud?.let { original ->
-            AlertDialog(
+            val uid = cloudFiles.accountUid
+            val backup = cloudFiles.backup
+            if (original.mimeType.startsWith("image/") && uid != null && backup != null) {
+                val photos = galleryFiltered.asSequence()
+                    .filter { it.device == null }
+                    .mapNotNull { it.cloud?.takeIf { photo -> photo.mimeType.startsWith("image/") } }
+                    .toList()
+                CloudPhotoViewer(
+                    uid = uid, original = original,
+                    photos = photos.ifEmpty { listOf(original) },
+                    backup = backup, choose = { chosenCloud = it }, dismiss = { chosenCloud = null },
+                )
+            } else AlertDialog(
                 onDismissRequest = { chosenCloud = null },
                 containerColor = AppSurface,
                 title = { Text(original.displayName) },
