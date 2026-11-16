@@ -84,8 +84,11 @@ internal fun CloudVideoViewer(
 
     fun disconnect() {
         player?.let { active ->
-            if (active.isPlaying) positionMs = active.currentPosition.coerceAtLeast(0)
-            active.pause()
+            if (runCatching { active.isPlaying }.getOrDefault(false)) {
+                positionMs = runCatching { active.currentPosition }.getOrDefault(positionMs)
+                    .coerceAtLeast(0)
+            }
+            runCatching { active.pause() }
         }
         ready = false
         playing = false
