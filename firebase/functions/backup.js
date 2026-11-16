@@ -112,6 +112,10 @@ function originalInput(data) {
 }
 
 function appendFolderMembership(transaction, recordRef, existing, request) {
+    if (existing.sha256 !== request.sha256 || existing.sizeBytes !== request.sizeBytes ||
+        existing.mimeType !== request.mimeType) {
+        throw new BackupError('failed-precondition', 'The existing original does not match this request.');
+    }
     const folder = request.sourceFolders?.[0];
     if (!folder) return existing;
     const folders = storedSourceFolders(existing);
