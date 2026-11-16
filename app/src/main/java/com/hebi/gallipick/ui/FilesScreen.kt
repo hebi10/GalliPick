@@ -37,6 +37,7 @@ import com.hebi.gallipick.data.cloud.CloudGalleryPerformancePolicy
 import com.hebi.gallipick.data.cloud.GalleryFileQuery
 import com.hebi.gallipick.data.cloud.GallerySourceFilter
 import com.hebi.gallipick.data.cloud.combineGalleryCatalog
+import com.hebi.gallipick.data.cloud.cloudGalleryPhotos
 
 internal data class FilesScreenActions(
     val setFilter: (MediaFilter) -> Unit,
@@ -125,8 +126,10 @@ internal fun FilesScreenContent(
     val autoLoadThumbnails = CloudGalleryPerformancePolicy.canLoadThumbnails(
         cloudFiles.online, cloudFiles.unmetered, allowMeteredThumbnails,
     )
-    val selected = if (useUnified) galleryFiltered.mapNotNull { it.device }
-        .filter { it.uri in state.selected && it.canTrash() }
+    // CLOUD-only is strictly read-only even if another tab left a device selection behind.
+    val selected = if (useUnified && sourceFilter == GallerySourceFilter.CLOUD) emptyList()
+        else if (useUnified) galleryFiltered.mapNotNull { it.device }
+            .filter { it.uri in state.selected && it.canTrash() }
         else filtered.filter { it.uri in state.selected && it.canTrash() }
     val selectedUris = selected.mapTo(hashSetOf()) { it.uri }
     val verifiedSelected = if (useUnified) galleryFiltered.count { entry ->
@@ -484,13 +487,10 @@ internal fun FilesScreenContent(
             val uid = cloudFiles.accountUid
             val backup = cloudFiles.backup
             if (original.mimeType.startsWith("image/") && uid != null && backup != null) {
-                val photos = galleryFiltered.asSequence()
-                    .filter { it.device == null }
-                    .mapNotNull { it.cloud?.takeIf { photo -> photo.mimeType.startsWith("image/") } }
-                    .toList()
+                val photos = cloudGalleryPhotos(galleryFiltered, original)
                 CloudPhotoViewer(
                     uid = uid, original = original,
-                    photos = photos.ifEmpty { listOf(original) },
+                    photos = photos,
                     backup = backup, choose = { chosenCloud = it }, dismiss = { chosenCloud = null },
                     offline = !cloudFiles.online,
                 )

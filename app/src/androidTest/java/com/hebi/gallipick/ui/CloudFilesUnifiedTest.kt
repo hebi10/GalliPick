@@ -111,6 +111,33 @@ class CloudFilesUnifiedTest {
         compose.runOnIdle { assertTrue(cloudOpened.value) }
     }
 
+    @Test fun cloudOnlyNeverExposesDeviceTrashForStaleSelectedFiles() {
+        val device = local.copy(volumeVersion = "version-one", generationModified = 1)
+        val proof = VerifiedGalleryMatch(
+            "owner", device.uri, device.fingerprint, device.volumeVersion, saved.uploadId, saved.sha256,
+        )
+        var trashCount = 0
+        val currentState = AppUiState(
+            access = MediaAccess.FULL, items = listOf(device), filtered = listOf(device),
+            selected = setOf(device.uri),
+        )
+        compose.setContent {
+            GalliPickTheme {
+                Surface(Modifier.requiredSize(420.dp, 850.dp)) {
+                    FilesScreenContent(
+                        state = currentState, wide = false, trash = { trashCount++ },
+                        open = {}, requestAccess = {},
+                        actions = actions(), // Deliberately does not clear selections on filter changes.
+                        cloudFiles = cloudState().copy(verifiedMatches = listOf(proof)),
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("files-source-cloud").performClick()
+        compose.onNodeWithText("휴지통으로", substring = true).assertDoesNotExist()
+        compose.runOnIdle { org.junit.Assert.assertEquals(0, trashCount) }
+    }
+
     @Test fun offlineCloudCatalogStaysBrowsableWithoutDevicePermission() {
         val cached = cloudState().copy(online = false, unmetered = false, cachedCatalog = true)
         compose.setContent {

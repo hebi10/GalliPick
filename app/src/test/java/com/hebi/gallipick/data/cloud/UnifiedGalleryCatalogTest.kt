@@ -90,6 +90,38 @@ class UnifiedGalleryCatalogTest {
     }
 
     @Test
+    fun cloudPhotoNavigationIncludesVerifiedBothEntriesAndUsesUploadIds() {
+        val local = device()
+        val selected = original()
+        val next = selected.copy(
+            uploadId = "${"b".repeat(64)}-4",
+            sha256 = "b".repeat(64),
+            sizeBytes = 4,
+            displayName = "NEXT.jpg",
+        )
+        val video = selected.copy(
+            uploadId = "${"c".repeat(64)}-4",
+            sha256 = "c".repeat(64),
+            sizeBytes = 4,
+            mimeType = "video/mp4",
+        )
+        val snapshot = CloudGallerySnapshot("owner-a", listOf(selected, next, video))
+        val entries = combineGalleryCatalog(listOf(local), snapshot, "owner-a", listOf(proof(local)))
+        assertEquals(GallerySource.BOTH, entries.first().source)
+        assertEquals(listOf(selected.uploadId, next.uploadId),
+            cloudGalleryPhotos(entries, selected).map { it.uploadId })
+        assertEquals(listOf(next.uploadId),
+            cloudGalleryPhotos(entries, next).filter { it.uploadId == next.uploadId }.map { it.uploadId })
+        val removed = combineGalleryCatalog(emptyList(), snapshot, "owner-a")
+        assertEquals(
+            cloudGalleryPhotos(entries, selected).map { it.uploadId },
+            cloudGalleryPhotos(removed, selected).map { it.uploadId },
+        )
+        val absent = selected.copy(uploadId = "${"d".repeat(64)}-8")
+        assertEquals(listOf(absent), cloudGalleryPhotos(entries, absent))
+    }
+
+    @Test
     fun folderMetadataIsNormalizedWithoutAcceptingTraversal() {
         assertEquals("DCIM/Camera", normalizeCloudFolderPath("DCIM/Camera/"))
         assertEquals("여행/부산", normalizeCloudFolderPath("여행/부산/"))
