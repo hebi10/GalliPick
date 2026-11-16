@@ -125,6 +125,8 @@ jobs:
             adb shell wm density ${{ matrix.density }}
             adb shell settings put system font_scale ${{ matrix.font_scale }}
             adb shell settings put secure show_ime_with_hard_keyboard 1
+            adb shell am force-stop com.android.launcher3
+            sleep 2
             adb install -r apks/debug/app-debug.apk
             adb install -r apks/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r -e class com.hebi.gallipick.ui.CloudFiles07CaptureTest -e captureProfile ${{ matrix.name }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > cloud-files-07-instrumentation.txt
