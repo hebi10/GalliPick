@@ -107,6 +107,8 @@ internal class CloudBackup(
             check()
             val target = transport.getDownload(expectedUid, token, original)
             check()
+            transport.verifyVideoRange(target, original, check)
+            check()
             CloudVideoStreamCapability(
                 signedUrl = target.url,
                 generation = target.generation,
