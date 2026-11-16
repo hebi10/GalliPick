@@ -428,8 +428,8 @@ internal fun FilesScreenContent(
                 FilesFooterSummary(filtered, actions.selectAll)
             }
             if (verifiedSelected > 0 && selected.isNotEmpty()) {
-                Text("선택한 기기 파일 중 ${verifiedSelected}개는 서버 백업과 원본 내용이 일치합니다. " +
-                    "휴지통으로 이동하면 기기 사본만 처리되며 클라우드 원본은 유지됩니다.",
+                Text("선택한 기기 파일 중 ${verifiedSelected}개는 서버의 검증된 백업 기록과 내용이 일치합니다. " +
+                    "클라우드 필터에서 원본을 열어 확인한 뒤, Android 확인창에서 기기 사본을 정리해 주세요.",
                     Modifier.fillMaxWidth().padding(vertical = 6.dp),
                     style = MaterialTheme.typography.bodySmall, color = Muted)
             }
