@@ -2,6 +2,7 @@ package com.hebi.gallipick.ui
 
 import android.graphics.Bitmap
 import android.os.SystemClock
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,6 +57,7 @@ class CloudFiles07CaptureTest {
         uri = "content://media/external/images/media/102",
         id = 102, displayName = "EXAMPLE_local_only.jpg", sizeBytes = 9200,
     )
+    private val systemDialogEvents = JSONArray()
     private val hash = "a".repeat(64)
     private val backed = CloudOriginal(
         uploadId = "$hash-2400", displayName = "EXAMPLE_cloud_backed.jpg",
@@ -124,9 +126,14 @@ class CloudFiles07CaptureTest {
             compose.waitForIdle()
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             SystemClock.sleep(250)
+            clearKnownSystemDialog(name)
             val image = checkNotNull(InstrumentationRegistry.getInstrumentation()
                 .uiAutomation.takeScreenshot()) { "Android UI screenshot unavailable: $name" }
             try {
+                // Recheck after screenshot acquisition: never accept an emulator ANR modal.
+                check(activeBlockingSystemDialog() == null) {
+                    "The emulator is showing a system dialog in $name"
+                }
                 assertTrue("Capture is too small", image.width >= 640 && image.height >= 640)
                 val file = File(output, "$name.png")
                 file.outputStream().use {
@@ -175,9 +182,47 @@ class CloudFiles07CaptureTest {
                 .put("profile", profile)
                 .put("fixture", "synthetic catalog; no real account or network upload")
                 .put("captureCount", inventory.length())
+                .put("systemDialogEvents", systemDialogEvents)
                 .put("captures", inventory).toString(2),
             Charsets.UTF_8,
         )
+    }
+
+    private fun activeBlockingSystemDialog(): Pair<AccessibilityNodeInfo, String>? {
+        val root = InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+            ?: return null
+        val title = listOf("System UI isn't responding", "Quickstep isn't responding")
+            .firstOrNull { text ->
+                root.findAccessibilityNodeInfosByText(text).any { node ->
+                    node.text?.toString() == text
+                }
+            } ?: return null
+        return root to title
+    }
+
+    /** A system-owned emulator dialog is not an application ANR. Click Wait, never Close app. */
+    private fun clearKnownSystemDialog(captureName: String) {
+        repeat(4) { attempt ->
+            val (root, title) = activeBlockingSystemDialog() ?: return
+            val owner = root.packageName?.toString()
+            check(owner in setOf("android", "com.android.systemui", "com.android.launcher3")) {
+                "Refusing to dismiss dialog from unknown package: $owner"
+            }
+            var wait = root.findAccessibilityNodeInfosByText("Wait")
+                .firstOrNull { it.text?.toString() == "Wait" }
+            repeat(3) { if (wait?.isClickable != true) wait = wait?.parent }
+            val clicked = wait?.takeIf { it.isClickable }
+                ?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+            systemDialogEvents.put(
+                JSONObject().put("screen", captureName).put("title", title)
+                    .put("owner", owner).put("attempt", attempt + 1)
+                    .put("selectedWait", clicked)
+            )
+            SystemClock.sleep(500)
+        }
+        check(activeBlockingSystemDialog() == null) {
+            "Emulator system ANR remained visible; do not publish blocked QA screenshots"
+        }
     }
 
     private fun cloudState() = CloudFilesUiState(
