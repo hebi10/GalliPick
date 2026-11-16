@@ -61,6 +61,9 @@ fun GalliPickApp(
     result: CleanupOperationResult? = null,
     onDismissResult: () -> Unit = {},
     cloudContent: (@Composable () -> Unit)? = null,
+    homeBanner: (@Composable () -> Unit)? = null,
+    adsPrivacyOptionsRequired: Boolean = false,
+    onAdsPrivacyOptions: () -> Unit = {},
 ) {
     val state by vm.ui.collectAsState()
     val cloudEnabled = cloudContent != null
@@ -418,12 +421,20 @@ fun GalliPickApp(
                                         Destination.CLOUD -> if (cloudContent != null) CloudScreen(cloudContent)
                                         Destination.SETTINGS -> SettingsScreen(
                                             state, vm, onRequestPermission, onOpenSettings, { showTrash = true },
+                                            adsPrivacyOptionsRequired = adsPrivacyOptionsRequired,
+                                            onAdsPrivacyOptions = onAdsPrivacyOptions,
                                         )
                                     }
                                 }
                             }
                         }
                     }
+                }
+                if (destination == Destination.HOME && homeBanner != null &&
+                    !showTrash && !showDuplicates && !showFolderStorage && !showPhotoAnalysis &&
+                    !showCleanupHistory && !showSimilarResults && !showSoftFocusResults &&
+                    !showReviewInbox && similarCompareId == null && result == null) {
+                    homeBanner()
                 }
                 if (!wide) {
                     Row(
