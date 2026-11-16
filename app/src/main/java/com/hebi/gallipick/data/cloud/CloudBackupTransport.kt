@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -31,9 +32,17 @@ internal class CloudBackupTransport(
     private val endpoint: String,
     private val buckets: Set<String>,
 ) {
-    suspend fun begin(uid: String, token: String, hash: String, size: Long, mimeType: String, displayName: String): CloudUploadTarget? {
+    suspend fun begin(
+        uid: String, token: String, hash: String, size: Long, mimeType: String, displayName: String,
+        metadata: CloudUploadMetadata = CloudUploadMetadata(),
+    ): CloudUploadTarget? {
         val data = JSONObject().put("sha256", hash).put("sizeBytes", size).put("mimeType", mimeType)
         cloudOriginalBasename(displayName).takeIf { it.isNotEmpty() }?.let { data.put("displayName", it) }
+        metadata.sourceFolder?.let { data.put("sourceFolder", it) }
+        metadata.capturedAtMs?.let { data.put("capturedAtMs", it) }
+        metadata.width?.let { data.put("width", it) }
+        metadata.height?.let { data.put("height", it) }
+        metadata.durationMs?.let { data.put("durationMs", it) }
         val result = call("beginBackup", token, data)
         when (result.optString("state")) {
             "VERIFIED" -> return null
@@ -104,7 +113,11 @@ internal class CloudBackupTransport(
     suspend fun getDownload(uid: String, token: String, item: CloudOriginal): CloudDownloadTarget {
         val result = call("getBackupDownload", token, JSONObject().put("uploadId", item.uploadId))
         val returned = result.cloudOriginal(item.verifiedAtMs)
-        if (returned != item) failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        // Folder memberships may change after catalog fetch; only immutable content is pinned here.
+        if (returned.uploadId != item.uploadId || returned.sha256 != item.sha256 ||
+            returned.sizeBytes != item.sizeBytes || returned.mimeType != item.mimeType ||
+            returned.displayName != item.displayName
+        ) failBackup(CloudBackupResult.INTEGRITY_ERROR)
         val generation = result.optString("generation")
         val target = validateBackupDownload(result.optString("downloadUrl"), item.uploadId, uid, generation, buckets)
             ?: failBackup(CloudBackupResult.INTEGRITY_ERROR)
@@ -214,13 +227,45 @@ internal class CloudBackupTransport(
         if (!SHA256.matches(sha256) || uploadId != "$sha256-$size" ||
             size !in 1..CLOUD_BACKUP_MAX_BYTES || !CLOUD_MEDIA_MIME_TYPE.matches(mimeType) || name.isBlank()
         ) failBackup(CloudBackupResult.INTEGRITY_ERROR)
-        return CloudOriginal(uploadId, name, mimeType, size, sha256, verifiedAtMs)
+
+        val folders = when (val raw = opt("sourceFolders")) {
+            null -> emptyList()
+            is JSONArray -> {
+                if (raw.length() > 8) failBackup(CloudBackupResult.INTEGRITY_ERROR)
+                List(raw.length()) { i ->
+                    val item = raw.opt(i)
+                    if (item !is String || normalizeCloudFolderPath(item) != item) {
+                        failBackup(CloudBackupResult.INTEGRITY_ERROR)
+                    }
+                    item
+                }.also { if (it.distinct().size != it.size) failBackup(CloudBackupResult.INTEGRITY_ERROR) }
+            }
+            else -> failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        }
+        fun optionalPositiveLong(key: String, maximum: Long): Long? {
+            if (!has(key)) return null
+            val value = opt(key)
+            if (value !is Number) failBackup(CloudBackupResult.INTEGRITY_ERROR)
+            val number = value.toLong()
+            if (number !in 1..maximum || number.toDouble() != value.toDouble()) {
+                failBackup(CloudBackupResult.INTEGRITY_ERROR)
+            }
+            return number
+        }
+        return CloudOriginal(
+            uploadId, name, mimeType, size, sha256, verifiedAtMs,
+            sourceFolders = folders,
+            capturedAtMs = optionalPositiveLong("capturedAtMs", 9_007_199_254_740_991L),
+            width = optionalPositiveLong("width", 100_000L)?.toInt(),
+            height = optionalPositiveLong("height", 100_000L)?.toInt(),
+            durationMs = optionalPositiveLong("durationMs", 9_007_199_254_740_991L),
+        )
     }
 
     private companion object {
         val SHA256 = Regex("[a-f0-9]{64}")
         const val MAX_CATALOG_ITEMS = 250
-        const val MAX_CATALOG_RESPONSE_BYTES = 256 * 1024
+        const val MAX_CATALOG_RESPONSE_BYTES = 512 * 1024
         const val MAX_RESPONSE_BYTES = 32 * 1024
     }
 }
