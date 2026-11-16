@@ -40,6 +40,8 @@ import com.hebi.gallipick.ui.CloudBillingSection
 import com.hebi.gallipick.ui.CloudLibrarySection
 import com.hebi.gallipick.ui.CloudSpaceSection
 import com.hebi.gallipick.data.cloud.CloudSpaceBackupProof
+import com.hebi.gallipick.ui.GalliHomeBanner
+import com.hebi.gallipick.ui.rememberGalliAdsSession
 import com.hebi.gallipick.ui.GalliPickApp
 import com.hebi.gallipick.ui.GalliPickTheme
 import com.hebi.gallipick.ui.TrashReviewDialog
@@ -58,6 +60,7 @@ class MainActivity : ComponentActivity() {
         val cloudAccount = (application as GalliPickApplication).cloudAccount
         setContent {
           val uiState by vm.ui.collectAsState()
+          val adsSession = rememberGalliAdsSession(this@MainActivity)
           val useDarkTheme = uiState.themeMode.isDark(isSystemInDarkTheme())
           val view = LocalView.current
           SideEffect {
@@ -246,6 +249,11 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 } else null,
+                homeBanner = if (adsSession.configured) {
+                    { GalliHomeBanner(this@MainActivity, adsSession) }
+                } else null,
+                adsPrivacyOptionsRequired = adsSession.privacyOptionsRequired,
+                onAdsPrivacyOptions = adsSession.openPrivacyOptions,
             )
 
             pending?.let { request ->
