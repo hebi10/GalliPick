@@ -73,7 +73,9 @@ internal fun rememberGalliAdsSession(activity: Activity): GalliAdsSession {
             activity,
             ConsentRequestParameters.Builder().build(),
             {
-                UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { updateStatus() }
+                if (!disposed) {
+                    UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { updateStatus() }
+                }
             },
             { updateStatus() },
         )
@@ -146,9 +148,8 @@ internal fun GalliHomeBanner(
                 banner = null
             }
         }
-        DisposableEffect(banner) { onDispose { banner?.destroy() } }
-
         banner?.let { loaded ->
+            DisposableEffect(loaded) { onDispose { loaded.destroy() } }
             Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
                 AndroidView(
                     factory = { loaded.getView(activity) },
