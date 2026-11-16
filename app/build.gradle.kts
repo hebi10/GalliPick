@@ -228,13 +228,13 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.6.0")
     implementation("com.google.android.ump:user-messaging-platform:4.0.0")
+    implementation("com.android.billingclient:billing:9.1.0")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     val cloudDependencies = listOf(
         "com.google.firebase:firebase-auth:24.0.1",
-        "com.android.billingclient:billing:9.1.0",
         "androidx.credentials:credentials:1.3.0",
         "androidx.credentials:credentials-play-services-auth:1.3.0",
         "com.google.android.libraries.identity.googleid:googleid:1.1.1",
