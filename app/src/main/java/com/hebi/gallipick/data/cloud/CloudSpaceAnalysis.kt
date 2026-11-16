@@ -13,6 +13,7 @@ import com.hebi.gallipick.domain.MediaItem
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -87,11 +88,11 @@ internal class CloudSpaceAnalysis(context: Context, private val repository: Medi
         }
         checkAccount()
         val index = CloudGalleryMatchPolicy.validOriginals(originals)
-            .groupBy { it.sizeBytes to it.mimeType }
+            .groupBy { it.sizeBytes to it.mimeType.lowercase(Locale.ROOT) }
         buildList {
             for (expected in candidates) {
                 checkAccount()
-                val plausible = index[expected.sizeBytes to expected.mimeType].orEmpty()
+                val plausible = index[expected.sizeBytes to expected.mimeType.lowercase(Locale.ROOT)].orEmpty()
                 if (plausible.isEmpty()) continue
                 val before = repository.reader.current(expected.uri)
                 if (!CloudGalleryMatchPolicy.sameDeviceOriginal(expected, before)) continue
