@@ -133,25 +133,7 @@ jobs:
             mkdir -p cloud-qa-captures
             adb exec-out run-as com.hebi.gallipick tar -C files/cloud-files-07-qa-captures -cf - . > cloud-files-07-qa.tar
             tar -xf cloud-files-07-qa.tar -C cloud-qa-captures
-            export QA_EXPECTED_SIZE="${{ matrix.size }}"
-            python3 - <<'PY'
-            import json, os, pathlib, struct
-            root = pathlib.Path('cloud-qa-captures')
-            images = list(root.glob('*.png'))
-            manifests = list(root.glob('*-manifest.json'))
-            assert len(images) == 8, f'Expected 8 native UI screenshots, got {len(images)}'
-            assert len(manifests) == 1, 'Expected exactly one QA manifest'
-            m = json.loads(manifests[0].read_text(encoding='utf-8'))
-            assert m['captureCount'] == 8, m
-            width, height = map(int, os.environ['QA_EXPECTED_SIZE'].split('x'))
-            for image in images:
-                data = image.read_bytes()
-                assert data[:8] == bytes.fromhex('89504e470d0a1a0a')
-                assert struct.unpack('>II', data[16:24]) == (width, height), image.name
-                assert len(data) > 2000, image.name
-            print(json.dumps({'profile': m['profile'], 'screenshots': len(images), 'width': width,
-                              'height': height, 'fixture': m['fixture']}, ensure_ascii=False))
-            PY
+            python3 scripts/qa/verify_cloud_files07_captures.py --directory cloud-qa-captures --profile "${{ matrix.name }}" --size "${{ matrix.size }}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
