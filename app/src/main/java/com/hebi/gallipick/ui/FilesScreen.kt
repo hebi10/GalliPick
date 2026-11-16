@@ -37,6 +37,7 @@ import com.hebi.gallipick.data.cloud.CloudGalleryPerformancePolicy
 import com.hebi.gallipick.data.cloud.GalleryFileQuery
 import com.hebi.gallipick.data.cloud.GallerySourceFilter
 import com.hebi.gallipick.data.cloud.combineGalleryCatalog
+import com.hebi.gallipick.data.cloud.cloudGalleryPhotos
 
 internal data class FilesScreenActions(
     val setFilter: (MediaFilter) -> Unit,
@@ -489,7 +490,7 @@ internal fun FilesScreenContent(
                 val photos = cloudGalleryPhotos(galleryFiltered, original)
                 CloudPhotoViewer(
                     uid = uid, original = original,
-                    photos = photos.ifEmpty { listOf(original) },
+                    photos = photos,
                     backup = backup, choose = { chosenCloud = it }, dismiss = { chosenCloud = null },
                     offline = !cloudFiles.online,
                 )
