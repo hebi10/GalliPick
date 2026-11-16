@@ -105,14 +105,23 @@ internal fun FilesScreenContent(
     val useUnified = cloudFiles.enabled && searchMode == FileSearchMode.FILES &&
         (sourceFilter == GallerySourceFilter.CLOUD ||
             (sourceFilter == GallerySourceFilter.ALL && cloudFiles.accountUid != null))
-    val galleryItems = remember(visibleItems, cloudFiles.snapshot, cloudFiles.accountUid) {
-        combineGalleryCatalog(visibleItems, cloudFiles.snapshot, cloudFiles.accountUid)
+    val galleryItems = remember(
+        visibleItems, cloudFiles.snapshot, cloudFiles.accountUid, cloudFiles.verifiedMatches,
+    ) {
+        combineGalleryCatalog(
+            visibleItems, cloudFiles.snapshot, cloudFiles.accountUid, cloudFiles.verifiedMatches,
+        )
     }
     val galleryFiltered = remember(galleryItems, state.filter, sourceFilter) {
         GalleryFileQuery.apply(galleryItems, state.filter, sourceFilter)
     }
-    val selected = if (useUnified && sourceFilter == GallerySourceFilter.CLOUD) emptyList()
+    val selected = if (useUnified) galleryFiltered.mapNotNull { it.device }
+        .filter { it.uri in state.selected && it.canTrash() }
         else filtered.filter { it.uri in state.selected && it.canTrash() }
+    val verifiedSelected = if (useUnified) galleryFiltered.count { entry ->
+        entry.source == com.hebi.gallipick.data.cloud.GallerySource.BOTH &&
+            entry.device?.uri in selected.map { it.uri }
+    } else 0
     val groupByDate = state.filter.groupByDate
     val dateGroups = remember(filtered, state.filter.dateField, state.filter.sortField, state.filter.sortDirection, groupByDate) {
         if (!groupByDate) emptyList() else {
@@ -158,6 +167,25 @@ internal fun FilesScreenContent(
                                             if (option == GallerySourceFilter.CLOUD) actions.clearSelection()
                                         }
                                     }, Modifier.weight(1f).testTag("files-source-" + option.name.lowercase()), filled = sourceFilter == option)
+                                }
+                            }
+                            if (cloudFiles.accountUid != null && sourceFilter != GallerySourceFilter.DEVICE &&
+                                cloudFiles.matchTotal > 0) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    val progress = when {
+                                        cloudFiles.matchChecking -> "기기·클라우드 원본 대조 중"
+                                        cloudFiles.matchFailed -> "원본 비교 중 문제가 발생했습니다"
+                                        else -> "백업 원본 비교"
+                                    }
+                                    Text("$progress · ${cloudFiles.matchChecked}/${cloudFiles.matchTotal}",
+                                        Modifier.weight(1f),
+                                        color = Muted, style = MaterialTheme.typography.bodySmall)
+                                    if (!cloudFiles.matchChecking && cloudFiles.matchChecked < cloudFiles.matchTotal) {
+                                        TextAction(
+                                            if (cloudFiles.matchFailed) "다시 비교" else "다음 비교",
+                                            cloudFiles.matchNext,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -397,6 +425,12 @@ internal fun FilesScreenContent(
                     color = Muted, style = MaterialTheme.typography.bodySmall)
             } else if (!useUnified && catalogVisible && filtered.isNotEmpty() && selected.isEmpty()) {
                 FilesFooterSummary(filtered, actions.selectAll)
+            }
+            if (verifiedSelected > 0 && selected.isNotEmpty()) {
+                Text("선택한 기기 파일 중 ${verifiedSelected}개는 서버 백업과 원본 내용이 일치합니다. " +
+                    "휴지통으로 이동하면 기기 사본만 처리되며 클라우드 원본은 유지됩니다.",
+                    Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             SelectionBar(selected, actions.clearSelection, { trash(selected) })
         }
