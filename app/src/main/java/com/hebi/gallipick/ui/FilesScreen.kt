@@ -121,7 +121,7 @@ internal fun FilesScreenContent(
     val selectedUris = selected.mapTo(hashSetOf()) { it.uri }
     val verifiedSelected = if (useUnified) galleryFiltered.count { entry ->
         entry.source == com.hebi.gallipick.data.cloud.GallerySource.BOTH &&
-            entry.device?.uri in selectedUris
+            (entry.device?.uri?.let { it in selectedUris } == true)
     } else 0
     val groupByDate = state.filter.groupByDate
     val dateGroups = remember(filtered, state.filter.dateField, state.filter.sortField, state.filter.sortDirection, groupByDate) {
