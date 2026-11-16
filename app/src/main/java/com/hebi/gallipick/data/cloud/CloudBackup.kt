@@ -210,7 +210,8 @@ internal class CloudBackup(
             checkAccount()
             val beginToken = tokenFor(uid)
             checkAccount()
-            val target = transport.begin(uid, beginToken, hash, item.sizeBytes, mimeType, item.displayName)
+            val target = transport.begin(uid, beginToken, hash, item.sizeBytes, mimeType, item.displayName,
+                CloudUploadMetadata.from(item))
             checkAccount()
             assertOriginal(item, requiredFolder)
             checkAccount()

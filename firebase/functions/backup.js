@@ -29,13 +29,103 @@ export function authorize(auth, pilotUsers) {
     return createHash('sha256').update(auth.uid).digest('hex');
 }
 
+
+const MAX_SOURCE_FOLDERS = 8;
+const MAX_FOLDER_LENGTH = 160;
+const MAX_PIXEL_DIMENSION = 100_000;
+
+function normalizeSourceFolder(value) {
+    if (value === undefined || value === null || value === '') return null;
+    if (typeof value !== 'string' || value.length > MAX_FOLDER_LENGTH || value.startsWith('/')
+        || value.includes('\\')) {
+        throw new BackupError('invalid-argument', 'The source folder is invalid.');
+    }
+    const normalized = value.normalize('NFC').replace(/\/$/, '');
+    const parts = normalized.split('/');
+    if (parts.length < 1 || parts.length > 8 || parts.some(part => part.length === 0 || part.length > 60
+        || part === '.' || part === '..' || /[\p{Cc}\p{Cf}]/u.test(part))) {
+        throw new BackupError('invalid-argument', 'The source folder is invalid.');
+    }
+    return parts.join('/');
+}
+
+function storedSourceFolders(record) {
+    if (record.sourceFolders === undefined) return [];
+    if (!Array.isArray(record.sourceFolders) || record.sourceFolders.length > MAX_SOURCE_FOLDERS) {
+        throw new BackupError('data-loss', 'The source folder catalog is invalid.');
+    }
+    const paths = record.sourceFolders;
+    for (const path of paths) {
+        try {
+            if (normalizeSourceFolder(path) !== path) throw new Error('non-canonical folder');
+        } catch {
+            throw new BackupError('data-loss', 'The source folder catalog is invalid.');
+        }
+    }
+    if (new Set(paths).size !== paths.length) {
+        throw new BackupError('data-loss', 'The source folder catalog is invalid.');
+    }
+    return paths;
+}
+
+function metadataInteger(input, key, maximum = Number.MAX_SAFE_INTEGER) {
+    if (input?.[key] === undefined) return undefined;
+    const number = input[key];
+    if (!Number.isSafeInteger(number) || number <= 0 || number > maximum) {
+        throw new BackupError('invalid-argument', 'The media metadata is invalid.');
+    }
+    return number;
+}
+
+function verifiedMetadata(record) {
+    const result = {};
+    const fields = [['capturedAtMs', Number.MAX_SAFE_INTEGER], ['width', MAX_PIXEL_DIMENSION],
+        ['height', MAX_PIXEL_DIMENSION], ['durationMs', Number.MAX_SAFE_INTEGER]];
+    for (const [field, maximum] of fields) {
+        try {
+            const value = metadataInteger(record, field, maximum);
+            if (value !== undefined) result[field] = value;
+        } catch {
+            throw new BackupError('data-loss', 'The media catalog metadata is invalid.');
+        }
+    }
+    const folders = storedSourceFolders(record);
+    if (folders.length > 0) result.sourceFolders = folders;
+    return result;
+}
+
 function originalInput(data) {
     const { sha256, sizeBytes, mimeType, displayName } = data ?? {};
     if (typeof sha256 !== 'string' || !SHA256.test(sha256) || !Number.isSafeInteger(sizeBytes)
         || sizeBytes <= 0 || sizeBytes > MAX_FILE_BYTES || typeof mimeType !== 'string' || !MEDIA_TYPE.test(mimeType)) {
         throw new BackupError('invalid-argument', 'Choose a photo or video no larger than 64 MiB.');
     }
-    return { sha256, sizeBytes, mimeType, displayName: safeOriginalName(displayName, sha256, mimeType) };
+    const folder = normalizeSourceFolder(data?.sourceFolder);
+    const metadata = {};
+    for (const [field, limit] of [['capturedAtMs', Number.MAX_SAFE_INTEGER], ['width', MAX_PIXEL_DIMENSION],
+        ['height', MAX_PIXEL_DIMENSION], ['durationMs', Number.MAX_SAFE_INTEGER]]) {
+        const value = metadataInteger(data, field, limit);
+        if (value !== undefined) metadata[field] = value;
+    }
+    return { sha256, sizeBytes, mimeType, displayName: safeOriginalName(displayName, sha256, mimeType),
+        ...(folder ? { sourceFolders: [folder] } : {}), ...metadata };
+}
+
+function appendFolderMembership(transaction, recordRef, existing, request) {
+    if (existing.sha256 !== request.sha256 || existing.sizeBytes !== request.sizeBytes ||
+        existing.mimeType !== request.mimeType) {
+        throw new BackupError('failed-precondition', 'The existing original does not match this request.');
+    }
+    const folder = request.sourceFolders?.[0];
+    if (!folder) return existing;
+    const folders = storedSourceFolders(existing);
+    if (folders.includes(folder)) return existing;
+    if (folders.length >= MAX_SOURCE_FOLDERS) {
+        throw new BackupError('resource-exhausted', 'Too many source folders reference this original.');
+    }
+    const changed = { ...existing, sourceFolders: [...folders, folder] };
+    transaction.set(recordRef, changed);
+    return changed;
 }
 
 function safeOriginalName(displayName, sha256, mimeType) {
@@ -64,7 +154,8 @@ function catalogOriginal(uploadId, record) {
         throw new BackupError('data-loss', 'The backup catalog entry is invalid.');
     }
     const { sha256, sizeBytes, mimeType } = record;
-    return { uploadId, displayName: safeOriginalName(record.displayName, sha256, mimeType), mimeType, sizeBytes, sha256 };
+    return { uploadId, displayName: safeOriginalName(record.displayName, sha256, mimeType),
+        mimeType, sizeBytes, sha256, ...verifiedMetadata(record) };
 }
 
 function checkAllocation(current, byteLimit, countLimit, requestedBytes) {
@@ -169,7 +260,7 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
 
             const record = await db.runTransaction(async transaction => {
                 const existing = (await transaction.get(recordRef)).data();
-                if (existing?.state === 'VERIFIED') return existing;
+                if (existing?.state === 'VERIFIED') return appendFolderMembership(transaction, recordRef, existing, request);
 
                 const ownerUsage = (await transaction.get(ownerAllocation)).data();
                 const quota = await uploadQuota(transaction, owner, ownerLimit);
@@ -177,7 +268,7 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
                     || (ownerUsage?.allocatedBytes ?? 0) > quota) {
                     throw new BackupError('resource-exhausted', 'The account does not have available upload storage.');
                 }
-                if (existing) return existing;
+                if (existing) return appendFolderMembership(transaction, recordRef, existing, request);
                 const pilotUsage = (await transaction.get(pilotAllocation)).data();
                 const nextOwner = checkAllocation(ownerUsage, quota, MAX_OWNER_FILES, request.sizeBytes);
                 const nextPilot = checkAllocation(pilotUsage, pilotLimit, 500, request.sizeBytes);

@@ -1,6 +1,8 @@
 package com.hebi.gallipick.data.cloud
 
 import com.hebi.gallipick.domain.MediaHasher
+import com.hebi.gallipick.domain.MediaItem
+import java.text.Normalizer
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.URI
@@ -12,7 +14,44 @@ internal data class CloudOriginal(
     val sizeBytes: Long,
     val sha256: String,
     val verifiedAtMs: Long,
+    val sourceFolders: List<String> = emptyList(),
+    val capturedAtMs: Long? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val durationMs: Long? = null,
 )
+
+internal data class CloudUploadMetadata(
+    val sourceFolder: String? = null,
+    val capturedAtMs: Long? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val durationMs: Long? = null,
+) {
+    companion object {
+        fun from(item: MediaItem): CloudUploadMetadata = CloudUploadMetadata(
+            sourceFolder = normalizeCloudFolderPath(item.relativePath),
+            capturedAtMs = item.dateTakenMs.takeIf { it in 1..MAX_SAFE_JSON_INTEGER },
+            width = item.width.takeIf { it in 1..100_000 },
+            height = item.height.takeIf { it in 1..100_000 },
+            durationMs = item.durationMs.takeIf { it in 1..MAX_SAFE_JSON_INTEGER },
+        )
+    }
+}
+
+private const val MAX_SAFE_JSON_INTEGER = 9_007_199_254_740_991L
+
+/** Metadata only; no folder name ever becomes a Storage object key. */
+internal fun normalizeCloudFolderPath(raw: String): String? {
+    if (raw.isBlank() || raw.length > 160 || raw.startsWith('/') || '\\' in raw) return null
+    val normalized = Normalizer.normalize(raw, Normalizer.Form.NFC).removeSuffix("/")
+    val parts = normalized.split('/')
+    if (parts.size !in 1..8 || parts.any { part ->
+            part.isBlank() || part == "." || part == ".." || part.length > 60 ||
+                part.any { it.isISOControl() || Character.getType(it) == Character.FORMAT.toInt() }
+        }) return null
+    return parts.joinToString("/")
+}
 
 internal data class CloudDownloadTarget(val url: URI, val generation: String)
 
