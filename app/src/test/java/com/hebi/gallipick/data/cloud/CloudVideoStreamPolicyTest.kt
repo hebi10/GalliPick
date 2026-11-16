@@ -49,6 +49,31 @@ class CloudVideoStreamPolicyTest {
     }
 
     @Test
+    fun rangeProbeRejectsFullDownloadsWrongGenerationAndContentEncoding() {
+        fun valid(
+            status: Int = 206,
+            range: String? = "bytes 0-0/2048",
+            length: String? = "1",
+            generation: String? = "1740000000000001",
+            encoding: String? = null,
+        ) = validCloudVideoRange(
+            status, range, length, generation, encoding,
+            expectedGeneration = "1740000000000001", sizeBytes = 2048L,
+        )
+
+        assertTrue(valid())
+        assertTrue(valid(encoding = "identity"))
+        assertFalse(valid(status = 200))
+        assertFalse(valid(range = "bytes 0-1/2048"))
+        assertFalse(valid(range = "bytes 0-0/4096"))
+        assertFalse(valid(length = "2048"))
+        assertFalse(valid(length = null))
+        assertFalse(valid(generation = "1740000000000002"))
+        assertFalse(valid(generation = null))
+        assertFalse(valid(encoding = "gzip"))
+    }
+
+    @Test
     fun seekPositionCannotGoOutsideTheKnownDuration() {
         assertEquals(0, safeCloudVideoPosition(-100, 100_000))
         assertEquals(12_345, safeCloudVideoPosition(12_345, 100_000))
