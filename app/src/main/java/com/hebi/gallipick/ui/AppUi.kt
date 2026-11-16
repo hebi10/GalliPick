@@ -52,7 +52,7 @@ internal fun visibleDestinations(cloudEnabled: Boolean = false): List<Destinatio
     Destination.entries.filter { it != Destination.CLOUD || cloudEnabled }
 
 @Composable
-fun GalliPickApp(
+internal fun GalliPickApp(
     vm: AppViewModel,
     onRequestPermission: () -> Unit,
     onOpenSettings: () -> Unit,
