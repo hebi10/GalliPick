@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.MediaItem
+import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -51,7 +52,7 @@ internal fun visibleDestinations(cloudEnabled: Boolean = false): List<Destinatio
     Destination.entries.filter { it != Destination.CLOUD || cloudEnabled }
 
 @Composable
-fun GalliPickApp(
+internal fun GalliPickApp(
     vm: AppViewModel,
     onRequestPermission: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -61,12 +62,14 @@ fun GalliPickApp(
     result: CleanupOperationResult? = null,
     onDismissResult: () -> Unit = {},
     cloudContent: (@Composable () -> Unit)? = null,
+    cloudConnection: CloudAccountConnection? = null,
 ) {
     val state by vm.ui.collectAsState()
     val cloudEnabled = cloudContent != null
     val destinations = remember(cloudEnabled) { visibleDestinations(cloudEnabled) }
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.HOME) }
     val destination = if (selectedDestination in destinations) selectedDestination else Destination.HOME
+    val cloudFiles = rememberCloudFilesState(cloudConnection, active = destination == Destination.FILES)
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var showDuplicates by rememberSaveable { mutableStateOf(false) }
     var showFolderStorage by rememberSaveable { mutableStateOf(false) }
@@ -406,7 +409,8 @@ fun GalliPickApp(
                                     )
                                     else -> when (destination) {
                                         Destination.HOME -> HomeScreen(state, onRequestPermission, navigateFiles, ::openDuplicates, { navigate(Destination.CLEANUP) }, ::openReviewInbox)
-                                        Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission)
+                                        Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission,
+                                             cloudFiles = cloudFiles, openCloud = { navigate(Destination.CLOUD) })
                                         Destination.CLEANUP -> CleanupScreen(
                                             state, onOpenDuplicates = ::openDuplicates,
                                             onOpenFolderStorage = ::openFolderStorage,

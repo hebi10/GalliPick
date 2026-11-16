@@ -221,6 +221,7 @@ class MainActivity : ComponentActivity() {
                 onRestore = { review(it, true) },
                 result = operationResult,
                 onDismissResult = { operationResult = null },
+                cloudConnection = cloudAccount,
                 cloudContent = if (cloudAccount != null) {
                     {
                         CloudAccountSettings(cloudAccount, this@MainActivity)
