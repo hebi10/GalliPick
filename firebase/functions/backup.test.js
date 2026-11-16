@@ -284,3 +284,66 @@ test('download capabilities are short-lived, generation-pinned and owner-scoped'
     await assert.rejects(service.download(owner, { uploadId }), isCode('data-loss'));
     assert.equal(signedOptions.length, 2);
 });
+
+
+test('source-folder metadata survives verification and a deduplicated second folder', async () => {
+    const { service, bucketObjects, signedOptions, records } = createHarness();
+    const owner = googleUser('owner-a');
+    const first = await service.begin(owner, { ...data, displayName: 'IMG_110.jpg',
+        sourceFolder: 'DCIM/Camera/', capturedAtMs: 1730000000000, width: 1920, height: 1080 });
+    assert.equal(first.state, 'UPLOAD');
+    const object = signedOptions[0];
+    bucketObjects.set(object.key, { generation: '1740000000000000', bytes: photo, mimeType: data.mimeType });
+    await service.finish(owner, { uploadId: first.uploadId });
+    const firstItem = (await service.list(owner)).items[0];
+    assert.deepEqual(firstItem.sourceFolders, ['DCIM/Camera']);
+    assert.equal(firstItem.capturedAtMs, 1730000000000);
+    assert.equal(firstItem.width, 1920);
+    assert.equal(firstItem.height, 1080);
+    assert.equal(firstItem.displayName, 'IMG_110.jpg');
+
+    const allocationBefore = records.get('gallipickBackupAccounts/' +
+        createHash('sha256').update('owner-a').digest('hex')).allocatedBytes;
+    assert.deepEqual(await service.begin(owner, { ...data, sourceFolder: 'Pictures/Pets/' }),
+        { state: 'VERIFIED' });
+    const [updated] = (await service.list(owner)).items;
+    assert.deepEqual(updated.sourceFolders, ['DCIM/Camera', 'Pictures/Pets']);
+    assert.equal(records.get('gallipickBackupAccounts/' +
+        createHash('sha256').update('owner-a').digest('hex')).allocatedBytes, allocationBefore);
+    assert.equal(signedOptions.filter(options => options.action === 'write').length, 1);
+    const downloaded = await service.download(owner, { uploadId: first.uploadId });
+    assert.deepEqual(downloaded.sourceFolders, updated.sourceFolders);
+    assert.equal((await service.list(googleUser('owner-b'))).items.length, 0);
+});
+
+test('source-folder metadata refuses traversal, controls, extra segments and forged fields', async () => {
+    const { service, signedOptions } = createHarness();
+    const owner = googleUser('owner-a');
+    for (const sourceFolder of ['/DCIM', '../Camera', 'DCIM/../Camera', 'DCIM//Camera',
+        'DCIM\\Camera', 'DCIM/./Camera', 'A/\u0000B', 'a'.repeat(161)]) {
+        await assert.rejects(service.begin(owner, { ...data, sourceFolder }), isCode('invalid-argument'));
+    }
+    for (const extra of [{ width: -1 }, { width: 100001 }, { capturedAtMs: '123' },
+        { durationMs: Number.MAX_SAFE_INTEGER + 1 }, { height: null }]) {
+        await assert.rejects(service.begin(owner, { ...data, ...extra }), isCode('invalid-argument'));
+    }
+    assert.equal(signedOptions.length, 0);
+});
+
+test('a legacy original remains readable and gains metadata only on an authorized retry', async () => {
+    const { service, signedOptions, bucketObjects } = createHarness();
+    const owner = googleUser('owner-a');
+    const { uploadId } = await service.begin(owner, data);
+    bucketObjects.set(signedOptions[0].key, { generation: '1740000000000000',
+        bytes: photo, mimeType: data.mimeType });
+    await service.finish(owner, { uploadId });
+    const legacy = (await service.list(owner)).items[0];
+    assert.equal('sourceFolders' in legacy, false);
+    assert.equal('capturedAtMs' in legacy, false);
+    assert.deepEqual(await service.begin(owner, { ...data, sourceFolder: 'DCIM/Camera/' }),
+        { state: 'VERIFIED' });
+    const updated = (await service.list(owner)).items[0];
+    assert.deepEqual(updated.sourceFolders, ['DCIM/Camera']);
+    assert.equal(updated.sha256, legacy.sha256);
+    assert.equal(updated.sizeBytes, legacy.sizeBytes);
+});
