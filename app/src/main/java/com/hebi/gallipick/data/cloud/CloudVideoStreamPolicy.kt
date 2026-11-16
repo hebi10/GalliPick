@@ -25,3 +25,18 @@ internal fun isCloudVideoStreamable(original: CloudOriginal): Boolean =
 
 internal fun safeCloudVideoPosition(requestedMs: Int, durationMs: Int): Int =
     requestedMs.coerceIn(0, (durationMs - 1).coerceAtLeast(0))
+
+/** A 1-byte partial GET proves that the signed capability supports seeking. */
+internal fun validCloudVideoRange(
+    status: Int,
+    contentRange: String?,
+    contentLength: String?,
+    responseGeneration: String?,
+    contentEncoding: String?,
+    expectedGeneration: String,
+    sizeBytes: Long,
+): Boolean = status == 206 &&
+    contentRange == "bytes 0-0/$sizeBytes" &&
+    contentLength?.toLongOrNull() == 1L &&
+    responseGeneration == expectedGeneration &&
+    (contentEncoding == null || contentEncoding.equals("identity", ignoreCase = true))
