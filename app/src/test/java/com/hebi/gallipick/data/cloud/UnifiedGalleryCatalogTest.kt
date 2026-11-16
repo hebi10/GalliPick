@@ -81,6 +81,15 @@ class UnifiedGalleryCatalogTest {
     }
 
     @Test
+    fun mismatchedMimeTypesNeverMergeDespiteEqualBytes() {
+        val local = device()
+        val cloud = original().copy(mimeType = "video/mp4")
+        val entries = combineGalleryCatalog(listOf(local), CloudGallerySnapshot("owner-a", listOf(cloud)),
+            "owner-a", listOf(proof(local)))
+        assertEquals(listOf(GallerySource.DEVICE, GallerySource.CLOUD), entries.map { it.source })
+    }
+
+    @Test
     fun folderMetadataIsNormalizedWithoutAcceptingTraversal() {
         assertEquals("DCIM/Camera", normalizeCloudFolderPath("DCIM/Camera/"))
         assertEquals("여행/부산", normalizeCloudFolderPath("여행/부산/"))
@@ -96,6 +105,8 @@ class UnifiedGalleryCatalogTest {
         assertNull(metadata.durationMs)
         val legacy = original().copy(sourceFolders = emptyList(), capturedAtMs = null)
         assertTrue(legacy.sourceFolders.isEmpty())
-        assertEquals(13333L, combineGalleryCatalog(emptyList(), CloudGallerySnapshot("owner-a", listOf(legacy)), "owner-a").single().capturedAtMs)
+        val restored = combineGalleryCatalog(emptyList(), CloudGallerySnapshot("owner-a", listOf(legacy)), "owner-a").single()
+        assertNull(restored.capturedAtMs)
+        assertEquals(13333L, restored.sortTimeMs)
     }
 }
