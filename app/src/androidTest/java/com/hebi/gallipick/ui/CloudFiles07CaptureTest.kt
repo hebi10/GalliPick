@@ -5,7 +5,10 @@ import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -13,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hebi.gallipick.AppThemeMode
@@ -90,8 +94,18 @@ class CloudFiles07CaptureTest {
         )
         compose.setContent {
             GalliPickTheme(theme.value) {
-                Surface(Modifier.fillMaxSize()) {
-                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                SideEffect {
+                    WindowCompat.getInsetsController(
+                        compose.activity.window, compose.activity.window.decorView,
+                    ).apply {
+                        isAppearanceLightStatusBars = theme.value != AppThemeMode.DARK
+                        isAppearanceLightNavigationBars = theme.value != AppThemeMode.DARK
+                    }
+                }
+                Surface(Modifier.fillMaxSize(), color = AppBackground) {
+                    BoxWithConstraints(
+                        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
+                    ) {
                         FilesScreenContent(
                             state = state,
                             wide = maxWidth >= 650.dp,
