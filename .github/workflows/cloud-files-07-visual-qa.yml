@@ -68,8 +68,11 @@ jobs:
             size: 1080x2400
             density: 420
             font_scale: '1.6'
+          # Android 36 pixel_tablet portrait triggers a launcher/SystemUI ANR in hosted
+          # emulator runners. Verify the same tablet viewport with stable pixel_6 hardware;
+          # retain a true tablet hardware profile for tablet-landscape.
           - name: tablet-portrait
-            kind: tablet
+            kind: phone
             size: 1600x2560
             density: 240
             font_scale: '1.0'
