@@ -10,11 +10,13 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudGallerySnapshot
+import com.hebi.gallipick.data.cloud.CloudBackup
 import kotlinx.coroutines.CancellationException
 
 internal data class CloudFilesUiState(
     val enabled: Boolean = false,
     val accountUid: String? = null,
+    val backup: CloudBackup? = null,
     val snapshot: CloudGallerySnapshot? = null,
     val loading: Boolean = false,
     val failed: Boolean = false,
@@ -27,6 +29,7 @@ internal fun rememberCloudFilesState(connection: CloudAccountConnection?, active
     val backup = connection?.backup ?: return CloudFilesUiState()
     val identity by connection.session.account.collectAsStateWithLifecycle()
     val uid = identity?.uid
+    LaunchedEffect(uid) { CloudPhotoThumbnailStore.activate(uid) }
     val revision by backup.catalogRevision.collectAsStateWithLifecycle()
     var retryKey by remember(uid) { mutableIntStateOf(0) }
     var snapshot by remember(uid, backup) { mutableStateOf<CloudGallerySnapshot?>(null) }
@@ -59,6 +62,7 @@ internal fun rememberCloudFilesState(connection: CloudAccountConnection?, active
     return CloudFilesUiState(
         enabled = true,
         accountUid = uid,
+        backup = backup,
         snapshot = snapshot?.takeIf { it.accountUid == uid },
         loading = uid != null && (loading || (active && lastAttempt == null)),
         failed = failed,
