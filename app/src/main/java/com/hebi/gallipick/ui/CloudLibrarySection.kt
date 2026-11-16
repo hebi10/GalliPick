@@ -82,7 +82,8 @@ private fun CloudLibraryControls(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            catalog = emptyList()
+            // Keep a previous in-session catalog if the network goes offline.
+            // CloudLibrarySection is keyed by UID: never reuse across accounts.
             catalogError = cloudLibraryFailure(error)
         } finally {
             loading = false
@@ -118,9 +119,13 @@ private fun CloudLibraryControls(
     ) {
         Text("클라우드 보관함", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
         ActionButton("목록 새로고침", { reload++ }, enabled = !loading && action == null)
+        if (catalogError != null && catalog.isNotEmpty()) {
+            Text("현재 연결되지 않아 이전 목록을 표시합니다. 원본 열람·복원은 인터넷 연결이 필요합니다.",
+                color = Muted, style = MaterialTheme.typography.bodySmall)
+        }
         when {
-            loading -> Text("보관함을 확인하는 중입니다.", color = Muted)
-            catalogError != null -> Text(checkNotNull(catalogError), color = Muted)
+            loading && catalog.isEmpty() -> Text("보관함을 확인하는 중입니다.", color = Muted)
+            catalogError != null && catalog.isEmpty() -> Text(checkNotNull(catalogError), color = Muted)
             catalog.isEmpty() -> Text("서버에서 확인된 원본이 없습니다.", color = Muted)
             else -> LazyColumn(
                 Modifier.fillMaxWidth().heightIn(max = 400.dp),

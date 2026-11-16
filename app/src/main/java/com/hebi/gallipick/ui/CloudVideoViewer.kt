@@ -65,6 +65,7 @@ internal fun CloudVideoViewer(
     original: CloudOriginal,
     backup: CloudBackup,
     dismiss: () -> Unit,
+    offline: Boolean = false,
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var refresh by remember(uid, original.uploadId) { mutableIntStateOf(0) }
@@ -83,8 +84,11 @@ internal fun CloudVideoViewer(
 
     fun disconnect() {
         player?.let { active ->
-            if (active.isPlaying) positionMs = active.currentPosition.coerceAtLeast(0)
-            active.pause()
+            if (runCatching { active.isPlaying }.getOrDefault(false)) {
+                positionMs = runCatching { active.currentPosition }.getOrDefault(positionMs)
+                    .coerceAtLeast(0)
+            }
+            runCatching { active.pause() }
         }
         ready = false
         playing = false
@@ -115,7 +119,21 @@ internal fun CloudVideoViewer(
         }
     }
 
-    LaunchedEffect(uid, original.uploadId, refresh, pausedByLifecycle) {
+    LaunchedEffect(offline) {
+        if (offline) {
+            player?.let { runCatching { it.stopPlayback() } }
+            disconnect()
+            loading = false
+            message = "인터넷 연결이 필요합니다."
+        }
+    }
+
+    LaunchedEffect(uid, original.uploadId, refresh, pausedByLifecycle, offline) {
+        if (offline) {
+            loading = false
+            message = "인터넷 연결이 필요합니다."
+            return@LaunchedEffect
+        }
         if (pausedByLifecycle) return@LaunchedEffect
         if (!isCloudVideoStreamable(original)) {
             loading = false
@@ -230,7 +248,7 @@ internal fun CloudVideoViewer(
                                 Text(if (pausedByLifecycle) "앱 복귀 후 다시 연결해 주세요."
                                     else message ?: "스트리밍 연결을 확인 중입니다.",
                                     color = Color.White)
-                                TextButton(onClick = ::reconnect) {
+                                TextButton(onClick = ::reconnect, enabled = !offline) {
                                     Text("다시 연결", color = Color.White)
                                 }
                             }

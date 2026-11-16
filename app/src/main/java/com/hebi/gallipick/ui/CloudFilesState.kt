@@ -25,6 +25,9 @@ internal data class CloudFilesUiState(
     val snapshot: CloudGallerySnapshot? = null,
     val loading: Boolean = false,
     val failed: Boolean = false,
+    val online: Boolean = true,
+    val unmetered: Boolean = true,
+    val cachedCatalog: Boolean = false,
     val retry: () -> Unit = {},
     val verifiedMatches: List<VerifiedGalleryMatch> = emptyList(),
     val matchChecking: Boolean = false,
@@ -45,16 +48,27 @@ internal fun rememberCloudFilesState(
     val backup = connection?.backup ?: return CloudFilesUiState()
     val identity by connection.session.account.collectAsStateWithLifecycle()
     val uid = identity?.uid
+    val network = rememberCloudNetworkStatus(enabled = connection != null)
     LaunchedEffect(uid) { CloudPhotoThumbnailStore.activate(uid) }
     val revision by backup.catalogRevision.collectAsStateWithLifecycle()
     var retryKey by remember(uid) { mutableIntStateOf(0) }
+    var seenOffline by remember(uid) { mutableStateOf(false) }
+    LaunchedEffect(uid, network.online) {
+        if (!network.online) seenOffline = true
+        else if (seenOffline) {
+            seenOffline = false
+            retryKey++
+        }
+    }
     var snapshot by remember(uid, backup) { mutableStateOf<CloudGallerySnapshot?>(null) }
     var loading by remember(uid, backup) { mutableStateOf(false) }
     var failed by remember(uid, backup) { mutableStateOf(false) }
     var lastAttempt by remember(uid, backup) { mutableStateOf<Pair<Long, Int>?>(null) }
 
-    LaunchedEffect(uid, backup, active, revision, retryKey) {
-        if (!active || uid == null || lastAttempt == (revision to retryKey)) return@LaunchedEffect
+    LaunchedEffect(uid, backup, active, revision, retryKey, network.online) {
+        if (!active || uid == null || !network.online ||
+            lastAttempt == (revision to retryKey)
+        ) return@LaunchedEffect
         loading = true
         failed = false
         try {
@@ -95,11 +109,11 @@ internal fun rememberCloudFilesState(
     var matchChecking by remember(uid, snapshot, deviceItems) { mutableStateOf(false) }
     var matchFailed by remember(uid, snapshot, deviceItems) { mutableStateOf(false) }
 
-    LaunchedEffect(uid, active, snapshot, candidates, requestedBatches, analyzer) {
+    LaunchedEffect(uid, active, snapshot, candidates, requestedBatches, analyzer, network.online) {
         val owner = uid ?: return@LaunchedEffect
         val catalog = snapshot?.takeIf { it.accountUid == owner } ?: return@LaunchedEffect
         val verifier = analyzer ?: return@LaunchedEffect
-        if (!active || failed || completedBatches >= requestedBatches ||
+        if (!active || !network.online || failed || completedBatches >= requestedBatches ||
             matchChecked >= candidates.size
         ) return@LaunchedEffect
 
@@ -132,11 +146,15 @@ internal fun rememberCloudFilesState(
         accountUid = uid,
         backup = backup,
         snapshot = snapshot?.takeIf { it.accountUid == uid },
-        loading = uid != null && (loading || (active && lastAttempt == null)),
+        loading = uid != null && network.online && (loading || (active && lastAttempt == null)),
         failed = failed,
+        online = network.online,
+        unmetered = network.unmetered,
+        cachedCatalog = uid != null && snapshot?.accountUid == uid &&
+            (!network.online || failed),
         retry = { retryKey++ },
         verifiedMatches = verifiedMatches.takeIf {
-            uid != null && !failed && snapshot?.accountUid == uid
+            uid != null && snapshot?.accountUid == uid
         }.orEmpty(),
         matchChecking = uid != null && matchChecking,
         matchChecked = matchChecked,

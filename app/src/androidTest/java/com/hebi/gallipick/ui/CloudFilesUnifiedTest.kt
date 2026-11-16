@@ -111,6 +111,43 @@ class CloudFilesUnifiedTest {
         compose.runOnIdle { assertTrue(cloudOpened.value) }
     }
 
+    @Test fun offlineCloudCatalogStaysBrowsableWithoutDevicePermission() {
+        val cached = cloudState().copy(online = false, unmetered = false, cachedCatalog = true)
+        compose.setContent {
+            GalliPickTheme {
+                Surface(Modifier.requiredSize(420.dp, 850.dp)) {
+                    FilesScreenContent(
+                        state = AppUiState(access = MediaAccess.NONE),
+                        wide = false, trash = {}, open = {}, requestAccess = {},
+                        actions = actions(), cloudFiles = cached,
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("files-source-cloud").performClick()
+        compose.onNodeWithText("cloud-holiday.jpg").assertExists()
+        compose.onNodeWithText("오프라인", substring = true).assertExists()
+    }
+
+    @Test fun meteredConnectionsOfferExplicitThumbnailPermission() {
+        val metered = cloudState().copy(online = true, unmetered = false)
+        compose.setContent {
+            GalliPickTheme {
+                Surface(Modifier.requiredSize(420.dp, 850.dp)) {
+                    FilesScreenContent(
+                        state = AppUiState(access = MediaAccess.NONE),
+                        wide = false, trash = {}, open = {}, requestAccess = {},
+                        actions = actions(), cloudFiles = metered,
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("files-source-cloud").performClick()
+        compose.onNodeWithText("모바일 데이터 사용 중", substring = true).assertExists()
+        compose.onNodeWithText("이번 화면에서 허용").performClick()
+        compose.onNodeWithText("이번 화면에서 허용").assertDoesNotExist()
+    }
+
     private fun cloudState() = CloudFilesUiState(
         enabled = true, accountUid = "owner",
         snapshot = CloudGallerySnapshot("owner", listOf(saved)),

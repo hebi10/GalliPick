@@ -68,6 +68,7 @@ internal fun UnifiedFilesList(
     openCloud: (CloudOriginal) -> Unit,
     backup: CloudBackup? = null,
     accountUid: String? = null,
+    autoLoadThumbnails: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val groups = remember(entries, filter.dateField, filter.sortField, filter.sortDirection, filter.groupByDate) {
@@ -101,13 +102,13 @@ internal fun UnifiedFilesList(
                     }
                     items(group.items, key = ::galleryItemKey) { item ->
                         UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid,
-                            backup = backup, accountUid = accountUid)
+                            backup = backup, accountUid = accountUid, autoLoadThumbnails = autoLoadThumbnails)
                     }
                 }
             } else {
                 items(entries, key = ::galleryItemKey) { item ->
                     UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid,
-                        backup = backup, accountUid = accountUid)
+                        backup = backup, accountUid = accountUid, autoLoadThumbnails = autoLoadThumbnails)
                 }
             }
         }
@@ -124,13 +125,13 @@ internal fun UnifiedFilesList(
                     }
                     listItems(group.items, key = ::galleryItemKey) { item ->
                         UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField,
-                            backup, accountUid)
+                            backup, accountUid, autoLoadThumbnails)
                     }
                 }
             } else {
                 listItems(entries, key = ::galleryItemKey) { item ->
                     UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField,
-                        backup, accountUid)
+                        backup, accountUid, autoLoadThumbnails)
                 }
             }
         }
@@ -150,6 +151,7 @@ private fun UnifiedMediaTile(
     dateField: DateField = DateField.CAPTURED,
     backup: CloudBackup? = null,
     accountUid: String? = null,
+    autoLoadThumbnails: Boolean = true,
 ) {
     val local = entry.device
     if (local != null) {
@@ -173,14 +175,16 @@ private fun UnifiedMediaTile(
         )
     } else {
         val original = checkNotNull(entry.cloud)
-        CloudOnlyTile(original, listView, tabletGrid, backup, accountUid) { openCloud(original) }
+        CloudOnlyTile(original, listView, tabletGrid, backup, accountUid, autoLoadThumbnails) {
+            openCloud(original)
+        }
     }
 }
 
 @Composable
 private fun CloudOnlyTile(
     original: CloudOriginal, listView: Boolean, tabletGrid: Boolean,
-    backup: CloudBackup?, accountUid: String?, open: () -> Unit,
+    backup: CloudBackup?, accountUid: String?, autoLoadThumbnails: Boolean, open: () -> Unit,
 ) {
     if (listView) {
         Row(
@@ -188,7 +192,7 @@ private fun CloudOnlyTile(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            CloudThumbnail(original, Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)), backup, accountUid, open)
+            CloudThumbnail(original, Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)), backup, accountUid, autoLoadThumbnails, open)
             Column(
                 Modifier.weight(1f).plainClick(action = open),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -202,7 +206,7 @@ private fun CloudOnlyTile(
     } else {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             CloudThumbnail(original, Modifier.fillMaxWidth().aspectRatio(1f)
-                .clip(RoundedCornerShape(10.dp)), backup, accountUid, open)
+                .clip(RoundedCornerShape(10.dp)), backup, accountUid, autoLoadThumbnails, open)
             Text(original.displayName, style = if (tabletGrid) MaterialTheme.typography.bodySmall
                 else MaterialTheme.typography.labelSmall, maxLines = if (tabletGrid) 2 else 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().plainClick(action = open))
@@ -215,10 +219,11 @@ private fun CloudOnlyTile(
 @Composable
 private fun CloudThumbnail(
     original: CloudOriginal, modifier: Modifier,
-    backup: CloudBackup?, accountUid: String?, open: () -> Unit,
+    backup: CloudBackup?, accountUid: String?, autoLoadThumbnails: Boolean, open: () -> Unit,
 ) {
     if (original.mimeType.startsWith("image/")) {
-        CloudPhotoThumbnail(original, accountUid, backup, modifier, open)
+        CloudPhotoThumbnail(original, accountUid, backup, modifier, open,
+            autoLoad = autoLoadThumbnails)
     } else {
         Box(modifier.background(Panel).plainClick(action = open)
             .semantics { contentDescription = "클라우드 동영상: ${original.displayName}" }) {

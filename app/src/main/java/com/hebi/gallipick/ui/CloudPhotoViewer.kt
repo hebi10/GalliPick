@@ -69,17 +69,23 @@ internal object CloudPhotoThumbnailStore {
 
     suspend fun load(uid: String, original: CloudOriginal, backup: CloudBackup): Bitmap? {
         if (!cloudPhotoSupportsThumbnail(original)) return null
-        activate(uid)
+        // A stale request from an old account must never evict the new owner's cache.
+        if (!isOwner(uid)) return null
         peek(uid, original)?.let { return it }
         return requests.withPermit {
+            if (!isOwner(uid)) return@withPermit null
             peek(uid, original)?.let { return@withPermit it }
             val bitmap = backup.previewPhoto(original, uid, maxEdgePx = 384)
-            if (ownerUid == uid) {
-                synchronized(this) { if (ownerUid == uid) images.put(original.uploadId, bitmap) }
-                bitmap
-            } else null
+            synchronized(this) {
+                if (ownerUid == uid) {
+                    images.put(original.uploadId, bitmap)
+                    bitmap
+                } else null
+            }
         }
     }
+
+    @Synchronized private fun isOwner(uid: String): Boolean = ownerUid == uid
 }
 
 @Composable
@@ -89,12 +95,15 @@ internal fun CloudPhotoThumbnail(
     backup: CloudBackup?,
     modifier: Modifier = Modifier,
     open: () -> Unit,
+    autoLoad: Boolean = true,
 ) {
     var bitmap by remember(uid, original.uploadId) {
         mutableStateOf(uid?.let { CloudPhotoThumbnailStore.peek(it, original) })
     }
-    LaunchedEffect(uid, backup, original.uploadId, original.sizeBytes) {
-        if (uid == null || backup == null || !cloudPhotoSupportsThumbnail(original)) return@LaunchedEffect
+    LaunchedEffect(uid, backup, original.uploadId, original.sizeBytes, autoLoad) {
+        if (uid == null || backup == null || !autoLoad ||
+            !cloudPhotoSupportsThumbnail(original)
+        ) return@LaunchedEffect
         try {
             bitmap = CloudPhotoThumbnailStore.load(uid, original, backup)
         } catch (cancelled: CancellationException) {
@@ -132,6 +141,7 @@ internal fun CloudPhotoViewer(
     backup: CloudBackup,
     choose: (CloudOriginal) -> Unit,
     dismiss: () -> Unit,
+    offline: Boolean = false,
 ) {
     var retry by remember(uid, original.uploadId) { mutableIntStateOf(0) }
     var bitmap by remember(uid, original.uploadId) { mutableStateOf<Bitmap?>(null) }
@@ -139,7 +149,13 @@ internal fun CloudPhotoViewer(
     var error by remember(uid, original.uploadId) { mutableStateOf<String?>(null) }
     val position = cloudPhotoPosition(photos, original)
 
-    LaunchedEffect(uid, original.uploadId, retry) {
+    LaunchedEffect(uid, original.uploadId, retry, offline) {
+        if (offline) {
+            bitmap = null
+            loading = false
+            error = "인터넷 연결이 필요합니다. 연결 후 다시 시도해 주세요."
+            return@LaunchedEffect
+        }
         if (!cloudPhotoSupportsViewer(original)) {
             error = "지원하지 않는 클라우드 사진입니다."
             loading = false
@@ -189,7 +205,7 @@ internal fun CloudPhotoViewer(
                             Modifier.semantics { contentDescription = "클라우드 사진을 불러오는 중" })
                         error != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(checkNotNull(error), color = Muted)
-                            TextAction("다시 시도", { retry++ })
+                            if (!offline) TextAction("다시 시도", { retry++ })
                         }
                     }
                 }
