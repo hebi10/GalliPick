@@ -105,3 +105,13 @@ internal fun combineGalleryCatalog(
         .toList()
     return devices + remaining
 }
+
+/** Keeps verified BOTH entries available when paging cloud photos in CLOUD mode. */
+internal fun cloudGalleryPhotos(entries: List<GalleryEntry>, selected: CloudOriginal): List<CloudOriginal> {
+    val photos = entries.asSequence()
+        .mapNotNull { it.cloud }
+        .filter { it.mimeType.startsWith("image/") }
+        .distinctBy { it.uploadId }
+        .toList()
+    return if (photos.any { it.uploadId == selected.uploadId }) photos else listOf(selected)
+}
