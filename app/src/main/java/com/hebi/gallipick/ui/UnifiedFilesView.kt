@@ -206,7 +206,7 @@ private fun CloudOnlyTile(
     } else {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             CloudThumbnail(original, Modifier.fillMaxWidth().aspectRatio(1f)
-                .clip(RoundedCornerShape(10.dp)), backup, accountUid, open)
+                .clip(RoundedCornerShape(10.dp)), backup, accountUid, autoLoadThumbnails, open)
             Text(original.displayName, style = if (tabletGrid) MaterialTheme.typography.bodySmall
                 else MaterialTheme.typography.labelSmall, maxLines = if (tabletGrid) 2 else 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().plainClick(action = open))
