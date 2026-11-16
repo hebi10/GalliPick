@@ -29,7 +29,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.hebi.gallipick.data.cloud.CLOUD_PREVIEW_MAX_BYTES
+import com.hebi.gallipick.data.cloud.cloudPhotoSupportsViewer
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudBackup
 import com.hebi.gallipick.data.cloud.CloudBackupException
@@ -131,7 +131,7 @@ private fun CloudLibraryControls(
                         val media = if (item.mimeType.startsWith("video/")) "동영상" else "사진"
                         Text("$media · ${bytesLabel(item.sizeBytes)} · $date", color = Muted,
                             style = MaterialTheme.typography.bodySmall)
-                        if (item.mimeType.startsWith("image/") && item.sizeBytes <= CLOUD_PREVIEW_MAX_BYTES) {
+                        if (cloudPhotoSupportsViewer(item)) {
                             ActionButton("미리보기", { action = LibraryAction(item, preview = true) },
                                 enabled = action == null)
                         }

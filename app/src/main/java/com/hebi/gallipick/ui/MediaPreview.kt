@@ -180,7 +180,7 @@ internal fun PhotoPreview(item: MediaItem, modifier: Modifier = Modifier, compac
 }
 
 @Composable
-private fun ZoomablePhoto(bitmap: Bitmap, name: String, compact: Boolean = false) {
+internal fun ZoomablePhoto(bitmap: Bitmap, name: String, compact: Boolean = false) {
     var scale by remember(bitmap) { mutableFloatStateOf(1f) }
     var offset by remember(bitmap) { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }

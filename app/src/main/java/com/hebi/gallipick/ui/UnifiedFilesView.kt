@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.data.cloud.CloudOriginal
+import com.hebi.gallipick.data.cloud.CloudBackup
 import com.hebi.gallipick.data.cloud.GalleryEntry
 import com.hebi.gallipick.data.cloud.GalleryEntryKey
 import com.hebi.gallipick.data.cloud.GalleryFileQuery
@@ -65,6 +66,8 @@ internal fun UnifiedFilesList(
     toggleDevice: (String) -> Unit,
     openDevice: (String) -> Unit,
     openCloud: (CloudOriginal) -> Unit,
+    backup: CloudBackup? = null,
+    accountUid: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val groups = remember(entries, filter.dateField, filter.sortField, filter.sortDirection, filter.groupByDate) {
@@ -97,12 +100,14 @@ internal fun UnifiedFilesList(
                         DateGroupHeader(group.date, group.items.size, filter.dateField)
                     }
                     items(group.items, key = ::galleryItemKey) { item ->
-                        UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid)
+                        UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid,
+                            backup = backup, accountUid = accountUid)
                     }
                 }
             } else {
                 items(entries, key = ::galleryItemKey) { item ->
-                    UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid)
+                    UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid,
+                        backup = backup, accountUid = accountUid)
                 }
             }
         }
@@ -118,12 +123,14 @@ internal fun UnifiedFilesList(
                         DateGroupHeader(group.date, group.items.size, filter.dateField)
                     }
                     listItems(group.items, key = ::galleryItemKey) { item ->
-                        UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField)
+                        UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField,
+                            backup, accountUid)
                     }
                 }
             } else {
                 listItems(entries, key = ::galleryItemKey) { item ->
-                    UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField)
+                    UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField,
+                        backup, accountUid)
                 }
             }
         }
@@ -141,6 +148,8 @@ private fun UnifiedMediaTile(
     listView: Boolean,
     tabletGrid: Boolean,
     dateField: DateField = DateField.CAPTURED,
+    backup: CloudBackup? = null,
+    accountUid: String? = null,
 ) {
     val local = entry.device
     if (local != null) {
@@ -158,19 +167,22 @@ private fun UnifiedMediaTile(
         )
     } else {
         val original = checkNotNull(entry.cloud)
-        CloudOnlyTile(original, listView, tabletGrid) { openCloud(original) }
+        CloudOnlyTile(original, listView, tabletGrid, backup, accountUid) { openCloud(original) }
     }
 }
 
 @Composable
-private fun CloudOnlyTile(original: CloudOriginal, listView: Boolean, tabletGrid: Boolean, open: () -> Unit) {
+private fun CloudOnlyTile(
+    original: CloudOriginal, listView: Boolean, tabletGrid: Boolean,
+    backup: CloudBackup?, accountUid: String?, open: () -> Unit,
+) {
     if (listView) {
         Row(
             Modifier.fillMaxWidth().galliCardSurface().padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            CloudThumbnail(original, Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)), open)
+            CloudThumbnail(original, Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)), backup, accountUid, open)
             Column(
                 Modifier.weight(1f).plainClick(action = open),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -184,7 +196,7 @@ private fun CloudOnlyTile(original: CloudOriginal, listView: Boolean, tabletGrid
     } else {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             CloudThumbnail(original, Modifier.fillMaxWidth().aspectRatio(1f)
-                .clip(RoundedCornerShape(10.dp)), open)
+                .clip(RoundedCornerShape(10.dp)), backup, accountUid, open)
             Text(original.displayName, style = if (tabletGrid) MaterialTheme.typography.bodySmall
                 else MaterialTheme.typography.labelSmall, maxLines = if (tabletGrid) 2 else 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().plainClick(action = open))
@@ -195,20 +207,26 @@ private fun CloudOnlyTile(original: CloudOriginal, listView: Boolean, tabletGrid
 }
 
 @Composable
-private fun CloudThumbnail(original: CloudOriginal, modifier: Modifier, open: () -> Unit) {
-    Box(modifier.background(Panel).plainClick(action = open)
-        .semantics { contentDescription = "클라우드에 보관된 ${original.displayName}" }) {
-        val icon = if (original.mimeType.startsWith("video/")) Icons.Outlined.Movie else Icons.Outlined.Image
-        GalliIcon(icon, null, Modifier.align(Alignment.Center).size(32.dp), tint = Muted)
-        Row(
-            Modifier.align(Alignment.BottomStart)
-                .padding(4.dp).background(AppSurface, RoundedCornerShape(6.dp))
-                .padding(horizontal = 5.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            GalliIcon(Icons.Outlined.Cloud, null, Modifier.size(13.dp), tint = Ink)
-            Text("클라우드", style = MaterialTheme.typography.labelSmall, color = Ink)
+private fun CloudThumbnail(
+    original: CloudOriginal, modifier: Modifier,
+    backup: CloudBackup?, accountUid: String?, open: () -> Unit,
+) {
+    if (original.mimeType.startsWith("image/")) {
+        CloudPhotoThumbnail(original, accountUid, backup, modifier, open)
+    } else {
+        Box(modifier.background(Panel).plainClick(action = open)
+            .semantics { contentDescription = "클라우드 동영상: ${original.displayName}" }) {
+            GalliIcon(Icons.Outlined.Movie, null, Modifier.align(Alignment.Center).size(32.dp), tint = Muted)
+            Row(
+                Modifier.align(Alignment.BottomStart).padding(4.dp)
+                    .background(AppSurface, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                GalliIcon(Icons.Outlined.Cloud, null, Modifier.size(13.dp), tint = Ink)
+                Text("클라우드", style = MaterialTheme.typography.labelSmall, color = Ink)
+            }
         }
     }
 }
