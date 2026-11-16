@@ -13,6 +13,7 @@ import com.hebi.gallipick.domain.MediaItem
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -66,6 +67,66 @@ internal class CloudSpaceAnalysis(context: Context, private val repository: Medi
         }
         checkAccount()
         CloudSpaceMatchedFiles(matches, scan.size, eligible.count { it.sizeBytes in cloudSizes })
+    }
+
+    /**
+     * Produces content-verified, account-scoped links without modifying either
+     * MediaStore or the cloud catalog. Caller selects a bounded candidate batch.
+     */
+    suspend fun matchGalleryBatch(
+        candidates: List<MediaItem>,
+        originals: List<CloudOriginal>,
+        accountUid: String,
+        isCurrentAccount: () -> Boolean,
+    ): List<VerifiedGalleryMatch> = withContext(Dispatchers.IO) {
+        val jobContext = currentCoroutineContext()
+        val checkAccount = {
+            jobContext.ensureActive()
+            if (accountUid.isBlank() || !isCurrentAccount()) {
+                throw CancellationException("Cloud account changed during gallery matching")
+            }
+        }
+        checkAccount()
+        val index = CloudGalleryMatchPolicy.validOriginals(originals)
+            .groupBy { it.sizeBytes to it.mimeType.lowercase(Locale.ROOT) }
+        buildList {
+            for (expected in candidates) {
+                checkAccount()
+                val plausible = index[expected.sizeBytes to expected.mimeType.lowercase(Locale.ROOT)].orEmpty()
+                if (plausible.isEmpty()) continue
+                val before = repository.reader.current(expected.uri)
+                if (!CloudGalleryMatchPolicy.sameDeviceOriginal(expected, before)) continue
+                val original = checkNotNull(before)
+                val digest = try {
+                    hashOriginal(original, checkAccount)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: SecurityException) {
+                    null
+                } catch (_: IOException) {
+                    null
+                } catch (_: UnsupportedOperationException) {
+                    null
+                } catch (_: IllegalArgumentException) {
+                    null
+                } ?: continue
+                checkAccount()
+                val cloud = plausible.firstOrNull { it.sha256 == digest } ?: continue
+                val after = repository.reader.current(expected.uri)
+                if (!CloudGalleryMatchPolicy.sameDeviceOriginal(original, after) ||
+                    !CloudGalleryMatchPolicy.sameDeviceOriginal(expected, after)
+                ) continue
+                checkAccount()
+                add(VerifiedGalleryMatch(
+                    accountUid = accountUid,
+                    localUri = expected.uri,
+                    localFingerprint = expected.fingerprint,
+                    localVolumeVersion = expected.volumeVersion,
+                    cloudUploadId = cloud.uploadId,
+                    sha256 = cloud.sha256,
+                ))
+            }
+        }.also { checkAccount() }
     }
 
     private fun hashOriginal(item: MediaItem, checkAccount: () -> Unit): String? {

@@ -15,6 +15,7 @@ import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.data.cloud.CloudGallerySnapshot
 import com.hebi.gallipick.data.cloud.CloudOriginal
+import com.hebi.gallipick.data.cloud.VerifiedGalleryMatch
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
 import org.junit.Assert.assertTrue
@@ -81,6 +82,33 @@ class CloudFilesUnifiedTest {
         compose.onNodeWithTag("files-source-all").performClick()
         compose.onNodeWithText("cloud-holiday.jpg").assertExists()
         compose.onNodeWithText("local-photo.jpg").assertExists()
+    }
+
+    @Test fun verifiedBothUsesCloudViewerFromCloudFilterWithoutOpeningLocalDetails() {
+        val device = local.copy(volumeVersion = "version-one", generationModified = 1)
+        val proof = VerifiedGalleryMatch(
+            "owner", device.uri, device.fingerprint, device.volumeVersion, saved.uploadId, saved.sha256,
+        )
+        val state = AppUiState(access = MediaAccess.FULL, items = listOf(device), filtered = listOf(device))
+        val cloudOpened = mutableStateOf(false)
+        compose.setContent {
+            GalliPickTheme {
+                Surface(Modifier.requiredSize(420.dp, 850.dp)) {
+                    FilesScreenContent(
+                        state = state, wide = false, trash = {}, open = {}, requestAccess = {},
+                        actions = actions(),
+                        cloudFiles = cloudState().copy(verifiedMatches = listOf(proof)),
+                        openCloud = { cloudOpened.value = true },
+                    )
+                }
+            }
+        }
+        compose.onNodeWithTag("files-source-cloud").performClick()
+        compose.onNodeWithText("local-photo.jpg").assertExists()
+        compose.onNodeWithText("cloud-holiday.jpg").assertDoesNotExist()
+        compose.onNodeWithText("local-photo.jpg").performClick()
+        compose.onNodeWithText("클라우드 보관함 열기").assertExists().performClick()
+        compose.runOnIdle { assertTrue(cloudOpened.value) }
     }
 
     private fun cloudState() = CloudFilesUiState(

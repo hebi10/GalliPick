@@ -157,7 +157,13 @@ private fun UnifiedMediaTile(
             item = local,
             selected = local.uri in selected && sourceFilter != GallerySourceFilter.CLOUD,
             toggle = { toggleDevice(local.uri) },
-            detail = { openDevice(local.uri) },
+            detail = {
+                if (sourceFilter == GallerySourceFilter.CLOUD && entry.cloud != null) {
+                    openCloud(entry.cloud)
+                } else {
+                    openDevice(local.uri)
+                }
+            },
             sortField = SortField.CAPTURED,
             listView = listView,
             dateMs = GalleryFileQuery.dateOf(entry, dateField) ?: 0L,
