@@ -1,0 +1,163 @@
+name: CLOUD-FILES-07 cloud gallery visual QA
+
+on:
+  pull_request:
+    branches: [feature/cloud-files-06-offline-cache-performance]
+    paths:
+      - 'app/**'
+      - '.github/workflows/cloud-files-07-visual-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-files-07-qa-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build QA APKs only once
+        run: gradle --no-daemon -PgallipickTestSigning=true assembleDebug assembleDebugAndroidTest --stacktrace --max-workers=2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cloud-files-07-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          retention-days: 3
+
+  capture:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: phone-portrait
+            kind: phone
+            size: 1080x2400
+            density: 420
+            font_scale: '1.0'
+          - name: phone-landscape
+            kind: phone
+            size: 2400x1080
+            density: 420
+            font_scale: '1.0'
+          - name: phone-160pct
+            kind: phone
+            size: 1080x2400
+            density: 420
+            font_scale: '1.6'
+          - name: tablet-portrait
+            kind: tablet
+            size: 1600x2560
+            density: 240
+            font_scale: '1.0'
+          - name: tablet-landscape
+            kind: tablet
+            size: 2560x1600
+            density: 240
+            font_scale: '1.0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+      - uses: actions/download-artifact@v4
+        with:
+          name: cloud-files-07-apks
+          path: apks
+      - name: Select installed emulator hardware
+        id: hardware
+        env:
+          DEVICE_KIND: ${{ matrix.kind }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess
+          catalog = subprocess.check_output(['avdmanager', 'list', 'device'], text=True)
+          options = ('pixel_6',) if os.environ['DEVICE_KIND'] == 'phone' else ('pixel_tablet', 'pixel_c', 'Nexus 10')
+          selected = next((v for v in options if re.search(r'id:\s*\d+\s+or\s+"' + re.escape(v) + '"', catalog)), None)
+          if not selected:
+              raise SystemExit('No matching phone/tablet AVD hardware profile')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('name=' + selected + '\n')
+          PY
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          profile: ${{ steps.hardware.outputs.name }}
+          disable-animations: true
+          script: |
+            adb shell wm size ${{ matrix.size }}
+            adb shell wm density ${{ matrix.density }}
+            adb shell settings put system font_scale ${{ matrix.font_scale }}
+            adb shell settings put secure show_ime_with_hard_keyboard 1
+            adb install -r apks/debug/app-debug.apk
+            adb install -r apks/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -r -e class com.hebi.gallipick.ui.CloudFiles07CaptureTest -e captureProfile ${{ matrix.name }} com.hebi.gallipick.test/androidx.test.runner.AndroidJUnitRunner > cloud-files-07-instrumentation.txt
+            cat cloud-files-07-instrumentation.txt
+            grep -E 'OK \(1 test\)' cloud-files-07-instrumentation.txt
+            mkdir -p cloud-qa-captures
+            adb exec-out run-as com.hebi.gallipick tar -C files/cloud-files-07-qa-captures -cf - . > cloud-files-07-qa.tar
+            tar -xf cloud-files-07-qa.tar -C cloud-qa-captures
+            export QA_EXPECTED_SIZE="${{ matrix.size }}"
+            python3 - <<'PY'
+            import json, os, pathlib, struct
+            root = pathlib.Path('cloud-qa-captures')
+            images = list(root.glob('*.png'))
+            manifests = list(root.glob('*-manifest.json'))
+            assert len(images) == 8, f'Expected 8 native UI screenshots, got {len(images)}'
+            assert len(manifests) == 1, 'Expected exactly one QA manifest'
+            m = json.loads(manifests[0].read_text(encoding='utf-8'))
+            assert m['captureCount'] == 8, m
+            width, height = map(int, os.environ['QA_EXPECTED_SIZE'].split('x'))
+            for image in images:
+                data = image.read_bytes()
+                assert data[:8] == bytes.fromhex('89504e470d0a1a0a')
+                assert struct.unpack('>II', data[16:24]) == (width, height), image.name
+                assert len(data) > 2000, image.name
+            print(json.dumps({'profile': m['profile'], 'screenshots': len(images), 'width': width,
+                              'height': height, 'fixture': m['fixture']}, ensure_ascii=False))
+            PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloud-files-07-${{ matrix.name }}
+          path: |
+            cloud-qa-captures/
+            cloud-files-07-instrumentation.txt
+          retention-days: 7
+          if-no-files-found: warn
