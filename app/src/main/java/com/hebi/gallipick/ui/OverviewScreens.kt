@@ -568,6 +568,8 @@ internal fun SettingsScreen(
     requestAccess: () -> Unit,
     openSettings: () -> Unit,
     openTrash: () -> Unit,
+    adsPrivacyOptionsRequired: Boolean = false,
+    onAdsPrivacyOptions: () -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
     var confirmClear by remember { mutableStateOf(false) }
@@ -694,6 +696,13 @@ internal fun SettingsScreen(
                 Text("초기화해도 사진·동영상 원본, 기존 사진 분석 결과, 보호 설정은 유지됩니다.",
                     color = Muted, style = MaterialTheme.typography.bodySmall)
                 ActionButton("사진 글자 색인 초기화", { confirmClearOcr = true })
+            }
+            if (adsPrivacyOptionsRequired) {
+                SettingsSection("광고 개인정보 선택") {
+                    Text("광고에 대한 개인정보 동의 여부를 다시 선택할 수 있습니다.",
+                        style = MaterialTheme.typography.bodySmall, color = Muted)
+                    ActionButton("광고 개인정보 선택 변경", onAdsPrivacyOptions)
+                }
             }
             SettingsSection("개인정보") {
                 Text("미디어와 분석 결과는 외부로 전송하지 않습니다. 인터넷 연결 없이 작동하며 서버에 파일을 업로드하지 않습니다.", style = MaterialTheme.typography.bodyMedium)
