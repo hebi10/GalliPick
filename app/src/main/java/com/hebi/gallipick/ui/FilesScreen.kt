@@ -157,7 +157,7 @@ internal fun FilesScreenContent(
                                             chosenCloud = null
                                             if (option == GallerySourceFilter.CLOUD) actions.clearSelection()
                                         }
-                                    }, Modifier.weight(1f), filled = sourceFilter == option)
+                                    }, Modifier.weight(1f).testTag("files-source-" + option.name.lowercase()), filled = sourceFilter == option)
                                 }
                             }
                         }
