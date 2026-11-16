@@ -118,9 +118,10 @@ internal fun FilesScreenContent(
     val selected = if (useUnified) galleryFiltered.mapNotNull { it.device }
         .filter { it.uri in state.selected && it.canTrash() }
         else filtered.filter { it.uri in state.selected && it.canTrash() }
+    val selectedUris = selected.mapTo(hashSetOf()) { it.uri }
     val verifiedSelected = if (useUnified) galleryFiltered.count { entry ->
         entry.source == com.hebi.gallipick.data.cloud.GallerySource.BOTH &&
-            entry.device?.uri in selected.map { it.uri }
+            entry.device?.uri in selectedUris
     } else 0
     val groupByDate = state.filter.groupByDate
     val dateGroups = remember(filtered, state.filter.dateField, state.filter.sortField, state.filter.sortDirection, groupByDate) {
