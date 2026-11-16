@@ -68,7 +68,6 @@ class CloudPlayPreflightTests(unittest.TestCase):
             check_firebase_cloud_configuration(self.sample_cloud(), "")
         with self.assertRaises(PreflightError):
             check_firebase_cloud_configuration("not-base64", "b" * 40)
-        other = self.sample_cloud().replace("gallipick-dev", "wrong-project")
         # Base64 JSON cannot be manipulated by text replacement; decode and re-encode.
         raw = json.loads(base64.b64decode(self.sample_cloud()))
         raw["project_info"]["project_id"] = "wrong-project"
