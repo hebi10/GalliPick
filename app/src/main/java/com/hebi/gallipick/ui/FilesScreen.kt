@@ -417,6 +417,11 @@ internal fun FilesScreenContent(
                     photos = photos.ifEmpty { listOf(original) },
                     backup = backup, choose = { chosenCloud = it }, dismiss = { chosenCloud = null },
                 )
+            } else if (original.mimeType.startsWith("video/") && uid != null && backup != null) {
+                CloudVideoViewer(
+                    uid = uid, original = original, backup = backup,
+                    dismiss = { chosenCloud = null },
+                )
             } else AlertDialog(
                 onDismissRequest = { chosenCloud = null },
                 containerColor = AppSurface,
