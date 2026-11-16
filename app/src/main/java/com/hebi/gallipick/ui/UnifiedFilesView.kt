@@ -106,7 +106,8 @@ internal fun UnifiedFilesList(
                 }
             } else {
                 items(entries, key = ::galleryItemKey) { item ->
-                    UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid)
+                    UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid,
+                        backup = backup, accountUid = accountUid)
                 }
             }
         }
@@ -128,7 +129,8 @@ internal fun UnifiedFilesList(
                 }
             } else {
                 listItems(entries, key = ::galleryItemKey) { item ->
-                    UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField)
+                    UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField,
+                        backup, accountUid)
                 }
             }
         }
