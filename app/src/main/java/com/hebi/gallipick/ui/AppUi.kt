@@ -69,7 +69,13 @@ internal fun GalliPickApp(
     val destinations = remember(cloudEnabled) { visibleDestinations(cloudEnabled) }
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.HOME) }
     val destination = if (selectedDestination in destinations) selectedDestination else Destination.HOME
-    val cloudFiles = rememberCloudFilesState(cloudConnection, active = destination == Destination.FILES)
+    val cloudFiles = rememberCloudFilesState(
+        cloudConnection,
+        active = destination == Destination.FILES,
+        repository = vm.repository,
+        deviceItems = if (state.loading || state.catalogError != null || state.access == MediaAccess.NONE)
+            emptyList() else state.items,
+    )
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var showDuplicates by rememberSaveable { mutableStateOf(false) }
     var showFolderStorage by rememberSaveable { mutableStateOf(false) }
