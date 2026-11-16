@@ -33,9 +33,8 @@ internal object GalleryFileQuery {
             }
         }
         return result.sortedWith { first, second ->
-            val primary = compareEntries(first, second, filter.sortField, filter.dateField)
-            val directed = if (filter.sortDirection == SortDirection.ASCENDING) primary else -primary
-            if (directed != 0) directed else stableKey(first).compareTo(stableKey(second))
+            val primary = compareEntries(first, second, filter.sortField, filter.sortDirection)
+            if (primary != 0) primary else stableKey(first).compareTo(stableKey(second))
         }
     }
 
@@ -106,25 +105,33 @@ internal object GalleryFileQuery {
         return true
     }
 
-    private fun compareEntries(a: GalleryEntry, b: GalleryEntry, sort: SortField, dateField: DateField): Int {
-        fun number(entry: GalleryEntry): Long? = when (sort) {
-            SortField.CAPTURED -> dateOf(entry, DateField.CAPTURED)
-            SortField.ADDED -> dateOf(entry, DateField.ADDED)
-            SortField.MODIFIED -> dateOf(entry, DateField.MODIFIED)
-            SortField.SIZE -> entry.sizeBytes
-            SortField.DURATION -> entry.device?.durationMs?.takeIf { it > 0 } ?: entry.cloud?.durationMs
-            SortField.PIXELS -> entry.device?.pixels?.takeIf { it > 0 }
-                ?: entry.cloud?.let { cloud -> cloud.width?.toLong()?.times(cloud.height ?: 0)?.takeIf { it > 0 } }
-            SortField.NAME -> null
+    private fun compareEntries(a: GalleryEntry, b: GalleryEntry, sort: SortField, direction: SortDirection): Int {
+        if (sort == SortField.NAME) {
+            val compared = a.displayName.compareTo(b.displayName, ignoreCase = true)
+            return if (direction == SortDirection.ASCENDING) compared else -compared
         }
-        if (sort == SortField.NAME) return a.displayName.compareTo(b.displayName, ignoreCase = true)
-        val av = number(a)
-        val bv = number(b)
+        val av = sortNumber(a, sort)
+        val bv = sortNumber(b, sort)
         if (av == null && bv == null) return 0
-        // Unknown metadata remains last for both sort directions.
-        if (av == null) return if (sort == SortField.CAPTURED || sort == SortField.MODIFIED) -1 else -1
-        if (bv == null) return 1
-        return av.compareTo(bv)
+        if (av == null) return 1
+        if (bv == null) return -1
+        val compared = av.compareTo(bv)
+        return if (direction == SortDirection.ASCENDING) compared else -compared
+    }
+
+    private fun sortNumber(entry: GalleryEntry, sort: SortField): Long? = when (sort) {
+        SortField.CAPTURED -> dateOf(entry, DateField.CAPTURED)
+        SortField.ADDED -> dateOf(entry, DateField.ADDED)
+        SortField.MODIFIED -> dateOf(entry, DateField.MODIFIED)
+        SortField.SIZE -> entry.sizeBytes
+        SortField.DURATION -> entry.device?.durationMs?.takeIf { it > 0 } ?: entry.cloud?.durationMs
+        SortField.PIXELS -> entry.device?.pixels?.takeIf { it > 0 }
+            ?: entry.cloud?.let { cloud ->
+                val width = cloud.width
+                val height = cloud.height
+                if (width != null && height != null) width.toLong() * height else null
+            }
+        SortField.NAME -> null
     }
 
     private fun stableKey(entry: GalleryEntry): String = when (val key = entry.key) {
