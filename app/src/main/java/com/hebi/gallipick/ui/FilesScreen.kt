@@ -33,6 +33,7 @@ import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.*
 import com.hebi.gallipick.data.cloud.CloudOriginal
+import com.hebi.gallipick.data.cloud.CloudGalleryPerformancePolicy
 import com.hebi.gallipick.data.cloud.GalleryFileQuery
 import com.hebi.gallipick.data.cloud.GallerySourceFilter
 import com.hebi.gallipick.data.cloud.combineGalleryCatalog
@@ -82,6 +83,9 @@ internal fun FilesScreenContent(
     var ocrQuery by rememberSaveable { mutableStateOf("") }
     var detailUri by rememberSaveable { mutableStateOf<String?>(null) }
     var sourceFilter by rememberSaveable { mutableStateOf(GallerySourceFilter.ALL) }
+    var visiblePages by rememberSaveable { mutableIntStateOf(1) }
+    var allowMeteredThumbnails by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.filter, sourceFilter, cloudFiles.accountUid) { visiblePages = 1 }
     var chosenCloud by remember(cloudFiles.accountUid) { mutableStateOf<CloudOriginal?>(null) }
     val gridState = rememberLazyGridState()
     LaunchedEffect(sourceFilter) { gridState.scrollToItem(0) }
@@ -115,6 +119,12 @@ internal fun FilesScreenContent(
     val galleryFiltered = remember(galleryItems, state.filter, sourceFilter) {
         GalleryFileQuery.apply(galleryItems, state.filter, sourceFilter)
     }
+    val visibleGallery = remember(galleryFiltered, visiblePages) {
+        galleryFiltered.take(CloudGalleryPerformancePolicy.visibleCount(galleryFiltered.size, visiblePages))
+    }
+    val autoLoadThumbnails = CloudGalleryPerformancePolicy.canLoadThumbnails(
+        cloudFiles.online, cloudFiles.unmetered, allowMeteredThumbnails,
+    )
     val selected = if (useUnified) galleryFiltered.mapNotNull { it.device }
         .filter { it.uri in state.selected && it.canTrash() }
         else filtered.filter { it.uri in state.selected && it.canTrash() }
@@ -236,6 +246,11 @@ internal fun FilesScreenContent(
                                                     "기기 파일은 로그인 없이 계속 사용할 수 있습니다.",
                                                     action = { ActionButton("클라우드에서 로그인", openCloud, filled = true) })
                                             }
+                                        galleryFiltered.isEmpty() && !cloudFiles.online && cloudFiles.accountUid != null ->
+                                            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                                EmptyState("인터넷 연결이 필요합니다",
+                                                    "이번 앱 사용 중 불러온 클라우드 목록이 없습니다. 기기 파일은 계속 이용할 수 있습니다.")
+                                            }
                                         galleryFiltered.isEmpty() && cloudFiles.loading ->
                                             Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                                 EmptyState("클라우드 파일을 불러오는 중입니다",
@@ -262,7 +277,23 @@ internal fun FilesScreenContent(
                                             else screenWidth
                                             Column(Modifier.weight(1f).fillMaxWidth()) {
                                                 if (cloudFiles.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                                                if (cloudFiles.failed) {
+                                                if (!cloudFiles.online) {
+                                                    Text(
+                                                        if (cloudFiles.cachedCatalog)
+                                                            "오프라인 · 이전에 불러온 파일 정보만 표시합니다. 클라우드 원본 감상에는 인터넷 연결이 필요합니다."
+                                                        else "오프라인 · 현재 접근 가능한 기기 파일만 표시합니다.",
+                                                        color = Muted, style = MaterialTheme.typography.bodySmall,
+                                                    )
+                                                } else if (!cloudFiles.unmetered && !allowMeteredThumbnails &&
+                                                    galleryFiltered.any { it.cloud != null }) {
+                                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                        Text("모바일 데이터 사용 중 · 자동 썸네일 요청을 제한했습니다.",
+                                                            Modifier.weight(1f), color = Muted,
+                                                            style = MaterialTheme.typography.bodySmall)
+                                                        TextAction("이번 화면에서 허용", { allowMeteredThumbnails = true })
+                                                    }
+                                                }
+                                                if (cloudFiles.failed && cloudFiles.online) {
                                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                                         Text("클라우드 일부 항목을 확인하지 못했습니다.",
                                                             Modifier.weight(1f), color = Muted,
@@ -276,14 +307,24 @@ internal fun FilesScreenContent(
                                                         color = Muted, style = MaterialTheme.typography.bodySmall)
                                                 }
                                                 UnifiedFilesList(
-                                                    entries = galleryFiltered, filter = state.filter, source = sourceFilter,
+                                                    entries = visibleGallery, filter = state.filter, source = sourceFilter,
                                                     gridView = gridView, wide = wide, availableWidth = availableGridWidth,
                                                     gridState = gridState, selected = state.selected,
                                                     toggleDevice = actions.toggleSelection, openDevice = { detailUri = it },
                                                     openCloud = { chosenCloud = it },
                                                     backup = cloudFiles.backup, accountUid = cloudFiles.accountUid,
+                                                    autoLoadThumbnails = autoLoadThumbnails,
                                                     modifier = Modifier.weight(1f),
                                                 )
+                                                if (visibleGallery.size < galleryFiltered.size) {
+                                                    Row(Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically) {
+                                                        Text("표시 ${visibleGallery.size}/${galleryFiltered.size}개",
+                                                            style = MaterialTheme.typography.bodySmall, color = Muted)
+                                                        TextAction("다음 파일 보기", { visiblePages++ })
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -421,7 +462,7 @@ internal fun FilesScreenContent(
             }
 
             if (useUnified && galleryFiltered.isNotEmpty() && selected.isEmpty()) {
-                Text("표시 ${galleryFiltered.size}개 · 기기 파일만 선택하여 정리할 수 있습니다.",
+                Text("목록 ${galleryFiltered.size}개 · 기기 파일만 선택하여 정리할 수 있습니다.",
                     Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     color = Muted, style = MaterialTheme.typography.bodySmall)
             } else if (!useUnified && catalogVisible && filtered.isNotEmpty() && selected.isEmpty()) {
@@ -451,11 +492,12 @@ internal fun FilesScreenContent(
                     uid = uid, original = original,
                     photos = photos.ifEmpty { listOf(original) },
                     backup = backup, choose = { chosenCloud = it }, dismiss = { chosenCloud = null },
+                    offline = !cloudFiles.online,
                 )
             } else if (original.mimeType.startsWith("video/") && uid != null && backup != null) {
                 CloudVideoViewer(
                     uid = uid, original = original, backup = backup,
-                    dismiss = { chosenCloud = null },
+                    dismiss = { chosenCloud = null }, offline = !cloudFiles.online,
                 )
             } else AlertDialog(
                 onDismissRequest = { chosenCloud = null },
