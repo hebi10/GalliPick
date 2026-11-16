@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hebi.gallipick.data.cloud.cloudPhotoSupportsViewer
+import com.hebi.gallipick.data.cloud.isCloudVideoStreamable
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudBackup
 import com.hebi.gallipick.data.cloud.CloudBackupException
@@ -65,6 +66,7 @@ private fun CloudLibraryControls(
     var catalogError by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var selected by remember { mutableStateOf<CloudOriginal?>(null) }
+    var playingVideo by remember { mutableStateOf<CloudOriginal?>(null) }
     var action by remember { mutableStateOf<LibraryAction?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var restored by remember { mutableStateOf<Pair<Uri, String>?>(null) }
@@ -135,6 +137,9 @@ private fun CloudLibraryControls(
                             ActionButton("미리보기", { action = LibraryAction(item, preview = true) },
                                 enabled = action == null)
                         }
+                        if (isCloudVideoStreamable(item)) {
+                            ActionButton("앱에서 바로 재생", { playingVideo = item }, enabled = action == null)
+                        }
                         ActionButton("기기에 복원", { selected = item }, enabled = action == null)
                     }
                 }
@@ -143,6 +148,10 @@ private fun CloudLibraryControls(
         if (action != null) TextAction("작업 취소", { action = null; status = "작업 취소를 요청했습니다." })
         status?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Muted) }
         restored?.let { (uri, type) -> ActionButton("복원한 파일 보기", { onOpenRestored(uri, type) }) }
+    }
+
+    playingVideo?.let { item ->
+        CloudVideoViewer(uid, item, backup, dismiss = { playingVideo = null })
     }
 
     selected?.let { item ->

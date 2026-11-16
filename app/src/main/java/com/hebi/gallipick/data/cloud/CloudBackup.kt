@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.os.SystemClock
 import com.hebi.gallipick.data.MediaStoreReader
 import com.hebi.gallipick.domain.MediaHasher
 import com.hebi.gallipick.domain.MediaItem
@@ -90,6 +91,30 @@ internal class CloudBackup(
         val token = tokenFor(expectedUid)
         check()
         transport.listOriginals(token)
+    }
+
+    /**
+     * Authorizes direct HTTP byte-range playback for a verified video without
+     * creating a gallery file. The URL is a short-lived private bearer token.
+     *
+     * Streamed ranges cannot be fully SHA-256 checked before decoding; the
+     * object generation and metadata are validated before URL issuance.
+     */
+    suspend fun openVideoStream(original: CloudOriginal, expectedUid: String): CloudVideoStreamCapability {
+        if (!isCloudVideoStreamable(original)) failBackup(CloudBackupResult.UNSUPPORTED_MEDIA)
+        return forAccount(expectedUid, 40_000L) { check ->
+            val token = tokenFor(expectedUid)
+            check()
+            val target = transport.getDownload(expectedUid, token, original)
+            check()
+            transport.verifyVideoRange(target, original, check)
+            check()
+            CloudVideoStreamCapability(
+                signedUrl = target.url,
+                generation = target.generation,
+                obtainedAtElapsedMs = SystemClock.elapsedRealtime(),
+            )
+        }
     }
 
     suspend fun restore(original: CloudOriginal, expectedUid: String): Uri {
