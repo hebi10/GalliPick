@@ -46,8 +46,10 @@ internal data class GalleryEntry(
         MediaKind.VIDEO
     } else MediaKind.PHOTO
     val sizeBytes: Long get() = device?.sizeBytes ?: checkNotNull(cloud).sizeBytes
-    val capturedAtMs: Long get() = device?.capturedAt?.takeIf { it > 0 }
-        ?: cloud?.capturedAtMs ?: cloud?.verifiedAtMs ?: 0L
+    // A verified upload timestamp is not a capture timestamp.
+    val capturedAtMs: Long? get() = device?.dateTakenMs?.takeIf { it > 0 } ?: cloud?.capturedAtMs
+    val sortTimeMs: Long get() = capturedAtMs ?: device?.dateAddedMs?.takeIf { it > 0 }
+        ?: cloud?.verifiedAtMs ?: 0L
     val sourceFolders: List<String> get() = (
         listOfNotNull(device?.relativePath?.let(::normalizeCloudFolderPath)) +
             cloud?.sourceFolders.orEmpty()
@@ -84,6 +86,7 @@ internal fun combineGalleryCatalog(
                     proof.localVolumeVersion == device.volumeVersion &&
                     proof.sha256 == it.sha256 &&
                     device.sizeBytes == it.sizeBytes &&
+                    device.mimeType.equals(it.mimeType, ignoreCase = true) &&
                     it.uploadId !in accounted
             }
         }
