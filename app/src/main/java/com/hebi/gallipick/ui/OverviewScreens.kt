@@ -705,7 +705,12 @@ internal fun SettingsScreen(
                 }
             }
             SettingsSection("개인정보") {
-                Text("미디어와 분석 결과는 외부로 전송하지 않습니다. 인터넷 연결 없이 작동하며 서버에 파일을 업로드하지 않습니다.", style = MaterialTheme.typography.bodyMedium)
+                Text("기기의 파일 정리와 분석 결과는 기기에서 처리합니다. 사용자가 클라우드 백업을 이용하면 선택한 원본과 촬영 정보가 서버에 전송됩니다.",
+                    style = MaterialTheme.typography.bodyMedium)
+                if (adsPrivacyOptionsRequired) {
+                    Text("광고 요청에 사용되는 기기 정보와 광고 식별자 등의 처리 기준은 개인정보처리방침을 참고해 주세요.",
+                        style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
                 Text("사진 위치정보 접근은 원본 사진의 중복 검사에만 사용합니다. GPS 위치를 추적하거나 현재 위치를 수집하지 않습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
                 ActionButton("개인정보처리방침", { uriHandler.openUri("https://hebi10.github.io/GalliPick/privacy.html") })
             }
