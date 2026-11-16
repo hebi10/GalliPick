@@ -13,14 +13,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Pause
-import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -131,7 +129,7 @@ internal fun CloudVideoViewer(
         capability = null
         try {
             val next = backup.openVideoStream(original, uid)
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                 capability = next
             } else {
                 pausedByLifecycle = true
@@ -232,7 +230,9 @@ internal fun CloudVideoViewer(
                                 Text(if (pausedByLifecycle) "앱 복귀 후 다시 연결해 주세요."
                                     else message ?: "스트리밍 연결을 확인 중입니다.",
                                     color = Color.White)
-                                TextAction("다시 연결", ::reconnect)
+                                TextButton(onClick = ::reconnect) {
+                                    Text("다시 연결", color = Color.White)
+                                }
                             }
                         }
                     }
