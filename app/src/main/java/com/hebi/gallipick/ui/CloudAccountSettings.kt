@@ -60,12 +60,29 @@ internal fun CloudScreen(
                 else -> {
                     content(CloudRoute.OVERVIEW)
                     if (access == CloudAccessState.SIGNED_IN) {
-                        CloudRoute.entries.filter { it != CloudRoute.OVERVIEW }.forEach { destination ->
+                        val destinations = listOf(CloudRoute.BILLING) +
+                            CloudRoute.entries.filter { it != CloudRoute.OVERVIEW && it != CloudRoute.BILLING }
+                        destinations.forEach { destination ->
                             val available = when (destination) {
                                 CloudRoute.BILLING -> connection.billing != null
                                 else -> connection.backup != null
                             }
-                            if (available) CloudActionCard(destination) { requestedRoute = destination }
+                            if (available) {
+                                CloudActionCard(destination) { requestedRoute = destination }
+                            } else if (destination == CloudRoute.BILLING) {
+                                CloudAccountCard {
+                                    Text("요금제·결제", style = MaterialTheme.typography.titleSmall)
+                                    CloudStatusMessage("이 빌드에서는 결제 기능을 사용할 수 없습니다.")
+                                }
+                            }
+                        }
+                    } else if (access == CloudAccessState.SIGNED_OUT) {
+                        CloudAccountCard {
+                            Text("요금제·결제", style = MaterialTheme.typography.titleSmall)
+                            CloudStatusMessage(
+                                if (connection.billing == null) "이 빌드에서는 결제 기능을 사용할 수 없습니다."
+                                else "Google 로그인 후 요금제와 구독 상태를 확인할 수 있습니다."
+                            )
                         }
                     }
                 }

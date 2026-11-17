@@ -100,12 +100,13 @@ class ReferenceNavigationFlowTest {
         tab("정리").performClick()
         compose.onNodeWithContentDescription("유사 사진 분석 열기")
             .performScrollTo().performClick()
-        compose.onNodeWithText("사진 분석").assertIsDisplayed()
+        compose.onNodeWithTag("similar-analysis-status").assertExists()
+        compose.onNodeWithText("비슷한 사진 찾기").assertExists()
         compose.onAllNodes(tabMatcher).assertCountEquals(4)
         tab("정리").assertIsSelected()
         compose.onNodeWithContentDescription("사진 분석 닫기").performClick()
         compose.onNodeWithContentDescription("유사 사진 분석 열기").assertExists()
-        compose.onNodeWithText("사진 분석").assertDoesNotExist()
+        compose.onNodeWithTag("similar-analysis-status").assertDoesNotExist()
     }
 
     @Test fun homeDuplicateShortcutOpensCleanupChildWithoutReintroducingAFifthTab() {

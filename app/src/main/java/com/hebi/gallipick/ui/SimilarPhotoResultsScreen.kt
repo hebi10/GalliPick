@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -13,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -55,57 +57,72 @@ internal fun SimilarPhotoResultsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item("summary") {
-                    Column(
-                        Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(GalliUiMetrics.cardCorner))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
+                    SimilarSectionCard(Modifier.testTag("similar-results-summary"), emphasized = true) {
+                        Text("분석 결과", style = MaterialTheme.typography.titleSmall)
                         Text("${groups.size}개 묶음 · ${count}장", style = MaterialTheme.typography.headlineSmall)
-                        Text(explanation,
-                            style = MaterialTheme.typography.bodySmall, color = Muted)
+                        Text(explanation, style = MaterialTheme.typography.bodySmall, color = Muted)
                     }
                 }
-                items(groups, key = { it.id }) { group ->
+                item("section-title") {
+                    Text("사진 묶음", style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.semantics { heading() })
+                }
+                itemsIndexed(groups, key = { _, group -> group.id }) { index, group ->
                     val bestCut = remember(group) { BestCutRecommender.assess(group) }
-                    Column(
-                        Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(GalliUiMetrics.cardCorner))
-                            .semantics { role = Role.Button; contentDescription = if (groupTitle == "유사 사진 묶음") "${group.photos.size}장 유사 사진 비교"
-                                else "${group.photos.size}장 ${groupTitle} 비교" }
-                            .plainClick(action = { onCompare(group.id) })
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    val selectedInGroup = group.items.count { it.uri in selectedUris }
+                    SimilarSectionCard(
+                        modifier = Modifier.testTag("similar-results-group-${group.id}")
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = if (groupTitle == "유사 사진 묶음")
+                                    "${group.photos.size}장 유사 사진 비교"
+                                else "${group.photos.size}장 ${groupTitle} 비교"
+                            }
+                            .plainClick(action = { onCompare(group.id) }),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(groupTitle, style = MaterialTheme.typography.titleSmall)
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("${groupTitle} ${index + 1}", style = MaterialTheme.typography.titleSmall)
                                 Text(
                                     (if (showCaptureTime) dateLabel(group.photos.first().item.dateTakenMs) + " · " else "") +
                                         "사진 ${group.photos.size}장 · ${bytesLabel(group.totalBytes)}",
                                     style = MaterialTheme.typography.bodySmall, color = Muted,
                                 )
+                                if (selectedInGroup > 0) {
+                                    Text("정리 후보 ${selectedInGroup}장 선택됨",
+                                        style = MaterialTheme.typography.labelMedium, color = Primary)
+                                }
                             }
                             GalliIcon(Icons.Outlined.ChevronRight, null, Modifier.size(22.dp))
                         }
-                        val recommended = group.photos.firstOrNull {
-                            it.item.uri == bestCut.recommendedUri
+
+                        val recommended = group.photos.firstOrNull { it.item.uri == bestCut.recommendedUri }
+                        Column(
+                            Modifier.fillMaxWidth().testTag("similar-results-recommendation")
+                                .background(Panel, RoundedCornerShape(GalliUiMetrics.buttonCorner))
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            if (recommended != null) {
+                                Text("추천 사진 · ${recommended.item.displayName}",
+                                    style = MaterialTheme.typography.labelMedium, color = Ink,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(bestCut.reasons.joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall, color = Muted,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            } else {
+                                Text("판단 보류 · ${bestCut.summary}",
+                                    style = MaterialTheme.typography.bodySmall, color = Muted)
+                            }
                         }
-                        if (recommended != null) {
-                            Text("추천 사진 · ${recommended.item.displayName}",
-                                style = MaterialTheme.typography.labelMedium, color = Primary,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(bestCut.reasons.joinToString(" · "),
-                                style = MaterialTheme.typography.bodySmall, color = Muted,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        } else {
-                            Text("판단 보류 · ${bestCut.summary}",
-                                style = MaterialTheme.typography.bodySmall, color = Muted)
-                        }
+
+                        Text("묶음 사진", style = MaterialTheme.typography.labelMedium, color = Ink)
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(7.dp),
                             contentPadding = PaddingValues(vertical = 2.dp),
                         ) {
                             items(group.photos, key = { it.item.uri }) { photo ->
-                                Column(Modifier.width(112.dp)) {
+                                Column(Modifier.width(112.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     MediaThumbnail(photo.item, Modifier.fillMaxWidth().height(94.dp))
                                     Text(photo.item.displayName, style = MaterialTheme.typography.labelSmall,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -118,12 +135,19 @@ internal fun SimilarPhotoResultsScreen(
                                 }
                             }
                         }
-                        Text("사진 비교", style = MaterialTheme.typography.labelMedium, color = Primary)
+                        Row(
+                            Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(GalliUiMetrics.buttonCorner))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("사진 비교", style = MaterialTheme.typography.labelMedium,
+                                color = Ink, modifier = Modifier.weight(1f))
+                            GalliIcon(Icons.Outlined.ChevronRight, null, Modifier.size(18.dp))
+                        }
                     }
                 }
                 item("caution") {
-                    Text(caution,
-                        style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Text(caution, style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
             }
         }

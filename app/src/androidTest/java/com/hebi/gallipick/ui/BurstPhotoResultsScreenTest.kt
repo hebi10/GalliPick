@@ -43,7 +43,7 @@ class BurstPhotoResultsScreenTest {
             }
         }
         compose.onNodeWithText("연속 촬영 사진").assertIsDisplayed()
-        compose.onNodeWithText("연속 촬영 묶음").assertExists()
+        compose.onNodeWithText("연속 촬영 묶음 1").assertExists()
         compose.onNodeWithText(dateLabel(group.photos.first().item.dateTakenMs), substring = true)
             .assertExists()
         compose.onNodeWithContentDescription("2장 연속 촬영 묶음 비교")
@@ -94,8 +94,8 @@ class BurstPhotoResultsScreenTest {
         compose.onNodeWithText("연속 촬영 묶음 1 / 1").assertExists()
         compose.onNodeWithText("정리 후보 선택").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("shot-1"), selected.value) }
-        compose.onNodeWithContentDescription("shot-2.jpg 미리보기 선택").performClick()
-        compose.onNodeWithText("정리 후보 선택").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("shot-2.jpg 미리보기 선택").performScrollTo().performClick()
+        compose.onNodeWithText("정리 후보 선택").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("묶음에서 최소 한 장은 남겨야 합니다.").assertExists()
     }
 

@@ -8,6 +8,7 @@ internal interface CloudBilling {
 }
 
 internal interface CloudBillingSession : Closeable {
+    suspend fun loadPlan(): CloudBillingPlan
     suspend fun load(): CloudBillingSnapshot
     suspend fun recover(): CloudBillingUpdate
     suspend fun purchase(activity: Activity, offer: CloudBillingOffer): CloudBillingUpdate

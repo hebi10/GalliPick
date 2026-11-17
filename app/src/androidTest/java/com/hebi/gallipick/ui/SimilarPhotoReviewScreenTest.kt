@@ -53,6 +53,11 @@ class SimilarPhotoReviewScreenTest {
                 }
             }
         }
+        compose.onNodeWithTag("similar-compare-summary").assertExists()
+        compose.onNodeWithTag("similar-compare-recommendation").assertExists()
+        compose.onNodeWithTag("similar-compare-choices").assertExists()
+        compose.onNodeWithTag("similar-compare-info").assertExists()
+        compose.onNodeWithTag("similar-compare-selection").assertExists()
         compose.onNodeWithText("추천 사진").performScrollTo().assertExists()
         compose.onNodeWithText("추천 이유 보기").performScrollTo().performClick()
         compose.onNodeWithText("선명도 추정값이 상대적으로 높습니다.")
@@ -72,6 +77,9 @@ class SimilarPhotoReviewScreenTest {
                 }
             }
         }
+        compose.onNodeWithTag("similar-results-summary").assertExists()
+        compose.onNodeWithTag("similar-results-group-sample-group").assertExists()
+        compose.onNodeWithTag("similar-results-recommendation", useUnmergedTree = true).assertExists()
         compose.onNodeWithText("1개 묶음", substring = true).assertExists()
         compose.onNodeWithContentDescription("3장 유사 사진 비교").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(group.id, opened); assertEquals(0, trashCount) }
@@ -98,13 +106,16 @@ class SimilarPhotoReviewScreenTest {
         }
         compose.onNodeWithText("정리 후보 선택").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("catA"), chosen.value) }
-        compose.onNodeWithContentDescription("catB.jpg 미리보기 선택").performClick()
+        selectComparisonThumbnail(1, "catB.jpg")
         compose.onNodeWithText("정리 후보 선택").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("catA", "catB"), chosen.value) }
-        compose.onNodeWithContentDescription("catC.jpg 미리보기 선택").performClick()
-        compose.onNodeWithText("정리 후보 선택").assertIsNotEnabled()
+        selectComparisonThumbnail(2, "catC.jpg")
+        compose.onNodeWithTag("similar-compare-selection").assertExists()
+        compose.onNodeWithTag("similar-compare-focused-file").assertTextEquals("catC.jpg")
+        compose.onNodeWithTag("similar-compare-candidate-action").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("묶음에서 최소 한 장은 남겨야 합니다.").assertExists()
-        compose.onNodeWithContentDescription("catA.jpg 미리보기 선택").performClick()
+        compose.runOnIdle { assertEquals(setOf("catA", "catB"), chosen.value) }
+        selectComparisonThumbnail(0, "catA.jpg")
         compose.onNodeWithText("선택 취소 · 남길 사진으로 지정").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("catB"), chosen.value) }
     }
@@ -127,6 +138,9 @@ class SimilarPhotoReviewScreenTest {
             SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
         ).fetchSemanticsNodes()
         assertEquals("Photo detail and metadata must share one vertical page scroll", 1, verticalScrolls.size)
+        compose.onNodeWithTag("similar-compare-preview").assertExists()
+        compose.onNodeWithTag("similar-compare-info").assertExists()
+        compose.onNodeWithTag("similar-compare-selection").assertExists()
         compose.onNodeWithContentDescription("유사 사진 가로 비교 목록").assertExists()
         compose.onNodeWithText("정리 후보 선택").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("원본 사진 외부 앱으로 열기").performScrollTo().assertIsDisplayed()
@@ -178,18 +192,24 @@ class SimilarPhotoReviewScreenTest {
         compose.onNodeWithContentDescription("A/B 사진 비교 전환").performClick()
         compose.onNodeWithContentDescription("A 사진 미리보기").assertExists()
         compose.onNodeWithContentDescription("B 사진 미리보기").assertExists()
-        compose.onNodeWithContentDescription("catC.jpg 미리보기 선택").performClick()
+        selectComparisonThumbnail(2, "catC.jpg")
         compose.runOnIdle { assertEquals(0, selectionCalls) }
         compose.onNodeWithText("A 정리 후보 선택").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("catA"), selected.value) }
         compose.onNodeWithContentDescription("슬라이더 비교 모드").performScrollTo().performClick()
         compose.onNodeWithContentDescription("A/B 슬라이더 위치").assertExists()
-        compose.onNodeWithContentDescription("catB.jpg 미리보기 선택").performScrollTo().performClick()
+        selectComparisonThumbnail(1, "catB.jpg")
         compose.onNodeWithContentDescription("A/B 슬라이더 위치").assertExists()
         compose.onNodeWithContentDescription("A/B 사진 비교 전환").performClick()
         compose.onNodeWithText("선택 취소 · 남길 사진으로 지정")
             .performScrollTo().assertIsDisplayed()
         compose.runOnIdle { assertEquals(setOf("catA"), selected.value) }
+    }
+
+    private fun selectComparisonThumbnail(index: Int, name: String) {
+        compose.onNodeWithTag("similar-compare-choices").performScrollTo()
+        compose.onNodeWithContentDescription("유사 사진 가로 비교 목록").performScrollToIndex(index)
+        compose.onNodeWithContentDescription("$name 미리보기 선택").assertIsDisplayed().performClick()
     }
 
     @Test fun abZoomSyncAndTabletPreviewUseRealDecodableMedia() {

@@ -45,7 +45,10 @@ internal enum class CloudBackupResult {
     QUOTA_REACHED, TEST_ACCESS_REQUIRED, NETWORK_ERROR, INTEGRITY_ERROR, DEVICE_STORAGE_ERROR, FAILED,
 }
 
-internal class CloudBackupException(val result: CloudBackupResult) : Exception()
+internal class CloudBackupException(
+    val result: CloudBackupResult,
+    val permissionDenied: Boolean = false,
+) : Exception()
 
 internal data class CloudAutoBackupTransfer(val folder: CloudAutoBackupFolder, val wifiNetwork: Network)
 

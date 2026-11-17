@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.*
@@ -44,7 +46,9 @@ internal fun CleanupHistoryScreen(
                 color = Muted, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(12.dp))
             if (entries.isEmpty()) {
-                EmptyState("정리 기록이 없습니다", "확인된 휴지통 이동이나 복원 작업이 이곳에 표시됩니다.")
+                Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    EmptyState("정리 기록이 없습니다", "확인된 휴지통 이동이나 복원 작업이 이곳에 표시됩니다.")
+                }
             } else {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("총 ${entries.size}건", style = MaterialTheme.typography.titleMedium,

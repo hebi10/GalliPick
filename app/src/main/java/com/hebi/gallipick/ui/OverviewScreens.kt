@@ -568,6 +568,8 @@ internal fun SettingsScreen(
     requestAccess: () -> Unit,
     openSettings: () -> Unit,
     openTrash: () -> Unit,
+    adsPrivacyOptionsRequired: Boolean = false,
+    onAdsPrivacyOptions: () -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
     var confirmClear by remember { mutableStateOf(false) }
@@ -695,8 +697,19 @@ internal fun SettingsScreen(
                     color = Muted, style = MaterialTheme.typography.bodySmall)
                 ActionButton("사진 글자 색인 초기화", { confirmClearOcr = true })
             }
+            if (adsPrivacyOptionsRequired) {
+                SettingsSection("광고 개인정보 선택") {
+                    Text("광고에 대한 개인정보 동의 여부를 다시 선택할 수 있습니다.",
+                        style = MaterialTheme.typography.bodySmall, color = Muted)
+                    ActionButton("광고 개인정보 선택 변경", onAdsPrivacyOptions)
+                }
+            }
             SettingsSection("개인정보") {
                 Text("기기 파일 정리·검색·중복 분석은 기기에서 처리합니다. 클라우드 백업을 선택하면 해당 사진·동영상 원본과 파일 정보가 서버에 전송됩니다.", style = MaterialTheme.typography.bodyMedium)
+                if (adsPrivacyOptionsRequired) {
+                    Text("광고 요청에 사용되는 기기 정보와 광고 식별자 등의 처리 기준은 개인정보처리방침을 참고해 주세요.",
+                        style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
                 Text("사진 위치정보 접근은 원본 사진의 중복 검사에만 사용합니다. GPS 위치를 추적하거나 현재 위치를 수집하지 않습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
                 ActionButton("개인정보처리방침", { uriHandler.openUri("https://hebi10.github.io/GalliPick/privacy.html") })
             }
