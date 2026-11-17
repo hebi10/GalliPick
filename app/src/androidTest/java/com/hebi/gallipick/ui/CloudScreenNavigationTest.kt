@@ -1,7 +1,6 @@
 package com.hebi.gallipick.ui
 
 import androidx.compose.material3.Text
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
