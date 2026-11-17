@@ -29,8 +29,8 @@ jobs:
   prepare:
     if: >-
       github.repository == 'hebi10/GalliPick' &&
-      (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') ||
-      (github.ref == 'refs/heads/main' && (contains(github.event.head_commit.message, '[deploy-internal]') || contains(github.event.head_commit.message, '[deploy-closed]'))))
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -40,6 +40,17 @@ jobs:
       tag: ${{ steps.source.outputs.tag }}
       commit: ${{ steps.source.outputs.commit }}
     steps:
+      - name: RU-02 reject legacy Play publishing before any credential access
+        env:
+          LEGACY_MODE: ${{ inputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$LEGACY_MODE" == "deploy" ]]; then
+            echo "::error::Legacy upload is disabled. Use OPS-04 for internal or OPS-05 for closed."
+            exit 1
+          fi
+          case "$LEGACY_MODE" in check|build) ;; *) exit 1 ;; esac
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
