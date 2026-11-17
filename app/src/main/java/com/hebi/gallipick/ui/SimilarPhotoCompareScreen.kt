@@ -76,21 +76,14 @@ internal fun SimilarPhotoCompareScreen(
             }
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(
-                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(GalliUiMetrics.cardCorner))
-                    .padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
+            SimilarSectionCard(Modifier.testTag("similar-compare-summary"), emphasized = true) {
                 Text("$groupTitle ${groupIndex} / ${groupCount}", style = MaterialTheme.typography.titleSmall)
                 Text("${group.photos.size}장 · 남길 사진 ${keptCount}장 · 정리 후보 ${selectedCount}장",
                     style = MaterialTheme.typography.bodySmall, color = Muted)
                 Text(explanation,
                     style = MaterialTheme.typography.bodySmall, color = Muted)
             }
-            Column(
-                Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(GalliUiMetrics.cardCorner))
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
+            SimilarSectionCard(Modifier.testTag("similar-compare-recommendation")) {
                 Text(if (suggested != null) "추천 사진" else "판단 보류",
                     style = MaterialTheme.typography.titleSmall, color = Primary)
                 if (suggested != null) {
@@ -115,7 +108,9 @@ internal fun SimilarPhotoCompareScreen(
                 Text("선명도·노출은 표본 기반 추정이며 사진 의도에 따라 다를 수 있습니다. 추천만으로 정리 후보가 선택되지는 않습니다.",
                     style = MaterialTheme.typography.bodySmall, color = Muted)
             }
-            LazyRow(Modifier.fillMaxWidth().semantics { contentDescription = "유사 사진 가로 비교 목록" },
+            SimilarSectionCard(Modifier.testTag("similar-compare-choices")) {
+                Text("비교할 사진 선택", style = MaterialTheme.typography.titleSmall)
+                LazyRow(Modifier.fillMaxWidth().semantics { contentDescription = "유사 사진 가로 비교 목록" },
                 contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -145,8 +140,11 @@ internal fun SimilarPhotoCompareScreen(
                             color = if (selected) Primary else Muted)
                     }
                 }
+                }
             }
             if (compareAB && second != null) {
+                SimilarSectionCard(Modifier.testTag("similar-compare-preview")) {
+                    Text("A/B 사진 비교", style = MaterialTheme.typography.titleSmall)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Text("교체할 사진 선택", style = MaterialTheme.typography.labelMedium, color = Muted)
@@ -169,58 +167,70 @@ internal fun SimilarPhotoCompareScreen(
                     onOpenMedia = onOpenMedia,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                }
             } else {
             val details: @Composable () -> Unit = {
-                Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("선택한 사진 정보", style = MaterialTheme.typography.titleSmall, color = Muted)
-                    Text(focused.displayName, style = MaterialTheme.typography.titleSmall,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text("${bytesLabel(focused.sizeBytes)} · ${focused.width} × ${focused.height}",
-                        style = MaterialTheme.typography.bodyMedium)
-                    Text("${if (focused.dateTakenMs > 0) "촬영일" else "추가일"} ${dateLabel(focused.capturedAt)}",
-                        style = MaterialTheme.typography.bodySmall, color = Muted)
-                    Text(focused.relativePath.ifBlank { "폴더 정보 없음" }, style = MaterialTheme.typography.bodySmall,
-                        color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    HorizontalDivider(color = Line)
-                    Text(if (chosen) "정리 후보 · 선택됨" else "남길 사진 · 유지",
-                        style = MaterialTheme.typography.titleSmall, color = Primary)
-                    val eligible = SimilarPhotoReviewPolicy.allowed(focused, protectedFolders)
-                    val maySelect = SimilarPhotoReviewPolicy.maySelect(
-                        group, selectedUris, focused.uri, protectedFolders
-                    )
-                    ActionButton(
-                        if (chosen) "선택 취소 · 남길 사진으로 지정" else "정리 후보 선택",
-                        { onToggleCandidate(focused.uri) },
-                        Modifier.fillMaxWidth(),
-                        filled = !chosen,
-                        enabled = chosen || eligible && maySelect,
-                    )
-                    if (!eligible) {
-                        Text("보호 또는 즐겨찾기 사진은 정리 후보가 될 수 없습니다.",
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SimilarSectionCard(Modifier.testTag("similar-compare-info")) {
+                        Text("선택한 사진 정보", style = MaterialTheme.typography.titleSmall)
+                        Text(focused.displayName, style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("${bytesLabel(focused.sizeBytes)} · ${focused.width} × ${focused.height}",
+                            style = MaterialTheme.typography.bodyMedium)
+                        Text("${if (focused.dateTakenMs > 0) "촬영일" else "추가일"} ${dateLabel(focused.capturedAt)}",
                             style = MaterialTheme.typography.bodySmall, color = Muted)
-                    } else if (!chosen && !maySelect) {
-                        Text("묶음에서 최소 한 장은 남겨야 합니다.",
-                            style = MaterialTheme.typography.bodySmall, color = Muted)
+                        Text(focused.relativePath.ifBlank { "폴더 정보 없음" },
+                            style = MaterialTheme.typography.bodySmall, color = Muted,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        TextButton(onClick = { onOpenMedia(focused) }, modifier = Modifier.fillMaxWidth()) {
+                            GalliIcon(Icons.Outlined.OpenInNew, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("원본 사진 외부 앱으로 열기")
+                        }
                     }
-                    TextButton(onClick = { onOpenMedia(focused) }, modifier = Modifier.fillMaxWidth()) {
-                        GalliIcon(Icons.Outlined.OpenInNew, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("원본 사진 외부 앱으로 열기")
+                    SimilarSectionCard(Modifier.testTag("similar-compare-selection")) {
+                        Text("정리 상태", style = MaterialTheme.typography.titleSmall)
+                        Text(if (chosen) "정리 후보 · 선택됨" else "남길 사진 · 유지",
+                            style = MaterialTheme.typography.titleSmall, color = Primary)
+                        val eligible = SimilarPhotoReviewPolicy.allowed(focused, protectedFolders)
+                        val maySelect = SimilarPhotoReviewPolicy.maySelect(
+                            group, selectedUris, focused.uri, protectedFolders
+                        )
+                        ActionButton(
+                            if (chosen) "선택 취소 · 남길 사진으로 지정" else "정리 후보 선택",
+                            { onToggleCandidate(focused.uri) },
+                            Modifier.fillMaxWidth(),
+                            filled = !chosen,
+                            enabled = chosen || eligible && maySelect,
+                        )
+                        if (!eligible) {
+                            Text("보호 또는 즐겨찾기 사진은 정리 후보가 될 수 없습니다.",
+                                style = MaterialTheme.typography.bodySmall, color = Muted)
+                        } else if (!chosen && !maySelect) {
+                            Text("묶음에서 최소 한 장은 남겨야 합니다.",
+                                style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
                     }
                 }
             }
             if (horizontal) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.Top) {
-                    Box(Modifier.weight(1f).height(previewHeight).testTag("비교 사진 미리보기"),
-                        contentAlignment = Alignment.Center) {
-                        MediaThumbnail(focused, Modifier.fillMaxSize(), ContentScale.Fit)
+                    SimilarSectionCard(Modifier.weight(1f).testTag("similar-compare-preview")) {
+                        Text("사진 미리보기", style = MaterialTheme.typography.titleSmall)
+                        Box(Modifier.fillMaxWidth().height(previewHeight).testTag("비교 사진 미리보기"),
+                            contentAlignment = Alignment.Center) {
+                            MediaThumbnail(focused, Modifier.fillMaxSize(), ContentScale.Fit)
+                        }
                     }
                     Column(Modifier.weight(1f)) { details() }
                 }
             } else {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MediaThumbnail(focused, Modifier.fillMaxWidth().height(previewHeight), ContentScale.Fit)
+                    SimilarSectionCard(Modifier.testTag("similar-compare-preview")) {
+                        Text("사진 미리보기", style = MaterialTheme.typography.titleSmall)
+                        MediaThumbnail(focused, Modifier.fillMaxWidth().height(previewHeight), ContentScale.Fit)
+                    }
                     details()
                 }
             }
