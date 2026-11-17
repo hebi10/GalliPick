@@ -105,7 +105,7 @@ private fun CloudBillingControls(session: CloudBillingSession, activity: Activit
         if (plan?.enabled == true) {
             val currentProduct = plan.products.firstOrNull { it.productId == plan.activeProductId }
             if (currentProduct != null) {
-                Text("서버에서 확인된 사용량 ${bytesLabel(plan.usedBytes)} / ${bytesLabel(plan.quotaBytes)}", color = Ink)
+                CloudUsageCard(plan.usedBytes, plan.quotaBytes)
                 if (!plan.uploadAllowed) Text("새 백업을 추가할 수 없는 상태입니다.", color = Muted)
                 snapshot?.autoRenewing?.let {
                     Text(if (it) "Google Play 자동 갱신 켜짐" else "Google Play 자동 갱신 꺼짐",

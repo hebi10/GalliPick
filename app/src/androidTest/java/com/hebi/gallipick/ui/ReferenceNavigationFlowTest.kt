@@ -8,6 +8,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hebi.gallipick.AppViewModel
+import com.hebi.gallipick.data.cloud.CloudAccountBackend
+import com.hebi.gallipick.data.cloud.CloudAccountConnection
+import com.hebi.gallipick.data.cloud.CloudAccountIdentity
+import com.hebi.gallipick.data.cloud.CloudAccountSession
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -23,9 +28,23 @@ class ReferenceNavigationFlowTest {
     @Test fun cloudManagementAppearsOnlyInItsOwnTab() {
         val vm = AppViewModel(compose.activity.application)
         val managementLabel = "클라우드 계정 관리 테스트"
+        val accountBackend = object : CloudAccountBackend {
+            override val account = MutableStateFlow<CloudAccountIdentity?>(null)
+            override suspend fun signIn(googleIdToken: String) = Unit
+            override fun signOut() = Unit
+            override suspend fun clearGoogleState() = Unit
+        }
+        val cloudConnection = CloudAccountConnection(
+            session = CloudAccountSession(accountBackend),
+            getGoogleIdToken = { error("The navigation test does not sign in") },
+        )
         compose.setContent {
             GalliPickTheme {
-                GalliPickApp(vm, {}, {}, {}, {}, cloudContent = { Text(managementLabel) })
+                GalliPickApp(
+                    vm, {}, {}, {}, {},
+                    cloudContent = { Text(managementLabel) },
+                    cloudConnection = cloudConnection,
+                )
             }
         }
 
