@@ -124,6 +124,40 @@ internal class CloudBackupTransport(
         return CloudDownloadTarget(target, generation)
     }
 
+    /**
+     * Check generation and HTTP byte-range support without downloading the
+     * original or persisting a bearer URL.
+     */
+    suspend fun verifyVideoRange(
+        target: CloudDownloadTarget,
+        item: CloudOriginal,
+        checkAccount: () -> Unit,
+    ) {
+        exchange(target.url.toURL()) { connection, ensureActive ->
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Range", "bytes=0-0")
+            connection.setRequestProperty("Accept-Encoding", "identity")
+            checkAccount()
+            if (!validCloudVideoRange(
+                    status = connection.responseCode,
+                    contentRange = connection.getHeaderField("Content-Range"),
+                    contentLength = connection.getHeaderField("Content-Length"),
+                    responseGeneration = connection.getHeaderField("x-goog-generation"),
+                    contentEncoding = connection.getHeaderField("Content-Encoding"),
+                    expectedGeneration = target.generation,
+                    sizeBytes = item.sizeBytes,
+                )
+            ) failBackup(CloudBackupResult.INTEGRITY_ERROR)
+            connection.inputStream.use { stream ->
+                ensureActive()
+                checkAccount()
+                if (stream.read() == -1 || stream.read() != -1) {
+                    failBackup(CloudBackupResult.INTEGRITY_ERROR)
+                }
+            }
+        }
+    }
+
     suspend fun download(target: CloudDownloadTarget, item: CloudOriginal, output: OutputStream, checkAccount: () -> Unit) {
         exchange(target.url.toURL()) { connection, ensureActive ->
             connection.requestMethod = "GET"

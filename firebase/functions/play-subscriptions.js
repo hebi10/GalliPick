@@ -1,15 +1,12 @@
-import { GoogleAuth, Impersonated } from 'google-auth-library';
+import { GoogleAuth } from 'google-auth-library';
 import { BackupError } from './backup.js';
 import { PLAY_BILLING_PACKAGE } from './cloud-billing.js';
 
-const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const PLAY_SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
-const PLAY_RUNTIME_ACCOUNT = 'gallipick-backup@gallipick-dev.iam.gserviceaccount.com';
 const PLAY_URL = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PLAY_BILLING_PACKAGE}/purchases`;
 
 async function scopedPlayClient() {
-    const sourceClient = await new GoogleAuth({ scopes: [CLOUD_PLATFORM_SCOPE] }).getClient();
-    return new Impersonated({ sourceClient, targetPrincipal: PLAY_RUNTIME_ACCOUNT, targetScopes: [PLAY_SCOPE], lifetime: 900 });
+    return new GoogleAuth({ scopes: [PLAY_SCOPE] }).getClient();
 }
 
 export function createPlaySubscriptions(getClient = scopedPlayClient) {

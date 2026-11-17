@@ -33,7 +33,9 @@ import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.TrashIdentity
 import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.ui.CleanupOperationResult
+import com.hebi.gallipick.ui.CloudAccountCard
 import com.hebi.gallipick.ui.CloudAccountSettings
+import com.hebi.gallipick.ui.CloudRoute
 import com.hebi.gallipick.ui.CloudAutoBackupSection
 import com.hebi.gallipick.ui.CloudBackupSection
 import com.hebi.gallipick.ui.CloudBillingSection
@@ -60,7 +62,8 @@ class MainActivity : ComponentActivity() {
         val cloudAccount = (application as GalliPickApplication).cloudAccount
         setContent {
           val uiState by vm.ui.collectAsState()
-          val adsSession = rememberGalliAdsSession(this@MainActivity)
+          var cloudPlanRevision by remember { mutableIntStateOf(0) }
+          val adsSession = rememberGalliAdsSession(this@MainActivity, cloudAccount, cloudPlanRevision)
           val useDarkTheme = uiState.themeMode.isDark(isSystemInDarkTheme())
           val view = LocalView.current
           SideEffect {
@@ -224,28 +227,40 @@ class MainActivity : ComponentActivity() {
                 onRestore = { review(it, true) },
                 result = operationResult,
                 onDismissResult = { operationResult = null },
+                cloudConnection = cloudAccount,
                 cloudContent = if (cloudAccount != null) {
-                    {
-                        CloudAccountSettings(cloudAccount, this@MainActivity)
-                        CloudBackupSection(cloudAccount, uiState) {
-                            permissionLauncher.launch(requiredPermissions())
-                        }
-                        CloudLibrarySection(cloudAccount, onRestored = { vm.refresh() }) { uri, mimeType ->
-                            try {
-                                startActivity(Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(uri, mimeType)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                })
-                            } catch (_: Exception) { vm.showMessage("복원한 파일을 열 수 있는 앱이 없습니다.") }
-                        }
-                        CloudBillingSection(cloudAccount, this@MainActivity)
-                        cloudAccount.backup?.let { backup ->
-                            CloudSpaceSection(cloudAccount, uiState, vm.repository) { uid ->
-                                backup.listOriginals(uid).map { CloudSpaceBackupProof(it.sizeBytes, it.sha256) }.toSet()
+                    { route ->
+                        when (route) {
+                            CloudRoute.OVERVIEW ->
+                                CloudAccountCard { CloudAccountSettings(cloudAccount, this@MainActivity) }
+                            CloudRoute.LIBRARY ->
+                                CloudLibrarySection(cloudAccount, onRestored = { vm.refresh() }) { uri, mimeType ->
+                                    try {
+                                        startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                            setDataAndType(uri, mimeType)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        })
+                                    } catch (_: Exception) { vm.showMessage("복원한 파일을 열 수 있는 앱이 없습니다.") }
+                                }
+                            CloudRoute.BACKUP ->
+                                CloudBackupSection(cloudAccount, uiState) {
+                                    permissionLauncher.launch(requiredPermissions())
+                                }
+                            CloudRoute.AUTO_BACKUP ->
+                                CloudAutoBackupSection(cloudAccount, uiState) {
+                                    permissionLauncher.launch(requiredPermissions())
+                                }
+                            CloudRoute.SPACE ->
+                                cloudAccount.backup?.let { backup ->
+                                    CloudSpaceSection(cloudAccount, uiState, vm.repository) { uid ->
+                                        backup.listOriginals(uid).map {
+                                            CloudSpaceBackupProof(it.sizeBytes, it.sha256)
+                                        }.toSet()
+                                    }
+                                }
+                            CloudRoute.BILLING -> CloudBillingSection(cloudAccount, this@MainActivity) {
+                                cloudPlanRevision++
                             }
-                        }
-                        CloudAutoBackupSection(cloudAccount, uiState) {
-                            permissionLauncher.launch(requiredPermissions())
                         }
                     }
                 } else null,

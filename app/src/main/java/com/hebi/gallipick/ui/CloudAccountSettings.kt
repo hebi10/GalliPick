@@ -1,6 +1,7 @@
 package com.hebi.gallipick.ui
 
 import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,15 +33,43 @@ import com.hebi.gallipick.data.cloud.CloudAccountOperation
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun CloudScreen(content: @Composable () -> Unit) {
+internal fun CloudScreen(
+    connection: CloudAccountConnection,
+    content: @Composable (CloudRoute) -> Unit,
+) {
+    val account by connection.session.account.collectAsStateWithLifecycle()
+    val status by connection.session.status.collectAsStateWithLifecycle()
+    val access = cloudAccessState(connection.session.available, account?.uid, status.operation)
+    var requestedRoute by rememberSaveable(account?.uid) { mutableStateOf(CloudRoute.OVERVIEW) }
+    val route = cloudVisibleRoute(requestedRoute, access)
+    BackHandler(enabled = route != CloudRoute.OVERVIEW) {
+        requestedRoute = CloudRoute.OVERVIEW
+    }
+
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.fillMaxHeight().widthIn(max = 660.dp).fillMaxWidth()
                 .verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SectionTitle("클라우드")
-            content()
+            CloudHeader(route) { requestedRoute = CloudRoute.OVERVIEW }
+            when {
+                access == CloudAccessState.UNAVAILABLE ->
+                    CloudStatusMessage("이 빌드에서 클라우드 로그인 설정을 확인할 수 없습니다.")
+                route != CloudRoute.OVERVIEW -> content(route)
+                else -> {
+                    content(CloudRoute.OVERVIEW)
+                    if (access == CloudAccessState.SIGNED_IN) {
+                        CloudRoute.entries.filter { it != CloudRoute.OVERVIEW }.forEach { destination ->
+                            val available = when (destination) {
+                                CloudRoute.BILLING -> connection.billing != null
+                                else -> connection.backup != null
+                            }
+                            if (available) CloudActionCard(destination) { requestedRoute = destination }
+                        }
+                    }
+                }
+            }
         }
     }
 }

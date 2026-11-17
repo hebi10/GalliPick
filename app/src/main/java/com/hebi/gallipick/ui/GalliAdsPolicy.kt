@@ -1,14 +1,19 @@
 package com.hebi.gallipick.ui
 
-/**
- * Ad entitlement is separate from GalliPick's cloud storage subscription.
- * Ad-free must eventually come from a server-verified Play entitlement,
- * never an editable local Boolean or an unverified purchase callback.
- */
+import com.hebi.gallipick.data.cloud.CloudBillingPlan
+
 internal enum class AdRemovalStatus {
     NOT_PURCHASED,
     VERIFIED_AD_FREE,
     VERIFYING,
+}
+
+internal fun cloudAdRemovalStatus(plan: CloudBillingPlan?, nowMillis: Long): AdRemovalStatus {
+    if (plan == null) return AdRemovalStatus.VERIFYING
+    if (!plan.enabled || plan.activeProductId == null) return AdRemovalStatus.NOT_PURCHASED
+    val expiresAtMillis = plan.expiresAtMs ?: return AdRemovalStatus.VERIFYING
+    if (plan.products.none { it.productId == plan.activeProductId }) return AdRemovalStatus.VERIFYING
+    return if (expiresAtMillis > nowMillis) AdRemovalStatus.VERIFIED_AD_FREE else AdRemovalStatus.NOT_PURCHASED
 }
 
 internal enum class GalliAdPlacement {

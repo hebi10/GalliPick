@@ -39,19 +39,27 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun CloudBillingSection(connection: CloudAccountConnection, activity: Activity) {
+internal fun CloudBillingSection(
+    connection: CloudAccountConnection,
+    activity: Activity,
+    onPlanUpdated: () -> Unit,
+) {
     val billing = connection.billing ?: return
     val account by connection.session.account.collectAsStateWithLifecycle()
     val uid = account?.uid ?: return
     key(uid) {
         val billingSession = remember(billing, uid) { billing.open(uid) }
         DisposableEffect(billingSession) { onDispose(billingSession::close) }
-        CloudBillingControls(billingSession, activity)
+        CloudBillingControls(billingSession, activity, onPlanUpdated)
     }
 }
 
 @Composable
-private fun CloudBillingControls(session: CloudBillingSession, activity: Activity) {
+private fun CloudBillingControls(
+    session: CloudBillingSession,
+    activity: Activity,
+    onPlanUpdated: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf<CloudBillingSnapshot?>(null) }
     var busy by remember { mutableStateOf(true) }
@@ -64,6 +72,7 @@ private fun CloudBillingControls(session: CloudBillingSession, activity: Activit
         snapshot = null
         try {
             snapshot = session.load().also { notice = it.notice }
+            onPlanUpdated()
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -83,6 +92,7 @@ private fun CloudBillingControls(session: CloudBillingSession, activity: Activit
                 update.plan?.let { plan ->
                     val offers = snapshot?.offers.orEmpty().filter { it.product in plan.products }
                     snapshot = CloudBillingSnapshot(plan, offers, autoRenewing = update.autoRenewing)
+                    onPlanUpdated()
                 }
                 notice = update.notice
             } catch (error: CancellationException) {
@@ -105,7 +115,10 @@ private fun CloudBillingControls(session: CloudBillingSession, activity: Activit
         if (plan?.enabled == true) {
             val currentProduct = plan.products.firstOrNull { it.productId == plan.activeProductId }
             if (currentProduct != null) {
-                Text("서버에서 확인된 사용량 ${bytesLabel(plan.usedBytes)} / ${bytesLabel(plan.quotaBytes)}", color = Ink)
+                CloudUsageCard(plan.usedBytes, plan.quotaBytes)
+                if (cloudAdRemovalStatus(plan, System.currentTimeMillis()) == AdRemovalStatus.VERIFIED_AD_FREE) {
+                    Text("구독 혜택으로 홈 배너 광고가 제거됩니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                }
                 if (!plan.uploadAllowed) Text("새 백업을 추가할 수 없는 상태입니다.", color = Muted)
                 snapshot?.autoRenewing?.let {
                     Text(if (it) "Google Play 자동 갱신 켜짐" else "Google Play 자동 갱신 꺼짐",
@@ -122,7 +135,7 @@ private fun CloudBillingControls(session: CloudBillingSession, activity: Activit
                 for (offer in snapshot?.offers.orEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(offer.title, color = Ink, style = MaterialTheme.typography.bodyMedium)
-                        Text("매월 ${offer.formattedPrice} · ${bytesLabel(offer.product.quotaBytes)}", color = Muted)
+                        Text("매월 ${offer.formattedPrice} · ${bytesLabel(offer.product.quotaBytes)} · 광고 제거", color = Muted)
                         ActionButton("${offer.title} 시험 신청", { confirmation = offer }, enabled = !busy)
                     }
                 }

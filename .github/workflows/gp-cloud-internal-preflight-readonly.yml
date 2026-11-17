@@ -1,0 +1,112 @@
+name: GP-CLOUD internal Play preflight (read-only)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gp-cloud-internal-preflight-readonly.yml'
+      - 'scripts/release/cloud_play_preflight.py'
+      - 'scripts/release/test_cloud_play_preflight.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gp-cloud-play-preflight-readonly
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Verify cloud OAuth and Play version inventory without publishing
+    if: github.repository == 'hebi10/GalliPick' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run fail-closed offline test cases
+        run: python3 -m unittest discover -s scripts/release -p test_cloud_play_preflight.py -v
+
+      - name: Verify exact release source, Play OAuth and public cloud privacy
+        env:
+          CLOUD_CONFIG_BASE64: ${{ secrets.GALLIPICK_PLAY_CLOUD_CONFIG_BASE64 }}
+          PLAY_APP_SIGNING_SHA1: ${{ vars.GALLIPICK_PLAY_APP_SIGNING_SHA1 }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/cloud_play_preflight.py cloud --output cloud-preflight/cloud.json
+
+      - name: Require configured app-specific Play identity
+        env:
+          PROVIDER: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          ACCOUNT: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+        run: |
+          test -n "$PROVIDER"
+          test -n "$ACCOUNT"
+
+      - name: Authenticate for read-only GalliPick Play inventory
+        uses: google-github-actions/auth@v3
+        id: auth
+        with:
+          workload_identity_provider: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+          export_environment_variables: false
+          cleanup_credentials: true
+
+      - name: Check existing internal track, every track and all uploaded versionCodes
+        env:
+          PLAY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/play_publish.py check --track internal \
+            --report cloud-preflight/play-inventory.json
+          python3 scripts/release/cloud_play_preflight.py play \
+            --play-report cloud-preflight/play-inventory.json \
+            --output cloud-preflight/verified-internal.json
+
+      - name: Summarize only non-sensitive verification results
+        if: success()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          cloud = json.loads(Path("cloud-preflight/cloud.json").read_text(encoding="utf-8"))
+          play = json.loads(Path("cloud-preflight/verified-internal.json").read_text(encoding="utf-8"))
+          summary = [
+              "## GalliPick Cloud internal preflight (READ ONLY)",
+              "- Current main SHA: `" + cloud["source_sha"] + "`",
+              "- Google Play application ID: `" + play["package"] + "`",
+              "- Internal track exists: yes",
+              "- Signed app OAuth config: verified for development cloud pilot",
+              "- Public cloud privacy: verified",
+              "- Existing highest uploaded versionCode: `" + str(play["highest_uploaded_version_code"]) + "`",
+              "- New versionCode `24`: available for upload (at the time of this check)",
+              "- Google Play Data Safety/App Access declarations: **NOT verified by API**",
+              "- Signed AAB: **NOT built**",
+              "- Play edit: **not committed**; Play track/bundles unchanged",
+              "- OPS-03 and OPS-04 manual approvals are still mandatory.",
+          ]
+          with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("\n".join(summary) + "\n")
+          PY
+
+      - name: Retain sanitized, read-only reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gp-cloud-internal-readonly-${{ github.run_id }}
+          path: cloud-preflight/
+          retention-days: 14
+          if-no-files-found: warn

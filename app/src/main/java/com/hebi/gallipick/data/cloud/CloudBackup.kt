@@ -8,16 +8,15 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.os.SystemClock
 import com.hebi.gallipick.data.MediaStoreReader
 import com.hebi.gallipick.domain.MediaHasher
 import com.hebi.gallipick.domain.MediaItem
 import java.io.File
-import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
-import java.nio.ByteBuffer
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -94,6 +93,30 @@ internal class CloudBackup(
         transport.listOriginals(token)
     }
 
+    /**
+     * Authorizes direct HTTP byte-range playback for a verified video without
+     * creating a gallery file. The URL is a short-lived private bearer token.
+     *
+     * Streamed ranges cannot be fully SHA-256 checked before decoding; the
+     * object generation and metadata are validated before URL issuance.
+     */
+    suspend fun openVideoStream(original: CloudOriginal, expectedUid: String): CloudVideoStreamCapability {
+        if (!isCloudVideoStreamable(original)) failBackup(CloudBackupResult.UNSUPPORTED_MEDIA)
+        return forAccount(expectedUid, 40_000L) { check ->
+            val token = tokenFor(expectedUid)
+            check()
+            val target = transport.getDownload(expectedUid, token, original)
+            check()
+            transport.verifyVideoRange(target, original, check)
+            check()
+            CloudVideoStreamCapability(
+                signedUrl = target.url,
+                generation = target.generation,
+                obtainedAtElapsedMs = SystemClock.elapsedRealtime(),
+            )
+        }
+    }
+
     suspend fun restore(original: CloudOriginal, expectedUid: String): Uri {
         if (!mutex.tryLock()) failBackup(CloudBackupResult.FAILED)
         return try {
@@ -109,28 +132,46 @@ internal class CloudBackup(
         }
     }
 
-    suspend fun previewPhoto(original: CloudOriginal, expectedUid: String): Bitmap {
-        if (!original.mimeType.startsWith("image/") || original.sizeBytes !in 1..CLOUD_PREVIEW_MAX_BYTES) {
-            failBackup(CloudBackupResult.UNSUPPORTED_MEDIA)
-        }
-        if (!mutex.tryLock()) failBackup(CloudBackupResult.FAILED)
-        return try {
-            forAccount(expectedUid, 60_000L) { check ->
+    /**
+     * Decodes a verified cloud photo to a bounded bitmap without publishing an
+     * image to MediaStore. The verified original is staged in private cache only
+     * while decoding; this supports up to the existing 64 MiB backup limit.
+     */
+    suspend fun previewPhoto(
+        original: CloudOriginal,
+        expectedUid: String,
+        maxEdgePx: Int = 1024,
+    ): Bitmap {
+        if (!original.mimeType.startsWith("image/") ||
+            original.sizeBytes !in 1..CLOUD_BACKUP_MAX_BYTES ||
+            maxEdgePx !in 128..2048
+        ) failBackup(CloudBackupResult.UNSUPPORTED_MEDIA)
+        mutex.lock()
+        try {
+            return forAccount(expectedUid, 180_000L) { check ->
                 val token = tokenFor(expectedUid)
                 check()
                 val target = transport.getDownload(expectedUid, token, original)
-                val output = ByteArrayOutputStream(original.sizeBytes.toInt())
-                transport.download(target, original, output, check)
                 withContext(Dispatchers.IO) {
-                    check()
-                    val source = ImageDecoder.createSource(ByteBuffer.wrap(output.toByteArray()))
-                    ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-                        val ratio = 1024.0 / maxOf(info.size.width, info.size.height)
-                        if (ratio < 1) decoder.setTargetSize(
-                            (info.size.width * ratio).roundToInt().coerceAtLeast(1),
-                            (info.size.height * ratio).roundToInt().coerceAtLeast(1),
-                        )
-                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                    val temporary = File.createTempFile("gallipick-preview-", ".tmp", appContext.cacheDir)
+                    try {
+                        FileOutputStream(temporary).use { output ->
+                            transport.download(target, original, output, check)
+                        }
+                        check()
+                        val source = ImageDecoder.createSource(temporary)
+                        val result = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                            val scale = maxEdgePx.toDouble() / maxOf(info.size.width, info.size.height)
+                            if (scale < 1) decoder.setTargetSize(
+                                (info.size.width * scale).roundToInt().coerceAtLeast(1),
+                                (info.size.height * scale).roundToInt().coerceAtLeast(1),
+                            )
+                            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        }
+                        check()
+                        result
+                    } finally {
+                        temporary.delete()
                     }
                 }
             }

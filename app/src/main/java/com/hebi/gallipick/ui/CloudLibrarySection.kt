@@ -29,7 +29,8 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.hebi.gallipick.data.cloud.CLOUD_PREVIEW_MAX_BYTES
+import com.hebi.gallipick.data.cloud.cloudPhotoSupportsViewer
+import com.hebi.gallipick.data.cloud.isCloudVideoStreamable
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudBackup
 import com.hebi.gallipick.data.cloud.CloudBackupException
@@ -65,6 +66,7 @@ private fun CloudLibraryControls(
     var catalogError by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var selected by remember { mutableStateOf<CloudOriginal?>(null) }
+    var playingVideo by remember { mutableStateOf<CloudOriginal?>(null) }
     var action by remember { mutableStateOf<LibraryAction?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     var restored by remember { mutableStateOf<Pair<Uri, String>?>(null) }
@@ -80,7 +82,8 @@ private fun CloudLibraryControls(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            catalog = emptyList()
+            // Keep a previous in-session catalog if the network goes offline.
+            // CloudLibrarySection is keyed by UID: never reuse across accounts.
             catalogError = cloudLibraryFailure(error)
         } finally {
             loading = false
@@ -116,9 +119,13 @@ private fun CloudLibraryControls(
     ) {
         Text("클라우드 보관함", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
         ActionButton("목록 새로고침", { reload++ }, enabled = !loading && action == null)
+        if (catalogError != null && catalog.isNotEmpty()) {
+            Text("현재 연결되지 않아 이전 목록을 표시합니다. 원본 열람·복원은 인터넷 연결이 필요합니다.",
+                color = Muted, style = MaterialTheme.typography.bodySmall)
+        }
         when {
-            loading -> Text("보관함을 확인하는 중입니다.", color = Muted)
-            catalogError != null -> Text(checkNotNull(catalogError), color = Muted)
+            loading && catalog.isEmpty() -> Text("보관함을 확인하는 중입니다.", color = Muted)
+            catalogError != null && catalog.isEmpty() -> Text(checkNotNull(catalogError), color = Muted)
             catalog.isEmpty() -> Text("서버에서 확인된 원본이 없습니다.", color = Muted)
             else -> LazyColumn(
                 Modifier.fillMaxWidth().heightIn(max = 400.dp),
@@ -131,9 +138,12 @@ private fun CloudLibraryControls(
                         val media = if (item.mimeType.startsWith("video/")) "동영상" else "사진"
                         Text("$media · ${bytesLabel(item.sizeBytes)} · $date", color = Muted,
                             style = MaterialTheme.typography.bodySmall)
-                        if (item.mimeType.startsWith("image/") && item.sizeBytes <= CLOUD_PREVIEW_MAX_BYTES) {
+                        if (cloudPhotoSupportsViewer(item)) {
                             ActionButton("미리보기", { action = LibraryAction(item, preview = true) },
                                 enabled = action == null)
+                        }
+                        if (isCloudVideoStreamable(item)) {
+                            ActionButton("앱에서 바로 재생", { playingVideo = item }, enabled = action == null)
                         }
                         ActionButton("기기에 복원", { selected = item }, enabled = action == null)
                     }
@@ -143,6 +153,10 @@ private fun CloudLibraryControls(
         if (action != null) TextAction("작업 취소", { action = null; status = "작업 취소를 요청했습니다." })
         status?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, color = Muted) }
         restored?.let { (uri, type) -> ActionButton("복원한 파일 보기", { onOpenRestored(uri, type) }) }
+    }
+
+    playingVideo?.let { item ->
+        CloudVideoViewer(uid, item, backup, dismiss = { playingVideo = null })
     }
 
     selected?.let { item ->

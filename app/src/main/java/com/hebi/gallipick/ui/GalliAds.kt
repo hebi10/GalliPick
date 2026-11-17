@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -18,8 +16,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.libraries.ads.mobile.sdk.MobileAds
 import com.google.android.libraries.ads.mobile.sdk.banner.AdSize
 import com.google.android.libraries.ads.mobile.sdk.banner.BannerAd
@@ -30,14 +32,19 @@ import com.google.android.ump.ConsentInformation
 import com.google.android.ump.ConsentRequestParameters
 import com.google.android.ump.UserMessagingPlatform
 import com.hebi.gallipick.R
+import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+
+private const val CLOUD_AD_ENTITLEMENT_REFRESH_MS = 5 * 60 * 1000L
 
 internal data class GalliAdsSession(
     val configured: Boolean = false,
     val consentGranted: Boolean = false,
     val sdkReady: Boolean = false,
+    val removal: AdRemovalStatus = AdRemovalStatus.NOT_PURCHASED,
     val privacyOptionsRequired: Boolean = false,
     val openPrivacyOptions: () -> Unit = {},
 )
@@ -47,12 +54,17 @@ internal data class GalliAdsSession(
  * consent permits requests. This never reads or stores a substitute consent flag.
  */
 @Composable
-internal fun rememberGalliAdsSession(activity: Activity): GalliAdsSession {
+internal fun rememberGalliAdsSession(
+    activity: Activity,
+    cloudConnection: CloudAccountConnection?,
+    cloudPlanRevision: Int,
+): GalliAdsSession {
     val configured = remember(activity) {
         activity.resources.getBoolean(R.bool.gallipick_ads_enabled)
     }
     if (!configured) return GalliAdsSession()
 
+    val removal = rememberCloudAdRemovalStatus(cloudConnection, cloudPlanRevision)
     val consentInformation = remember(activity) {
         UserMessagingPlatform.getConsentInformation(activity)
     }
@@ -82,8 +94,8 @@ internal fun rememberGalliAdsSession(activity: Activity): GalliAdsSession {
         onDispose { disposed = true }
     }
 
-    LaunchedEffect(activity, canRequestAds) {
-        if (canRequestAds && !initialized) {
+    LaunchedEffect(activity, canRequestAds, removal) {
+        if (canRequestAds && removal == AdRemovalStatus.NOT_PURCHASED && !initialized) {
             withContext(Dispatchers.IO) {
                 MobileAds.initialize(
                     activity,
@@ -98,6 +110,7 @@ internal fun rememberGalliAdsSession(activity: Activity): GalliAdsSession {
         configured = true,
         consentGranted = canRequestAds,
         sdkReady = initialized,
+        removal = removal,
         privacyOptionsRequired = privacyRequired,
         openPrivacyOptions = {
             if (privacyRequired) {
@@ -112,17 +125,57 @@ internal fun rememberGalliAdsSession(activity: Activity): GalliAdsSession {
 }
 
 @Composable
+private fun rememberCloudAdRemovalStatus(
+    connection: CloudAccountConnection?,
+    planRevision: Int,
+): AdRemovalStatus {
+    if (connection == null) return AdRemovalStatus.NOT_PURCHASED
+    val billing = connection.billing ?: return AdRemovalStatus.NOT_PURCHASED
+    val account by connection.session.account.collectAsStateWithLifecycle()
+    val uid = account?.uid ?: return AdRemovalStatus.NOT_PURCHASED
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var removal by remember(billing, uid, planRevision) { mutableStateOf(AdRemovalStatus.VERIFYING) }
+    LaunchedEffect(lifecycle, billing, uid, planRevision) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            try {
+                billing.open(uid).use { session ->
+                    while (true) {
+                        val plan = try {
+                            session.loadPlan()
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (_: Exception) {
+                            null
+                        }
+                        val now = System.currentTimeMillis()
+                        removal = cloudAdRemovalStatus(plan, now)
+                        val expiresAt = plan?.expiresAtMs?.takeIf { removal == AdRemovalStatus.VERIFIED_AD_FREE }
+                        delay(expiresAt?.let { minOf(it - now, CLOUD_AD_ENTITLEMENT_REFRESH_MS) }
+                            ?: CLOUD_AD_ENTITLEMENT_REFRESH_MS)
+                        if (expiresAt != null && System.currentTimeMillis() >= expiresAt) {
+                            removal = AdRemovalStatus.VERIFYING
+                        }
+                    }
+                }
+            } finally {
+                removal = AdRemovalStatus.VERIFYING
+            }
+        }
+    }
+    return removal
+}
+
+@Composable
 internal fun GalliHomeBanner(
     activity: Activity,
     session: GalliAdsSession,
-    removalStatus: AdRemovalStatus = AdRemovalStatus.NOT_PURCHASED,
 ) {
     val isPreview = LocalInspectionMode.current
     val policy = GalliAdEligibility(
         configured = session.configured,
         consentGranted = session.consentGranted,
         sdkReady = session.sdkReady,
-        removal = removalStatus,
+        removal = session.removal,
     )
     if (isPreview || !canDisplayGalliAd(GalliAdPlacement.HOME_BANNER, policy)) return
 
