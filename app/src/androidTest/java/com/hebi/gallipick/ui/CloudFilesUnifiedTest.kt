@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hebi.gallipick.AppUiState
@@ -54,7 +55,7 @@ class CloudFilesUnifiedTest {
                 }
             }
         }
-        compose.onNodeWithTag("files-source-cloud").performClick()
+        chooseSource("cloud")
         compose.onNodeWithText("cloud-holiday.jpg").assertExists()
         compose.onNodeWithText("local-photo.jpg").assertDoesNotExist()
         compose.onNodeWithText("cloud-holiday.jpg").performClick()
@@ -73,13 +74,13 @@ class CloudFilesUnifiedTest {
                 }
             }
         }
-        compose.onNodeWithTag("files-source-cloud").performClick()
+        chooseSource("cloud")
         compose.onNodeWithText("cloud-holiday.jpg").assertExists()
         compose.onNodeWithText("local-photo.jpg").assertDoesNotExist()
-        compose.onNodeWithTag("files-source-device").performClick()
+        chooseSource("device")
         compose.onNodeWithText("local-photo.jpg").assertExists()
         compose.onNodeWithText("cloud-holiday.jpg").assertDoesNotExist()
-        compose.onNodeWithTag("files-source-all").performClick()
+        chooseSource("all")
         compose.onNodeWithText("cloud-holiday.jpg").assertExists()
         compose.onNodeWithText("local-photo.jpg").assertExists()
     }
@@ -103,7 +104,7 @@ class CloudFilesUnifiedTest {
                 }
             }
         }
-        compose.onNodeWithTag("files-source-cloud").performClick()
+        chooseSource("cloud")
         compose.onNodeWithText("local-photo.jpg").assertExists()
         compose.onNodeWithText("cloud-holiday.jpg").assertDoesNotExist()
         compose.onNodeWithText("local-photo.jpg").performClick()
@@ -133,7 +134,7 @@ class CloudFilesUnifiedTest {
                 }
             }
         }
-        compose.onNodeWithTag("files-source-cloud").performClick()
+        chooseSource("cloud")
         compose.onNodeWithText("휴지통으로", substring = true).assertDoesNotExist()
         compose.runOnIdle { org.junit.Assert.assertEquals(0, trashCount) }
     }
@@ -151,7 +152,7 @@ class CloudFilesUnifiedTest {
                 }
             }
         }
-        compose.onNodeWithTag("files-source-cloud").performClick()
+        chooseSource("cloud")
         compose.onNodeWithText("cloud-holiday.jpg").assertExists()
         compose.onNodeWithText("오프라인", substring = true).assertExists()
     }
@@ -169,10 +170,15 @@ class CloudFilesUnifiedTest {
                 }
             }
         }
-        compose.onNodeWithTag("files-source-cloud").performClick()
+        chooseSource("cloud")
         compose.onNodeWithText("모바일 데이터 사용 중", substring = true).assertExists()
         compose.onNodeWithText("이번 화면에서 허용").performClick()
         compose.onNodeWithText("이번 화면에서 허용").assertDoesNotExist()
+    }
+
+    private fun chooseSource(source: String) {
+        compose.onNodeWithTag("files-source-filter").performScrollTo().performClick()
+        compose.onNodeWithTag("files-source-$source").performClick()
     }
 
     private fun cloudState() = CloudFilesUiState(

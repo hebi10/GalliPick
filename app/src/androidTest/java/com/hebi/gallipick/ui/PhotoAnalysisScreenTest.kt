@@ -35,6 +35,8 @@ class PhotoAnalysisScreenTest {
     @Test fun idleScreenStartsOnlyWhenPhotosAreAvailable() {
         var started = 0
         render(AppUiState(access = MediaAccess.FULL, items = photos), onStart = { started++ })
+        compose.onNodeWithTag("similar-analysis-status").assertExists()
+        compose.onNodeWithTag("similar-analysis-groups").assertDoesNotExist()
         compose.onNodeWithText("사진 분석 시작").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(1, started) }
         compose.onNodeWithText("기기 내부에서만", substring = true).assertExists()
@@ -46,6 +48,8 @@ class PhotoAnalysisScreenTest {
             access = MediaAccess.FULL, items = photos,
             photoAnalysis = PhotoAnalysisState(PhotoAnalysisPhase.RUNNING, completed = 4, total = 10, skipped = 2),
         ), onPause = { paused++ })
+        compose.onNodeWithTag("similar-analysis-status").assertExists()
+        compose.onNodeWithTag("similar-analysis-groups").assertDoesNotExist()
         compose.onNodeWithText("6 / 10개 확인", substring = true).assertExists()
         compose.onNodeWithText("일시정지").performClick()
         compose.runOnIdle { assertEquals(1, paused) }
@@ -68,6 +72,7 @@ class PhotoAnalysisScreenTest {
         ))
         compose.onNodeWithText("사진에 접근할 수 없습니다.", substring = true).assertExists()
         compose.onNodeWithText("분석 성공 300개", substring = true).assertDoesNotExist()
+        compose.onNodeWithTag("similar-analysis-groups").assertDoesNotExist()
     }
 
     @Test fun completeAnalysisDoesNotPretendPhotoComparisonIsAvailable() {
@@ -76,6 +81,10 @@ class PhotoAnalysisScreenTest {
             photoAnalysis = PhotoAnalysisState(PhotoAnalysisPhase.COMPLETE, completed = 1, total = 1),
         ))
         compose.onNodeWithText("특징 분석 완료").assertExists()
+        compose.onNodeWithTag("similar-analysis-status").assertExists()
+        compose.onNodeWithTag("similar-analysis-groups").assertExists()
+        compose.onNodeWithTag("similar-analysis-burst").assertExists()
+        compose.onNodeWithTag("similar-analysis-focus").assertExists()
         compose.onNodeWithText("현재 확인된 유사 사진 묶음이 없습니다.", substring = true).assertExists()
         compose.onNodeWithText("유사 사진 결과 보기").assertDoesNotExist()
         compose.onNodeWithText("현재 허용된 사진만 분석합니다.").assertExists()
@@ -105,6 +114,7 @@ class PhotoAnalysisScreenTest {
                 }
             }
         }
+        compose.onNodeWithTag("similar-analysis-groups").assertExists()
         compose.onNodeWithText("2장", substring = true).assertExists()
         compose.onNodeWithText("유사 사진 결과 보기").performClick()
         compose.runOnIdle { assertEquals(1, opens) }

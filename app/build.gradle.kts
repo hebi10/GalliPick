@@ -12,6 +12,29 @@ plugins {
 
 val galliPickApplicationId = "com.hebi.gallipick"
 val cloudTestFirebaseProjectId = "gallipick-dev"
+
+// GalliPick ads are opt-in at build time. No live ad requests are possible
+// without this app's own AdMob registration and explicit release configuration.
+val sampleAdMobAppId = "ca-app-pub-3940256099942544~3347511713"
+val sampleBannerAdUnitId = "ca-app-pub-3940256099942544/9214589741"
+val adsDebugTest = providers.gradleProperty("gallipickAdsTest")
+    .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickAdsTest must be true or false") }
+    .getOrElse(false)
+val adsReleaseEnabled = providers.gradleProperty("gallipickAdsEnabled")
+    .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickAdsEnabled must be true or false") }
+    .getOrElse(false)
+val adMobAppId = providers.gradleProperty("gallipickAdMobAppId").orNull.orEmpty()
+val adMobBannerUnitId = providers.gradleProperty("gallipickAdMobBannerUnitId").orNull.orEmpty()
+if (adsReleaseEnabled) {
+    require(adMobAppId.matches(Regex("ca-app-pub-[0-9]{16}~[0-9]{10}")) && adMobAppId != sampleAdMobAppId) {
+        "A unique GalliPick AdMob app ID is required to enable release ads."
+    }
+    require(adMobBannerUnitId.matches(Regex("ca-app-pub-[0-9]{16}/[0-9]{10}"))
+        && adMobBannerUnitId != sampleBannerAdUnitId) {
+        "A unique GalliPick AdMob banner unit ID is required to enable release ads."
+    }
+}
+
 val cloudConfigResourceNames = listOf(
     "cloud_firebase_app_id", "cloud_firebase_api_key",
     "cloud_firebase_project_id", "cloud_google_web_client_id",
@@ -125,9 +148,10 @@ android {
         applicationId = galliPickApplicationId
         minSdk = 30
         targetSdk = 36
-        versionCode = 25
-        versionName = "0.2.14"
+        versionCode = 26
+        versionName = "0.2.15"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        resValue("bool", "gallipick_ads_preview", "false")
     }
     signingConfigs {
         create("galliPick") {
@@ -146,6 +170,9 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildTypes {
         debug {
+            resValue("bool", "gallipick_ads_enabled", adsDebugTest.toString())
+            resValue("string", "gallipick_admob_app_id", sampleAdMobAppId)
+            resValue("string", "gallipick_admob_banner_unit_id", sampleBannerAdUnitId)
             if (!testSigning) signingConfig = signingConfigs.getByName("galliPick")
             resValue("string", "app_name", "GalliPick")
             val firebaseConfig = debugFirebaseConfig.getOrElse(emptyMap())
@@ -153,29 +180,40 @@ android {
                 resValue("string", name, firebaseConfig[name].orEmpty())
             }
         }
-        release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("galliPick") }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("galliPick")
+            resValue("bool", "gallipick_ads_enabled", adsReleaseEnabled.toString())
+            resValue("string", "gallipick_admob_app_id", if (adsReleaseEnabled) adMobAppId else sampleAdMobAppId)
+            resValue("string", "gallipick_admob_banner_unit_id", if (adsReleaseEnabled) adMobBannerUnitId else sampleBannerAdUnitId)
+        }
         create("playPreparation") {
             initWith(getByName("release"))
+            resValue("bool", "gallipick_ads_enabled", "false")
+            resValue("string", "gallipick_admob_app_id", sampleAdMobAppId)
+            resValue("string", "gallipick_admob_banner_unit_id", sampleBannerAdUnitId)
             signingConfig = null
             matchingFallbacks += listOf("release")
             isDebuggable = false
         }
         getByName("release") {
+            resValue("bool", "gallipick_ads_preview", (playCloudPilot && !adsReleaseEnabled).toString())
             playCloudFirebaseConfig.forEach { (name, value) -> resValue("string", name, value) }
         }
     }
     sourceSets {
         getByName("debug") {
             java.srcDir("src/cloud/java")
-            manifest.srcFile("src/cloud/AndroidManifest.xml")
+            if (!adsDebugTest) manifest.srcFile("src/noAds/AndroidManifest.xml")
         }
         getByName("release") {
-            if (playCloudPilot) {
-                java.srcDir("src/cloud/java")
-                manifest.srcFile("src/cloud/AndroidManifest.xml")
-            } else java.srcDir("src/localOnly/java")
+            java.srcDir(if (playCloudPilot) "src/cloud/java" else "src/localOnly/java")
+            if (!adsReleaseEnabled) manifest.srcFile("src/noAds/AndroidManifest.xml")
         }
-        getByName("playPreparation").java.srcDir("src/localOnly/java")
+        getByName("playPreparation") {
+            java.srcDir("src/localOnly/java")
+            manifest.srcFile("src/noAds/AndroidManifest.xml")
+        }
     }
     testOptions { unitTests.isReturnDefaultValues = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
@@ -191,13 +229,15 @@ dependencies {
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("androidx.compose.material3:material3")
+    implementation("com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.6.0")
+    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
+    implementation("com.android.billingclient:billing:9.1.0")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     val cloudDependencies = listOf(
         "com.google.firebase:firebase-auth:24.0.1",
-        "com.android.billingclient:billing:9.1.0",
         "androidx.credentials:credentials:1.3.0",
         "androidx.credentials:credentials-play-services-auth:1.3.0",
         "com.google.android.libraries.identity.googleid:googleid:1.1.1",

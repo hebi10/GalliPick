@@ -35,6 +35,27 @@ class CloudScreenNavigationTest {
     }
 
     @Test
+    fun signedOutShowsBillingInformationButDoesNotOpenPayment() {
+        val backend = FakeAccountBackend("test-user-1")
+        backend.active.value = null
+        showCloud(backend)
+
+        compose.onNodeWithText("요금제·결제").assertExists()
+        compose.onNodeWithText("Google 로그인 후 요금제와 구독 상태를 확인할 수 있습니다.").assertExists()
+        compose.onNodeWithTag("cloud-route-BILLING").assertDoesNotExist()
+    }
+
+    @Test
+    fun signedInWithoutBillingShowsUnavailableStateRatherThanCheckout() {
+        val backend = FakeAccountBackend("test-user-1")
+        showCloud(backend, billingAvailable = false)
+
+        compose.onNodeWithText("요금제·결제").assertExists()
+        compose.onNodeWithText("이 빌드에서는 결제 기능을 사용할 수 없습니다.").assertExists()
+        compose.onNodeWithTag("cloud-route-BILLING").assertDoesNotExist()
+    }
+
+    @Test
     fun changingOrRemovingAccountClearsPreviousCloudRoute() {
         val backend = FakeAccountBackend("test-user-1")
         showCloud(backend)
@@ -53,10 +74,10 @@ class CloudScreenNavigationTest {
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
     }
 
-    private fun showCloud(backend: FakeAccountBackend) {
-        val billing = object : CloudBilling {
+    private fun showCloud(backend: FakeAccountBackend, billingAvailable: Boolean = true) {
+        val billing = if (billingAvailable) object : CloudBilling {
             override fun open(uid: String): CloudBillingSession = error("The route test cannot start purchases")
-        }
+        } else null
         val connection = CloudAccountConnection(
             session = CloudAccountSession(backend),
             billing = billing,

@@ -16,6 +16,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -157,12 +158,12 @@ class CloudFiles07CaptureTest {
                 theme.value = mode
                 network.value = cloudState()
             }
-            compose.onNodeWithTag("files-source-all").performClick()
+            chooseSource("all")
             compose.onNodeWithText("EXAMPLE_local_only.jpg").assertExists()
             compose.onNodeWithText("EXAMPLE_cloud_only.jpg").assertExists()
             capture("$label-01-combined")
 
-            compose.onNodeWithTag("files-source-cloud").performClick()
+            chooseSource("cloud")
             compose.onNodeWithText("EXAMPLE_cloud_video.mp4").assertExists()
             capture("$label-02-cloud")
 
@@ -186,6 +187,11 @@ class CloudFiles07CaptureTest {
                 .put("captures", inventory).toString(2),
             Charsets.UTF_8,
         )
+    }
+
+    private fun chooseSource(source: String) {
+        compose.onNodeWithTag("files-source-filter").performScrollTo().performClick()
+        compose.onNodeWithTag("files-source-$source").performClick()
     }
 
     private fun activeBlockingSystemDialog(): Pair<AccessibilityNodeInfo, String>? {
