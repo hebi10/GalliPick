@@ -106,13 +106,13 @@ class SimilarPhotoReviewScreenTest {
         }
         compose.onNodeWithText("정리 후보 선택").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("catA"), chosen.value) }
-        compose.onNodeWithContentDescription("catB.jpg 미리보기 선택").performClick()
+        compose.onNodeWithContentDescription("catB.jpg 미리보기 선택").performScrollTo().performClick()
         compose.onNodeWithText("정리 후보 선택").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("catA", "catB"), chosen.value) }
-        compose.onNodeWithContentDescription("catC.jpg 미리보기 선택").performClick()
+        compose.onNodeWithContentDescription("catC.jpg 미리보기 선택").performScrollTo().performClick()
         compose.onNodeWithText("정리 후보 선택").assertIsNotEnabled()
         compose.onNodeWithText("묶음에서 최소 한 장은 남겨야 합니다.").assertExists()
-        compose.onNodeWithContentDescription("catA.jpg 미리보기 선택").performClick()
+        compose.onNodeWithContentDescription("catA.jpg 미리보기 선택").performScrollTo().performClick()
         compose.onNodeWithText("선택 취소 · 남길 사진으로 지정").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("catB"), chosen.value) }
     }
@@ -189,7 +189,7 @@ class SimilarPhotoReviewScreenTest {
         compose.onNodeWithContentDescription("A/B 사진 비교 전환").performClick()
         compose.onNodeWithContentDescription("A 사진 미리보기").assertExists()
         compose.onNodeWithContentDescription("B 사진 미리보기").assertExists()
-        compose.onNodeWithContentDescription("catC.jpg 미리보기 선택").performClick()
+        compose.onNodeWithContentDescription("catC.jpg 미리보기 선택").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(0, selectionCalls) }
         compose.onNodeWithText("A 정리 후보 선택").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("catA"), selected.value) }
