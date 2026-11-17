@@ -164,25 +164,17 @@ internal fun FilesScreenContent(
                             ocrQuery = ocrQuery,
                             onSearchModeChange = { searchMode = it; detailUri = null },
                             onOcrQueryChange = { ocrQuery = it },
+                            sourceFilter = sourceFilter, showSourceFilter = cloudFiles.enabled,
+                            onSourceFilterChange = { option ->
+                                if (sourceFilter != option) {
+                                    sourceFilter = option
+                                    detailUri = null
+                                    chosenCloud = null
+                                    if (option == GallerySourceFilter.CLOUD) actions.clearSelection()
+                                }
+                            },
                         )
                         if (cloudFiles.enabled && searchMode == FileSearchMode.FILES) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                GallerySourceFilter.entries.forEach { option ->
-                                    val label = when (option) {
-                                        GallerySourceFilter.ALL -> "전체"
-                                        GallerySourceFilter.DEVICE -> "기기"
-                                        GallerySourceFilter.CLOUD -> "클라우드"
-                                    }
-                                    ActionButton(label, {
-                                        if (sourceFilter != option) {
-                                            sourceFilter = option
-                                            detailUri = null
-                                            chosenCloud = null
-                                            if (option == GallerySourceFilter.CLOUD) actions.clearSelection()
-                                        }
-                                    }, Modifier.weight(1f).testTag("files-source-" + option.name.lowercase()), filled = sourceFilter == option)
-                                }
-                            }
                             if (cloudFiles.accountUid != null && sourceFilter != GallerySourceFilter.DEVICE &&
                                 cloudFiles.matchTotal > 0) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
