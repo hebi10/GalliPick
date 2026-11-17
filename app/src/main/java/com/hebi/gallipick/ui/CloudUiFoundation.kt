@@ -28,7 +28,7 @@ internal enum class CloudRoute(val title: String, val description: String) {
     BACKUP("원본 백업", "기기에서 선택한 원본을 검증 후 보관합니다."),
     AUTO_BACKUP("자동 백업", "선택 폴더의 백업 조건과 진행 상태를 확인합니다."),
     SPACE("공간 확보 검토", "검증된 서버 원본과 기기 파일을 비교합니다."),
-    BILLING("구독 시험", "Google Play의 시험 구독 상태를 확인합니다."),
+    BILLING("요금제·결제", "이용 중인 구독과 구매 복구, 구매 가능한 시험 요금제를 확인합니다."),
 }
 
 internal enum class CloudAccessState {
