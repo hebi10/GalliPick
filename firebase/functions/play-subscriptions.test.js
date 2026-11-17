@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { GoogleAuth } from 'google-auth-library';
 import { createPlaySubscriptions } from './play-subscriptions.js';
+
+test('uses the runtime identity with the Android Publisher scope', async t => {
+    const publisher = { request: t.mock.fn(async () => ({ data: { verified: true } })) };
+    const getClient = t.mock.method(GoogleAuth.prototype, 'getClient', async function () {
+        assert.deepEqual(this.scopes, ['https://www.googleapis.com/auth/androidpublisher']);
+        return publisher;
+    });
+
+    assert.deepEqual(await createPlaySubscriptions().get('synthetic-token'), { verified: true });
+    assert.equal(getClient.mock.callCount(), 1);
+    assert.equal(publisher.request.mock.callCount(), 1);
+});
 
 test('uses the fixed GalliPick package for subscriptions v2 lookups and server acknowledgement', async () => {
     const requests = [];
