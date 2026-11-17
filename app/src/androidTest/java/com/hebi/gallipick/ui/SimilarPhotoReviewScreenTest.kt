@@ -79,7 +79,7 @@ class SimilarPhotoReviewScreenTest {
         }
         compose.onNodeWithTag("similar-results-summary").assertExists()
         compose.onNodeWithTag("similar-results-group-sample-group").assertExists()
-        compose.onNodeWithTag("similar-results-recommendation").assertExists()
+        compose.onNodeWithTag("similar-results-recommendation", useUnmergedTree = true).assertExists()
         compose.onNodeWithText("1개 묶음", substring = true).assertExists()
         compose.onNodeWithContentDescription("3장 유사 사진 비교").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(group.id, opened); assertEquals(0, trashCount) }
