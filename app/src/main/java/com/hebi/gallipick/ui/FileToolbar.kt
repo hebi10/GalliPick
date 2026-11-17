@@ -177,7 +177,7 @@ internal fun FileToolbar(
                     ToolbarChoice(
                         "유형: ${kindLabel(filter.kind)}", "미디어 유형 선택",
                         kindLabel(filter.kind), filter.kind != null,
-                        { menu = "kind" }, Modifier.testTag("files-kind-filter"),
+                        Modifier.testTag("files-kind-filter"), { menu = "kind" },
                     )
                     DropdownMenu(expanded = menu == "kind", onDismissRequest = { menu = null }) {
                         listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
@@ -207,7 +207,7 @@ internal fun FileToolbar(
                         ToolbarChoice(
                             "위치: ${sourceLabel(sourceFilter)}", "저장 위치 선택",
                             sourceLabel(sourceFilter), sourceFilter != GallerySourceFilter.ALL,
-                            { menu = "source" }, Modifier.testTag("files-source-filter"),
+                            Modifier.testTag("files-source-filter"), { menu = "source" },
                         )
                         DropdownMenu(expanded = menu == "source", onDismissRequest = { menu = null }) {
                             GallerySourceFilter.entries.forEach { option ->
@@ -309,7 +309,7 @@ internal fun FileToolbar(
 }
 
 @Composable
-private fun ToolbarChoice(label: String, description: String, state: String, active: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ToolbarChoice(label: String, description: String, state: String, active: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     TextButton(onClick = onClick,
         modifier = modifier.height(48.dp).background(if (active) SelectedContainer else MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
             .semantics { contentDescription = description; stateDescription = state },
