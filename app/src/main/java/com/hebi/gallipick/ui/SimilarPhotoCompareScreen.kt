@@ -173,7 +173,8 @@ internal fun SimilarPhotoCompareScreen(
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SimilarSectionCard(Modifier.testTag("similar-compare-info")) {
                         Text("선택한 사진 정보", style = MaterialTheme.typography.titleSmall)
-                        Text(focused.displayName, style = MaterialTheme.typography.bodyMedium,
+                        Text(focused.displayName, modifier = Modifier.testTag("similar-compare-focused-file"),
+                            style = MaterialTheme.typography.bodyMedium,
                             maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text("${bytesLabel(focused.sizeBytes)} · ${focused.width} × ${focused.height}",
                             style = MaterialTheme.typography.bodyMedium)
@@ -199,7 +200,7 @@ internal fun SimilarPhotoCompareScreen(
                         ActionButton(
                             if (chosen) "선택 취소 · 남길 사진으로 지정" else "정리 후보 선택",
                             { onToggleCandidate(focused.uri) },
-                            Modifier.fillMaxWidth(),
+                            Modifier.fillMaxWidth().testTag("similar-compare-candidate-action"),
                             filled = !chosen,
                             enabled = chosen || eligible && maySelect,
                         )
