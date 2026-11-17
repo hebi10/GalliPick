@@ -264,9 +264,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 } else null,
-                homeBanner = if (adsSession.configured) {
-                    { GalliHomeBanner(this@MainActivity, adsSession) }
-                } else null,
+                homeBanner = { GalliHomeBanner(this@MainActivity, adsSession) },
                 adsPrivacyOptionsRequired = adsSession.privacyOptionsRequired,
                 onAdsPrivacyOptions = adsSession.openPrivacyOptions,
             )
