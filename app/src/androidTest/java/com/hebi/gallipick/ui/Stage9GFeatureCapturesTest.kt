@@ -173,6 +173,10 @@ class Stage9GFeatureCapturesTest {
             }
 
             compose.onNodeWithText("특징 분석 완료").assertExists()
+            compose.onNodeWithTag("similar-analysis-status").assertExists()
+            compose.onNodeWithTag("similar-analysis-groups").assertExists()
+            compose.onNodeWithTag("similar-analysis-burst").assertExists()
+            compose.onNodeWithTag("similar-analysis-focus").assertExists()
             screenshot(screenshots, captured, names, "01-analysis-complete")
             compose.runOnIdle { screen = Screen.ANALYSIS_SCROLLED }
             compose.onNodeWithText("선명도 확인").performScrollTo().assertIsDisplayed()
@@ -184,10 +188,16 @@ class Stage9GFeatureCapturesTest {
 
             compose.runOnIdle { screen = Screen.SIMILAR_RESULTS }
             compose.onNodeWithText("비슷한 사진 찾기").assertExists()
+            compose.onNodeWithTag("similar-results-summary").assertExists()
+            compose.onNodeWithTag("similar-results-group-similar:stage9g").assertExists()
             screenshot(screenshots, captured, names, "04-similar-results")
 
             compose.runOnIdle { screen = Screen.SIMILAR_COMPARE }
             compose.onNodeWithText("사진 비교").assertExists()
+            compose.onNodeWithTag("similar-compare-summary").assertExists()
+            compose.onNodeWithTag("similar-compare-recommendation").assertExists()
+            compose.onNodeWithTag("similar-compare-choices").assertExists()
+            compose.onNodeWithTag("similar-compare-preview").assertExists()
             screenshot(screenshots, captured, names, "05-similar-compare")
 
             compose.runOnIdle { screen = Screen.BURST_RESULTS }
