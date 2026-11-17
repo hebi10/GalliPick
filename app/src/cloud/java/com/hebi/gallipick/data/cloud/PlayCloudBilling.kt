@@ -44,7 +44,13 @@ internal class PlayCloudBilling(
         }
         private val client by billing
 
-        override suspend fun loadPlan(): CloudBillingPlan = serverPlan()
+        override suspend fun loadPlan(): CloudBillingPlan = try {
+            serverPlan()
+        } catch (error: CloudBackupException) {
+            if (!error.permissionDenied) throw error
+            ensureCurrentAccount()
+            CloudBillingPlan()
+        }
 
         override suspend fun load(): CloudBillingSnapshot = withContext(Dispatchers.Main.immediate) {
             val plan = serverPlan()

@@ -206,7 +206,8 @@ internal class CloudBackupTransport(
                 }
             }
             when (response?.optJSONObject("error")?.optString("status")) {
-                "UNAUTHENTICATED", "PERMISSION_DENIED" -> failBackup(CloudBackupResult.TEST_ACCESS_REQUIRED)
+                "UNAUTHENTICATED" -> failBackup(CloudBackupResult.TEST_ACCESS_REQUIRED)
+                "PERMISSION_DENIED" -> throw CloudBackupException(CloudBackupResult.TEST_ACCESS_REQUIRED, permissionDenied = true)
                 "RESOURCE_EXHAUSTED" -> failBackup(CloudBackupResult.QUOTA_REACHED)
                 "UNAVAILABLE", "DEADLINE_EXCEEDED" -> failBackup(CloudBackupResult.NETWORK_ERROR)
                 null -> Unit
