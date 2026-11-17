@@ -2,6 +2,9 @@ package com.hebi.gallipick.data.cloud
 
 import android.app.Activity
 import android.content.Context
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
@@ -15,9 +18,12 @@ import com.hebi.gallipick.domain.MediaHasher
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
@@ -29,15 +35,16 @@ internal class PlayCloudBilling(
     private val transport: CloudBackupTransport,
 ) : CloudBilling {
     private val appContext = context.applicationContext
+    private val purchaseVerification = Mutex()
 
     override fun open(uid: String): CloudBillingSession = Session(uid)
 
     private inner class Session(private val uid: String) : CloudBillingSession {
         @Volatile private var closed = false
-        @Volatile private var checkout: CompletableDeferred<PurchaseUpdate>? = null
+        @Volatile private var checkout: Channel<PurchaseUpdate>? = null
         private val billing = lazy {
             BillingClient.newBuilder(appContext)
-                .setListener { result, purchases -> checkout?.complete(PurchaseUpdate(result, purchases.orEmpty())) }
+                .setListener { result, purchases -> checkout?.trySend(PurchaseUpdate(result, purchases.orEmpty())) }
                 .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
                 .enableAutoServiceReconnection()
                 .build()
@@ -55,9 +62,16 @@ internal class PlayCloudBilling(
         override suspend fun load(): CloudBillingSnapshot = withContext(Dispatchers.Main.immediate) {
             val plan = serverPlan()
             if (!plan.enabled) return@withContext CloudBillingSnapshot(plan, emptyList())
-            val update = queryPurchases(plan)
+            val update = try {
+                queryPurchases(plan)
+            } catch (error: CloudBillingException) {
+                if (plan.activeProductId == null || !error.canRetryPlayQuery()) throw error
+                return@withContext CloudBillingSnapshot(plan, emptyList())
+            }
             val current = update.plan ?: plan
-            val offers = if (current.enabled && current.activeProductId == null) loadOffers(current).map { it.quote } else emptyList()
+            val offers = if (current.enabled && current.activeProductId == null && update.notice == CloudBillingNotice.NO_PURCHASE) {
+                loadOffers(current).map { it.quote }
+            } else emptyList()
             CloudBillingSnapshot(current, offers, update.notice.takeIf { it == CloudBillingNotice.PENDING }, update.autoRenewing)
         }
 
@@ -77,28 +91,50 @@ internal class PlayCloudBilling(
                 }
                 ensureCurrentAccount()
                 if (activity.isFinishing || activity.isDestroyed || checkout != null) unavailable()
-                val listener = CompletableDeferred<PurchaseUpdate>()
-                checkout = listener
+                val updates = Channel<PurchaseUpdate>(Channel.CONFLATED)
+                val returnedToApp = CompletableDeferred<Unit>()
+                val lifecycle = (activity as? LifecycleOwner)?.lifecycle
+                var paused = false
+                val observer = LifecycleEventObserver { _, event ->
+                    when (event) {
+                        Lifecycle.Event.ON_PAUSE -> paused = true
+                        Lifecycle.Event.ON_RESUME -> if (paused) returnedToApp.complete(Unit) else Unit
+                        else -> Unit
+                    }
+                }
+                checkout = updates
                 try {
+                    lifecycle?.addObserver(observer)
                     val params = BillingFlowParams.newBuilder()
                         .setProductDetailsParamsList(listOf(freshOffer.params))
                         .setObfuscatedAccountId(plan.obfuscatedAccountId)
                         .build()
                     val launchResult = client.launchBillingFlow(activity, params)
-                    if (launchResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                    if (launchResult.responseCode == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED) {
+                        updates.trySend(PurchaseUpdate(launchResult, emptyList()))
+                        returnedToApp.complete(Unit)
+                    } else if (launchResult.responseCode != BillingClient.BillingResponseCode.OK) {
                         return@withContext CloudBillingUpdate(plan, launchResult.toNotice())
                     }
-                    val update = withTimeoutOrNull(CHECKOUT_TIMEOUT_MS) { listener.await() }
-                        ?: return@withContext CloudBillingUpdate(plan, CloudBillingNotice.PENDING)
-                    ensureCurrentAccount()
-                    if (update.result.responseCode == BillingClient.BillingResponseCode.OK) {
-                        verifyPurchase(plan, update.purchases)
-                    } else {
-                        CloudBillingUpdate(plan, update.result.toNotice())
-                    }
+                    awaitCloudCheckout(
+                        plan = plan,
+                        callbackUpdates = updates,
+                        returnedToApp = returnedToApp,
+                        isInForeground = { lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != false },
+                        resolveUpdate = { update ->
+                            ensureCurrentAccount()
+                            if (update.result.responseCode == BillingClient.BillingResponseCode.OK) {
+                                verifyPurchase(plan, update.purchases)
+                            } else {
+                                CloudBillingUpdate(plan, update.result.toNotice())
+                            }
+                        },
+                        queryPurchases = { queryCheckoutPurchases(plan) },
+                    )
                 } finally {
+                    lifecycle?.removeObserver(observer)
                     checkout = null
-                    listener.cancel()
+                    updates.cancel()
                 }
             }
 
@@ -152,14 +188,27 @@ internal class PlayCloudBilling(
             )
         }
 
-        private suspend fun queryPurchases(plan: CloudBillingPlan): CloudBillingUpdate {
+        private suspend fun queryPurchases(plan: CloudBillingPlan): CloudBillingUpdate =
+            verifyPurchase(plan, readPlayPurchases())
+
+        private suspend fun queryCheckoutPurchases(plan: CloudBillingPlan): CloudBillingUpdate? {
+            val purchases = try {
+                readPlayPurchases()
+            } catch (error: CloudBillingException) {
+                if (!error.canRetryPlayQuery()) throw error
+                return null
+            }
+            return verifyPurchase(plan, purchases)
+        }
+
+        private suspend fun readPlayPurchases(): List<Purchase> {
             connect()
             val params = QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build()
             val response = awaitPlay<PurchaseUpdate> { complete ->
                 client.queryPurchasesAsync(params) { result, purchases -> complete(PurchaseUpdate(result, purchases)) }
             }
             response.result.requireOk()
-            return verifyPurchase(plan, response.purchases)
+            return response.purchases
         }
 
         private suspend fun verifyPurchase(plan: CloudBillingPlan, purchases: List<Purchase>): CloudBillingUpdate {
@@ -172,10 +221,13 @@ internal class PlayCloudBilling(
             val current = matching.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
                 .maxByOrNull { it.purchaseTime }
             if (current != null) {
-                val refreshed = serverPlan(current.purchaseToken.takeIf { it.isNotBlank() } ?: unavailable())
-                val notice = if (refreshed.enabled) CloudBillingNotice.VERIFIED else CloudBillingNotice.UNAVAILABLE
-                val autoRenewing = current.isAutoRenewing.takeIf { refreshed.activeProductId == current.products.single() }
-                return CloudBillingUpdate(refreshed, notice, autoRenewing)
+                return verifyCloudCheckout(plan) {
+                    val token = current.purchaseToken.takeIf { it.isNotBlank() } ?: unavailable()
+                    val refreshed = purchaseVerification.withLock { serverPlan(token) }
+                    val notice = if (refreshed.enabled) CloudBillingNotice.VERIFIED else CloudBillingNotice.UNAVAILABLE
+                    val autoRenewing = current.isAutoRenewing.takeIf { refreshed.activeProductId == current.products.single() }
+                    CloudBillingUpdate(refreshed, notice, autoRenewing)
+                }
             }
             if (matching.any { it.purchaseState == Purchase.PurchaseState.PENDING }) {
                 return CloudBillingUpdate(plan, CloudBillingNotice.PENDING)
@@ -243,7 +295,6 @@ internal class PlayCloudBilling(
         const val APP_PACKAGE = "com.hebi.gallipick"
         const val MAX_PRODUCTS = 12
         const val PLAY_API_TIMEOUT_MS = 15_000L
-        const val CHECKOUT_TIMEOUT_MS = 180_000L
         val PLAN_ID = Regex("[a-z0-9][a-z0-9._-]{0,63}")
 
         suspend fun <T> awaitPlay(start: ((T) -> Unit) -> Unit): T = withTimeoutOrNull(PLAY_API_TIMEOUT_MS) {
@@ -253,6 +304,9 @@ internal class PlayCloudBilling(
         } ?: unavailable()
 
         fun unavailable(): Nothing = throw CloudBillingException(CloudBillingNotice.UNAVAILABLE)
+
+        fun CloudBillingException.canRetryPlayQuery(): Boolean =
+            notice == CloudBillingNotice.FAILED || notice == CloudBillingNotice.UNAVAILABLE
 
         fun BillingResult.requireOk() {
             if (responseCode != BillingClient.BillingResponseCode.OK) throw CloudBillingException(toNotice())

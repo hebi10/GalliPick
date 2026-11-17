@@ -4,12 +4,16 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -21,12 +25,14 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hebi.gallipick.data.cloud.cloudPhotoSupportsViewer
@@ -114,11 +120,15 @@ private fun CloudLibraryControls(
     }
 
     Column(
-        Modifier.fillMaxWidth().galliCardSurface(AppSurface).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        Modifier.fillMaxWidth().galliCardSurface(AppSurface).padding(GalliUiMetrics.cardPadding),
+        verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing),
     ) {
-        Text("클라우드 보관함", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
-        ActionButton("목록 새로고침", { reload++ }, enabled = !loading && action == null)
+        ActionButton(
+            "목록 새로고침",
+            { reload++ },
+            enabled = !loading && action == null,
+            icon = Icons.Outlined.Refresh,
+        )
         if (catalogError != null && catalog.isNotEmpty()) {
             Text("현재 연결되지 않아 이전 목록을 표시합니다. 원본 열람·복원은 인터넷 연결이 필요합니다.",
                 color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -126,7 +136,30 @@ private fun CloudLibraryControls(
         when {
             loading && catalog.isEmpty() -> Text("보관함을 확인하는 중입니다.", color = Muted)
             catalogError != null && catalog.isEmpty() -> Text(checkNotNull(catalogError), color = Muted)
-            catalog.isEmpty() -> Text("서버에서 확인된 원본이 없습니다.", color = Muted)
+            catalog.isEmpty() -> Box(
+                Modifier.fillMaxWidth().heightIn(min = 420.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    CloudFeatureIcon(Icons.Outlined.PhotoLibrary, size = 96.dp)
+                    Text(
+                        "보관한 원본이 없어요",
+                        style = MaterialTheme.typography.titleLarge,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Text(
+                        "클라우드에 보관한 사진과 동영상이 여기에 표시돼요.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
             else -> LazyColumn(
                 Modifier.fillMaxWidth().heightIn(max = 400.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),

@@ -35,6 +35,7 @@ import com.hebi.gallipick.domain.TrashOutcome
 import com.hebi.gallipick.ui.CleanupOperationResult
 import com.hebi.gallipick.ui.CloudAccountCard
 import com.hebi.gallipick.ui.CloudAccountSettings
+import com.hebi.gallipick.ui.CloudAdPlanObservation
 import com.hebi.gallipick.ui.CloudRoute
 import com.hebi.gallipick.ui.CloudAutoBackupSection
 import com.hebi.gallipick.ui.CloudBackupSection
@@ -62,8 +63,9 @@ class MainActivity : ComponentActivity() {
         val cloudAccount = (application as GalliPickApplication).cloudAccount
         setContent {
           val uiState by vm.ui.collectAsState()
-          var cloudPlanRevision by remember { mutableIntStateOf(0) }
-          val adsSession = rememberGalliAdsSession(this@MainActivity, cloudAccount, cloudPlanRevision)
+          var cloudAdPlan by remember { mutableStateOf<CloudAdPlanObservation?>(null) }
+          var billingScreenVisible by remember { mutableStateOf(false) }
+          val adsSession = rememberGalliAdsSession(this@MainActivity, cloudAccount, cloudAdPlan, billingScreenVisible)
           val useDarkTheme = uiState.themeMode.isDark(isSystemInDarkTheme())
           val view = LocalView.current
           SideEffect {
@@ -229,10 +231,12 @@ class MainActivity : ComponentActivity() {
                 onDismissResult = { operationResult = null },
                 cloudConnection = cloudAccount,
                 cloudContent = if (cloudAccount != null) {
-                    { route ->
+                    { route, goHome ->
                         when (route) {
                             CloudRoute.OVERVIEW ->
                                 CloudAccountCard { CloudAccountSettings(cloudAccount, this@MainActivity) }
+                            CloudRoute.BILLING_SIGN_IN ->
+                                CloudAccountCard { CloudAccountSettings(cloudAccount, this@MainActivity, forAdRemoval = true) }
                             CloudRoute.LIBRARY ->
                                 CloudLibrarySection(cloudAccount, onRestored = { vm.refresh() }) { uri, mimeType ->
                                     try {
@@ -258,13 +262,16 @@ class MainActivity : ComponentActivity() {
                                         }.toSet()
                                     }
                                 }
-                            CloudRoute.BILLING -> CloudBillingSection(cloudAccount, this@MainActivity) {
-                                cloudPlanRevision++
+                            CloudRoute.BILLING -> CloudBillingSection(cloudAccount, this@MainActivity, onGoHome = goHome) { uid, plan ->
+                                cloudAdPlan = CloudAdPlanObservation(uid, plan)
                             }
                         }
                     }
                 } else null,
                 homeBanner = { GalliHomeBanner(this@MainActivity, adsSession) },
+                adsConfigured = adsSession.configured || adsSession.previewOnly,
+                adRemoval = adsSession.removal,
+                onBillingScreenVisible = { billingScreenVisible = it },
                 adsPrivacyOptionsRequired = adsSession.privacyOptionsRequired,
                 onAdsPrivacyOptions = adsSession.openPrivacyOptions,
             )

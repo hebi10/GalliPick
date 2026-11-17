@@ -61,17 +61,23 @@ internal fun GalliPickApp(
     onRestore: (List<MediaItem>) -> Unit = {},
     result: CleanupOperationResult? = null,
     onDismissResult: () -> Unit = {},
-    cloudContent: (@Composable (CloudRoute) -> Unit)? = null,
+    cloudContent: (@Composable (CloudRoute, () -> Unit) -> Unit)? = null,
     cloudConnection: CloudAccountConnection? = null,
     homeBanner: (@Composable () -> Unit)? = null,
     adsPrivacyOptionsRequired: Boolean = false,
     onAdsPrivacyOptions: () -> Unit = {},
+    adsConfigured: Boolean = false,
+    adRemoval: AdRemovalStatus = AdRemovalStatus.NOT_PURCHASED,
+    onBillingScreenVisible: (Boolean) -> Unit = {},
 ) {
     val state by vm.ui.collectAsState()
     val cloudEnabled = cloudContent != null
     val destinations = remember(cloudEnabled) { visibleDestinations(cloudEnabled) }
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.HOME) }
+    var adRemovalOrigin by rememberSaveable { mutableStateOf<Destination?>(null) }
     val destination = if (selectedDestination in destinations) selectedDestination else Destination.HOME
+    val canOpenAdRemoval = adsConfigured && cloudEnabled && cloudConnection != null &&
+        cloudConnection.session.available && cloudConnection.billing != null
     val cloudFiles = rememberCloudFilesState(
         cloudConnection,
         active = destination == Destination.FILES,
@@ -108,7 +114,12 @@ internal fun GalliPickApp(
         showSimilarResults = false
         showSoftFocusResults = false
         similarCompareId = null
+        adRemovalOrigin = null
         selectedDestination = destinationValue
+    }
+    fun openAdRemoval(origin: Destination) {
+        navigate(Destination.CLOUD)
+        adRemovalOrigin = origin
     }
     fun openReviewInbox() {
         vm.clearSelection()
@@ -195,7 +206,7 @@ internal fun GalliPickApp(
             showReviewInbox -> showReviewInbox = false
             showSimilarResults || showSoftFocusResults -> closeSimilarReview()
             showPhotoAnalysis -> showPhotoAnalysis = false
-            else -> selectedDestination = Destination.HOME
+            else -> navigate(Destination.HOME)
         }
     }
     val navigateFiles: (com.hebi.gallipick.domain.MediaFilter) -> Unit = {
@@ -417,7 +428,13 @@ internal fun GalliPickApp(
                                         refresh = vm::refresh,
                                     )
                                     else -> when (destination) {
-                                        Destination.HOME -> HomeScreen(state, onRequestPermission, navigateFiles, ::openDuplicates, { navigate(Destination.CLEANUP) }, ::openReviewInbox)
+                                        Destination.HOME -> HomeScreen(
+                                            state, onRequestPermission, navigateFiles, ::openDuplicates,
+                                            { navigate(Destination.CLEANUP) }, ::openReviewInbox,
+                                            openAdRemoval = if (canOpenAdRemoval && adRemoval == AdRemovalStatus.NOT_PURCHASED) {
+                                                { openAdRemoval(Destination.HOME) }
+                                            } else null,
+                                        )
                                         Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission,
                                              cloudFiles = cloudFiles, openCloud = { navigate(Destination.CLOUD) })
                                         Destination.CLEANUP -> CleanupScreen(
@@ -429,12 +446,24 @@ internal fun GalliPickApp(
                                             browse = navigateFiles,
                                         )
                                         Destination.CLOUD -> if (cloudContent != null && cloudConnection != null) {
-                                            CloudScreen(cloudConnection, cloudContent)
+                                            CloudScreen(
+                                                cloudConnection,
+                                                onBackFromAdRemoval = adRemovalOrigin?.let { origin ->
+                                                    { navigate(origin) }
+                                                },
+                                                onBillingScreenVisible = onBillingScreenVisible,
+                                            ) { route ->
+                                                cloudContent(route) { navigate(Destination.HOME) }
+                                            }
                                         }
                                         Destination.SETTINGS -> SettingsScreen(
                                             state, vm, onRequestPermission, onOpenSettings, { showTrash = true },
                                             adsPrivacyOptionsRequired = adsPrivacyOptionsRequired,
                                             onAdsPrivacyOptions = onAdsPrivacyOptions,
+                                            openAdRemoval = if (canOpenAdRemoval) {
+                                                { openAdRemoval(Destination.SETTINGS) }
+                                            } else null,
+                                            adRemoval = adRemoval,
                                         )
                                     }
                                 }

@@ -2,6 +2,7 @@ package com.hebi.gallipick.ui
 
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -15,6 +16,7 @@ import com.hebi.gallipick.data.cloud.CloudBilling
 import com.hebi.gallipick.data.cloud.CloudBillingSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,7 +32,7 @@ class CloudScreenNavigationTest {
 
         compose.onNodeWithTag("cloud-route-BILLING").performClick()
         compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
-        compose.onNodeWithText("뒤로").performClick()
+        compose.onNodeWithContentDescription("뒤로").performClick()
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
     }
 
@@ -74,7 +76,44 @@ class CloudScreenNavigationTest {
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
     }
 
-    private fun showCloud(backend: FakeAccountBackend, billingAvailable: Boolean = true) {
+    @Test
+    fun adRemovalShortcutOpensBillingAfterSignInAndBackReturnsToOrigin() {
+        val backend = FakeAccountBackend("test-user-1")
+        backend.active.value = null
+        val billingVisibility = mutableListOf<Boolean>()
+        var returnsToOrigin = 0
+        showCloud(
+            backend,
+            onBackFromAdRemoval = { returnsToOrigin++ },
+            onBillingScreenVisible = { billingVisibility.add(it) },
+        )
+
+        compose.onNodeWithText("screen-BILLING_SIGN_IN").assertIsDisplayed()
+        compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(emptyList<Boolean>(), billingVisibility)
+            backend.active.value = CloudAccountIdentity("test-user-1", null, null)
+        }
+        compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(listOf(true), billingVisibility)
+            backend.active.value = null
+        }
+        compose.onNodeWithText("screen-BILLING_SIGN_IN").assertIsDisplayed()
+        compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
+        compose.onNodeWithContentDescription("뒤로").performClick()
+        compose.runOnIdle {
+            assertEquals(listOf(true, false), billingVisibility)
+            assertEquals(1, returnsToOrigin)
+        }
+    }
+
+    private fun showCloud(
+        backend: FakeAccountBackend,
+        billingAvailable: Boolean = true,
+        onBackFromAdRemoval: (() -> Unit)? = null,
+        onBillingScreenVisible: (Boolean) -> Unit = {},
+    ) {
         val billing = if (billingAvailable) object : CloudBilling {
             override fun open(uid: String): CloudBillingSession = error("The route test cannot start purchases")
         } else null
@@ -85,7 +124,9 @@ class CloudScreenNavigationTest {
         )
         compose.setContent {
             GalliPickTheme {
-                CloudScreen(connection) { route -> Text("screen-${route.name}") }
+                CloudScreen(connection, onBackFromAdRemoval, onBillingScreenVisible) { route ->
+                    Text("screen-${route.name}")
+                }
             }
         }
     }
