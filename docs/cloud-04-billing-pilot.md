@@ -15,7 +15,7 @@ Firebase callable 응답은 `enabled`, `products`, `activeProductId`, `expiresAt
 
 ## 실제 구매 시험 준비
 
-1. 테스트 프로젝트에서 Google Play Developer API를 사용 설정한다. 전용 실행 계정을 GalliPick 앱 단위 권한으로 Play Console에 등록한다. 공식 문서의 재무 데이터 및 주문 조회와 주문 및 구독 관리 권한으로 검증·승인을 수행한다. 실행 계정은 IAM Credentials로 자기 계정의 Android Publisher 범위 액세스 토큰을 발급한다.
+1. 테스트 프로젝트에서 Google Play Developer API를 사용 설정한다. 전용 실행 계정을 GalliPick 앱 단위 권한으로 Play Console에 등록한다. 공식 문서의 재무 데이터 및 주문 조회와 주문 및 구독 관리 권한으로 검증·승인을 수행한다. 결제 함수는 Cloud Run Functions의 런타임 서비스 계정으로 Android Publisher 범위 액세스 토큰을 메타데이터 서버에서 받는다.
 2. 별도 승인된 테스트 상품과 기본 요금제를 준비하고 실제 ID를 환경 변수로 지정한다. 테스트 단말에서 Google Play 라이선스 테스터 계정을 사용한다. Play 계정과 앱 Firebase 계정의 연결은 구매 시 제출한 난독화된 식별자로 확인된다.
 3. 개발 프로젝트의 전용 토픽 `gallipick-play-rtdn-test`를 Play 실시간 개발자 알림에 연결한다. `refreshCloudSubscription`은 Pub/Sub 이벤트를 받으면 Google Play API에서 상태를 다시 읽는다. `unavailable` 또는 `aborted`는 다시 시도한다. 인증 실패·상품 불일치 이벤트는 거부하며, 원문 메시지나 토큰을 로그에 남기지 않는다.
 4. 승인·중복 호출·타 계정 토큰·유예·취소·보류·만료·복구·구독 교체 상태를 실기기에서 확인한다. 시험을 닫을 때 `GALLIPICK_BILLING_ENABLED`를 끄고 개발 상품 설정을 검토한다.
