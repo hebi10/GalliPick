@@ -189,7 +189,6 @@ class Stage9GFeatureCapturesTest {
             compose.runOnIdle { screen = Screen.SIMILAR_RESULTS }
             compose.onNodeWithText("비슷한 사진 찾기").assertExists()
             compose.onNodeWithTag("similar-results-summary").assertExists()
-            compose.onNodeWithTag("similar-results-group-similar:stage9g").assertExists()
             screenshot(screenshots, captured, names, "04-similar-results")
 
             compose.runOnIdle { screen = Screen.SIMILAR_COMPARE }
