@@ -101,7 +101,7 @@ private fun CloudBillingControls(session: CloudBillingSession, activity: Activit
         Modifier.fillMaxWidth().galliCardSurface(AppSurface).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("클라우드 구독 시험", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
+        Text("구독 정보", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
         if (plan?.enabled == true) {
             val currentProduct = plan.products.firstOrNull { it.productId == plan.activeProductId }
             if (currentProduct != null) {
@@ -132,7 +132,7 @@ private fun CloudBillingControls(session: CloudBillingSession, activity: Activit
             }
             ActionButton("구매 복구", { runBilling { session.recover() } }, enabled = !busy)
         } else if (!busy && plan != null) {
-            Text("이 계정에서 클라우드 구독 시험을 사용할 수 없습니다.", color = Muted)
+            Text("현재 시험 결제가 준비되지 않았습니다. 서버에서 허용된 요금제가 확인되면 구매 가능한 상품을 표시합니다.", color = Muted)
         }
         if (!busy) ActionButton("구독 정보 새로고침", { scope.launch { refresh() } })
         val status = if (busy) "구독 정보를 확인하는 중입니다." else notice?.displayText(plan?.activeProductId != null)
