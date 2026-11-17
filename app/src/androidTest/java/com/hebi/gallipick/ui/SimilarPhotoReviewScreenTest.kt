@@ -111,8 +111,10 @@ class SimilarPhotoReviewScreenTest {
         compose.runOnIdle { assertEquals(setOf("catA", "catB"), chosen.value) }
         compose.onNodeWithContentDescription("catC.jpg 미리보기 선택").performScrollTo().performClick()
         compose.onNodeWithTag("similar-compare-selection").assertExists()
-        compose.onNodeWithText("정리 후보 선택").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("similar-compare-focused-file").assertTextEquals("catC.jpg")
+        compose.onNodeWithTag("similar-compare-candidate-action").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("묶음에서 최소 한 장은 남겨야 합니다.").assertExists()
+        compose.runOnIdle { assertEquals(setOf("catA", "catB"), chosen.value) }
         compose.onNodeWithContentDescription("catA.jpg 미리보기 선택").performScrollTo().performClick()
         compose.onNodeWithText("선택 취소 · 남길 사진으로 지정").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(setOf("catB"), chosen.value) }
