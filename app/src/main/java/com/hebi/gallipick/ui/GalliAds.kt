@@ -1,11 +1,14 @@
 package com.hebi.gallipick.ui
 
 import android.app.Activity
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -41,6 +45,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private const val CLOUD_AD_ENTITLEMENT_REFRESH_MS = 5 * 60 * 1000L
+private const val CLOUD_AD_ENTITLEMENT_RETRY_MS = 2_000L
+private const val CLOUD_AD_ENTITLEMENT_FAST_RETRIES = 2
 
 internal data class GalliAdsSession(
     val configured: Boolean = false,
@@ -60,7 +66,8 @@ internal data class GalliAdsSession(
 internal fun rememberGalliAdsSession(
     activity: Activity,
     cloudConnection: CloudAccountConnection?,
-    cloudPlanRevision: Int,
+    planObservation: CloudAdPlanObservation?,
+    billingScreenVisible: Boolean = false,
 ): GalliAdsSession {
     val configured = remember(activity) {
         activity.resources.getBoolean(R.bool.gallipick_ads_enabled)
@@ -70,7 +77,7 @@ internal fun rememberGalliAdsSession(
     }
     if (!configured && !previewOnly) return GalliAdsSession()
 
-    val removal = rememberCloudAdRemovalStatus(cloudConnection, cloudPlanRevision)
+    val removal = rememberCloudAdRemovalStatus(cloudConnection, planObservation, billingScreenVisible)
     if (previewOnly) return GalliAdsSession(previewOnly = true, removal = removal)
     val consentInformation = remember(activity) {
         UserMessagingPlatform.getConsentInformation(activity)
@@ -78,27 +85,41 @@ internal fun rememberGalliAdsSession(
     var canRequestAds by remember(activity) { mutableStateOf(false) }
     var privacyRequired by remember(activity) { mutableStateOf(false) }
     var initialized by remember(activity) { mutableStateOf(false) }
+    var consentInfoUpdated by remember(activity) { mutableStateOf(false) }
+    var consentFormStarted by remember(activity) { mutableStateOf(false) }
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsStateWithLifecycle()
+
+    fun updateConsentStatus() {
+        canRequestAds = consentInformation.canRequestAds()
+        privacyRequired = consentInformation.privacyOptionsRequirementStatus ==
+            ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
+    }
 
     DisposableEffect(activity, consentInformation) {
         var disposed = false
-        fun updateStatus() {
-            if (!disposed) {
-                canRequestAds = consentInformation.canRequestAds()
-                privacyRequired = consentInformation.privacyOptionsRequirementStatus ==
-                    ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
-            }
-        }
         consentInformation.requestConsentInfoUpdate(
             activity,
             ConsentRequestParameters.Builder().build(),
             {
                 if (!disposed) {
-                    UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { updateStatus() }
+                    updateConsentStatus()
+                    consentInfoUpdated = true
                 }
             },
-            { updateStatus() },
+            { if (!disposed) updateConsentStatus() },
         )
         onDispose { disposed = true }
+    }
+
+    LaunchedEffect(activity, consentInfoUpdated, removal, billingScreenVisible, lifecycleState) {
+        if (consentInfoUpdated && !consentFormStarted && !billingScreenVisible &&
+            lifecycleState == Lifecycle.State.RESUMED && removal == AdRemovalStatus.NOT_PURCHASED
+        ) {
+            consentFormStarted = true
+            UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) {
+                if (!activity.isDestroyed && !activity.isFinishing) updateConsentStatus()
+            }
+        }
     }
 
     LaunchedEffect(activity, canRequestAds, removal) {
@@ -121,55 +142,75 @@ internal fun rememberGalliAdsSession(
         privacyOptionsRequired = privacyRequired,
         openPrivacyOptions = {
             if (privacyRequired) {
-                UserMessagingPlatform.showPrivacyOptionsForm(activity) {
-                    canRequestAds = consentInformation.canRequestAds()
-                    privacyRequired = consentInformation.privacyOptionsRequirementStatus ==
-                        ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
-                }
+                UserMessagingPlatform.showPrivacyOptionsForm(activity) { updateConsentStatus() }
             }
         },
     )
 }
 
 @Composable
-private fun rememberCloudAdRemovalStatus(
+internal fun rememberCloudAdRemovalStatus(
     connection: CloudAccountConnection?,
-    planRevision: Int,
+    planObservation: CloudAdPlanObservation?,
+    billingScreenVisible: Boolean = false,
 ): AdRemovalStatus {
     if (connection == null) return AdRemovalStatus.NOT_PURCHASED
     val billing = connection.billing ?: return AdRemovalStatus.NOT_PURCHASED
     val account by connection.session.account.collectAsStateWithLifecycle()
     val uid = account?.uid ?: return AdRemovalStatus.NOT_PURCHASED
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var removal by remember(billing, uid, planRevision) { mutableStateOf(AdRemovalStatus.VERIFYING) }
-    LaunchedEffect(lifecycle, billing, uid, planRevision) {
+    var lastObservation by remember(billing, uid) { mutableStateOf<CloudAdPlanObservation?>(null) }
+    var currentPlan by remember(billing, uid) { mutableStateOf<CloudAdPlanObservation?>(null) }
+    val currentAccountObservation = planObservation?.takeIf { it.uid == uid }
+    val newObservation = currentAccountObservation?.takeIf { it != lastObservation }
+
+    LaunchedEffect(lifecycle, billing, uid, currentAccountObservation, billingScreenVisible) {
+        if (newObservation != null) {
+            lastObservation = newObservation
+            currentPlan = newObservation
+        }
+        if (billingScreenVisible) {
+            // An earlier no-purchase result is stale once checkout can start.
+            if (currentPlan?.removalFor(uid, System.currentTimeMillis()) == AdRemovalStatus.NOT_PURCHASED) {
+                currentPlan = null
+            }
+            return@LaunchedEffect
+        }
+
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            try {
-                billing.open(uid).use { session ->
-                    while (true) {
-                        val plan = try {
-                            session.loadPlan()
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (_: Exception) {
-                            null
-                        }
-                        val now = System.currentTimeMillis()
-                        removal = cloudAdRemovalStatus(plan, now)
-                        val expiresAt = plan?.expiresAtMs?.takeIf { removal == AdRemovalStatus.VERIFIED_AD_FREE }
-                        delay(expiresAt?.let { minOf(it - now, CLOUD_AD_ENTITLEMENT_REFRESH_MS) }
-                            ?: CLOUD_AD_ENTITLEMENT_REFRESH_MS)
-                        if (expiresAt != null && System.currentTimeMillis() >= expiresAt) {
-                            removal = AdRemovalStatus.VERIFYING
-                        }
+            var recoverPurchase = true
+            var retries = 0
+            while (true) {
+                val beforeRequest = System.currentTimeMillis()
+                val expired = currentPlan?.plan?.expiresAtMs?.let { it <= beforeRequest } == true
+                if (expired) currentPlan = null
+                val plan = try {
+                    billing.open(uid).use { session ->
+                        loadCloudAdPlan(session, recoverPurchase || expired, beforeRequest)
                     }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    null
                 }
-            } finally {
-                removal = AdRemovalStatus.VERIFYING
+                val observation = plan?.let { CloudAdPlanObservation(uid, it) }
+                currentPlan = observation
+                val now = System.currentTimeMillis()
+                val status = observation?.removalFor(uid, now) ?: AdRemovalStatus.VERIFYING
+                recoverPurchase = status == AdRemovalStatus.VERIFYING
+                if (recoverPurchase && retries < CLOUD_AD_ENTITLEMENT_FAST_RETRIES) {
+                    retries++
+                    delay(CLOUD_AD_ENTITLEMENT_RETRY_MS * retries)
+                } else {
+                    val expiresAt = plan?.expiresAtMs?.takeIf { status == AdRemovalStatus.VERIFIED_AD_FREE }
+                    delay(expiresAt?.let { minOf(it - now, CLOUD_AD_ENTITLEMENT_REFRESH_MS) }
+                        ?: CLOUD_AD_ENTITLEMENT_REFRESH_MS)
+                    retries = 0
+                }
             }
         }
     }
-    return removal
+    return (newObservation ?: currentPlan)?.removalFor(uid, System.currentTimeMillis()) ?: AdRemovalStatus.VERIFYING
 }
 
 @Composable
@@ -188,11 +229,13 @@ internal fun GalliHomeBanner(
     if (isPreview || !canDisplayGalliAd(GalliAdPlacement.HOME_BANNER, policy)) return
 
     if (session.previewOnly) {
-        Box(
-            Modifier.fillMaxWidth().galliCardSurface(Panel).padding(12.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("광고 표시 테스트", style = MaterialTheme.typography.labelMedium, color = Muted)
+        HomeBannerFrame {
+            Box(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp).galliCardSurface(Panel).padding(12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("광고 표시 테스트", style = MaterialTheme.typography.labelMedium, color = Muted)
+            }
         }
         return
     }
@@ -221,12 +264,26 @@ internal fun GalliHomeBanner(
         }
         banner?.let { loaded ->
             DisposableEffect(loaded) { onDispose { loaded.destroy() } }
-            Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+            HomeBannerFrame(Modifier.testTag("home-admob-banner")) {
                 AndroidView(
                     factory = { loaded.getView(activity) },
                     modifier = Modifier.wrapContentSize(),
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun HomeBannerFrame(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Column(
+        modifier.fillMaxWidth().background(AppSurface).padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        HorizontalDivider(color = Line)
+        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+            content()
+        }
+        HorizontalDivider(color = Line)
     }
 }

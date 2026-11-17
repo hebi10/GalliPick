@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -18,11 +20,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hebi.gallipick.AppUiState
@@ -72,24 +76,49 @@ private fun CloudBackupControls(
     }
 
     Column(
-        Modifier.fillMaxWidth().galliCardSurface(AppSurface).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        Modifier.fillMaxWidth().galliCardSurface(AppSurface).padding(GalliUiMetrics.cardPadding),
+        verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing),
     ) {
-        Text("원본 백업", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
-        Text("사진이나 동영상 한 개를 선택해 테스트 클라우드에 보관합니다. 파일당 최대 64 MiB입니다.",
-            color = Muted, style = MaterialTheme.typography.bodySmall)
-        Text("원본에 포함된 촬영 위치 등의 정보도 함께 보관됩니다.",
-            color = Muted, style = MaterialTheme.typography.bodySmall)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            CloudFeatureIcon(Icons.Outlined.CloudUpload, size = 96.dp)
+            Text(
+                "사진·동영상 원본 보관",
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.semantics { heading() },
+            )
+            Text(
+                "한 번에 사진이나 동영상 한 개를 선택해 테스트 클라우드에 보관합니다.\n파일당 최대 64 MiB입니다.",
+                color = Muted,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                "원본에 포함된 촬영 위치 등의 정보도 함께 보관됩니다.",
+                color = Muted,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+            )
+        }
         if (state.access == MediaAccess.NONE) {
-            ActionButton("사진·동영상 접근 허용", requestAccess)
+            CloudPrimaryAction("사진·동영상 접근 허용", requestAccess)
         } else {
             when {
                 state.loading -> Text("기기 파일을 확인하는 중입니다.", color = Muted)
                 state.catalogError != null -> Text("기기 파일을 확인하지 못했습니다.", color = Muted)
                 eligible.isEmpty() -> Text("현재 접근 범위에 보관할 수 있는 파일이 없습니다.", color = Muted)
             }
-            ActionButton("파일 선택", { showPicker = true }, Modifier.fillMaxWidth(),
-                enabled = !state.loading && state.catalogError == null && eligible.isNotEmpty() && phase == null)
+            ActionButton(
+                "파일 선택",
+                { showPicker = true },
+                Modifier.fillMaxWidth(),
+                filled = currentSelection == null,
+                enabled = !state.loading && state.catalogError == null && eligible.isNotEmpty() && phase == null,
+            )
         }
         if (currentSelection != null) {
             Text(currentSelection.displayName, style = MaterialTheme.typography.bodyMedium)

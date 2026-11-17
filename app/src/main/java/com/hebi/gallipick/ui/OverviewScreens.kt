@@ -44,6 +44,7 @@ internal fun HomeScreen(
     duplicates: () -> Unit,
     cleanup: () -> Unit,
     resumeReview: (() -> Unit)? = null,
+    openAdRemoval: (() -> Unit)? = null,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
@@ -79,6 +80,9 @@ internal fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         HomeWelcome(cleanup)
+                        if (openAdRemoval != null) {
+                            CloudActionGroup(CloudRoute.BILLING_SIGN_IN) { openAdRemoval() }
+                        }
                         if (state.access == MediaAccess.NONE) HomePermissionNotice(requestAccess)
                         HomeStorageSummary(state, showBreakdown = true)
                     }
@@ -89,6 +93,9 @@ internal fun HomeScreen(
                 }
             } else {
                 HomeWelcome(cleanup)
+                if (openAdRemoval != null) {
+                    CloudActionGroup(CloudRoute.BILLING_SIGN_IN) { openAdRemoval() }
+                }
                 if (state.access == MediaAccess.NONE) HomePermissionNotice(requestAccess)
                 if (wide) {
                     Row(
@@ -570,6 +577,8 @@ internal fun SettingsScreen(
     openTrash: () -> Unit,
     adsPrivacyOptionsRequired: Boolean = false,
     onAdsPrivacyOptions: () -> Unit = {},
+    openAdRemoval: (() -> Unit)? = null,
+    adRemoval: AdRemovalStatus = AdRemovalStatus.NOT_PURCHASED,
 ) {
     val uriHandler = LocalUriHandler.current
     var confirmClear by remember { mutableStateOf(false) }
@@ -589,6 +598,20 @@ internal fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
         ) {
             SectionTitle("설정", "화면·권한·파일 관리")
+            if (openAdRemoval != null) {
+                SettingsSection("광고 및 구독") {
+                    Text(
+                        "클라우드 구독 혜택과 결제 상태를 확인할 수 있습니다.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    ActionButton(
+                        if (adRemoval == AdRemovalStatus.VERIFIED_AD_FREE) "구독 관리" else "광고 제거",
+                        openAdRemoval,
+                        icon = Icons.Outlined.Cloud,
+                    )
+                }
+            }
             SettingsSection("화면 테마") {
                 Text("기기 설정을 따르거나 모드를 직접 선택하세요.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(2.dp)) {

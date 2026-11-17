@@ -42,7 +42,7 @@ class ReferenceNavigationFlowTest {
             GalliPickTheme {
                 GalliPickApp(
                     vm, {}, {}, {}, {},
-                    cloudContent = { Text(managementLabel) },
+                    cloudContent = { _, _ -> Text(managementLabel) },
                     cloudConnection = cloudConnection,
                 )
             }

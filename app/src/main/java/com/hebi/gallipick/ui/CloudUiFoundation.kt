@@ -1,34 +1,51 @@
 package com.hebi.gallipick.ui
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.data.cloud.CloudAccountOperation
 import com.hebi.gallipick.data.cloud.CloudBillingPlan
 
 internal enum class CloudRoute(val title: String, val description: String) {
     OVERVIEW("클라우드", ""),
-    LIBRARY("내 보관함", "클라우드에 확인된 사진과 동영상을 살펴봅니다."),
-    BACKUP("원본 백업", "기기에서 선택한 원본을 검증 후 보관합니다."),
-    AUTO_BACKUP("자동 백업", "선택 폴더의 백업 조건과 진행 상태를 확인합니다."),
-    SPACE("공간 확보 검토", "검증된 서버 원본과 기기 파일을 비교합니다."),
-    BILLING("요금제·결제", "이용 중인 구독과 구매 복구, 구매 가능한 시험 요금제를 확인합니다."),
+    LIBRARY("내 보관함", "클라우드에 보관한 사진과 동영상을 봅니다."),
+    BACKUP("원본 백업", "선택한 원본을 클라우드에 보관합니다."),
+    AUTO_BACKUP("자동 백업", "선택 폴더의 자동 백업을 설정합니다."),
+    SPACE("공간 확보 검토", "백업이 확인된 기기 파일을 검토합니다."),
+    BILLING_SIGN_IN("광고 제거", "클라우드 구독 혜택 보기"),
+    BILLING("요금제·결제", "현재 요금제와 구독 상태를 확인합니다."),
 }
 
 internal enum class CloudAccessState {
@@ -77,12 +94,12 @@ internal fun cloudSubscriptionUiState(
 @Composable
 internal fun CloudHeader(route: CloudRoute, onBack: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.touchTarget),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (route != CloudRoute.OVERVIEW) {
-            TextAction("뒤로", onBack)
+            IconAction("뒤로", Icons.AutoMirrored.Outlined.ArrowBack, onClick = onBack)
         }
         Text(
             route.title,
@@ -105,33 +122,69 @@ internal fun CloudStatusMessage(message: String) {
 @Composable
 internal fun CloudAccountCard(content: @Composable () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().galliCardSurface(AppSurface).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        Modifier.fillMaxWidth().galliCardSurface(AppSurface).padding(GalliUiMetrics.cardPadding),
+        verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing),
     ) {
         content()
     }
 }
 
 @Composable
-internal fun CloudUsageCard(usedBytes: Long, quotaBytes: Long) {
-    val verifiedUsage = usedBytes.coerceAtLeast(0)
-    val verifiedQuota = quotaBytes.coerceAtLeast(0)
-    Text("서버에서 확인된 사용량 ${bytesLabel(verifiedUsage)} / ${bytesLabel(verifiedQuota)}", color = Ink)
+internal fun CloudFeatureIcon(
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    size: Dp = 44.dp,
+) {
+    Box(
+        modifier.size(size).background(IconContainer, RoundedCornerShape(GalliUiMetrics.navigationCorner)),
+        contentAlignment = Alignment.Center,
+    ) {
+        GalliIcon(icon, null, Modifier.size(size * 0.55f))
+    }
 }
 
 @Composable
-internal fun CloudActionCard(route: CloudRoute, onClick: () -> Unit) {
+internal fun CloudActionGroup(vararg routes: CloudRoute, onNavigate: (CloudRoute) -> Unit) {
     Column(
-        Modifier.fillMaxWidth().heightIn(min = 60.dp)
-            .galliCardSurface(AppSurface)
-            .clickable(role = Role.Button, onClick = onClick)
-            .testTag("cloud-route-${route.name}")
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        Modifier.fillMaxWidth().galliCardSurface(AppSurface),
     ) {
-        Text(route.title, style = MaterialTheme.typography.titleSmall, color = Ink)
-        Text(route.description, style = MaterialTheme.typography.bodySmall, color = Muted)
+        routes.forEachIndexed { index, route ->
+            if (index > 0) {
+                HorizontalDivider(Modifier.padding(horizontal = GalliUiMetrics.cardPadding), color = Line)
+            }
+            Row(
+                Modifier.fillMaxWidth()
+                    .testTag("cloud-route-${route.name}")
+                    .semantics { role = Role.Button }
+                    .plainClick { onNavigate(route) }
+                    .padding(horizontal = GalliUiMetrics.cardPadding, vertical = GalliUiMetrics.cardSpacing),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CloudFeatureIcon(route.icon)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(route.title, style = MaterialTheme.typography.titleSmall, color = Ink)
+                    Text(route.description, style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+                GalliIcon(
+                    Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    null,
+                    Modifier.size(20.dp),
+                    tint = Muted,
+                )
+            }
+        }
     }
+}
+
+private val CloudRoute.icon: ImageVector get() = when (this) {
+    CloudRoute.OVERVIEW -> Icons.Outlined.Cloud
+    CloudRoute.LIBRARY -> Icons.Outlined.PhotoLibrary
+    CloudRoute.BACKUP -> Icons.Outlined.CloudUpload
+    CloudRoute.AUTO_BACKUP -> Icons.Outlined.Sync
+    CloudRoute.SPACE -> Icons.Outlined.Storage
+    CloudRoute.BILLING_SIGN_IN -> Icons.Outlined.Cloud
+    CloudRoute.BILLING -> Icons.Outlined.CreditCard
 }
 
 @Composable
