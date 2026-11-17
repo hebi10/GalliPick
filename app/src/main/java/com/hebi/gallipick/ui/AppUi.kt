@@ -61,7 +61,7 @@ internal fun GalliPickApp(
     onRestore: (List<MediaItem>) -> Unit = {},
     result: CleanupOperationResult? = null,
     onDismissResult: () -> Unit = {},
-    cloudContent: (@Composable () -> Unit)? = null,
+    cloudContent: (@Composable (CloudRoute) -> Unit)? = null,
     cloudConnection: CloudAccountConnection? = null,
 ) {
     val state by vm.ui.collectAsState()
@@ -425,7 +425,9 @@ internal fun GalliPickApp(
                                             onOpenReviewInbox = ::openReviewInbox,
                                             browse = navigateFiles,
                                         )
-                                        Destination.CLOUD -> if (cloudContent != null) CloudScreen(cloudContent)
+                                        Destination.CLOUD -> if (cloudContent != null && cloudConnection != null) {
+                                            CloudScreen(cloudConnection, cloudContent)
+                                        }
                                         Destination.SETTINGS -> SettingsScreen(
                                             state, vm, onRequestPermission, onOpenSettings, { showTrash = true },
                                         )
