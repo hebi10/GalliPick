@@ -53,6 +53,11 @@ class SimilarPhotoReviewScreenTest {
                 }
             }
         }
+        compose.onNodeWithTag("similar-compare-summary").assertExists()
+        compose.onNodeWithTag("similar-compare-recommendation").assertExists()
+        compose.onNodeWithTag("similar-compare-choices").assertExists()
+        compose.onNodeWithTag("similar-compare-info").assertExists()
+        compose.onNodeWithTag("similar-compare-selection").assertExists()
         compose.onNodeWithText("추천 사진").performScrollTo().assertExists()
         compose.onNodeWithText("추천 이유 보기").performScrollTo().performClick()
         compose.onNodeWithText("선명도 추정값이 상대적으로 높습니다.")
@@ -72,6 +77,9 @@ class SimilarPhotoReviewScreenTest {
                 }
             }
         }
+        compose.onNodeWithTag("similar-results-summary").assertExists()
+        compose.onNodeWithTag("similar-results-group-sample-group").assertExists()
+        compose.onNodeWithTag("similar-results-recommendation").assertExists()
         compose.onNodeWithText("1개 묶음", substring = true).assertExists()
         compose.onNodeWithContentDescription("3장 유사 사진 비교").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(group.id, opened); assertEquals(0, trashCount) }
@@ -127,6 +135,9 @@ class SimilarPhotoReviewScreenTest {
             SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
         ).fetchSemanticsNodes()
         assertEquals("Photo detail and metadata must share one vertical page scroll", 1, verticalScrolls.size)
+        compose.onNodeWithTag("similar-compare-preview").assertExists()
+        compose.onNodeWithTag("similar-compare-info").assertExists()
+        compose.onNodeWithTag("similar-compare-selection").assertExists()
         compose.onNodeWithContentDescription("유사 사진 가로 비교 목록").assertExists()
         compose.onNodeWithText("정리 후보 선택").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("원본 사진 외부 앱으로 열기").performScrollTo().assertIsDisplayed()
