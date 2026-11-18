@@ -490,7 +490,7 @@ class AdaptiveMediaReviewTest {
         val open = compose.onNodeWithText("파일 열기").fetchSemanticsNode().boundsInRoot
         val protect = compose.onNodeWithText("보호").fetchSemanticsNode().boundsInRoot
         assertTrue("Portrait detail should show related actions on one row", kotlin.math.abs(open.top - protect.top) <= 2f)
-        compose.onNodeWithText("앱에서 미리보기").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("미리보기").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("파일 형식").performScrollTo().assertIsDisplayed()
     }
 
@@ -518,7 +518,7 @@ class AdaptiveMediaReviewTest {
                 Surface(Modifier.requiredSize(1000.dp, 320.dp)) { MediaDetail(item, {}, {}) }
             }
         } }
-        val action = compose.onNodeWithText("앱에서 미리보기").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val action = compose.onNodeWithText("미리보기").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val name = compose.onNodeWithText(item.displayName).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue(action.right <= name.left)
         compose.onNodeWithText("Download/").performScrollTo().assertIsDisplayed()
