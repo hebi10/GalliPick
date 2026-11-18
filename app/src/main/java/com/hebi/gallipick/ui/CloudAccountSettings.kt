@@ -206,6 +206,9 @@ internal fun CloudAccountSettings(
             CloudAccountNotice.NO_GOOGLE_ACCOUNT -> "선택할 Google 계정을 찾지 못했습니다. 기기의 계정 설정을 확인해 주세요."
             CloudAccountNotice.GOOGLE_UNAVAILABLE -> "Google 계정 선택을 열 수 없습니다. Google Play 서비스를 확인해 주세요."
             CloudAccountNotice.NETWORK_ERROR -> "네트워크 연결을 확인한 뒤 다시 시도해 주세요."
+            CloudAccountNotice.GOOGLE_CREDENTIAL_FAILED -> "Google 계정 확인에 실패했습니다. 다시 시도해 주세요. (G-01)"
+            CloudAccountNotice.FIREBASE_GOOGLE_CONFIGURATION -> "클라우드 Google 로그인 설정에 문제가 있습니다. (G-02)"
+            CloudAccountNotice.FIREBASE_SIGN_IN_FAILED -> "Google 계정으로 클라우드에 로그인하지 못했습니다. 다시 시도해 주세요. (G-03)"
             CloudAccountNotice.SIGN_IN_FAILED -> "Google 로그인에 실패했습니다. 다시 시도해 주세요."
             CloudAccountNotice.SIGN_OUT_FAILED -> "로그아웃에 실패했습니다. 다시 시도해 주세요."
             CloudAccountNotice.CREDENTIAL_CLEAR_FAILED -> if (signedIn == null) {

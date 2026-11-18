@@ -14,7 +14,13 @@ internal enum class CloudAccountOperation { CHOOSING_ACCOUNT, SIGNING_OUT }
 
 internal enum class CloudAccountNotice {
     CANCELLED, NO_GOOGLE_ACCOUNT, GOOGLE_UNAVAILABLE, NETWORK_ERROR,
+    GOOGLE_CREDENTIAL_FAILED, FIREBASE_GOOGLE_CONFIGURATION, FIREBASE_SIGN_IN_FAILED,
     SIGN_IN_FAILED, SIGN_OUT_FAILED, CREDENTIAL_CLEAR_FAILED,
+}
+
+internal fun firebaseGoogleSignInFailure(errorCode: String?): CloudAccountNotice = when (errorCode) {
+    "ERROR_OPERATION_NOT_ALLOWED", "ERROR_APP_NOT_AUTHORIZED" -> CloudAccountNotice.FIREBASE_GOOGLE_CONFIGURATION
+    else -> CloudAccountNotice.FIREBASE_SIGN_IN_FAILED
 }
 
 internal data class CloudAccountStatus(
