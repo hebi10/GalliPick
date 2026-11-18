@@ -52,6 +52,13 @@ internal class CloudBackupException(
 
 internal data class CloudAutoBackupTransfer(val folder: CloudAutoBackupFolder, val wifiNetwork: Network)
 
+internal data class RecentVerifiedCloudUpload(
+    val accountUid: String,
+    val uri: String,
+    val fingerprint: String,
+    val volumeVersion: String,
+)
+
 internal fun failBackup(result: CloudBackupResult): Nothing = throw CloudBackupException(result)
 
 internal class CloudBackup(
@@ -67,6 +74,8 @@ internal class CloudBackup(
     private val restoreStore = CloudRestoreStore(appContext)
     private val _catalogRevision = MutableStateFlow(0L)
     val catalogRevision = _catalogRevision.asStateFlow()
+    private val _recentVerifiedUpload = MutableStateFlow<RecentVerifiedCloudUpload?>(null)
+    val recentVerifiedUpload = _recentVerifiedUpload.asStateFlow()
 
     suspend fun upload(
         item: MediaItem,
@@ -82,7 +91,14 @@ internal class CloudBackup(
         return try {
             forAccount(expectedUid, 180_000L) { check ->
                 transfer(item, mimeType, expectedUid, automatic, onPhase, check)
-            }.also { if (it == CloudBackupResult.VERIFIED) _catalogRevision.update { current -> current + 1 } }
+            }.also {
+                if (it == CloudBackupResult.VERIFIED) {
+                    _recentVerifiedUpload.value = RecentVerifiedCloudUpload(
+                        expectedUid, item.uri, item.fingerprint, item.volumeVersion,
+                    )
+                    _catalogRevision.update { current -> current + 1 }
+                }
+            }
         } catch (error: CloudBackupException) {
             error.result
         } finally {
