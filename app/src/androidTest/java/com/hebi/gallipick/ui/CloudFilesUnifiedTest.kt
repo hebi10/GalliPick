@@ -59,8 +59,9 @@ class CloudFilesUnifiedTest {
         compose.onNodeWithText("cloud-holiday.jpg").assertExists()
         compose.onNodeWithText("local-photo.jpg").assertDoesNotExist()
         compose.onNodeWithText("cloud-holiday.jpg").performClick()
-        compose.onNodeWithText("클라우드 보관함 열기").performClick()
-        compose.runOnIdle { assertTrue(opened.value) }
+        compose.onNodeWithText("파일 상세").assertIsDisplayed()
+        compose.onNodeWithText("보관 완료").assertExists()
+        compose.runOnIdle { assertFalse(opened.value) }
     }
 
     @Test fun deviceFilterDoesNotRenderCloudOriginals() {
@@ -108,8 +109,9 @@ class CloudFilesUnifiedTest {
         compose.onNodeWithText("local-photo.jpg").assertExists()
         compose.onNodeWithText("cloud-holiday.jpg").assertDoesNotExist()
         compose.onNodeWithText("local-photo.jpg").performClick()
-        compose.onNodeWithText("클라우드 보관함 열기").assertExists().performClick()
-        compose.runOnIdle { assertTrue(cloudOpened.value) }
+        compose.onNodeWithText("파일 상세").assertIsDisplayed()
+        compose.onNodeWithText("보관 완료").assertExists()
+        compose.runOnIdle { assertFalse(cloudOpened.value) }
     }
 
     @Test fun cloudOnlyNeverExposesDeviceTrashForStaleSelectedFiles() {
