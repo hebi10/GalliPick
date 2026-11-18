@@ -31,6 +31,22 @@ class FinalPolicyTests(unittest.TestCase):
                 self.assertNotIn(forbidden, source)
         self.assertIn("permissions:\n  contents: read", source)
 
+    def test_fast_pr_checks_and_full_main_instrumentation_block_release_until_success(self):
+        device = (ROOT / ".github/workflows/device-tests.yml").read_text(encoding="utf-8")
+        quick = (ROOT / ".github/workflows/android.yml").read_text(encoding="utf-8")
+        release = (ROOT / ".github/workflows/release-build.yml").read_text(encoding="utf-8")
+        self.assertRegex(device, r"(?m)^  push:\s*$")
+        self.assertIn("    branches: [main]", device)
+        self.assertNotRegex(device, r"(?m)^  pull_request:\s*$")
+        self.assertIn("  workflow_dispatch:", device)
+        self.assertIn("  workflow_call:", device)
+        self.assertIn("if: github.event_name != 'pull_request'", device)
+        self.assertRegex(quick, r"(?m)^  pull_request:\s*$")
+        self.assertIn("testDebugUnitTest lintDebug assembleDebug", quick)
+        self.assertIn('REQUIRED_CI_JSON: \'["Android verification","Android device tests"]\'', release)
+        self.assertIn('Required CI not successful: ', release)
+        self.assertIn('Missing exact-main CI: ', release)
+
     def test_required_policy_files_include_all_release_stages(self):
         files = set(audit.REQUIRED)
         for value in ("AGENTS.md", "scripts/ops07/audit.py",
