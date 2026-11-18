@@ -100,7 +100,7 @@ import kotlinx.coroutines.launch
 private const val BYTES_PER_MB = 1_048_576.0
 
 @Composable
-fun FilterDialog(
+internal fun FilterDialog(
     current: MediaFilter,
     items: List<MediaItem>,
     onApply: (MediaFilter) -> Unit,
