@@ -26,13 +26,12 @@ internal class CloudAutoBackupWorker(context: Context, params: WorkerParameters)
     override suspend fun doWork(): Result = coroutineScope {
         val app = applicationContext as? GalliPickApplication ?: return@coroutineScope Result.success()
         val connection = app.cloudAccount ?: return@coroutineScope Result.success()
-        val backup = connection.backup ?: return@coroutineScope Result.success()
         val expectedUid = connection.session.account.value?.uid ?: return@coroutineScope Result.success()
         val settings = CloudAutoBackupSettings(app)
         val schedule = settings.current() ?: return@coroutineScope Result.success()
         val consent = schedule.consent
         val lease = inputData.getString(CloudAutoBackupSettings.LEASE) ?: return@coroutineScope Result.success()
-        if (!consent.permits(expectedUid, lease)) return@coroutineScope Result.success()
+        if (consent.lease != lease) return@coroutineScope Result.success()
         val connectivity = app.getSystemService(ConnectivityManager::class.java)
         val wifiNetwork = connectivity?.activeNetwork
 
@@ -51,7 +50,25 @@ internal class CloudAutoBackupWorker(context: Context, params: WorkerParameters)
 
         val work = async {
             requireTransferNetwork()
-            runScheduledBackup(settings, schedule, backup, expectedUid, ::requireTransferNetwork)
+            if (connection.usesProductionBackupPlan) {
+                try {
+                    connection.refreshBackupAccess(expectedUid)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    return@async retryOrStop(settings, consent)
+                }
+            }
+            val backup = connection.backup ?: return@async finish(settings, consent, CloudAutoBackupStatus.CLOUD_UNAVAILABLE)
+            val access = backup.accessFor(expectedUid) ?: return@async finish(settings, consent, CloudAutoBackupStatus.CLOUD_UNAVAILABLE)
+            if (!consent.permits(expectedUid, lease, access.namespace)) return@async Result.success()
+            if (!access.allowsUpload(System.currentTimeMillis())) {
+                return@async finish(settings, consent, CloudAutoBackupStatus.CLOUD_UNAVAILABLE)
+            }
+            runScheduledBackup(settings, schedule, backup, expectedUid) {
+                if (backup.accessFor(expectedUid)?.namespace != access.namespace) throw CancellationException()
+                requireTransferNetwork()
+            }
         }
         val guard = launch {
             while (work.isActive) {
@@ -99,24 +116,27 @@ internal class CloudAutoBackupWorker(context: Context, params: WorkerParameters)
         } catch (_: Exception) {
             return finish(settings, consent, CloudAutoBackupStatus.ERROR)
         }
-        val candidates = cloudAutoBackupCandidates(consent.folder, items, handled).take(availableSlots)
+        val access = backup.accessFor(uid) ?: return finish(settings, consent, CloudAutoBackupStatus.CLOUD_UNAVAILABLE)
+        val candidates = cloudAutoBackupCandidates(consent.folder, items, handled, access.maximumOriginalBytes).take(availableSlots)
         if (candidates.isEmpty()) return finish(settings, consent, CloudAutoBackupStatus.NO_NEW_FILES)
         requireTransferNetwork()
 
-        // Probe the allowlisted development backend before reading any media bytes.
-        try {
-            backup.listOriginals(uid)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: CloudBackupException) {
-            return when (error.result) {
-                CloudBackupResult.ACCOUNT_CHANGED -> Result.success()
-                CloudBackupResult.NETWORK_ERROR -> retryOrStop(settings, consent)
-                CloudBackupResult.QUOTA_REACHED -> finish(settings, consent, CloudAutoBackupStatus.LIMIT_REACHED)
-                else -> finish(settings, consent, CloudAutoBackupStatus.CLOUD_UNAVAILABLE)
+        // The development worker still probes compatibility with the existing pilot.
+        if (access.namespace == CloudBackupNamespace.DEVELOPMENT) {
+            try {
+                backup.listOriginals(uid)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: CloudBackupException) {
+                return when (error.result) {
+                    CloudBackupResult.ACCOUNT_CHANGED -> Result.success()
+                    CloudBackupResult.NETWORK_ERROR -> retryOrStop(settings, consent)
+                    CloudBackupResult.QUOTA_REACHED -> finish(settings, consent, CloudAutoBackupStatus.LIMIT_REACHED)
+                    else -> finish(settings, consent, CloudAutoBackupStatus.CLOUD_UNAVAILABLE)
+                }
+            } catch (_: Exception) {
+                return finish(settings, consent, CloudAutoBackupStatus.CLOUD_UNAVAILABLE)
             }
-        } catch (_: Exception) {
-            return finish(settings, consent, CloudAutoBackupStatus.CLOUD_UNAVAILABLE)
         }
 
         var verifiedAny = false

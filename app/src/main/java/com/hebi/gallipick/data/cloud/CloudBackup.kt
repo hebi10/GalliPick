@@ -67,6 +67,7 @@ internal class CloudBackup(
     private val currentUid: () -> String?,
     private val tokenFor: suspend (String) -> String,
     private val transport: CloudBackupTransport,
+    private val productionAccess: CloudBackupAccessState? = null,
 ) {
     private val appContext = context.applicationContext
     private val reader = MediaStoreReader(appContext)
@@ -77,20 +78,32 @@ internal class CloudBackup(
     private val _recentVerifiedUpload = MutableStateFlow<RecentVerifiedCloudUpload?>(null)
     val recentVerifiedUpload = _recentVerifiedUpload.asStateFlow()
 
+    fun accessFor(uid: String): CloudBackupAccess? {
+        if (!ownsAccount(uid)) return null
+        return if (productionAccess == null) CloudBackupAccess.development else productionAccess.forAccount(uid)
+    }
+
     suspend fun upload(
         item: MediaItem,
         expectedUid: String,
         automatic: CloudAutoBackupTransfer? = null,
         onPhase: (CloudBackupPhase) -> Unit = {},
     ): CloudBackupResult {
+        if (!ownsAccount(expectedUid)) return CloudBackupResult.ACCOUNT_CHANGED
+        val access = accessFor(expectedUid) ?: return CloudBackupResult.TEST_ACCESS_REQUIRED
+        if (!access.allowsUpload(System.currentTimeMillis())) return CloudBackupResult.TEST_ACCESS_REQUIRED
+        val sizeLimit = if (automatic == null) access.maximumOriginalBytes
+            else minOf(access.maximumOriginalBytes, CLOUD_BACKUP_MAX_BYTES)
         val mimeType = item.mimeType.lowercase(Locale.ROOT)
-        if (item.sizeBytes !in 1..CLOUD_BACKUP_MAX_BYTES || !CLOUD_MEDIA_MIME_TYPE.matches(mimeType)) {
+        if (item.sizeBytes !in 1..sizeLimit || !CLOUD_MEDIA_MIME_TYPE.matches(mimeType)) {
             return CloudBackupResult.UNSUPPORTED_MEDIA
         }
         if (!mutex.tryLock()) return CloudBackupResult.FAILED
         return try {
-            forAccount(expectedUid, 180_000L) { check ->
-                transfer(item, mimeType, expectedUid, automatic, onPhase, check)
+            val timeout = if (access.namespace == CloudBackupNamespace.DEVELOPMENT || automatic != null) 180_000L
+                else 1_200_000L
+            forAccount(expectedUid, timeout, access.namespace) { check ->
+                transfer(item, mimeType, expectedUid, access.namespace, automatic, onPhase, check)
             }.also {
                 if (it == CloudBackupResult.VERIFIED) {
                     _recentVerifiedUpload.value = RecentVerifiedCloudUpload(
@@ -106,10 +119,14 @@ internal class CloudBackup(
         }
     }
 
-    suspend fun listOriginals(expectedUid: String): List<CloudOriginal> = forAccount(expectedUid, 40_000L) { check ->
-        val token = tokenFor(expectedUid)
-        check()
-        transport.listOriginals(token)
+    suspend fun listOriginals(expectedUid: String): List<CloudOriginal> {
+        val namespace = requireAccess(expectedUid).namespace
+        val timeout = if (namespace == CloudBackupNamespace.DEVELOPMENT) 40_000L else 120_000L
+        return forAccount(expectedUid, timeout, namespace) { check ->
+            val token = tokenFor(expectedUid)
+            check()
+            transport.listOriginals(token, namespace)
+        }
     }
 
     /**
@@ -121,10 +138,11 @@ internal class CloudBackup(
      */
     suspend fun openVideoStream(original: CloudOriginal, expectedUid: String): CloudVideoStreamCapability {
         if (!isCloudVideoStreamable(original)) failBackup(CloudBackupResult.UNSUPPORTED_MEDIA)
-        return forAccount(expectedUid, 40_000L) { check ->
+        val namespace = requireAccess(expectedUid).namespace
+        return forAccount(expectedUid, 40_000L, namespace) { check ->
             val token = tokenFor(expectedUid)
             check()
-            val target = transport.getDownload(expectedUid, token, original)
+            val target = transport.getDownload(expectedUid, token, original, namespace)
             check()
             transport.verifyVideoRange(target, original, check)
             check()
@@ -137,12 +155,14 @@ internal class CloudBackup(
     }
 
     suspend fun restore(original: CloudOriginal, expectedUid: String): Uri {
+        val namespace = requireAccess(expectedUid).namespace
         if (!mutex.tryLock()) failBackup(CloudBackupResult.FAILED)
         return try {
-            forAccount(expectedUid, 180_000L) { check ->
+            val timeout = if (namespace == CloudBackupNamespace.DEVELOPMENT) 180_000L else 480_000L
+            forAccount(expectedUid, timeout, namespace) { check ->
                 val token = tokenFor(expectedUid)
                 check()
-                val target = transport.getDownload(expectedUid, token, original)
+                val target = transport.getDownload(expectedUid, token, original, namespace)
                 check()
                 restoreStore.save(original, check) { output -> transport.download(target, original, output, check) }
             }
@@ -165,12 +185,13 @@ internal class CloudBackup(
             original.sizeBytes !in 1..CLOUD_BACKUP_MAX_BYTES ||
             maxEdgePx !in 128..2048
         ) failBackup(CloudBackupResult.UNSUPPORTED_MEDIA)
+        val namespace = requireAccess(expectedUid).namespace
         mutex.lock()
         try {
-            return forAccount(expectedUid, 180_000L) { check ->
+            return forAccount(expectedUid, 180_000L, namespace) { check ->
                 val token = tokenFor(expectedUid)
                 check()
-                val target = transport.getDownload(expectedUid, token, original)
+                val target = transport.getDownload(expectedUid, token, original, namespace)
                 withContext(Dispatchers.IO) {
                     val temporary = File.createTempFile("gallipick-preview-", ".tmp", appContext.cacheDir)
                     try {
@@ -199,7 +220,14 @@ internal class CloudBackup(
         }
     }
 
-    private suspend fun <T : Any> forAccount(uid: String, timeoutMillis: Long, block: suspend (() -> Unit) -> T): T {
+    private fun requireAccess(uid: String): CloudBackupAccess {
+        if (!ownsAccount(uid)) failBackup(CloudBackupResult.ACCOUNT_CHANGED)
+        return accessFor(uid) ?: failBackup(CloudBackupResult.TEST_ACCESS_REQUIRED)
+    }
+
+    private suspend fun <T : Any> forAccount(
+        uid: String, timeoutMillis: Long, namespace: CloudBackupNamespace, block: suspend (() -> Unit) -> T,
+    ): T {
         if (!ownsAccount(uid)) failBackup(CloudBackupResult.ACCOUNT_CHANGED)
         return withTimeoutOrNull(timeoutMillis) {
             coroutineScope {
@@ -208,6 +236,7 @@ internal class CloudBackup(
                     val check = {
                         operationContext.ensureActive()
                         if (!ownsAccount(uid)) failBackup(CloudBackupResult.ACCOUNT_CHANGED)
+                        if (accessFor(uid)?.namespace != namespace) failBackup(CloudBackupResult.TEST_ACCESS_REQUIRED)
                     }
                     check()
                     block(check).also { check() }
@@ -233,6 +262,7 @@ internal class CloudBackup(
         item: MediaItem,
         mimeType: String,
         uid: String,
+        namespace: CloudBackupNamespace,
         automatic: CloudAutoBackupTransfer?,
         onPhase: (CloudBackupPhase) -> Unit,
         checkAccount: () -> Unit,
@@ -244,6 +274,7 @@ internal class CloudBackup(
             onPhase(CloudBackupPhase.READING_ORIGINAL)
             val hash = withContext(Dispatchers.IO) {
                 assertOriginal(item, requiredFolder)
+                if (appContext.cacheDir.usableSpace < item.sizeBytes) failBackup(CloudBackupResult.DEVICE_STORAGE_ERROR)
                 try {
                     val temporary = File.createTempFile("original-", ".tmp", appContext.cacheDir)
                     try {
@@ -268,10 +299,15 @@ internal class CloudBackup(
             }
             assertOriginal(item, requiredFolder)
             checkAccount()
+            val currentAccess = accessFor(uid)
+            if (currentAccess?.allowsUpload(System.currentTimeMillis()) != true) {
+                failBackup(CloudBackupResult.TEST_ACCESS_REQUIRED)
+            }
+            if (item.sizeBytes > currentAccess.maximumOriginalBytes) failBackup(CloudBackupResult.UNSUPPORTED_MEDIA)
             val beginToken = tokenFor(uid)
             checkAccount()
             val target = transport.begin(uid, beginToken, hash, item.sizeBytes, mimeType, item.displayName,
-                CloudUploadMetadata.from(item))
+                CloudUploadMetadata.from(item), namespace)
             checkAccount()
             assertOriginal(item, requiredFolder)
             checkAccount()
@@ -282,7 +318,7 @@ internal class CloudBackup(
                 onPhase(CloudBackupPhase.VERIFYING)
                 val finishToken = tokenFor(uid)
                 checkAccount()
-                transport.finish(target.id, finishToken)
+                transport.finish(target.id, finishToken, namespace)
             }
             checkAccount()
             CloudBackupResult.VERIFIED

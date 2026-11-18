@@ -214,12 +214,175 @@ test('a confirmed plan remains available until its Play expiry without a new dev
 const productionEnv = (mode, uids = '', emails = '') => ({ GALLIPICK_PRODUCTION_AD_FREE_ENABLED: 'true',
     GALLIPICK_PRODUCTION_BILLING_MODE: mode, GALLIPICK_PRODUCTION_BILLING_TEST_UIDS: uids,
     GALLIPICK_PRODUCTION_BILLING_TEST_EMAILS: emails });
+const cloudEnv = (mode, uids = '') => ({ ...productionEnv(mode, uids), GALLIPICK_PRODUCTION_CLOUD_ENABLED: 'true',
+    GALLIPICK_PRODUCTION_CLOUD_MAX_ORIGINAL_BYTES: '268435456',
+    ...(mode === 'live' ? { GALLIPICK_PRODUCTION_CLOUD_LIVE_ENABLED: 'true' } : {}) });
 const live = productionBillingSettings(PRODUCTION_PROJECT, productionEnv('live'));
 const license = productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', 'owner-a'));
+const liveCloud = productionBillingSettings(PRODUCTION_PROJECT, cloudEnv('live'));
+const licenseCloud = productionBillingSettings(PRODUCTION_PROJECT, cloudEnv('license-test', 'owner-a'));
 const [monthly, annual] = live.products;
 const productId = 'gallipick_ad_free';
 const verify = (service, uid, purchaseToken) => service.verify(user(uid), { purchaseToken });
 const renewalEvent = purchaseToken => ({ packageName: 'com.hebi.gallipick', subscriptionNotification: { purchaseToken } });
+const cloudOffer = (gb, base = 'monthly') => liveCloud.products.find(item =>
+    item.productId === `gallipick_cloud_${gb}gb` && item.basePlanId === base);
+
+test('paid Cloud requires an explicit project-scoped rollout and bounded original size', async () => {
+    for (const value of [undefined, '0', '-64', '268435457', '64.5', '2e7', ' 256 ']) {
+        const disabled = productionBillingSettings(PRODUCTION_PROJECT, { ...cloudEnv('live'),
+            GALLIPICK_PRODUCTION_CLOUD_MAX_ORIGINAL_BYTES: value });
+        assert.equal(disabled.cloudEnabled, false);
+        assert.equal(disabled.maxOriginalBytes, null);
+        assert.deepEqual(disabled.products, live.products);
+    }
+    const flagOff = { ...cloudEnv('live'), GALLIPICK_PRODUCTION_CLOUD_ENABLED: 'false' };
+    assert.equal(productionBillingSettings(PRODUCTION_PROJECT, flagOff).cloudEnabled, false);
+    const noLiveApproval = { ...cloudEnv('license-test'), ...productionEnv('live') };
+    const adOnlyLive = productionBillingSettings(PRODUCTION_PROJECT, noLiveApproval);
+    assert.equal(adOnlyLive.cloudEnabled, false);
+    assert.deepEqual(adOnlyLive.products, live.products);
+    assert.equal(productionBillingSettings('gallipick-dev', cloudEnv('live')).cloudEnabled, false);
+    assert.equal(liveCloud.maxOriginalBytes, 268_435_456);
+    assert.equal(liveCloud.products.length, 8);
+    for (const base of ['monthly', 'annual']) {
+        for (const gb of [10, 50, 100]) {
+            assert.deepEqual(cloudOffer(gb, base), {
+                productId: `gallipick_cloud_${gb}gb`, basePlanId: base, kind: 'CLOUD', quotaBytes: gb * 1_000_000_000,
+            });
+        }
+    }
+    const { service, purchases } = createHarness({ settings: live });
+    assert.deepEqual((await service.getPlan(user('owner-a'))).products, live.products);
+    purchases.set(token(1), subscription({ product: cloudOffer(10), testPurchase: null }));
+    const existingCloud = await verify(service, 'owner-a', token(1));
+    assert.equal(existingCloud.activeProductId, cloudOffer(10).productId);
+    assert.equal(existingCloud.quotaBytes, 0);
+    assert.equal(existingCloud.uploadAllowed, false);
+    assert.throws(() => service.authorizeBackup(user('owner-a')), isCode('failed-precondition'));
+});
+
+test('paid Cloud uses exact verified quota and reports scoped usage for the signed-in owner', async () => {
+    const { service, purchases, db, records, setTime } = createHarness({ settings: liveCloud });
+    const uid = 'owner-a';
+    const auth = user(uid);
+    const owner = accountId(uid);
+    const quota = (ceiling = 100_000_000_000) =>
+        db.runTransaction(transaction => service.uploadQuota(transaction, owner, ceiling));
+    assert.equal(service.authorizeBackup(auth), owner);
+    assert.equal((await service.getPlan(auth)).backupAvailable, true);
+    assert.equal(await quota(), 0);
+    purchases.set(token(1), subscription({ product: cloudOffer(50, 'annual'), state: 'CANCELED', testPurchase: null }));
+    purchases.set(token(2), subscription({ product: monthly, testPurchase: null }));
+    const usage = `gallipickProductionBackupAccounts/${owner}`;
+    records.set(usage, { allocatedBytes: 12_000_000_000 });
+    records.set(`gallipickProductionLicenseBackupAccounts/${owner}`, { allocatedBytes: 90_000_000_000 });
+    await assert.rejects(verify(service, 'owner-b', token(1)), isCode('permission-denied'));
+    let plan = await verify(service, uid, token(1));
+    assert.equal(plan.testPurchasesOnly, false);
+    assert.equal(plan.activeProductId, 'gallipick_cloud_50gb');
+    assert.equal(plan.activeBasePlanId, 'annual');
+    assert.equal(plan.expiresAtMs, now + 20_000);
+    assert.equal(plan.adFreeProductId, null);
+    assert.equal(plan.quotaBytes, 50_000_000_000);
+    assert.equal(plan.usedBytes, 12_000_000_000);
+    assert.equal(plan.uploadAllowed, true);
+    assert.equal(await quota(), 50_000_000_000);
+    assert.equal(await quota(42_000_000_000), 42_000_000_000);
+    await assert.rejects(quota(NaN), isCode('failed-precondition'));
+
+    records.set(usage, { allocatedBytes: 50_000_000_000 });
+    plan = await verify(service, uid, token(2));
+    assert.equal(plan.uploadAllowed, false);
+    assert.equal(plan.adFreeProductId, productId);
+    assert.equal(plan.adFreeBasePlanId, 'monthly');
+    assert.equal(plan.activeProductId, 'gallipick_cloud_50gb');
+
+    setTime(now + 20_000);
+    plan = await service.getPlan(auth);
+    assert.equal(plan.backupAvailable, true);
+    assert.equal(plan.quotaBytes, 0);
+    assert.equal(plan.usedBytes, 50_000_000_000);
+    assert.equal(plan.uploadAllowed, false);
+    assert.equal(await quota(), 0);
+    assert.equal(service.authorizeBackup(auth), owner);
+});
+
+test('test and live Cloud keep paid plans and usage isolated and reject pending or unknown offers', async () => {
+    const { service, serviceFor, purchases, records } = createHarness({ settings: licenseCloud });
+    const paid = serviceFor(liveCloud);
+    const uid = 'owner-a';
+    const owner = accountId(uid);
+    const auth = user(uid);
+    assert.throws(() => service.authorizeBackup(user('owner-b')), isCode('permission-denied'));
+    purchases.set(token(1), subscription({ product: cloudOffer(100), state: 'PENDING' }));
+    purchases.set(token(2), subscription({ product: { ...cloudOffer(100), basePlanId: 'unknown' } }));
+    purchases.set(token(3), subscription({ product: cloudOffer(10), testPurchase: null }));
+    purchases.set(token(4), subscription({ product: cloudOffer(50, 'annual') }));
+    records.set(`gallipickProductionLicenseBackupAccounts/${owner}`, { allocatedBytes: 12 });
+    records.set(`gallipickProductionBackupAccounts/${owner}`, { allocatedBytes: 34 });
+    let testPlan = await verify(service, uid, token(1));
+    assert.equal(testPlan.testPurchasesOnly, true);
+    assert.equal(testPlan.quotaBytes, 0);
+    await assert.rejects(verify(service, uid, token(2)), isCode('failed-precondition'));
+    await assert.rejects(verify(service, uid, token(3)), isCode('permission-denied'));
+    await assert.rejects(verify(paid, uid, token(4)), isCode('permission-denied'));
+    testPlan = await verify(service, uid, token(4));
+    assert.equal(testPlan.quotaBytes, 50_000_000_000);
+    assert.equal(testPlan.usedBytes, 12);
+    assert.equal((await paid.getPlan(auth)).quotaBytes, 0);
+    assert.equal((await paid.getPlan(auth)).usedBytes, 34);
+    assert.equal((await verify(paid, uid, token(3))).quotaBytes, 10_000_000_000);
+    assert.equal((await service.getPlan(auth)).quotaBytes, 50_000_000_000);
+    assert.equal(JSON.stringify([...records]).includes(token(4)), false);
+});
+
+test('deferred Play changes preserve the old verified tier until the replacement becomes effective', async () => {
+    for (const [previousGb, replacementGb] of [[10, 100], [100, 10]]) {
+        const { service, purchases, setTime } = createHarness({ settings: licenseCloud });
+        const uid = 'owner-a';
+        const auth = user(uid);
+        const previous = subscription({ product: cloudOffer(previousGb), expires: now + 20_000 });
+        const replacement = subscription({ product: cloudOffer(replacementGb, 'annual'), linkedPurchaseToken: token(1),
+            expires: now + 100_000 });
+        const oldItem = previous.lineItems[0];
+        const futureItem = replacement.lineItems[0];
+        purchases.set(token(1), previous);
+        await verify(service, uid, token(1));
+        purchases.set(token(2), { ...replacement, lineItems: [
+            { ...oldItem, autoRenewingPlan: { autoRenewEnabled: false },
+                deferredItemReplacement: { productId: futureItem.productId } },
+            { ...futureItem, expiryTime: undefined, autoRenewingPlan: undefined },
+        ] });
+        assert.equal(await service.reconcileNotification(renewalEvent(token(2))), true);
+        assert.equal(await service.reconcileNotification(renewalEvent(token(1))), false);
+        assert.equal((await service.getPlan(auth)).quotaBytes, previousGb * 1_000_000_000);
+        assert.equal((await service.getPlan(auth)).activeBasePlanId, 'monthly');
+        setTime(now + 20_000);
+        assert.equal((await service.getPlan(auth)).quotaBytes, 0);
+        purchases.set(token(2), { ...replacement, lineItems: [oldItem, futureItem] });
+        assert.equal(await service.reconcileNotification(renewalEvent(token(2))), true);
+        assert.equal((await service.getPlan(auth)).quotaBytes, replacementGb * 1_000_000_000);
+        assert.equal((await service.getPlan(auth)).activeBasePlanId, 'annual');
+        assert.equal((await verify(service, uid, token(1))).quotaBytes, replacementGb * 1_000_000_000);
+        purchases.set(token(2), { ...replacement, subscriptionState: 'SUBSCRIPTION_STATE_ON_HOLD',
+            lineItems: [oldItem, futureItem] });
+        assert.equal(await service.reconcileNotification(renewalEvent(token(2))), true);
+        assert.equal((await service.getPlan(auth)).quotaBytes, 0);
+    }
+});
+
+test('unrecognized multi-item replacements cannot acknowledge or replace the original purchase', async () => {
+    const { service, purchases, acknowledged } = createHarness({ settings: licenseCloud });
+    const previous = subscription({ product: cloudOffer(10) });
+    const replacement = subscription({ product: cloudOffer(100, 'annual'), linkedPurchaseToken: token(1), acknowledged: false });
+    purchases.set(token(1), previous);
+    await verify(service, 'owner-a', token(1));
+    purchases.set(token(2), { ...replacement, lineItems: [...previous.lineItems, ...replacement.lineItems] });
+    await assert.rejects(verify(service, 'owner-a', token(2)), isCode('failed-precondition'));
+    assert.equal((await verify(service, 'owner-a', token(1))).quotaBytes, 10_000_000_000);
+    assert.deepEqual(acknowledged, []);
+});
 
 test('production billing activation is project scoped with no active Cloud products', async () => {
     assert.equal(productionBillingSettings(PRODUCTION_PROJECT, {}).enabled, false);

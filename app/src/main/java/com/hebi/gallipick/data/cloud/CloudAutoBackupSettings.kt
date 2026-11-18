@@ -54,8 +54,8 @@ internal class CloudAutoBackupSettings(context: Context) {
         )
     }
 
-    fun observe(uid: String): Flow<CloudAutoBackupSchedule?> = callbackFlow {
-        val owner = autoBackupOwnerKey(uid)
+    fun observe(uid: String, namespace: CloudBackupNamespace): Flow<CloudAutoBackupSchedule?> = callbackFlow {
+        val owner = autoBackupOwnerKey(uid, namespace)
         fun publish() {
             trySend(current()?.takeIf { it.consent.ownerKey == owner })
         }
@@ -68,11 +68,12 @@ internal class CloudAutoBackupSettings(context: Context) {
     suspend fun enable(
         uid: String,
         folder: CloudAutoBackupFolder,
+        namespace: CloudBackupNamespace,
         isStillAllowed: () -> Boolean,
     ): Boolean = withContext(Dispatchers.IO) {
         editMutex.withLock {
             if (!folder.isValid || !isStillAllowed()) return@withLock false
-            val consent = CloudAutoBackupConsent(autoBackupOwnerKey(uid), UUID.randomUUID().toString(), folder)
+            val consent = CloudAutoBackupConsent(autoBackupOwnerKey(uid, namespace), UUID.randomUUID().toString(), folder)
             val work = PeriodicWorkRequestBuilder<CloudAutoBackupWorker>(6, TimeUnit.HOURS)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED)
                     .setRequiresCharging(true).build())
@@ -105,9 +106,9 @@ internal class CloudAutoBackupSettings(context: Context) {
         }
     }
 
-    suspend fun disable(uid: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun disable(uid: String, namespace: CloudBackupNamespace): Boolean = withContext(Dispatchers.IO) {
         editMutex.withLock {
-            val consent = current()?.consent?.takeIf { it.ownerKey == autoBackupOwnerKey(uid) }
+            val consent = current()?.consent?.takeIf { it.ownerKey == autoBackupOwnerKey(uid, namespace) }
                 ?: return@withLock true
             val cleared = clear(consent)
             // Consent removal stops a running job even if a WorkManager cancellation cannot be written.

@@ -5,6 +5,7 @@ internal data class CloudRuntimeTarget(
     val functionsEndpoint: String,
     val storageBucket: String,
     val backupEnabled: Boolean,
+    val backupUsesServerPlan: Boolean = false,
 )
 
 /**
@@ -23,6 +24,7 @@ internal fun cloudRuntimeFor(projectId: String): CloudRuntimeTarget? = when (pro
         functionsEndpoint = "https://asia-northeast3-gallipick-production.cloudfunctions.net",
         storageBucket = "gallipick-production.firebasestorage.app",
         backupEnabled = false,
+        backupUsesServerPlan = true,
     )
     else -> null
 }

@@ -69,9 +69,10 @@ internal fun validateBackupDownload(
     uid: String,
     generation: String,
     allowedBuckets: Set<String>,
+    namespace: CloudBackupNamespace = CloudBackupNamespace.DEVELOPMENT,
 ): URI? {
     if (!generationId.matches(generation)) return null
-    val uri = backupObjectUri(downloadUrl, uid, uploadId, allowedBuckets) ?: return null
+    val uri = backupObjectUri(downloadUrl, uid, uploadId, allowedBuckets, namespace) ?: return null
     val pieces = uri.rawQuery.split('&')
     val query = pieces.associate { it.substringBefore('=') to it.substringAfter('=', "") }
     if (pieces.size != downloadParameters.size || query.keys != downloadParameters ||
@@ -96,7 +97,7 @@ internal fun copyAndVerifyCloudOriginal(
     expectedSha256: String,
     checkAccount: () -> Unit,
 ) {
-    if (sizeBytes !in 1..CLOUD_BACKUP_MAX_BYTES) failBackup(CloudBackupResult.INTEGRITY_ERROR)
+    if (sizeBytes !in 1..CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES) failBackup(CloudBackupResult.INTEGRITY_ERROR)
     val bounded = BackupStagingInput(source, output, sizeBytes, CloudBackupResult.INTEGRITY_ERROR)
     val actual = MediaHasher.sha256(bounded, checkAccount)
     if (actual != expectedSha256) failBackup(CloudBackupResult.INTEGRITY_ERROR)

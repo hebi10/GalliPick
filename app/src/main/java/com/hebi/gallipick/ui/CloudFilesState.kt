@@ -45,28 +45,33 @@ internal fun rememberCloudFilesState(
     repository: MediaRepository? = null,
     deviceItems: List<MediaItem> = emptyList(),
 ): CloudFilesUiState {
-    val backup = connection?.backup ?: return CloudFilesUiState()
+    if (connection == null) return CloudFilesUiState()
     val identity by connection.session.account.collectAsStateWithLifecycle()
     val uid = identity?.uid
-    val network = rememberCloudNetworkStatus(enabled = connection != null)
-    LaunchedEffect(uid) { CloudPhotoThumbnailStore.activate(uid) }
+    val configuredBackup = connection.backupAvailability
+    val observation = configuredBackup?.collectAsStateWithLifecycle()?.value
+    val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == uid }
+        ?: return CloudFilesUiState()
+    val namespace = observation?.access?.namespace
+    val network = rememberCloudNetworkStatus(enabled = true)
+    LaunchedEffect(uid, namespace) { CloudPhotoThumbnailStore.activate(uid) }
     val revision by backup.catalogRevision.collectAsStateWithLifecycle()
     val recentUpload by backup.recentVerifiedUpload.collectAsStateWithLifecycle()
-    var retryKey by remember(uid) { mutableIntStateOf(0) }
-    var seenOffline by remember(uid) { mutableStateOf(false) }
-    LaunchedEffect(uid, network.online) {
+    var retryKey by remember(uid, namespace) { mutableIntStateOf(0) }
+    var seenOffline by remember(uid, namespace) { mutableStateOf(false) }
+    LaunchedEffect(uid, namespace, network.online) {
         if (!network.online) seenOffline = true
         else if (seenOffline) {
             seenOffline = false
             retryKey++
         }
     }
-    var snapshot by remember(uid, backup) { mutableStateOf<CloudGallerySnapshot?>(null) }
-    var loading by remember(uid, backup) { mutableStateOf(false) }
-    var failed by remember(uid, backup) { mutableStateOf(false) }
-    var lastAttempt by remember(uid, backup) { mutableStateOf<Pair<Long, Int>?>(null) }
+    var snapshot by remember(uid, backup, namespace) { mutableStateOf<CloudGallerySnapshot?>(null) }
+    var loading by remember(uid, backup, namespace) { mutableStateOf(false) }
+    var failed by remember(uid, backup, namespace) { mutableStateOf(false) }
+    var lastAttempt by remember(uid, backup, namespace) { mutableStateOf<Pair<Long, Int>?>(null) }
 
-    LaunchedEffect(uid, backup, active, revision, retryKey, network.online) {
+    LaunchedEffect(uid, backup, namespace, active, revision, retryKey, network.online) {
         if (!active || uid == null || !network.online ||
             lastAttempt == (revision to retryKey)
         ) return@LaunchedEffect
@@ -102,18 +107,18 @@ internal fun rememberCloudFilesState(
             recentUpload, uid,
         )
     }
-    var verifiedMatches by remember(uid, snapshot, deviceItems) {
+    var verifiedMatches by remember(uid, namespace, snapshot, deviceItems) {
         mutableStateOf(emptyList<VerifiedGalleryMatch>())
     }
-    var matchChecked by remember(uid, snapshot, deviceItems) { mutableIntStateOf(0) }
-    var completedBatches by remember(uid, snapshot, deviceItems) { mutableIntStateOf(0) }
-    var requestedBatches by remember(uid, snapshot, deviceItems) {
+    var matchChecked by remember(uid, namespace, snapshot, deviceItems) { mutableIntStateOf(0) }
+    var completedBatches by remember(uid, namespace, snapshot, deviceItems) { mutableIntStateOf(0) }
+    var requestedBatches by remember(uid, namespace, snapshot, deviceItems) {
         mutableIntStateOf(CloudGalleryMatchPolicy.INITIAL_BATCHES)
     }
-    var matchChecking by remember(uid, snapshot, deviceItems) { mutableStateOf(false) }
-    var matchFailed by remember(uid, snapshot, deviceItems) { mutableStateOf(false) }
+    var matchChecking by remember(uid, namespace, snapshot, deviceItems) { mutableStateOf(false) }
+    var matchFailed by remember(uid, namespace, snapshot, deviceItems) { mutableStateOf(false) }
 
-    LaunchedEffect(uid, active, snapshot, candidates, requestedBatches, analyzer, network.online) {
+    LaunchedEffect(uid, namespace, active, snapshot, candidates, requestedBatches, analyzer, network.online) {
         val owner = uid ?: return@LaunchedEffect
         val catalog = snapshot?.takeIf { it.accountUid == owner } ?: return@LaunchedEffect
         val verifier = analyzer ?: return@LaunchedEffect

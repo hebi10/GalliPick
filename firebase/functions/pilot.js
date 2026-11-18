@@ -14,8 +14,10 @@ export function pilotSettings(project, env) {
     return { users, bucketName, uploadsPaused: pause === 'true' };
 }
 
-export function requirePrivateBucket(metadata) {
-    if (metadata.location?.toLowerCase() !== 'asia-northeast3' || metadata.storageClass !== 'STANDARD'
+export function requirePrivateBucket(metadata, { allowLegacyRegional = false } = {}) {
+    const storageClassAllowed = metadata.storageClass === 'STANDARD'
+        || (allowLegacyRegional && metadata.storageClass === 'REGIONAL');
+    if (metadata.location?.toLowerCase() !== 'asia-northeast3' || !storageClassAllowed
         || metadata.iamConfiguration?.publicAccessPrevention !== 'enforced'
         || metadata.iamConfiguration?.uniformBucketLevelAccess?.enabled !== true || metadata.lifecycle?.rule?.length) {
         throw new BackupError('failed-precondition', 'The backup bucket safety settings do not match the pilot.');

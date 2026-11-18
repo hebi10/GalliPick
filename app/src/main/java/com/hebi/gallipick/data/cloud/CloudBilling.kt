@@ -4,6 +4,14 @@ import android.app.Activity
 import java.io.Closeable
 
 internal const val GALLIPICK_STANDALONE_AD_FREE = "gallipick_ad_free"
+private val PRODUCTION_CLOUD_QUOTAS = mapOf(
+    "gallipick_cloud_10gb" to 10_000_000_000L,
+    "gallipick_cloud_50gb" to 50_000_000_000L,
+    "gallipick_cloud_100gb" to 100_000_000_000L,
+)
+internal fun isKnownGalliPickSubscription(productId: String): Boolean =
+    productId == GALLIPICK_STANDALONE_AD_FREE || productId in PRODUCTION_CLOUD_QUOTAS ||
+        productId == "gallipick_cloud_pilot"
 private val CLOUD_PRODUCT_ID = Regex("[a-z0-9][a-z0-9_.]{0,149}")
 private val CLOUD_BASE_PLAN_ID = Regex("[a-z0-9][a-z0-9-]{0,62}")
 
@@ -35,12 +43,18 @@ internal data class CloudBillingProduct(val productId: String, val basePlanId: S
     val billingPeriod: String get() = if (basePlanId == "annual") "P1Y" else "P1M"
 }
 
-internal fun isValidCloudBillingCatalog(products: List<CloudBillingProduct>): Boolean =
+internal fun isValidCloudBillingCatalog(
+    products: List<CloudBillingProduct>,
+    production: Boolean = false,
+): Boolean =
     products.isNotEmpty() && products.distinctBy { it.productId to it.basePlanId }.size == products.size &&
         products.all { product ->
             CLOUD_PRODUCT_ID.matches(product.productId) && CLOUD_BASE_PLAN_ID.matches(product.basePlanId) &&
                 if (product.isStandaloneAdFree) {
                     product.quotaBytes == 0L && product.basePlanId in setOf("monthly", "annual")
+                } else if (production) {
+                    product.quotaBytes == PRODUCTION_CLOUD_QUOTAS[product.productId] &&
+                        product.basePlanId in setOf("monthly", "annual")
                 } else {
                     product.quotaBytes > 0L
                 }
@@ -58,7 +72,24 @@ internal data class CloudBillingPlan(
     val adFreeProductId: String? = null,
     val adFreeExpiresAtMs: Long? = null,
     val testPurchasesOnly: Boolean = true,
+    val backupAvailable: Boolean = false,
+    val maxOriginalBytes: Long = 0,
+    val backupObjectPrefix: String? = null,
+    val cloudCheckoutAllowed: Boolean = false,
 )
+
+internal fun CloudBillingPlan.productionBackupAccess(): CloudBackupAccess? {
+    if (!backupAvailable || maxOriginalBytes !in 1..CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES) return null
+    val namespace = if (testPurchasesOnly) CloudBackupNamespace.LICENSE_TEST else CloudBackupNamespace.PRODUCTION
+    if (backupObjectPrefix != namespace.objectPrefix) return null
+    val quota = PRODUCTION_CLOUD_QUOTAS[activeProductId]
+    val activeVerified = activeProductId != null &&
+        products.any { it.productId == activeProductId && it.quotaBytes == quota }
+    val uploadExpiryMillis = expiresAtMs.takeIf {
+        enabled && activeVerified && uploadAllowed && quotaBytes == quota && usedBytes in 0L until quotaBytes
+    }
+    return CloudBackupAccess(namespace, maxOriginalBytes, uploadExpiryMillis)
+}
 
 internal fun CloudBillingPlan.activeCloudProductId(nowMillis: Long): String? = activeProductId?.takeIf { id ->
     enabled && expiresAtMs?.let { it > nowMillis } == true &&
@@ -71,6 +102,9 @@ internal fun CloudBillingPlan.activeStandaloneAdFreeProductId(nowMillis: Long): 
 
 internal fun CloudBillingPlan.activeSubscriptionProductId(nowMillis: Long): String? =
     activeCloudProductId(nowMillis) ?: activeStandaloneAdFreeProductId(nowMillis)
+
+internal val CloudBillingPlan.hasServerSubscription: Boolean
+    get() = activeProductId != null || adFreeProductId != null
 
 internal data class CloudBillingOffer(
     val product: CloudBillingProduct,

@@ -23,11 +23,13 @@ internal data class CloudAutoBackupConsent(
     val lease: String,
     val folder: CloudAutoBackupFolder,
 ) {
-    fun permits(uid: String?, workLease: String): Boolean =
-        uid != null && workLease == lease && autoBackupOwnerKey(uid) == ownerKey
+    fun permits(uid: String?, workLease: String, namespace: CloudBackupNamespace = CloudBackupNamespace.DEVELOPMENT): Boolean =
+        uid != null && workLease == lease && autoBackupOwnerKey(uid, namespace) == ownerKey
 }
 
-internal fun autoBackupOwnerKey(uid: String): String = consentDigest("gallipick-auto-backup\u0000$uid")
+internal fun autoBackupOwnerKey(uid: String, namespace: CloudBackupNamespace = CloudBackupNamespace.DEVELOPMENT): String =
+    if (namespace == CloudBackupNamespace.DEVELOPMENT) consentDigest("gallipick-auto-backup\u0000$uid")
+    else consentDigest("gallipick-auto-backup\u0000${namespace.objectPrefix}\u0000$uid")
 
 internal fun cloudAutoBackupVersion(item: MediaItem): String =
     consentDigest("${item.uri}\u0000${item.volumeVersion}\u0000${item.fingerprint}")
@@ -39,16 +41,18 @@ internal fun cloudAutoBackupCandidates(
     folder: CloudAutoBackupFolder,
     items: List<MediaItem>,
     handled: Set<String>,
+    maximumOriginalBytes: Long = CLOUD_BACKUP_MAX_BYTES,
 ): List<MediaItem> = items.asSequence()
-    .filter { folder.isValid && folder.contains(it) && it.canAutoBackUp() }
+    .filter { folder.isValid && folder.contains(it) && it.canAutoBackUp(maximumOriginalBytes) }
     .distinctBy { it.uri }
     .filter { cloudAutoBackupVersion(it) !in handled }
     .sortedWith(compareByDescending<MediaItem> { it.dateAddedMs }.thenByDescending { it.id })
     .take(AUTO_BACKUP_BATCH_SIZE)
     .toList()
 
-internal fun MediaItem.canAutoBackUp(): Boolean = !isTrashed && volumeVersion.isNotBlank() &&
-    sizeBytes in 1..CLOUD_BACKUP_MAX_BYTES && CLOUD_MEDIA_MIME_TYPE.matches(mimeType.lowercase(Locale.ROOT))
+internal fun MediaItem.canAutoBackUp(maximumOriginalBytes: Long = CLOUD_BACKUP_MAX_BYTES): Boolean =
+    !isTrashed && volumeVersion.isNotBlank() && sizeBytes in 1..minOf(maximumOriginalBytes, CLOUD_BACKUP_MAX_BYTES) &&
+        CLOUD_MEDIA_MIME_TYPE.matches(mimeType.lowercase(Locale.ROOT))
 
 internal fun matchesCloudBackupOriginal(
     expected: MediaItem,

@@ -59,6 +59,7 @@ import com.hebi.gallipick.data.cloud.CloudBillingSnapshot
 import com.hebi.gallipick.data.cloud.CloudBillingUpdate
 import com.hebi.gallipick.data.cloud.activeCloudProductId
 import com.hebi.gallipick.data.cloud.activeStandaloneAdFreeProductId
+import com.hebi.gallipick.data.cloud.hasServerSubscription
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -169,7 +170,7 @@ private fun CloudBillingControls(
     val waitingForPurchase = verifiedProductId == null && notice.awaitingPurchaseConfirmation()
     val showOffers = !busy && !waitingForPurchase && notice != CloudBillingNotice.PRICE_CHANGED &&
         notice != CloudBillingNotice.PURCHASE_LINKED_TO_ANOTHER_ACCOUNT &&
-        plan?.enabled == true && verifiedProductId == null
+        plan?.enabled == true && !plan.hasServerSubscription && verifiedProductId == null
     val testPurchasesOnly = plan?.testPurchasesOnly != false
     var managementFailed by remember(verifiedProductId) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -181,7 +182,8 @@ private fun CloudBillingControls(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     CloudFeatureIcon(Icons.Outlined.CheckCircle)
-                    BillingHeading("홈 배너 광고가 제거됐어요")
+                    BillingHeading(if (verifiedCloudProductId != null && plan?.backupAvailable == true)
+                        "클라우드 구독이 활성화됐어요" else "홈 배너 광고가 제거됐어요")
                 }
                 onGoHome?.let { CloudPrimaryAction("홈으로", it) }
             }
@@ -208,6 +210,8 @@ private fun CloudBillingControls(
                     CloudStatusMessage("${offer.intervalLabel} 자동 갱신되며 Google Play에서 관리하거나 취소할 수 있습니다.")
                     val purchaseLabel = if (offer.product.isStandaloneAdFree) {
                         if (offer.product.billingPeriod == "P1Y") "광고 제거 연간 구독" else "광고 제거 월간 구독"
+                    } else if (plan?.backupAvailable == true) {
+                        "클라우드 ${billingQuotaLabel(offer.product.quotaBytes)} ${offer.intervalLabel} 구독"
                     } else "Google Play로 계속"
                     CloudPrimaryAction(purchaseLabel, { confirmation = offer })
                 }

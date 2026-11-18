@@ -2,15 +2,39 @@ import { createHash } from 'node:crypto';
 
 const MIB = 1024 * 1024;
 export const MAX_FILE_BYTES = 64 * MIB;
-const MAX_OWNER_FILES = 250;
+export const PRODUCTION_MAX_FILE_BYTES = 256 * MIB;
+const PILOT_MAX_OWNER_FILES = 250;
+const PRODUCTION_MAX_OWNER_FILES = 20_000;
+const PRODUCTION_CATALOG_PAGE_SIZE = 100;
+const PRODUCTION_CATALOG_REQUESTS_PER_HOUR = 480;
 const SIGNED_UPLOAD_MS = 5 * 60 * 1000;
+const PRODUCTION_SIGNED_UPLOAD_MS = 15 * 60 * 1000;
 const SIGNED_DOWNLOAD_MS = 2 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const SHA256 = /^[a-f0-9]{64}$/;
 const MEDIA_TYPE = /^(image|video)\/[a-z0-9][a-z0-9.+-]{0,62}$/;
-const UPLOAD_ID = /^[a-f0-9]{64}-[1-9][0-9]{0,7}$/;
+const UPLOAD_ID = /^[a-f0-9]{64}-[1-9][0-9]{0,8}$/;
 const VERIFIED = { state: 'VERIFIED' };
 const ORIGINAL_EXTENSIONS = new Map([['jpeg', 'jpg'], ['quicktime', 'mov'], ['svg+xml', 'svg']]);
+
+export const PRODUCTION_BACKUP_PREFIXES = Object.freeze({
+    gallipickProductionLicenseBackup: 'cloud02/license-test/users',
+    gallipickProductionBackup: 'cloud02/production/users',
+});
+export const PRODUCTION_BACKUP_PROTOCOL_VERSION = 1;
+
+export function productionBackupPlan(plan, protocolVersion, rollout) {
+    if (!rollout || protocolVersion !== PRODUCTION_BACKUP_PROTOCOL_VERSION) {
+        return { ...plan, backupAvailable: false, cloudCheckoutAllowed: false, uploadAllowed: false,
+            products: plan.products.filter(product =>
+                product.quotaBytes === 0 || product.productId === plan.activeProductId),
+        };
+    }
+    return { ...plan, backupAvailable: true, backupObjectPrefix: rollout.objectPrefix,
+        maxOriginalBytes: rollout.maxOriginalBytes, cloudCheckoutAllowed: !rollout.uploadsPaused,
+        uploadAllowed: plan.uploadAllowed && !rollout.uploadsPaused,
+    };
+}
 
 export class BackupError extends Error {
     constructor(code, message) {
@@ -94,11 +118,12 @@ function verifiedMetadata(record) {
     return result;
 }
 
-function originalInput(data) {
+function originalInput(data, maxOriginalBytes) {
     const { sha256, sizeBytes, mimeType, displayName } = data ?? {};
     if (typeof sha256 !== 'string' || !SHA256.test(sha256) || !Number.isSafeInteger(sizeBytes)
-        || sizeBytes <= 0 || sizeBytes > MAX_FILE_BYTES || typeof mimeType !== 'string' || !MEDIA_TYPE.test(mimeType)) {
-        throw new BackupError('invalid-argument', 'Choose a photo or video no larger than 64 MiB.');
+        || sizeBytes <= 0 || sizeBytes > maxOriginalBytes || typeof mimeType !== 'string' || !MEDIA_TYPE.test(mimeType)) {
+        const configuredLimit = maxOriginalBytes === MAX_FILE_BYTES ? '64 MiB' : `${maxOriginalBytes} bytes`;
+        throw new BackupError('invalid-argument', `Choose a photo or video no larger than ${configuredLimit}.`);
     }
     const folder = normalizeSourceFolder(data?.sourceFolder);
     const metadata = {};
@@ -146,9 +171,9 @@ function validGeneration(generation) {
         && Number.isSafeInteger(Number(generation));
 }
 
-function catalogOriginal(uploadId, record) {
+function catalogOriginal(uploadId, record, protocolFileLimit) {
     if (typeof record.sha256 !== 'string' || !SHA256.test(record.sha256)
-        || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes <= 0 || record.sizeBytes > MAX_FILE_BYTES
+        || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes <= 0 || record.sizeBytes > protocolFileLimit
         || typeof record.mimeType !== 'string' || !MEDIA_TYPE.test(record.mimeType)
         || uploadId !== `${record.sha256}-${record.sizeBytes}` || !validGeneration(record.generation)) {
         throw new BackupError('data-loss', 'The backup catalog entry is invalid.');
@@ -158,13 +183,18 @@ function catalogOriginal(uploadId, record) {
         mimeType, sizeBytes, sha256, ...verifiedMetadata(record) };
 }
 
-function checkAllocation(current, byteLimit, countLimit, requestedBytes) {
+function readAllocation(current) {
     const { allocatedBytes, files } = current ?? { allocatedBytes: 0, files: 0 };
     if (!Number.isSafeInteger(allocatedBytes) || allocatedBytes < 0 || !Number.isSafeInteger(files) || files < 0) {
         throw new BackupError('failed-precondition', 'The backup allocation needs reconciliation.');
     }
+    return { allocatedBytes, files };
+}
+
+function checkAllocation(current, byteLimit, countLimit, requestedBytes) {
+    const { allocatedBytes, files } = readAllocation(current);
     if (allocatedBytes + requestedBytes > byteLimit || files + 1 > countLimit) {
-        throw new BackupError('resource-exhausted', 'The backup pilot allocation is full.');
+        throw new BackupError('resource-exhausted', 'The backup allocation is full.');
     }
     return { allocatedBytes: allocatedBytes + requestedBytes, files: files + 1 };
 }
@@ -181,13 +211,13 @@ export async function readOriginal(stream, expectedBytes) {
     return { sha256: digest.digest('hex'), sizeBytes };
 }
 
-export async function signOriginalUpload(file, { sizeBytes, mimeType }) {
+export async function signOriginalUpload(file, { sizeBytes, mimeType }, expiresInMs = SIGNED_UPLOAD_MS) {
     const signedHeaders = {
         'x-goog-content-length-range': `${sizeBytes},${sizeBytes}`,
         'x-goog-if-generation-match': '0',
     };
     const [uploadUrl] = await file.getSignedUrl({
-        version: 'v4', action: 'write', expires: Date.now() + SIGNED_UPLOAD_MS,
+        version: 'v4', action: 'write', expires: Date.now() + expiresInMs,
         contentType: mimeType, extensionHeaders: signedHeaders,
     });
     return { uploadUrl, headers: { 'Content-Type': mimeType, ...signedHeaders } };
@@ -241,20 +271,51 @@ export function createRequestLimiter(db, collection, requestsPerHour) {
 }
 
 export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 1024 * MIB, pilotLimit = 2048 * MIB,
-    requestsPerHour = 120, uploadQuota = async (_transaction, _owner, limit) => limit, uploadsPaused = false }) {
-    const pilotAllocation = db.doc('gallipickBackupControl/pilot');
-    const ownerPath = owner => `gallipickBackupAccounts/${owner}`;
+    requestsPerHour = 120, uploadQuota, uploadsPaused = false, production }) {
+    if (production && (!Object.hasOwn(PRODUCTION_BACKUP_PREFIXES, production.namespace)
+        || typeof production.authorizeOwner !== 'function' || !production.catalogDocumentId
+        || !Number.isSafeInteger(production.maxOriginalBytes) || production.maxOriginalBytes <= 0
+        || production.maxOriginalBytes > PRODUCTION_MAX_FILE_BYTES
+        || !Number.isSafeInteger(ownerLimit) || ownerLimit <= 0 || typeof uploadQuota !== 'function')) {
+        throw new BackupError('failed-precondition', 'The production backup configuration is invalid.');
+    }
+    const namespace = production?.namespace ?? 'gallipickBackup';
+    const maxOriginalBytes = production?.maxOriginalBytes ?? MAX_FILE_BYTES;
+    const protocolFileLimit = production ? PRODUCTION_MAX_FILE_BYTES : MAX_FILE_BYTES;
+    const maxOwnerFiles = production ? PRODUCTION_MAX_OWNER_FILES : PILOT_MAX_OWNER_FILES;
+    const signedUploadMs = production ? PRODUCTION_SIGNED_UPLOAD_MS : SIGNED_UPLOAD_MS;
+    const objectPrefix = production ? PRODUCTION_BACKUP_PREFIXES[namespace] : 'cloud02/users';
+    const authorizeOwner = production?.authorizeOwner ?? (auth => authorize(auth, pilotUsers));
+    const getUploadQuota = uploadQuota ?? (async (_transaction, _owner, limit) => limit);
+    const pilotAllocation = production ? null : db.doc('gallipickBackupControl/pilot');
+    const ownerPath = owner => `${namespace}Accounts/${owner}`;
     const objectRecord = (owner, uploadId) => db.doc(`${ownerPath(owner)}/originals/${uploadId}`);
-    const objectKey = (owner, uploadId) => `cloud02/users/${owner}/${uploadId}`;
-    const countRequest = createRequestLimiter(db, 'gallipickBackupRequestLimits', requestsPerHour);
+    const objectKey = (owner, uploadId) => `${objectPrefix}/${owner}/${uploadId}`;
+    const countRequest = createRequestLimiter(db, `${namespace}RequestLimits`, requestsPerHour);
+    const countListRequest = production
+        ? createRequestLimiter(db, `${namespace}CatalogRequestLimits`, PRODUCTION_CATALOG_REQUESTS_PER_HOUR)
+        : countRequest;
+
+    async function requireUploadQuota(transaction, owner, ownerAllocation) {
+        const ownerUsage = (await transaction.get(ownerAllocation)).data();
+        const quota = await getUploadQuota(transaction, owner, ownerLimit);
+        if (!Number.isSafeInteger(quota) || quota <= 0 || quota > ownerLimit
+            || (ownerUsage?.allocatedBytes ?? 0) > quota) {
+            throw new BackupError('resource-exhausted', 'The account does not have available upload storage.');
+        }
+        if (production && readAllocation(ownerUsage).files > maxOwnerFiles) {
+            throw new BackupError('failed-precondition', 'The backup allocation needs reconciliation.');
+        }
+        return { ownerUsage, quota };
+    }
 
     return {
-        async countBillingRequest(auth) { await countRequest(authorize(auth, pilotUsers)); },
+        async countBillingRequest(auth) { await countRequest(authorizeOwner(auth)); },
 
         async begin(auth, input) {
-            const owner = authorize(auth, pilotUsers);
+            const owner = authorizeOwner(auth);
             if (uploadsPaused) throw new BackupError('failed-precondition', 'New backup uploads are temporarily paused.');
-            const request = originalInput(input);
+            const request = originalInput(input, maxOriginalBytes);
             const uploadId = `${request.sha256}-${request.sizeBytes}`;
             const recordRef = objectRecord(owner, uploadId);
             const ownerAllocation = db.doc(ownerPath(owner));
@@ -263,21 +324,19 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
 
             const record = await db.runTransaction(async transaction => {
                 const existing = (await transaction.get(recordRef)).data();
-                if (existing?.state === 'VERIFIED') return appendFolderMembership(transaction, recordRef, existing, request);
-
-                const ownerUsage = (await transaction.get(ownerAllocation)).data();
-                const quota = await uploadQuota(transaction, owner, ownerLimit);
-                if (!Number.isSafeInteger(quota) || quota <= 0 || quota > ownerLimit
-                    || (ownerUsage?.allocatedBytes ?? 0) > quota) {
-                    throw new BackupError('resource-exhausted', 'The account does not have available upload storage.');
+                if (!production && existing?.state === 'VERIFIED') {
+                    return appendFolderMembership(transaction, recordRef, existing, request);
                 }
+                const { ownerUsage, quota } = await requireUploadQuota(transaction, owner, ownerAllocation);
                 if (existing) return appendFolderMembership(transaction, recordRef, existing, request);
-                const pilotUsage = (await transaction.get(pilotAllocation)).data();
-                const nextOwner = checkAllocation(ownerUsage, quota, MAX_OWNER_FILES, request.sizeBytes);
-                const nextPilot = checkAllocation(pilotUsage, pilotLimit, 500, request.sizeBytes);
+                const nextOwner = checkAllocation(ownerUsage, quota, maxOwnerFiles, request.sizeBytes);
+                if (pilotAllocation) {
+                    const pilotUsage = (await transaction.get(pilotAllocation)).data();
+                    const nextPilot = checkAllocation(pilotUsage, pilotLimit, 500, request.sizeBytes);
+                    transaction.set(pilotAllocation, nextPilot);
+                }
                 const reservation = { ...request, state: 'RESERVED', createdAt: new Date() };
                 transaction.set(ownerAllocation, nextOwner);
-                transaction.set(pilotAllocation, nextPilot);
                 transaction.set(recordRef, reservation);
                 return reservation;
             });
@@ -287,24 +346,27 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
             if (record.state !== 'RESERVED' || record.mimeType !== request.mimeType) {
                 throw new BackupError('failed-precondition', 'The backup reservation differs from the request.');
             }
-            const upload = await signOriginalUpload(bucket.file(key), record);
+            const upload = await signOriginalUpload(bucket.file(key), record, signedUploadMs);
             return { state: 'UPLOAD', uploadId, ...upload };
         },
 
         async finish(auth, input) {
-            const owner = authorize(auth, pilotUsers);
+            const owner = authorizeOwner(auth);
             const uploadId = input?.uploadId;
             if (typeof uploadId !== 'string' || !UPLOAD_ID.test(uploadId)) {
                 throw new BackupError('invalid-argument', 'A valid backup reservation is required.');
             }
             await countRequest(owner);
             const recordRef = objectRecord(owner, uploadId);
+            const ownerAllocation = db.doc(ownerPath(owner));
             const record = (await recordRef.get()).data();
             if (!record) throw new BackupError('not-found', 'The backup reservation was not found.');
-            const bucket = await getBucket();
             const key = objectKey(owner, uploadId);
-            if (record.state === 'VERIFIED') return verifiedOriginal(bucket, key, record);
+            if (record.state === 'VERIFIED') return verifiedOriginal(await getBucket(), key, record);
             if (record.state !== 'RESERVED') throw new BackupError('failed-precondition', 'The backup reservation is unavailable.');
+
+            if (production) await db.runTransaction(transaction => requireUploadQuota(transaction, owner, ownerAllocation));
+            const bucket = await getBucket();
 
             const generation = await verifyOriginal(bucket, key, record);
             return db.runTransaction(async transaction => {
@@ -314,32 +376,46 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
                     || latest.mimeType !== record.mimeType) {
                     throw new BackupError('aborted', 'The backup reservation changed while verifying.');
                 }
+                if (production) await requireUploadQuota(transaction, owner, ownerAllocation);
                 transaction.set(recordRef, { ...latest, state: 'VERIFIED', generation, verifiedAt: new Date() });
                 return VERIFIED;
             });
         },
 
-        async list(auth) {
-            const owner = authorize(auth, pilotUsers);
-            await countRequest(owner);
-            const { docs } = await db.collection(`${ownerPath(owner)}/originals`)
-                .where('state', '==', 'VERIFIED').limit(MAX_OWNER_FILES + 1).get();
-            if (docs.length > MAX_OWNER_FILES) throw new BackupError('data-loss', 'The backup catalog exceeds its limit.');
-            const items = docs.map(snapshot => {
+        async list(auth, input) {
+            const owner = authorizeOwner(auth);
+            const cursor = input?.cursor;
+            if (production && cursor !== undefined && (typeof cursor !== 'string' || !UPLOAD_ID.test(cursor))) {
+                throw new BackupError('invalid-argument', 'The backup catalog cursor is invalid.');
+            }
+            await countListRequest(owner);
+            let query = db.collection(`${ownerPath(owner)}/originals`).where('state', '==', 'VERIFIED');
+            if (production) {
+                query = query.orderBy(production.catalogDocumentId);
+                if (cursor !== undefined) query = query.startAfter(cursor);
+            }
+            const pageSize = production ? PRODUCTION_CATALOG_PAGE_SIZE : maxOwnerFiles;
+            const { docs } = await query.limit(pageSize + 1).get();
+            if (!production && docs.length > pageSize) {
+                throw new BackupError('data-loss', 'The backup catalog exceeds its limit.');
+            }
+            const page = docs.slice(0, pageSize);
+            const items = page.map(snapshot => {
                 const record = snapshot.data();
                 const verifiedAtMs = record.verifiedAt instanceof Date
                     ? record.verifiedAt.getTime() : record.verifiedAt?.toMillis?.();
                 if (!Number.isSafeInteger(verifiedAtMs) || verifiedAtMs < 0) {
                     throw new BackupError('data-loss', 'The backup catalog timestamp is invalid.');
                 }
-                return { ...catalogOriginal(snapshot.id, record), verifiedAtMs };
+                return { ...catalogOriginal(snapshot.id, record, protocolFileLimit), verifiedAtMs };
             });
+            if (production) return docs.length > pageSize ? { items, nextCursor: page.at(-1).id } : { items };
             items.sort((left, right) => right.verifiedAtMs - left.verifiedAtMs || left.uploadId.localeCompare(right.uploadId));
             return { items };
         },
 
         async download(auth, input) {
-            const owner = authorize(auth, pilotUsers);
+            const owner = authorizeOwner(auth);
             const uploadId = input?.uploadId;
             if (typeof uploadId !== 'string' || !UPLOAD_ID.test(uploadId)) {
                 throw new BackupError('invalid-argument', 'A valid backup ID is required.');
@@ -347,7 +423,7 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
             await countRequest(owner);
             const record = (await objectRecord(owner, uploadId).get()).data();
             if (record?.state !== 'VERIFIED') throw new BackupError('not-found', 'The verified original was not found.');
-            const original = catalogOriginal(uploadId, record);
+            const original = catalogOriginal(uploadId, record, protocolFileLimit);
             const bucket = await getBucket();
             const generation = record.generation;
             const file = bucket.file(objectKey(owner, uploadId), { generation });

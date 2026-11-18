@@ -1,6 +1,9 @@
 package com.hebi.gallipick.data.cloud
 
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.io.OutputStream
+import java.security.MessageDigest
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -19,6 +22,32 @@ class CloudLibraryProtocolTest {
         assertNull(validateDownload(url.replace("&generation=902", "")))
         assertNull(validateDownload("$url&generation=903"))
         assertNull(validateDownload(url.replace("X-Goog-Expires=120", "X-Goog-Expires=301")))
+    }
+
+    @Test
+    fun largeVerifiedOriginalsAreCopiedWithoutBufferingTheWholeFile() {
+        val size = (CLOUD_BACKUP_MAX_BYTES + 8_192L).toInt()
+        val chunk = ByteArray(8_192)
+        val hash = MessageDigest.getInstance("SHA-256")
+        repeat(size / chunk.size) { hash.update(chunk) }
+        val expected = hash.digest().joinToString("") { "%02x".format(it) }
+        val original = object : InputStream() {
+            var remaining = size
+            override fun read(): Int = if (remaining-- > 0) 0 else -1
+            override fun read(bytes: ByteArray, offset: Int, count: Int): Int {
+                if (remaining <= 0) return -1
+                val length = minOf(count, remaining)
+                bytes.fill(0, offset, offset + length)
+                remaining -= length
+                return length
+            }
+        }
+        copyAndVerifyCloudOriginal(original, OutputStream.nullOutputStream(), size.toLong(), expected) {}
+        assertThrows(CloudBackupException::class.java) {
+            copyAndVerifyCloudOriginal(
+                original, OutputStream.nullOutputStream(), CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES + 1, expected,
+            ) {}
+        }
     }
 
     @Test

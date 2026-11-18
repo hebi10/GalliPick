@@ -220,7 +220,7 @@ private fun CloudLibraryControls(
 
 private fun cloudLibraryFailure(error: Exception): String = when ((error as? CloudBackupException)?.result) {
     CloudBackupResult.ACCOUNT_CHANGED -> "계정이 변경되어 작업이 중단됐습니다."
-    CloudBackupResult.TEST_ACCESS_REQUIRED -> "보관함 사용 권한이 있는 테스트 계정으로 로그인해 주세요."
+    CloudBackupResult.TEST_ACCESS_REQUIRED -> "현재 계정의 클라우드 보관함 이용 권한을 확인해 주세요."
     CloudBackupResult.NETWORK_ERROR -> "네트워크 연결을 확인한 뒤 다시 시도해 주세요."
     CloudBackupResult.INTEGRITY_ERROR -> "서버 원본의 버전, 크기 또는 해시가 일치하지 않습니다."
     CloudBackupResult.DEVICE_STORAGE_ERROR -> "기기 저장공간과 갤러리 상태를 확인해 주세요."
