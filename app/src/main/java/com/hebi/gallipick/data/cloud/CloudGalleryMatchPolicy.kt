@@ -11,6 +11,20 @@ internal object CloudGalleryMatchPolicy {
 
     private val sha256 = Regex("[0-9a-f]{64}")
 
+    fun prioritizeRecentUpload(
+        candidates: List<MediaItem>,
+        recent: RecentVerifiedCloudUpload?,
+        currentUid: String?,
+    ): List<MediaItem> {
+        if (recent == null || currentUid == null || recent.accountUid != currentUid) return candidates
+        val index = candidates.indexOfFirst { item ->
+            item.uri == recent.uri && item.fingerprint == recent.fingerprint &&
+                item.volumeVersion == recent.volumeVersion
+        }
+        return if (index <= 0) candidates
+        else listOf(candidates[index]) + candidates.take(index) + candidates.drop(index + 1)
+    }
+
     fun validOriginals(originals: List<CloudOriginal>): List<CloudOriginal> =
         originals.filter { original ->
             original.sizeBytes in 1..CLOUD_BACKUP_MAX_BYTES &&
