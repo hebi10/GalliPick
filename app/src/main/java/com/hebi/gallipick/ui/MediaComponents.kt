@@ -36,11 +36,15 @@ import androidx.compose.ui.window.DialogProperties
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.PhotoOcrIndexPolicy
+import com.hebi.gallipick.data.cloud.CloudBackup
+import com.hebi.gallipick.data.cloud.CloudBackupPhase
+import com.hebi.gallipick.data.cloud.CloudBackupResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 private object ThumbnailCache {
     val permits = Semaphore(4)
@@ -149,11 +153,13 @@ internal fun SelectBox(
 internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit,
     onOpen: (MediaItem) -> Unit, onProtect: (Boolean) -> Unit,
     folderProtected: Boolean = false, ocrText: String? = null, ocrQuery: String = "",
+    cloudBackup: CloudBackup? = null, accountUid: String? = null,
+    cloudVerified: Boolean = false, onRequestCloud: () -> Unit = {},
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.safeDrawingPadding().widthIn(max = 1100.dp).fillMaxWidth(.96f).fillMaxHeight(.94f), shape = RoundedCornerShape(20.dp)) {
             Column {
-                Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 6.dp, end = 4.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("파일 상세", style = MaterialTheme.typography.titleLarge)
                         Text(if (item.kind == MediaKind.VIDEO) "동영상 정보" else "사진 정보", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -161,7 +167,9 @@ internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit,
                     IconAction("닫기", Icons.Outlined.Close, onClick = onDismiss)
                 }
                 MediaDetail(item, onOpen, onProtect, Modifier.weight(1f),
-                    folderProtected, ocrText = ocrText, ocrQuery = ocrQuery)
+                    folderProtected, ocrText = ocrText, ocrQuery = ocrQuery,
+                    cloudBackup = cloudBackup, accountUid = accountUid,
+                    cloudVerified = cloudVerified, onRequestCloud = onRequestCloud)
             }
         }
     }
@@ -171,18 +179,69 @@ internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit,
 internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
     onProtect: (Boolean) -> Unit, modifier: Modifier = Modifier,
     folderProtected: Boolean = false, ocrText: String? = null, ocrQuery: String = "",
+    cloudBackup: CloudBackup? = null, accountUid: String? = null,
+    cloudVerified: Boolean = false, onRequestCloud: () -> Unit = {},
 ) {
     var previewOpen by remember(item.uri, item.fingerprint, item.volumeVersion) { mutableStateOf(false) }
     if (previewOpen) MediaPreviewDialog(item, onDismiss = { previewOpen = false }, onOpen = onOpen)
+    val scope = rememberCoroutineScope()
+    var uploadPhase by remember(item.uri, accountUid) { mutableStateOf<CloudBackupPhase?>(null) }
+    var uploadBusy by remember(item.uri, accountUid) { mutableStateOf(false) }
+    var uploadResult by remember(item.uri, accountUid) { mutableStateOf<CloudBackupResult?>(null) }
+    var uploaded by remember(item.uri, accountUid) { mutableStateOf(false) }
+    val backedUp = cloudVerified || uploaded
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val beside = maxWidth >= 840.dp || (maxWidth >= 600.dp && maxHeight < 500.dp)
         val thumbnailHeight = (maxWidth / 1.2f).coerceAtMost(320.dp)
         val previewAction: @Composable (Modifier) -> Unit = { actionModifier ->
-            ActionButton("앱에서 미리보기", { previewOpen = true }, actionModifier, filled = true,
+            ActionButton("미리보기", { previewOpen = true }, actionModifier, filled = true,
                 icon = if (item.kind == MediaKind.VIDEO) Icons.Outlined.PlayArrow else Icons.Outlined.ZoomIn)
         }
+        val cloudAction: @Composable (Modifier) -> Unit = { actionModifier ->
+            ActionButton(
+                if (backedUp) "보관 완료" else if (uploadBusy) "보관 중" else "클라우드 보관",
+                onClick = {
+                    val backup = cloudBackup
+                    val uid = accountUid
+                    if (backup == null) return@ActionButton
+                    if (uid == null) {
+                        onRequestCloud()
+                    } else if (!backedUp && !uploadBusy) {
+                        uploadBusy = true
+                        uploadResult = null
+                        scope.launch {
+                            try {
+                                val result = backup.upload(item, uid) { uploadPhase = it }
+                                uploadResult = result
+                                if (result == CloudBackupResult.VERIFIED) uploaded = true
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                uploadResult = CloudBackupResult.FAILED
+                            } finally {
+                                uploadBusy = false
+                                uploadPhase = null
+                            }
+                        }
+                    }
+                },
+                modifier = actionModifier,
+                enabled = cloudBackup != null && !uploadBusy && !backedUp,
+                icon = Icons.Outlined.CloudUpload,
+            )
+        }
+        val actions: @Composable (Modifier) -> Unit = { actionModifier ->
+            Row(actionModifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                previewAction(Modifier.weight(1f))
+                cloudAction(Modifier.weight(1f))
+            }
+        }
         val metadata: @Composable (Modifier) -> Unit = { detailModifier ->
-            Column(detailModifier.then(if (beside) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                detailModifier.then(if (beside) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                    .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Text(item.displayName, style = MaterialTheme.typography.titleMedium)
                 Text("${if (item.kind == MediaKind.VIDEO) "동영상" else "사진"} · ${bytesLabel(item.sizeBytes)}", color = Muted, style = MaterialTheme.typography.bodySmall)
                 if (ocrText != null) {
@@ -198,7 +257,26 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
                             style = MaterialTheme.typography.bodySmall, color = Muted)
                     }
                 }
-                if (!beside) previewAction(Modifier.fillMaxWidth())
+                if (!beside) actions(Modifier.fillMaxWidth())
+                if (uploadBusy) {
+                    Text(when (uploadPhase) {
+                        CloudBackupPhase.READING_ORIGINAL -> "원본 확인 중"
+                        CloudBackupPhase.UPLOADING -> "클라우드 업로드 중"
+                        CloudBackupPhase.VERIFYING -> "서버에서 원본 검증 중"
+                        null -> "클라우드 보관 준비 중"
+                    }, color = Muted, style = MaterialTheme.typography.bodySmall)
+                } else if (uploadResult != null && !backedUp) {
+                    val message = when (uploadResult) {
+                        CloudBackupResult.QUOTA_REACHED -> "클라우드 저장 용량이 부족합니다."
+                        CloudBackupResult.UNSUPPORTED_MEDIA -> "이 파일은 현재 클라우드 시험 용량·형식을 지원하지 않습니다."
+                        CloudBackupResult.ACCOUNT_CHANGED -> "계정이 변경되어 보관을 중단했습니다."
+                        CloudBackupResult.NETWORK_ERROR -> "네트워크 연결을 확인해 주세요."
+                        CloudBackupResult.INTEGRITY_ERROR -> "파일 검증에 실패했습니다. 원본을 확인해 주세요."
+                        CloudBackupResult.TEST_ACCESS_REQUIRED -> "현재 계정에서는 백업할 수 없습니다."
+                        else -> "클라우드 보관에 실패했습니다. 다시 시도해 주세요."
+                    }
+                    Text(message, color = Muted, style = MaterialTheme.typography.bodySmall)
+                }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val protectLabel = if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호"
                     val stacked = maxWidth < 350.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
@@ -243,7 +321,7 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
             Column(Modifier.weight(1f).fillMaxHeight().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (item.kind == MediaKind.PHOTO) DetailPhoto(item, Modifier.weight(1f).fillMaxWidth())
                 else MediaThumbnail(item, Modifier.weight(1f).fillMaxWidth(), contentScale = ContentScale.Fit)
-                previewAction(Modifier.fillMaxWidth())
+                actions(Modifier.fillMaxWidth())
             }
             metadata(Modifier.weight(1f).fillMaxHeight())
         } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -257,7 +335,7 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
 @Composable
 private fun DetailRow(label: String, value: String) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 36.dp),
+        Modifier.fillMaxWidth().heightIn(min = 30.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.Top,
     ) {
