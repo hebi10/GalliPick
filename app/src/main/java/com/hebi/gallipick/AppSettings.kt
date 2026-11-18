@@ -9,6 +9,12 @@ import java.util.UUID
 class AppSettings(context: Context) {
     private val prefs = context.getSharedPreferences("filters", Context.MODE_PRIVATE)
     fun loadThemeMode(): AppThemeMode = AppThemeMode.fromStored(prefs.getString("theme_mode", null))
+    fun loadFileGridColumns(): Int? = prefs.getInt("file_grid_columns", 0).takeIf { it in 3..6 }
+
+    fun saveFileGridColumns(columns: Int?) {
+        require(columns == null || columns in 3..6)
+        prefs.edit().putInt("file_grid_columns", columns ?: 0).apply()
+    }
 
     fun saveThemeMode(mode: AppThemeMode) {
         prefs.edit().putString("theme_mode", mode.name).apply()
@@ -47,6 +53,7 @@ class AppSettings(context: Context) {
         put("favoritesOnly", f.favoritesOnly); put("protectedOnly", f.protectedOnly)
         put("sortField", f.sortField.name); put("sortDirection", f.sortDirection.name)
         put("downloadsOnly", f.downloadsOnly); put("groupByDate", f.groupByDate)
+        put("groupMode", f.groupMode.name)
     }
 
     private fun decode(j: JSONObject) = MediaFilter(
@@ -62,6 +69,7 @@ class AppSettings(context: Context) {
         sortField = enumValueOf(j.optString("sortField", "CAPTURED")),
         sortDirection = enumValueOf(j.optString("sortDirection", "DESCENDING")),
         downloadsOnly = j.optBoolean("downloadsOnly"), groupByDate = j.optBoolean("groupByDate"),
+        groupMode = enumValueOf(j.optString("groupMode", "AUTO")),
     )
 
     private fun JSONObject.longOrNull(key: String): Long? = if (has(key) && !isNull(key)) getLong(key) else null
