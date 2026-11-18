@@ -12,6 +12,7 @@ plugins {
 
 val galliPickApplicationId = "com.hebi.gallipick"
 val cloudTestFirebaseProjectId = "gallipick-dev"
+val cloudProductionFirebaseProjectId = "gallipick-production"
 
 // GalliPick ads are opt-in at build time. No live ad requests are possible
 // without this app's own AdMob registration and explicit release configuration.
@@ -42,18 +43,31 @@ val cloudConfigResourceNames = listOf(
 val playCloudPilot = providers.gradleProperty("gallipickPlayCloudPilot").map { value ->
     value.toBooleanStrictOrNull() ?: throw GradleException("gallipickPlayCloudPilot must be true or false.")
 }.getOrElse(false)
+val cloudEnvironment = providers.gradleProperty("gallipickCloudEnvironment").getOrElse("development")
+if (cloudEnvironment !in setOf("development", "production")) {
+    throw GradleException("gallipickCloudEnvironment must be development or production.")
+}
+if (cloudEnvironment == "production" && !playCloudPilot) {
+    throw GradleException("Production cloud requires an explicitly enabled Play cloud build.")
+}
+val releaseFirebaseProjectId = if (cloudEnvironment == "production")
+    cloudProductionFirebaseProjectId else cloudTestFirebaseProjectId
 
 fun normalizedSha1(value: String?): String? = value?.replace(":", "")?.lowercase()
     ?.takeIf { it.matches(Regex("[a-f0-9]{40}")) }
 
-fun readCloudFirebaseConfig(json: String, playSigningSha1: String? = null): Map<String, String> {
+fun readCloudFirebaseConfig(
+    json: String,
+    playSigningSha1: String? = null,
+    expectedProjectId: String = cloudTestFirebaseProjectId,
+): Map<String, String> {
     fun Map<*, *>.objectField(name: String): Map<*, *> = this[name] as? Map<*, *> ?: emptyMap<Any, Any>()
     fun Map<*, *>.objectArray(name: String): List<Map<*, *>> =
         (this[name] as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
 
     val config = JsonSlurper().parseText(json) as Map<*, *>
     val projectId = config.objectField("project_info")["project_id"]
-    require(projectId == cloudTestFirebaseProjectId)
+    require(projectId == expectedProjectId)
     val client = config.objectArray("client").single {
         it.objectField("client_info").objectField("android_client_info")["package_name"] == galliPickApplicationId
     }
@@ -94,9 +108,9 @@ val playCloudFirebaseConfig = if (playCloudPilot) {
     val signingSha1 = normalizedSha1(providers.gradleProperty("gallipickPlayAppSigningSha1").orNull)
         ?: throw GradleException("The Play cloud pilot requires a valid gallipickPlayAppSigningSha1.")
     try {
-        readCloudFirebaseConfig(json, signingSha1)
+        readCloudFirebaseConfig(json, signingSha1, releaseFirebaseProjectId)
     } catch (_: Exception) {
-        throw GradleException("Invalid Play cloud pilot Firebase configuration. Check the GalliPick Dev project, app package, and Google OAuth clients including the Play app signing certificate.")
+        throw GradleException("Invalid Play cloud Firebase configuration for $cloudEnvironment. Check the project, package, and Play signing OAuth client.")
     }
 } else emptyMap()
 
