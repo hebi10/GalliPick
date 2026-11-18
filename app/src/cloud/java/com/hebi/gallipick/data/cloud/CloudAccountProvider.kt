@@ -32,7 +32,8 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
     val apiKey = context.getString(R.string.cloud_firebase_api_key)
     val projectId = context.getString(R.string.cloud_firebase_project_id)
     val webClientId = context.getString(R.string.cloud_google_web_client_id)
-    if (listOf(appId, apiKey, projectId, webClientId).any { it.isBlank() }) {
+    val runtime = cloudRuntimeFor(projectId)
+    if (runtime == null || listOf(appId, apiKey, projectId, webClientId).any { it.isBlank() }) {
         return CloudAccountConnection(CloudAccountSession(null)) {
             throw CloudAccountFailure(CloudAccountNotice.GOOGLE_UNAVAILABLE)
         }
@@ -43,22 +44,30 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
         .setApiKey(apiKey)
         .setProjectId(projectId)
         .build()
-    val firebaseApp = FirebaseApp.initializeApp(context, options, "gallipick-cloud-test")
+    val firebaseApp = FirebaseApp.initializeApp(context, options, "gallipick-cloud-${runtime.projectId}")
     val credentials = CredentialManager.create(context)
     val auth = FirebaseAuth.getInstance(firebaseApp)
     val session = CloudAccountSession(FirebaseCloudAccountBackend(auth, credentials))
     val transport = CloudBackupTransport(
-        endpoint = "https://asia-northeast3-gallipick-dev.cloudfunctions.net",
-        buckets = setOf("gallipick-dev.firebasestorage.app"),
+        endpoint = runtime.functionsEndpoint,
+        buckets = setOf(runtime.storageBucket),
     )
-    val backup = CloudBackup(
-        context = context,
-        account = session.account,
-        currentUid = { auth.currentUser?.uid },
-        tokenFor = { uid -> backupIdToken(auth, uid) },
-        transport = transport,
+    val backup = if (runtime.backupEnabled) {
+        CloudBackup(
+            context = context,
+            account = session.account,
+            currentUid = { auth.currentUser?.uid },
+            tokenFor = { uid -> backupIdToken(auth, uid) },
+            transport = transport,
+        )
+    } else null
+    val billing = PlayCloudBilling(
+        context,
+        { auth.currentUser?.uid },
+        { uid -> backupIdToken(auth, uid) },
+        transport,
+        testPurchasesOnly = runtime.projectId == "gallipick-dev",
     )
-    val billing = PlayCloudBilling(context, { auth.currentUser?.uid }, { uid -> backupIdToken(auth, uid) }, transport)
     return CloudAccountConnection(session, backup, billing = billing) { activity ->
         googleIdToken(credentials, activity, webClientId)
     }

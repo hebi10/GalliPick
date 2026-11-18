@@ -57,6 +57,8 @@ import com.hebi.gallipick.data.cloud.CloudBillingPlan
 import com.hebi.gallipick.data.cloud.CloudBillingSession
 import com.hebi.gallipick.data.cloud.CloudBillingSnapshot
 import com.hebi.gallipick.data.cloud.CloudBillingUpdate
+import com.hebi.gallipick.data.cloud.activeCloudProductId
+import com.hebi.gallipick.data.cloud.activeStandaloneAdFreeProductId
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -159,11 +161,16 @@ private fun CloudBillingControls(
         }
     }
     val plan = snapshot?.plan
-    val verifiedProductId = plan?.activeProductId?.takeIf { plan.verifiedAdFree() }
+    val nowMillis = System.currentTimeMillis()
+    val verifiedCloudProductId = plan?.activeCloudProductId(nowMillis)
+    val verifiedStandaloneProductId = plan?.activeStandaloneAdFreeProductId(nowMillis)
+    val verifiedProductId = verifiedCloudProductId ?: verifiedStandaloneProductId
     val purchaseConfirmed = verifiedProductId != null && notice == CloudBillingNotice.VERIFIED
     val waitingForPurchase = verifiedProductId == null && notice.awaitingPurchaseConfirmation()
     val showOffers = !busy && !waitingForPurchase && notice != CloudBillingNotice.PRICE_CHANGED &&
-        plan?.enabled == true && plan.activeProductId == null
+        notice != CloudBillingNotice.PURCHASE_LINKED_TO_ANOTHER_ACCOUNT &&
+        plan?.enabled == true && verifiedProductId == null
+    val testPurchasesOnly = plan?.testPurchasesOnly != false
     var managementFailed by remember(verifiedProductId) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (purchaseConfirmed) {
@@ -189,20 +196,24 @@ private fun CloudBillingControls(
                     if (index > 0) HorizontalDivider(color = Line)
                     Text(offer.title, color = Ink, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "매월 ${offer.formattedPrice}",
+                        "${offer.intervalLabel} ${offer.formattedPrice}",
                         color = Ink,
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        "홈 배너 광고 제거 · 클라우드 보관 ${billingQuotaLabel(offer.product.quotaBytes)}",
+                        offer.benefitText,
                         color = Muted,
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    CloudStatusMessage("매월 자동 갱신되며 Google Play에서 관리하거나 취소할 수 있습니다.")
-                    CloudPrimaryAction("Google Play로 계속", { confirmation = offer })
+                    CloudStatusMessage("${offer.intervalLabel} 자동 갱신되며 Google Play에서 관리하거나 취소할 수 있습니다.")
+                    val purchaseLabel = if (offer.product.isStandaloneAdFree) {
+                        if (offer.product.billingPeriod == "P1Y") "광고 제거 연간 구독" else "광고 제거 월간 구독"
+                    } else "Google Play로 계속"
+                    CloudPrimaryAction(purchaseLabel, { confirmation = offer })
                 }
                 if (offers.isEmpty()) {
-                    CloudStatusMessage("현재 Google Play에서 결제할 수 있는 시험 상품이 없습니다.")
+                    CloudStatusMessage(if (testPurchasesOnly) "현재 Google Play에서 결제할 수 있는 시험 상품이 없습니다."
+                        else "현재 Google Play에서 결제할 수 있는 요금제가 없습니다.")
                 }
                 CloudStatusMessage("기기에서 사진을 정리하는 기능은 무료로 계속 이용할 수 있습니다.")
             }
@@ -219,15 +230,24 @@ private fun CloudBillingControls(
                         CloudStatusMessage("Google Play에서 결제 내역을 확인할 수 있습니다. 결제가 확인되면 홈 배너 광고가 자동으로 사라집니다.")
                         CloudPrimaryAction("결제 상태 확인", { scope.launch { refresh() } })
                     }
-                    verifiedProductId != null -> {
+                    verifiedCloudProductId != null -> {
                         BillingPlanDetails(checkNotNull(plan), snapshot?.autoRenewing)
+                        if (!purchaseConfirmed) notice?.let { CloudStatusMessage(it.displayText()) }
+                    }
+                    verifiedStandaloneProductId != null -> {
+                        BillingHeading("광고 제거 구독 이용 중")
+                        CloudStatusMessage("광고 제거가 적용되어 있습니다. 클라우드 저장공간은 제공되지 않습니다.")
+                        plan?.adFreeExpiresAtMs?.let { expiry ->
+                            CloudStatusMessage("현재 구독 기간 종료일 ${billingDateLabel(expiry)}")
+                        }
                         if (!purchaseConfirmed) notice?.let { CloudStatusMessage(it.displayText()) }
                     }
                     else -> {
                         BillingHeading("구독 정보")
                         when {
                             plan == null -> CloudStatusMessage(notice?.displayText() ?: "구독 정보를 확인하지 못했습니다.")
-                            !plan.enabled -> CloudStatusMessage("현재 시험 결제를 이용할 수 없습니다.")
+                            !plan.enabled -> CloudStatusMessage(if (testPurchasesOnly) "현재 시험 결제를 이용할 수 없습니다."
+                                else "현재 구독을 이용할 수 없습니다.")
                             notice != null -> CloudStatusMessage(checkNotNull(notice).displayText())
                             else -> CloudStatusMessage("현재 구독의 유효기간을 확인해 주세요.")
                         }
@@ -263,17 +283,20 @@ private fun CloudBillingControls(
             onDismissRequest = { confirmation = null },
             containerColor = AppSurface,
             titleContentColor = Ink,
-            title = { Text("시험 구독 확인") },
+            title = { Text(if (testPurchasesOnly) "시험 구독 확인" else "구독 확인") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${offer.title} · 매월 ${offer.formattedPrice}", color = Ink)
-                    Text("홈 배너 광고 제거 · 클라우드 보관 ${billingQuotaLabel(offer.product.quotaBytes)}", color = Muted)
-                    Text("매월 자동 갱신되며 Google Play에서 취소할 수 있습니다.", color = Muted)
-                    Text("Google Play 결제창에서 시험 결제수단을 확인한 뒤 진행해 주세요.", color = Muted)
+                    Text("${offer.title} · ${offer.intervalLabel} ${offer.formattedPrice}", color = Ink)
+                    Text(offer.benefitText, color = Muted)
+                    Text("${offer.intervalLabel} 자동 갱신되며 Google Play에서 취소할 수 있습니다.", color = Muted)
+                    val paymentHelp = if (testPurchasesOnly) {
+                        "Google Play 결제창에서 시험 결제수단을 확인한 뒤 진행해 주세요."
+                    } else "Google Play 결제창에서 금액과 결제수단을 확인한 뒤 진행해 주세요."
+                    Text(paymentHelp, color = Muted)
                 }
             },
             confirmButton = {
-                TextAction("시험 결제창 열기", {
+                TextAction(if (testPurchasesOnly) "시험 결제창 열기" else "결제창 열기", {
                     confirmation = null
                     runBilling(fromCheckout = true) { session.purchase(activity, offer) }
                 })
@@ -335,8 +358,7 @@ private fun BillingPlanDetails(plan: CloudBillingPlan, autoRenewing: Boolean?) {
     }
     if (!plan.uploadAllowed) CloudStatusMessage("새 백업을 추가할 수 없는 상태입니다.")
     plan.expiresAtMs?.let { expiry ->
-        val date = DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.KOREA).format(Date(expiry))
-        Text("현재 구독 기간 종료일 $date", color = Muted, style = MaterialTheme.typography.bodySmall)
+        Text("현재 구독 기간 종료일 ${billingDateLabel(expiry)}", color = Muted, style = MaterialTheme.typography.bodySmall)
     }
     autoRenewing?.let {
         Text(
@@ -362,9 +384,25 @@ private fun BillingActionRow(label: String, icon: ImageVector, onClick: () -> Un
 }
 
 private fun billingQuotaLabel(bytes: Long): String {
+    val gb = 1_000_000_000L
     val gib = 1_073_741_824L
-    return if (bytes >= gib && bytes % gib == 0L) "${bytes / gib} GiB" else bytesLabel(bytes)
+    return when {
+        bytes >= gb && bytes % gb == 0L -> "${bytes / gb} GB"
+        bytes >= gib && bytes % gib == 0L -> "${bytes / gib} GiB"
+        else -> bytesLabel(bytes)
+    }
 }
+
+private fun billingDateLabel(expiry: Long): String =
+    DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.KOREA).format(Date(expiry))
+
+private val CloudBillingOffer.intervalLabel: String
+    get() = if (product.billingPeriod == "P1Y") "매년" else "매월"
+
+private val CloudBillingOffer.benefitText: String
+    get() = if (product.isStandaloneAdFree) {
+        "광고 제거 · 클라우드 저장공간 없음"
+    } else "홈 배너 광고 제거 · 클라우드 보관 ${billingQuotaLabel(product.quotaBytes)}"
 
 private fun openPlaySubscription(activity: Activity, productId: String): Boolean {
     val uri = Uri.parse("https://play.google.com/store/account/subscriptions").buildUpon()
@@ -402,6 +440,7 @@ private fun CloudBillingNotice.displayText(): String = when (this) {
     CloudBillingNotice.NO_PURCHASE -> "이 계정에 연결된 구매 내역이 없습니다. 이미 결제했다면 구매할 때 연결한 계정을 확인해 주세요."
     CloudBillingNotice.PRICE_CHANGED -> "상품 정보가 변경됐습니다. 구독 정보를 새로고침하고 다시 확인해 주세요."
     CloudBillingNotice.ACCOUNT_CHANGED -> "계정이 변경됐습니다. 같은 계정에서 다시 확인해 주세요."
-    CloudBillingNotice.UNAVAILABLE -> "Google Play 또는 시험 결제 권한을 확인해 주세요."
+    CloudBillingNotice.PURCHASE_LINKED_TO_ANOTHER_ACCOUNT -> "다른 GalliPick 계정에 연결된 Google Play 구독이 있습니다. 구매할 때 연결한 계정을 확인해 주세요."
+    CloudBillingNotice.UNAVAILABLE -> "Google Play 결제 이용 자격을 확인해 주세요."
     CloudBillingNotice.FAILED -> "구독 정보를 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요."
 }

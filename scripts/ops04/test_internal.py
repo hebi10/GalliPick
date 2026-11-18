@@ -57,6 +57,17 @@ class Ops04SafetyTests(unittest.TestCase):
                     internal.guard()
                 api.assert_not_called()
 
+    def test_production_cloud_artifact_requires_matching_explicit_selection(self):
+        data = self.environment(mode="check")
+        data["CLOUD_PRODUCTION"] = "true"
+        with self.assertRaises(internal.GateError):
+            internal.verify_cloud_artifact_selection(data)
+        data["ARTIFACT_NAME"] = "GalliPick-v1.0.0-cloud-production-play-bundle"
+        self.assertTrue(internal.verify_cloud_artifact_selection(data))
+        data["CLOUD_PRODUCTION"] = "false"
+        with self.assertRaises(internal.GateError):
+            internal.verify_cloud_artifact_selection(data)
+
     def test_missing_bundle_fails_closed(self):
         with tempfile.TemporaryDirectory() as folder:
             with patch.object(internal, "BUNDLE_PATH", Path(folder)):

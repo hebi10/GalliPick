@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { BackupError } from './backup.js';
-import { billingSettings, createBillingService, PILOT_ACCOUNT_QUOTA_BYTES } from './cloud-billing.js';
+import { billingSettings, createBillingService, PILOT_ACCOUNT_QUOTA_BYTES, PRODUCTION_PROJECT,
+    productionBillingSettings } from './cloud-billing.js';
 
 const products = [
     { productId: 'cloud_small_test', basePlanId: 'monthly', quotaBytes: 100 },
@@ -14,7 +15,7 @@ const token = n => `synthetic-test-purchase-token-${n}`;
 const isCode = code => error => error.code === code;
 const now = 1_800_000_000_000;
 
-function createHarness({ enabled = true, acknowledge } = {}) {
+function createHarness({ enabled = true, acknowledge, settings = { enabled, products } } = {}) {
     const records = new Map();
     const purchases = new Map();
     const acknowledged = [];
@@ -47,9 +48,10 @@ function createHarness({ enabled = true, acknowledge } = {}) {
             purchases.get(value).acknowledgementState = 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED';
         },
     };
-    const service = createBillingService({ db, play, settings: { enabled, products },
+    const serviceFor = settings => createBillingService({ db, play, settings,
         pilotUsers: new Set(['owner-a', 'owner-b']), now: () => time });
-    return { records, purchases, acknowledged, service, db, setTime: value => { time = value; } };
+    return { records, purchases, acknowledged, service: serviceFor(settings), serviceFor, db,
+        setTime: value => { time = value; } };
 }
 
 function subscription({ uid = 'owner-a', product = products[0], state = 'ACTIVE', expires = now + 20_000,
@@ -207,4 +209,134 @@ test('a confirmed plan remains available until its Play expiry without a new dev
     assert.equal((await service.getPlan(user('owner-a'))).uploadAllowed, true);
     setTime(now + 60 * 60 * 1000);
     assert.equal((await service.getPlan(user('owner-a'))).uploadAllowed, false);
+});
+
+const productionEnv = (mode, uids = '', emails = '') => ({ GALLIPICK_PRODUCTION_AD_FREE_ENABLED: 'true',
+    GALLIPICK_PRODUCTION_BILLING_MODE: mode, GALLIPICK_PRODUCTION_BILLING_TEST_UIDS: uids,
+    GALLIPICK_PRODUCTION_BILLING_TEST_EMAILS: emails });
+const live = productionBillingSettings(PRODUCTION_PROJECT, productionEnv('live'));
+const license = productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', 'owner-a'));
+const [monthly, annual] = live.products;
+const productId = 'gallipick_ad_free';
+const verify = (service, uid, purchaseToken) => service.verify(user(uid), { purchaseToken });
+const renewalEvent = purchaseToken => ({ packageName: 'com.hebi.gallipick', subscriptionNotification: { purchaseToken } });
+
+test('production billing activation is project scoped with no active Cloud products', async () => {
+    assert.equal(productionBillingSettings(PRODUCTION_PROJECT, {}).enabled, false);
+    assert.equal(productionBillingSettings('gallipick-dev', productionEnv('live')).enabled, false);
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, productionEnv('invalid')), isCode('failed-precondition'));
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test')), isCode('failed-precondition'));
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, productionEnv('live', 'owner-a')), isCode('failed-precondition'));
+    assert.deepEqual(live.products, ['monthly', 'annual'].map(basePlanId => ({ productId, basePlanId,
+        kind: 'AD_FREE', quotaBytes: 0 })));
+    const { service, db } = createHarness({ settings: live });
+    const plan = await service.getPlan(user('owner-a'));
+    assert.deepEqual(plan.products, live.products);
+    assert.equal(plan.obfuscatedAccountId, accountId('owner-a'));
+    assert.equal(plan.activeProductId, null);
+    assert.equal(plan.adFreeProductId, null);
+    assert.equal(plan.uploadAllowed, false);
+    assert.equal(await db.runTransaction(transaction => service.uploadQuota(transaction, accountId('owner-a'), 60)), 0);
+});
+
+test('license-test entitlements cannot grant live benefits and paid receipts are rejected in that mode', async () => {
+    const { service, serviceFor, purchases } = createHarness({ settings: license });
+    const paid = serviceFor(live);
+    purchases.set(token(1), subscription({ product: monthly }));
+    purchases.set(token(2), subscription({ product: annual, testPurchase: null }));
+    await assert.rejects(service.getPlan(user('owner-b')), isCode('permission-denied'));
+    await assert.rejects(verify(service, 'owner-a', token(2)), isCode('permission-denied'));
+    await assert.rejects(verify(paid, 'owner-a', token(1)), isCode('permission-denied'));
+    assert.equal((await verify(service, 'owner-a', token(1))).adFreeProductId, productId);
+    assert.equal((await paid.getPlan(user('owner-a'))).adFreeProductId, null);
+    assert.equal((await verify(paid, 'owner-a', token(2))).adFreeProductId, productId);
+});
+
+test('annual production purchase verification grants no backup and is acknowledged without storing raw tokens', async () => {
+    const { service, purchases, acknowledged, records } = createHarness({ settings: live });
+    purchases.set(token(1), subscription({ product: annual, acknowledged: false, testPurchase: null, expires: now + 555_000 }));
+    purchases.set(token(2), subscription({ product: products[0], testPurchase: null }));
+    await assert.rejects(verify(service, 'owner-b', token(1)), isCode('permission-denied'));
+    await assert.rejects(verify(service, 'owner-a', token(2)), isCode('failed-precondition'));
+    const verified = await verify(service, 'owner-a', token(1));
+    assert.equal(verified.adFreeProductId, productId);
+    assert.equal(verified.adFreeExpiresAtMs, now + 555_000);
+    assert.equal(verified.activeProductId, null);
+    assert.equal(verified.expiresAtMs, null);
+    assert.equal(verified.quotaBytes, 0);
+    assert.equal(verified.uploadAllowed, false);
+    assert.deepEqual(acknowledged, [[token(1), productId]]);
+    assert.equal(JSON.stringify([...records]).includes(token(1)), false);
+});
+
+test('a production replacement can restore from a verified prior binding with no external account identifier', async () => {
+    const { service, purchases } = createHarness({ settings: live });
+    purchases.set(token(1), subscription({ product: monthly, testPurchase: null }));
+    purchases.set(token(2), { ...subscription({ product: annual, testPurchase: null, linkedPurchaseToken: token(1) }),
+        externalAccountIdentifiers: undefined });
+    await assert.rejects(verify(service, 'owner-a', token(2)), isCode('permission-denied'));
+    await verify(service, 'owner-a', token(1));
+    await assert.rejects(verify(service, 'owner-b', token(2)), isCode('permission-denied'));
+    assert.equal(await service.reconcileNotification(renewalEvent(token(2))), true);
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), false);
+    assert.equal((await verify(service, 'owner-a', token(2))).adFreeProductId, productId);
+});
+
+test('production notifications recheck canonical billing state without binding previously unverified purchases', async () => {
+    const { service, purchases, acknowledged } = createHarness({ settings: live });
+    purchases.set(token(1), subscription({ product: monthly, testPurchase: null, acknowledged: false }));
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), false);
+    await verify(service, 'owner-a', token(1));
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), true);
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), true);
+    assert.deepEqual(acknowledged, [[token(1), productId]]);
+    purchases.set(token(1), subscription({ product: monthly, testPurchase: null, state: 'ON_HOLD' }));
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), true);
+    assert.equal((await service.getPlan(user('owner-a'))).adFreeProductId, null);
+});
+
+test('verified Google email can enroll a new UID only in the production license test environment', async () => {
+    const email = 'cloud-tester@example.com';
+    const settings = productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', '', email));
+    const { service, purchases } = createHarness({ settings });
+    const uid = 'new-license-tester';
+    function auth(provider, verified, firebaseEmail = email) {
+        return { uid, token: { email: firebaseEmail, email_verified: verified, firebase: { sign_in_provider: provider } } };
+    }
+    const allowedAuth = auth('google.com', true, email.toUpperCase());
+    const request = { purchaseToken: token(1), email };
+    purchases.set(token(1), subscription({ uid, product: monthly }));
+    await assert.rejects(service.getPlan(auth('google.com', false)), isCode('permission-denied'));
+    await assert.rejects(service.getPlan(auth('password', true)), isCode('permission-denied'));
+    await assert.rejects(service.verify(auth('google.com', true, 'another@example.com'), request), isCode('permission-denied'));
+    assert.equal((await service.getPlan(allowedAuth)).obfuscatedAccountId, accountId(uid));
+    assert.equal((await service.verify(allowedAuth, request)).adFreeProductId, productId);
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', '', email.toUpperCase())),
+        isCode('failed-precondition'));
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', '', 'missing-domain')),
+        isCode('failed-precondition'));
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, productionEnv('live', '', email)),
+        isCode('failed-precondition'));
+});
+
+test('license RTDN refresh uses only a verified existing email binding and respects allowlist removal', async () => {
+    const email = 'cloud-tester@example.com';
+    const settings = productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', '', email));
+    const { service, serviceFor, purchases, records } = createHarness({ settings });
+    const uid = 'new-license-tester';
+    const auth = { uid, token: { email, email_verified: true, firebase: { sign_in_provider: 'google.com' } } };
+    purchases.set(token(1), subscription({ uid, product: monthly }));
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), false);
+    await service.verify(auth, { purchaseToken: token(1) });
+    assert.equal(JSON.stringify([...records]).includes(email), false);
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), true);
+
+    purchases.set(token(2), { ...subscription({ product: annual, linkedPurchaseToken: token(1) }),
+        externalAccountIdentifiers: undefined });
+    assert.equal(await service.reconcileNotification(renewalEvent(token(2))), true);
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), false);
+
+    const afterRemoval = serviceFor(productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', 'owner-a')));
+    assert.equal(await afterRemoval.reconcileNotification(renewalEvent(token(2))), false);
+    await assert.rejects(afterRemoval.getPlan(auth), isCode('permission-denied'));
 });

@@ -149,7 +149,12 @@ internal fun CloudAccountSettings(
                     modifier = Modifier.semantics { heading() },
                     style = MaterialTheme.typography.titleMedium,
                 )
-                Text("클라우드 구독에 포함됩니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    if (connection.backup != null) "클라우드 구독에 포함됩니다."
+                    else "Google 로그인 후 구독 요금제를 확인할 수 있습니다.",
+                    color = Muted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
         HorizontalDivider(color = Line)

@@ -1,13 +1,17 @@
 import { createHash } from 'node:crypto';
-import { authorize, BackupError } from './backup.js';
+import { authorize, BackupError, createRequestLimiter } from './backup.js';
+import { AD_FREE_BASE_PLANS, AD_FREE_PRODUCT_ID, validateMonetizationCatalog,
+    verifiedMonetizationBenefits } from './monetization-entitlements.js';
 
 export const PILOT_ACCOUNT_QUOTA_BYTES = 1024 ** 3;
 export const PLAY_BILLING_PACKAGE = 'com.hebi.gallipick';
+export const PRODUCTION_PROJECT = 'gallipick-production';
 const MAX_CURRENT_TOKENS = 20;
 const HASH = /^[a-f0-9]{64}$/;
 const PRODUCT_ID = /^[a-z0-9][a-z0-9_.]{0,149}$/;
 const BASE_PLAN_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const PURCHASE_TOKEN = /^[\x21-\x7e]{8,4096}$/;
+const TEST_EMAIL = /^[a-z0-9]+(?:[._+-][a-z0-9]+)*@[a-z0-9]+(?:[.-][a-z0-9]+)*\.[a-z]{2,63}$/;
 const ACCEPTED_SUBSCRIPTION_STATES = new Set(['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD',
     'SUBSCRIPTION_STATE_CANCELED']);
 const INACTIVE_SUBSCRIPTION_STATES = new Set(['SUBSCRIPTION_STATE_PAUSED', 'SUBSCRIPTION_STATE_ON_HOLD',
@@ -35,16 +39,43 @@ export function billingSettings(project, env) {
     }
 }
 
-function inspectPurchase(purchase, owner, products, now) {
-    if (!purchase?.testPurchase || typeof purchase.testPurchase !== 'object' || Array.isArray(purchase.testPurchase)
-        || purchase.externalAccountIdentifiers?.obfuscatedExternalAccountId !== owner) {
-        throw new BackupError('permission-denied', 'The Play test purchase is not linked to this cloud account.');
+export function productionBillingSettings(project, env) {
+    if (project !== PRODUCTION_PROJECT || env.GALLIPICK_PRODUCTION_AD_FREE_ENABLED !== 'true') {
+        return { enabled: false, products: [], mode: 'disabled', users: new Set(), emails: new Set() };
+    }
+    const mode = env.GALLIPICK_PRODUCTION_BILLING_MODE;
+    const users = new Set((env.GALLIPICK_PRODUCTION_BILLING_TEST_UIDS ?? '').split(',')
+        .map(uid => uid.trim()).filter(Boolean));
+    const emails = new Set((env.GALLIPICK_PRODUCTION_BILLING_TEST_EMAILS ?? '').split(',')
+        .map(email => email.trim()).filter(Boolean));
+    const licenseAudienceSize = users.size + emails.size;
+    if (!['license-test', 'live'].includes(mode) || (mode === 'license-test' && licenseAudienceSize === 0)
+        || (mode === 'live' && licenseAudienceSize !== 0) || licenseAudienceSize > 10
+        || [...users].some(uid => !/^[A-Za-z0-9_-]{1,128}$/.test(uid))
+        || [...emails].some(email => email.length > 254 || email.indexOf('@') > 64 || !TEST_EMAIL.test(email))) {
+        throw new BackupError('failed-precondition', 'The production billing configuration is invalid.');
+    }
+    const products = validateMonetizationCatalog(AD_FREE_BASE_PLANS.map(basePlanId => ({
+        productId: AD_FREE_PRODUCT_ID, basePlanId, kind: 'AD_FREE', quotaBytes: 0,
+    })), 0);
+    return { enabled: true, products, mode, users, emails };
+}
+
+function inspectPurchase(purchase, owner, settings, now) {
+    const production = settings.mode !== undefined;
+    const isTestPurchase = Boolean(purchase?.testPurchase) && typeof purchase.testPurchase === 'object'
+        && !Array.isArray(purchase.testPurchase);
+    const validMode = settings.mode === 'live' ? purchase?.testPurchase == null : isTestPurchase;
+    const externalOwner = purchase?.externalAccountIdentifiers?.obfuscatedExternalAccountId;
+    if (!purchase || typeof purchase !== 'object' || !validMode
+        || (production ? externalOwner != null && externalOwner !== owner : externalOwner !== owner)) {
+        throw new BackupError('permission-denied', 'The Play purchase is not linked to this account or billing environment.');
     }
     const [item] = Array.isArray(purchase.lineItems) ? purchase.lineItems : [];
-    const plan = item && products.find(candidate => candidate.productId === item.productId
+    const plan = item && settings.products.find(candidate => candidate.productId === item.productId
         && candidate.basePlanId === item.offerDetails?.basePlanId);
     if (!plan || purchase.lineItems.length !== 1 || !item.autoRenewingPlan || item.prepaidPlan) {
-        throw new BackupError('failed-precondition', 'The purchase does not match an enabled test plan.');
+        throw new BackupError('failed-precondition', 'The purchase does not match an enabled subscription plan.');
     }
     const active = ACCEPTED_SUBSCRIPTION_STATES.has(purchase.subscriptionState);
     const uncompleted = UNCOMPLETED_SUBSCRIPTION_STATES.has(purchase.subscriptionState);
@@ -61,6 +92,7 @@ function inspectPurchase(purchase, owner, products, now) {
     }
     return {
         plan,
+        externalOwner,
         entitlement: eligible ? { ...plan, expiresAtMs, checkedAtMs: now } : null,
         acknowledge: eligible && acknowledgement === ACK_PENDING,
         linkedHash: !uncompleted && typeof linked === 'string' ? hash(linked) : null,
@@ -80,12 +112,36 @@ function currentPlan(record, products, now) {
 }
 
 export function createBillingService({ db, play, settings, pilotUsers, now = Date.now }) {
-    const ownerRef = owner => db.doc(`gallipickCloudBillingAccounts/${owner}`);
-    const tokenRef = tokenHash => db.doc(`gallipickCloudBillingTokens/${tokenHash}`);
+    const production = settings.mode !== undefined;
+    const scope = settings.mode === 'live' ? 'gallipickProductionBilling' : production
+        ? 'gallipickProductionLicenseBilling' : 'gallipickCloudBilling';
+    const ownerRef = owner => db.doc(`${scope}Accounts/${owner}`);
+    const tokenRef = tokenHash => db.doc(`${scope}Tokens/${tokenHash}`);
     const usageRef = owner => db.doc(`gallipickBackupAccounts/${owner}`);
-    const pilotOwners = new Set([...pilotUsers].map(hash));
+    const users = production ? settings.users : pilotUsers;
+    const emails = settings.emails ?? new Set();
+    const allowedOwners = new Set([...(users ?? [])].map(hash));
+    const allowedEmailHashes = new Set([...emails].map(hash));
+    const countProductionRequest = createRequestLimiter(db, `${scope}RequestLimits`, 120);
+    function authorizeAccount(auth) {
+        const email = typeof auth?.token?.email === 'string' ? auth.token.email.toLowerCase() : null;
+        const licenseEmailHash = settings.mode === 'license-test' && auth?.token?.email_verified === true
+            && emails.has(email) ? hash(email) : null;
+        const owner = authorize(auth, users, settings.mode === 'live' || settings.mode === 'disabled' || licenseEmailHash !== null);
+        return { owner, licenseEmailHash };
+    }
+    const pausedProductionPlan = { enabled: false, products: [], activeProductId: null,
+        expiresAtMs: null, adFreeProductId: null, adFreeExpiresAtMs: null, uploadAllowed: false,
+        obfuscatedAccountId: null, quotaBytes: 0, usedBytes: 0 };
 
     async function getPlanForOwner(owner) {
+        if (production) {
+            if (!settings.enabled) return pausedProductionPlan;
+            const account = (await ownerRef(owner).get()).data();
+            const verified = verifiedMonetizationBenefits(Object.values(account?.entitlements ?? {}), settings.products, now());
+            return { ...pausedProductionPlan, enabled: true, products: settings.products, obfuscatedAccountId: owner,
+                adFreeProductId: verified.adFreeProductId, adFreeExpiresAtMs: verified.adFreeExpiresAtMs };
+        }
         const [account, usage] = await Promise.all([ownerRef(owner).get(), usageRef(owner).get()]);
         const plan = settings.enabled ? currentPlan(account.data(), settings.products, now()) : null;
         const quotaBytes = settings.enabled ? (plan?.quotaBytes ?? 0) : PILOT_ACCOUNT_QUOTA_BYTES;
@@ -111,7 +167,7 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
         });
     }
 
-    function persist(owner, tokenHash, revision, purchase) {
+    function persist(owner, tokenHash, revision, purchase, licenseEmailHash) {
         return db.runTransaction(async transaction => {
             const account = ownerRef(owner);
             const token = tokenRef(tokenHash);
@@ -126,6 +182,9 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             if (oldBinding && (oldBinding.owner !== owner || (oldBinding.retiredBy && oldBinding.retiredBy !== tokenHash))) {
                 throw new BackupError('permission-denied', 'The previous subscription belongs to another purchase.');
             }
+            if (production && purchase && purchase.externalOwner !== owner && !binding && !oldBinding) {
+                throw new BackupError('permission-denied', 'The Play purchase is not linked to this account.');
+            }
 
             const time = now();
             const entitlements = Object.fromEntries(Object.entries(current.entitlements ?? {}).filter(([key, item]) =>
@@ -134,16 +193,17 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             else delete entitlements[tokenHash];
             if (prior) delete entitlements[purchase.linkedHash];
             if (Object.keys(entitlements).length > MAX_CURRENT_TOKENS) {
-                throw new BackupError('resource-exhausted', 'Too many test subscriptions are active.');
+                throw new BackupError('resource-exhausted', 'Too many subscriptions are active.');
             }
             transaction.set(account, { revision, entitlements });
-            transaction.set(token, purchase ? { owner } : { owner, invalidated: true });
+            const audience = licenseEmailHash === null ? { owner } : { owner, licenseEmailHash };
+            transaction.set(token, purchase ? audience : { ...audience, invalidated: true });
             if (prior) transaction.set(prior, { owner, retiredBy: tokenHash });
             return purchase?.acknowledge === true && Object.hasOwn(entitlements, tokenHash);
         });
     }
 
-    async function reconcile(owner, purchaseToken) {
+    async function reconcile(owner, purchaseToken, licenseEmailHash = null) {
         const tokenHash = hash(purchaseToken);
         const revision = await nextRevision(owner);
         let result;
@@ -151,12 +211,12 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             result = await play.get(purchaseToken);
         } catch (error) {
             if (!(error instanceof BackupError) || error.code !== 'not-found') throw error;
-            await persist(owner, tokenHash, revision, null);
+            await persist(owner, tokenHash, revision, null, licenseEmailHash);
             return;
         }
-        const purchase = inspectPurchase(result, owner, settings.products, now());
+        const purchase = inspectPurchase(result, owner, settings, now());
         if (purchase.linkedHash === tokenHash) throw new BackupError('data-loss', 'The Play subscription replacement is invalid.');
-        if (await persist(owner, tokenHash, revision, purchase)) {
+        if (await persist(owner, tokenHash, revision, purchase, licenseEmailHash)) {
             try {
                 await play.acknowledge(purchaseToken, purchase.plan.productId);
             } catch {
@@ -166,16 +226,21 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     }
 
     return {
-        getPlan(auth) { return getPlanForOwner(authorize(auth, pilotUsers)); },
+        async getPlan(auth) {
+            const { owner } = authorizeAccount(auth);
+            if (production && settings.enabled) await countProductionRequest(owner);
+            return getPlanForOwner(owner);
+        },
 
         async verify(auth, input) {
-            const owner = authorize(auth, pilotUsers);
-            if (!settings.enabled) throw new BackupError('failed-precondition', 'The Play billing test is disabled.');
+            const { owner, licenseEmailHash } = authorizeAccount(auth);
+            if (!settings.enabled) throw new BackupError('failed-precondition', 'Play billing is disabled.');
             const purchaseToken = input?.purchaseToken;
             if (typeof purchaseToken !== 'string' || !PURCHASE_TOKEN.test(purchaseToken)) {
                 throw new BackupError('invalid-argument', 'A valid Play purchase token is required.');
             }
-            await reconcile(owner, purchaseToken);
+            if (production) await countProductionRequest(owner);
+            await reconcile(owner, purchaseToken, licenseEmailHash);
             return getPlanForOwner(owner);
         },
 
@@ -187,15 +252,31 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             if (typeof token !== 'string' || !PURCHASE_TOKEN.test(token)) return false;
             const binding = (await tokenRef(hash(token)).get()).data();
             if (binding?.retiredBy || binding?.invalidated) return false;
-            const owner = binding?.owner ?? (await play.get(token))?.externalAccountIdentifiers?.obfuscatedExternalAccountId;
-            if (!pilotOwners.has(owner)) return false;
+            let owner = binding?.owner;
+            let licenseEmailHash = binding?.licenseEmailHash;
+            if (owner == null) {
+                const purchase = await play.get(token);
+                if (production) {
+                    const prior = purchase?.linkedPurchaseToken;
+                    if (typeof prior !== 'string' || !PURCHASE_TOKEN.test(prior)) return false;
+                    const priorBinding = (await tokenRef(hash(prior)).get()).data();
+                    owner = priorBinding?.owner;
+                    licenseEmailHash = priorBinding?.licenseEmailHash;
+                } else {
+                    owner = purchase?.externalAccountIdentifiers?.obfuscatedExternalAccountId;
+                }
+            }
+            const licenseEmailAllowed = settings.mode === 'license-test' && allowedEmailHashes.has(licenseEmailHash);
+            if (typeof owner !== 'string' || !HASH.test(owner)
+                || (settings.mode !== 'live' && !allowedOwners.has(owner) && !licenseEmailAllowed)) return false;
             // Re-fetch after reserving the revision. The notification is only a refresh signal.
-            await reconcile(owner, token);
+            await reconcile(owner, token, licenseEmailAllowed ? licenseEmailHash : null);
             return true;
         },
 
         // Read this in the same transaction as new reservations and before any writes.
         async uploadQuota(transaction, owner, pilotLimit) {
+            if (production) return 0;
             if (!settings.enabled) return pilotLimit;
             const account = (await transaction.get(ownerRef(owner))).data();
             const plan = currentPlan(account, settings.products, now());

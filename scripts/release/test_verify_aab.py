@@ -29,6 +29,11 @@ METADATA = {"package": "com.hebi.gallipick", "version_code": 8, "version_name": 
 JAVA_SOURCE = Path(__file__).with_name("VerifyAabSignature.java")
 
 
+def firebase_resource(project):
+    return ("Package 'com.hebi.gallipick':\n0x7f1200a0 - string/cloud_firebase_project_id\n"
+            f'\t(default) - [STR] "{project}"\n\n')
+
+
 class AabMetadataTests(unittest.TestCase):
     def api(self):
         self.assertIsNotNone(verify_aab, "AAB verification is not implemented")
@@ -58,6 +63,17 @@ class AabMetadataTests(unittest.TestCase):
                          '<!DOCTYPE manifest [<!ENTITY x "private">]>' + MANIFEST]:
             with self.subTest(manifest=manifest[:30]), self.assertRaises(ReleaseError):
                 api.parse_manifest(manifest)
+
+    def test_firebase_project_must_be_the_unambiguous_default_for_the_selected_environment(self):
+        api = self.api()
+        prod = firebase_resource("gallipick-production")
+        api.validate_cloud_project(prod, "production")
+        api.validate_cloud_project(firebase_resource("gallipick-dev"), "development")
+        for resources in ("", firebase_resource("gallipick-dev"), prod + firebase_resource("gallipick-dev"),
+                          prod.replace("com.hebi.gallipick", "wrong.package"),
+                          prod + '\tlocale: "ko" - [STR] "gallipick-dev"\n'):
+            with self.subTest(resources=resources), self.assertRaises(ReleaseError):
+                api.validate_cloud_project(resources, "production")
 
     def test_archive_rejects_private_material_unsafe_names_and_duplicate_entries(self):
         api = self.api()
@@ -196,7 +212,8 @@ class AabSignatureTests(unittest.TestCase):
         self.sign(bundle, "two")
         self.assertNotEqual(self.verify(bundle).returncode, 0)
 
-    def run_cli(self, bundle, *, manifest=MANIFEST, validation_fails=False):
+    def run_cli(self, bundle, *, manifest=MANIFEST, validation_fails=False,
+                cloud_environment=None, cloud_resources=""):
         self.assertIsNotNone(verify_aab, "AAB verification is not implemented")
         # Only the unavailable official bundletool and git commit boundary are doubled.
         # The archive, snapshot, XML validation, Java signature verification and output are real.
@@ -217,21 +234,28 @@ class AabSignatureTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "b" * 40 + "\n", "")
             if command[:3] == ["java", "-jar", str(tool)]:
                 operation = command[3:]
-                snapshot = Path(operation[-1].split("=", 1)[1]) if operation[0] == "validate" else Path(operation[-2].split("=", 1)[1])
+                snapshot = Path(next(argument.removeprefix("--bundle=") for argument in operation
+                                     if argument.startswith("--bundle=")))
                 self.assertNotEqual(snapshot, bundle)
                 self.assertEqual(snapshot.read_bytes(), bundle.read_bytes())
                 if operation == ["validate", "--bundle=" + str(snapshot)]:
                     return subprocess.CompletedProcess(command, int(validation_fails), "private tool diagnostic", "")
                 if operation == ["dump", "manifest", "--bundle=" + str(snapshot), "--module=base"]:
                     return subprocess.CompletedProcess(command, 0, manifest, "")
+                if operation == ["dump", "resources", "--bundle=" + str(snapshot),
+                                 "--resource=string/cloud_firebase_project_id", "--values"]:
+                    return subprocess.CompletedProcess(command, 0, cloud_resources, "")
                 self.fail("Unexpected bundletool invocation")
             return real_run(command, **kwargs)
 
+        argv = ["verify_aab.py", "--bundle", str(bundle), "--bundletool", str(tool),
+                "--tag", "v0.1.7", "--output", str(output)]
+        if cloud_environment:
+            argv.extend(["--cloud-environment", cloud_environment])
         previous = Path.cwd()
         try:
             os.chdir(project)
-            with patch.object(sys, "argv", ["verify_aab.py", "--bundle", str(bundle), "--bundletool", str(tool),
-                                          "--tag", "v0.1.7", "--output", str(output)]), \
+            with patch.object(sys, "argv", argv), \
                     patch("verify_aab.subprocess.run", side_effect=external):
                 verify_aab.main()
         finally:
@@ -251,6 +275,16 @@ class AabSignatureTests(unittest.TestCase):
             with self.subTest(arguments=arguments), self.assertRaises(ReleaseError) as failure:
                 self.run_cli(bundle, **arguments)
             self.assertNotIn("private tool diagnostic", str(failure.exception))
+
+    def test_cli_requires_production_project_evidence_from_the_signed_snapshot(self):
+        bundle = self.bundle("cli-cloud.aab")
+        with self.assertRaises(ReleaseError):
+            self.run_cli(bundle, cloud_environment="production", cloud_resources=firebase_resource("gallipick-dev"))
+        output = self.run_cli(bundle, cloud_environment="production",
+                              cloud_resources=firebase_resource("gallipick-production"))
+        provenance = json.loads((output / "provenance.json").read_text())
+        self.assertEqual(provenance["cloud_environment"], "production")
+        self.assertEqual(provenance["firebase_project_id"], "gallipick-production")
 
 
 if __name__ == "__main__":

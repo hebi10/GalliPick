@@ -12,6 +12,7 @@ plugins {
 
 val galliPickApplicationId = "com.hebi.gallipick"
 val cloudTestFirebaseProjectId = "gallipick-dev"
+val cloudProductionFirebaseProjectId = "gallipick-production"
 
 // GalliPick ads are opt-in at build time. No live ad requests are possible
 // without this app's own AdMob registration and explicit release configuration.
@@ -42,35 +43,62 @@ val cloudConfigResourceNames = listOf(
 val playCloudPilot = providers.gradleProperty("gallipickPlayCloudPilot").map { value ->
     value.toBooleanStrictOrNull() ?: throw GradleException("gallipickPlayCloudPilot must be true or false.")
 }.getOrElse(false)
+val cloudEnvironment = providers.gradleProperty("gallipickCloudEnvironment").getOrElse("development")
+if (cloudEnvironment !in setOf("development", "production")) {
+    throw GradleException("gallipickCloudEnvironment must be development or production.")
+}
+if (cloudEnvironment == "production" && !playCloudPilot) {
+    throw GradleException("Production cloud requires an explicitly enabled Play cloud build.")
+}
+val releaseFirebaseProjectId = if (cloudEnvironment == "production")
+    cloudProductionFirebaseProjectId else cloudTestFirebaseProjectId
 
 fun normalizedSha1(value: String?): String? = value?.replace(":", "")?.lowercase()
     ?.takeIf { it.matches(Regex("[a-f0-9]{40}")) }
 
-fun readCloudFirebaseConfig(json: String, playSigningSha1: String? = null): Map<String, String> {
+fun readCloudFirebaseConfig(
+    json: String,
+    playSigningSha1: String? = null,
+    expectedProjectId: String = cloudTestFirebaseProjectId,
+    externalAndroidOAuthClientId: String? = null,
+    developmentReference: (() -> String)? = null,
+): Map<String, String> {
     fun Map<*, *>.objectField(name: String): Map<*, *> = this[name] as? Map<*, *> ?: emptyMap<Any, Any>()
     fun Map<*, *>.objectArray(name: String): List<Map<*, *>> =
         (this[name] as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
 
-    val config = JsonSlurper().parseText(json) as Map<*, *>
-    val projectId = config.objectField("project_info")["project_id"]
-    require(projectId == cloudTestFirebaseProjectId)
-    val client = config.objectArray("client").single {
-        it.objectField("client_info").objectField("android_client_info")["package_name"] == galliPickApplicationId
+    fun androidClientFor(source: String, projectId: String): Map<*, *> {
+        val config = JsonSlurper().parseText(source) as Map<*, *>
+        require(config.objectField("project_info")["project_id"] == projectId)
+        return config.objectArray("client").single {
+            it.objectField("client_info").objectField("android_client_info")["package_name"] == galliPickApplicationId
+        }
     }
+
+    fun isPlaySigningAndroidClient(oauth: Map<*, *>): Boolean {
+        val android = oauth.objectField("android_info")
+        return (oauth["client_type"] as? Number)?.toInt() == 1 &&
+            android["package_name"] == galliPickApplicationId &&
+            normalizedSha1(android["certificate_hash"] as? String) == playSigningSha1
+    }
+
+    val client = androidClientFor(json, expectedProjectId)
     val oauthClients = client.objectArray("oauth_client")
-    val webClient = oauthClients.first { (it["client_type"] as? Number)?.toInt() == 3 }
-    if (playSigningSha1 != null) {
-        require(oauthClients.any {
-            val androidClient = it.objectField("android_info")
-            (it["client_type"] as? Number)?.toInt() == 1 &&
-                androidClient["package_name"] == galliPickApplicationId &&
-                normalizedSha1(androidClient["certificate_hash"] as? String) == playSigningSha1
+    val webClients = oauthClients.filter { (it["client_type"] as? Number)?.toInt() == 3 }
+    val webClient = if (expectedProjectId == cloudProductionFirebaseProjectId) webClients.single() else webClients.first()
+    if (playSigningSha1 != null && oauthClients.none(::isPlaySigningAndroidClient)) {
+        require(expectedProjectId == cloudProductionFirebaseProjectId)
+        val externalId = requireNotNull(externalAndroidOAuthClientId)
+        require(externalId.matches(Regex("[a-zA-Z0-9_-]+\\.apps\\.googleusercontent\\.com")))
+        val reference = androidClientFor(requireNotNull(developmentReference).invoke(), cloudTestFirebaseProjectId)
+        require(reference.objectArray("oauth_client").any {
+            it["client_id"] == externalId && isPlaySigningAndroidClient(it)
         })
     }
     val values = listOf(
         client.objectField("client_info")["mobilesdk_app_id"],
         client.objectArray("api_key").first()["current_key"],
-        projectId,
+        expectedProjectId,
         webClient["client_id"],
     ).map { it as String }
     require(values.all { it.matches(Regex("[a-zA-Z0-9_.:-]+")) })
@@ -94,9 +122,18 @@ val playCloudFirebaseConfig = if (playCloudPilot) {
     val signingSha1 = normalizedSha1(providers.gradleProperty("gallipickPlayAppSigningSha1").orNull)
         ?: throw GradleException("The Play cloud pilot requires a valid gallipickPlayAppSigningSha1.")
     try {
-        readCloudFirebaseConfig(json, signingSha1)
+        readCloudFirebaseConfig(
+            json,
+            signingSha1,
+            releaseFirebaseProjectId,
+            providers.gradleProperty("gallipickPlayExternalAndroidOAuthClientId").orNull,
+        ) {
+            val reference = File(providers.gradleProperty("gallipickPlayAndroidOAuthReferenceFile").get())
+            require(reference.isAbsolute && reference.isFile)
+            reference.readText()
+        }
     } catch (_: Exception) {
-        throw GradleException("Invalid Play cloud pilot Firebase configuration. Check the GalliPick Dev project, app package, and Google OAuth clients including the Play app signing certificate.")
+        throw GradleException("Invalid Play cloud Firebase configuration for $cloudEnvironment. Check the project, package, and Play signing OAuth client.")
     }
 } else emptyMap()
 
@@ -148,8 +185,8 @@ android {
         applicationId = galliPickApplicationId
         minSdk = 30
         targetSdk = 36
-        versionCode = 27
-        versionName = "0.2.16"
+        versionCode = 28
+        versionName = "0.2.17"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resValue("bool", "gallipick_ads_preview", "false")
     }
