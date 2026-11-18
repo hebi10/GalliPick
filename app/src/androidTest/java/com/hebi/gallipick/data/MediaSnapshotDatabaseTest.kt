@@ -25,6 +25,74 @@ class MediaSnapshotDatabaseTest {
 
     @After fun closeDatabase() { database.close() }
 
+    @Test fun repeatedUnchangedSnapshotDoesNotDeleteOrReinsertRows() = runBlocking {
+        val snapshot = listOf(media("a", "primary"), media("b", "primary"))
+        val versions = mapOf("primary" to "one")
+        dao.replaceAccessible(snapshot, versions)
+        dao.putHash(CachedHash(snapshot[0].uri, snapshot[0].fingerprint, HASH, "one"))
+        database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER reject_reinsert BEFORE INSERT ON media_cache BEGIN SELECT RAISE(ABORT, 'unexpected rewrite'); END")
+        database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER reject_delete BEFORE DELETE ON media_cache BEGIN SELECT RAISE(ABORT, 'unexpected delete'); END")
+        dao.replaceAccessible(snapshot, versions)
+        assertEquals(snapshot.toSet(), dao.allMedia().toSet())
+        assertEquals(1, dao.allHashes().size)
+        assertEquals(versions, dao.allVolumeVersions().associate { it.volume to it.version })
+    }
+
+    @Test fun incrementalRefreshWritesOnlyChangedAndRemovesRevokedRows() = runBlocking {
+        val keep = media("keep", "primary")
+        val renamed = media("renamed", "primary")
+        val revoked = media("revoked", "primary")
+        val versions = mapOf("primary" to "one")
+        dao.replaceAccessible(listOf(keep, renamed, revoked), versions)
+        listOf(keep, renamed, revoked).forEach {
+            dao.putHash(CachedHash(it.uri, it.fingerprint, HASH, "one"))
+            dao.putPhotoHash(CachedPhotoHash(it.uri, it.fingerprint, "one", "0123456789abcdef"))
+            dao.putOcrIndex(CachedOcrIndex(it.uri, it.fingerprint, "one", "검증된 문구", "SUCCESS"))
+        }
+        dao.protect(ProtectedMedia(keep.uri))
+        database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER keep_insert BEFORE INSERT ON media_cache WHEN NEW.uri = 'keep' " +
+                "BEGIN SELECT RAISE(ABORT, 'rewrote unchanged media'); END")
+        database.openHelper.writableDatabase.execSQL(
+            "CREATE TRIGGER keep_delete BEFORE DELETE ON media_cache WHEN OLD.uri = 'keep' " +
+                "BEGIN SELECT RAISE(ABORT, 'deleted unchanged media'); END")
+        val next = renamed.copy(displayName = "renamed-new.jpg")
+        dao.replaceAccessible(listOf(keep, next), versions)
+        assertEquals(setOf(keep, next), dao.allMedia().toSet())
+        assertEquals(setOf("keep", "renamed"), dao.allHashes().map { it.uri }.toSet())
+        assertEquals(setOf("keep", "renamed"), dao.allPhotoHashes().map { it.uri }.toSet())
+        assertEquals(setOf("keep", "renamed"), dao.allOcrIndex().map { it.uri }.toSet())
+        assertEquals(listOf(ProtectedMedia("keep")), dao.allProtection())
+    }
+
+    @Test fun uriIdentityReuseWithSameFingerprintInvalidatesEveryCachedProof() = runBlocking {
+        val original = media("reused", "primary")
+        val versions = mapOf("primary" to "one")
+        dao.replaceAccessible(listOf(original), versions)
+        dao.putHash(CachedHash(original.uri, original.fingerprint, HASH, "one"))
+        dao.putPhotoHash(CachedPhotoHash(original.uri, original.fingerprint, "one", "0123456789abcdef"))
+        dao.putOcrIndex(CachedOcrIndex(original.uri, original.fingerprint, "one", "비밀 문자", "SUCCESS"))
+        dao.replaceAccessible(listOf(original.copy(id = original.id + 10)), versions)
+        assertTrue(dao.allHashes().isEmpty())
+        assertTrue(dao.allPhotoHashes().isEmpty())
+        assertTrue(dao.allOcrIndex().isEmpty())
+    }
+
+    @Test fun identicalSnapshotWithChangedVolumeEpochRevokesAllProofs() = runBlocking {
+        val original = media("volume", "primary")
+        dao.replaceAccessible(listOf(original), mapOf("primary" to "before"))
+        dao.putHash(CachedHash(original.uri, original.fingerprint, HASH, "before"))
+        dao.putPhotoHash(CachedPhotoHash(original.uri, original.fingerprint, "before", "0123456789abcdef"))
+        dao.putOcrIndex(CachedOcrIndex(original.uri, original.fingerprint, "before", "민감", "SUCCESS"))
+        dao.replaceAccessible(listOf(original), mapOf("primary" to "after"))
+        assertEquals(listOf(original), dao.allMedia())
+        assertTrue(dao.allHashes().isEmpty())
+        assertTrue(dao.allPhotoHashes().isEmpty())
+        assertTrue(dao.allOcrIndex().isEmpty())
+    }
+
     @Test fun epochChangeInvalidatesOnlyThatVolumesHashesEvenWhenFingerprintIsUnchanged() = runBlocking {
         val rows = listOf(media("a", "primary"), media("b", "sd"))
         dao.replaceAccessible(rows, mapOf("primary" to "one", "sd" to "one"))

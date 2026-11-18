@@ -194,6 +194,14 @@ internal abstract class MediaDao {
     abstract suspend fun insertMedia(items: List<CachedMedia>)
     @Query("DELETE FROM media_cache")
     abstract suspend fun deleteMedia()
+    @Query("DELETE FROM media_cache WHERE uri IN (:uris)")
+    abstract suspend fun deleteMediaByUris(uris: List<String>)
+    @Query("DELETE FROM media_hash WHERE uri IN (:uris)")
+    abstract suspend fun invalidateHashesByUris(uris: List<String>)
+    @Query("DELETE FROM photo_perceptual_hash WHERE uri IN (:uris)")
+    abstract suspend fun invalidatePhotoHashesByUris(uris: List<String>)
+    @Query("DELETE FROM photo_ocr_index WHERE uri IN (:uris)")
+    abstract suspend fun invalidateOcrByUris(uris: List<String>)
     @Query("DELETE FROM media_hash WHERE NOT EXISTS (SELECT 1 FROM media_cache AS m WHERE m.uri = media_hash.uri AND m.fingerprint = media_hash.fingerprint AND m.isTrashed = 0)")
     abstract suspend fun pruneHashes()
     @Query("DELETE FROM media_hash WHERE uri IN (SELECT uri FROM media_cache WHERE volume IN (:volumes))")
@@ -273,23 +281,37 @@ internal abstract class MediaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun insertVolumeVersions(versions: List<MediaVolumeVersion>)
 
-    /** Rows, provider epochs, and digest invalidation commit or roll back together. */
+    /** Atomic authoritative snapshot: only changed rows are written, stale permissions are removed. */
     @Transaction
     open suspend fun replaceAccessible(items: List<CachedMedia>, versions: Map<String, String>) {
-        val previous = allVolumeVersions().associate { it.volume to it.version }
-        val invalidated = MediaCachePolicy.invalidatedVolumes(previous, versions)
-        if (invalidated.isNotEmpty()) {
-            invalidateVolumeHashes(invalidated)
-            invalidateVolumePhotoHashes(invalidated)
-            invalidateVolumeOcrIndex(invalidated)
+        val previousVersions = allVolumeVersions().associate { it.volume to it.version }
+        val invalidatedVolumes = MediaCachePolicy.invalidatedVolumes(previousVersions, versions)
+        val delta = MediaCatalogDiff.between(allMedia(), items)
+        if (delta.isEmpty && previousVersions == versions) return
+
+        if (invalidatedVolumes.isNotEmpty()) {
+            invalidateVolumeHashes(invalidatedVolumes)
+            invalidateVolumePhotoHashes(invalidatedVolumes)
+            invalidateVolumeOcrIndex(invalidatedVolumes)
         }
-        deleteMedia()
-        insertMedia(items)
-        pruneHashes()
-        prunePhotoHashes()
-        pruneOcrIndex()
-        deleteVolumeVersions()
-        insertVolumeVersions(versions.map { (volume, version) -> MediaVolumeVersion(volume, version) })
+        // A reused URI/ID/volume can retain the same apparent fingerprint: never reuse its proofs.
+        delta.invalidatedProofUris.chunked(400).forEach { uris ->
+            invalidateHashesByUris(uris)
+            invalidatePhotoHashesByUris(uris)
+            invalidateOcrByUris(uris)
+        }
+        delta.removedUris.chunked(400).forEach { uris -> deleteMediaByUris(uris) }
+        delta.changed.chunked(400).forEach { rows -> insertMedia(rows) }
+
+        if (!delta.isEmpty || invalidatedVolumes.isNotEmpty()) {
+            pruneHashes()
+            prunePhotoHashes()
+            pruneOcrIndex()
+        }
+        if (previousVersions != versions) {
+            deleteVolumeVersions()
+            insertVolumeVersions(versions.map { (volume, version) -> MediaVolumeVersion(volume, version) })
+        }
     }
 
     @Query("SELECT * FROM media_hash")
