@@ -1,0 +1,40 @@
+name: GP-PERF-00 synthetic SQLite baseline
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/performance/**'
+      - '.github/workflows/gp-perf-00-sqlite.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify benchmark evidence and result equivalence
+        run: python3 -m unittest discover -s scripts/performance -p 'test_*.py' -v
+      - name: Measure legacy, indexed, and full-replace proxy
+        run: >-
+          python3 scripts/performance/gp_perf00.py
+          --sizes 1000 10000 30000 50000
+          --repetitions 7
+          --output performance-output/report.json
+          --markdown performance-output/report.md
+      - name: Preserve non-secret measurement artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gp-perf-00-sqlite
+          path: performance-output/
+          if-no-files-found: warn
+          retention-days: 30
