@@ -144,7 +144,7 @@ class NativeScreenCaptureTest {
                 compose.onNodeWithContentDescription("미디어 파일 목록")
                     .performScrollToNode(hasText("EXAMPLE_scene_20.jpg"))
                 compose.onNodeWithText("EXAMPLE_scene_20.jpg").performClick()
-                compose.onNodeWithText("앱에서 미리보기").assertIsDisplayed()
+                compose.onNodeWithText("미리보기").assertIsDisplayed()
             }
             dismissDialogIfPresent("닫기", contentDescription = true)
             dismissDialogIfPresent("파일 상세 닫기", contentDescription = true)
