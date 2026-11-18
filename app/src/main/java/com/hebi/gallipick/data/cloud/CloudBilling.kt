@@ -3,6 +3,20 @@ package com.hebi.gallipick.data.cloud
 import android.app.Activity
 import java.io.Closeable
 
+internal const val GALLIPICK_STANDALONE_AD_FREE = "gallipick_ad_free"
+
+internal fun matchesStandaloneAdFreeOffer(
+    productId: String,
+    basePlanId: String,
+    offerId: String?,
+    period: String,
+    recurring: Boolean,
+    priceAmountMicros: Long,
+): Boolean = productId == GALLIPICK_STANDALONE_AD_FREE &&
+    ((basePlanId == "monthly" && period == "P1M") ||
+        (basePlanId == "annual" && period == "P1Y")) &&
+    offerId == null && recurring && priceAmountMicros > 0
+
 internal interface CloudBilling {
     fun open(uid: String): CloudBillingSession
 }
@@ -25,6 +39,8 @@ internal data class CloudBillingPlan(
     val quotaBytes: Long = 0,
     val usedBytes: Long = 0,
     val obfuscatedAccountId: String = "",
+    val adFreeProductId: String? = null,
+    val adFreeExpiresAtMs: Long? = null,
 )
 
 internal data class CloudBillingOffer(
