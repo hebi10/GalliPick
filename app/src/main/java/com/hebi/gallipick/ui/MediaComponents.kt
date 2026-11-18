@@ -63,7 +63,7 @@ internal fun MediaThumbnail(item: MediaItem, modifier: Modifier = Modifier, cont
             }
         }
     }
-    Box(modifier.clip(RoundedCornerShape(12.dp)).background(Panel), contentAlignment = Alignment.Center) {
+    Box(modifier.background(Panel), contentAlignment = Alignment.Center) {
         val loaded = bitmap
         if (loaded != null) Image(loaded.asImageBitmap(), contentDescription = item.displayName, modifier = Modifier.fillMaxSize(), contentScale = contentScale)
         else GalliIcon(if (item.kind == MediaKind.VIDEO) Icons.Outlined.Videocam else Icons.Outlined.Image, "미리보기 없음", Modifier.size(30.dp), tint = Muted)
@@ -93,7 +93,7 @@ private fun DetailPhoto(item: MediaItem, modifier: Modifier = Modifier) {
     }
 
     Box(
-        modifier.clip(RoundedCornerShape(12.dp)).background(Panel),
+        modifier.background(Panel),
         contentAlignment = Alignment.Center,
     ) {
         when {
