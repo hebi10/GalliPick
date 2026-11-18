@@ -3,6 +3,8 @@ package com.hebi.gallipick.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,13 +32,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.hebi.gallipick.data.cloud.CloudBackup
 import com.hebi.gallipick.data.cloud.CloudOriginal
-import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -53,7 +55,10 @@ internal fun CloudFileDetailDialog(
     var saving by remember(original.uploadId, uid) { mutableStateOf(false) }
     var message by remember(original.uploadId, uid) { mutableStateOf<String?>(null) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.safeDrawingPadding().widthIn(max = 760.dp).fillMaxWidth(.96f), color = AppSurface) {
+        Surface(
+            Modifier.safeDrawingPadding().widthIn(max = 760.dp).fillMaxWidth(.96f).fillMaxHeight(.94f),
+            color = AppSurface,
+        ) {
             Column {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 6.dp, end = 4.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically) {
@@ -65,7 +70,7 @@ internal fun CloudFileDetailDialog(
                     IconAction("닫기", Icons.Outlined.Close, onClick = onDismiss)
                 }
                 Column(
-                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
                         .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -78,12 +83,25 @@ internal fun CloudFileDetailDialog(
                             GalliIcon(Icons.Outlined.Movie, "클라우드 동영상", tint = Muted)
                         }
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ActionButton("미리보기", onPreview, Modifier.weight(1f), filled = true,
-                            enabled = !offline && uid != null && backup != null,
-                            icon = Icons.Outlined.PlayArrow)
-                        ActionButton("보관 완료", {}, Modifier.weight(1f), enabled = false,
-                            icon = Icons.Outlined.CloudDone)
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val narrow = maxWidth < 272.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                        if (narrow) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ActionButton("미리보기", onPreview, Modifier.fillMaxWidth(), filled = true,
+                                    enabled = !offline && uid != null && backup != null,
+                                    icon = Icons.Outlined.PlayArrow)
+                                ActionButton("보관 완료", {}, Modifier.fillMaxWidth(), enabled = false,
+                                    icon = Icons.Outlined.CloudDone)
+                            }
+                        } else {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ActionButton("미리보기", onPreview, Modifier.weight(1f), filled = true,
+                                    enabled = !offline && uid != null && backup != null,
+                                    icon = Icons.Outlined.PlayArrow)
+                                ActionButton("보관 완료", {}, Modifier.weight(1f), enabled = false,
+                                    icon = Icons.Outlined.CloudDone)
+                            }
+                        }
                     }
                     Text(original.displayName, style = MaterialTheme.typography.titleMedium)
                     Text("클라우드에 보관됨", color = Muted, style = MaterialTheme.typography.bodySmall)
