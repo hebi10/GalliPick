@@ -1,6 +1,8 @@
 package com.hebi.gallipick.data.cloud
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -80,5 +82,57 @@ class CloudBillingPolicyTest {
         assertFalse(match(null, listOf("cloud-30")))
         assertFalse(match(account, listOf("other-product")))
         assertFalse(match(account, listOf("cloud-30", "other-product")))
+    }
+
+    @Test fun productionCatalogAcceptsOnlyTheThreeDecimalCapacityTiers() {
+        val cloud = listOf(
+            CloudBillingProduct("gallipick_cloud_10gb", "monthly", 10_000_000_000L),
+            CloudBillingProduct("gallipick_cloud_50gb", "annual", 50_000_000_000L),
+            CloudBillingProduct("gallipick_cloud_100gb", "monthly", 100_000_000_000L),
+        )
+        val adFree = CloudBillingProduct(GALLIPICK_STANDALONE_AD_FREE, "annual", 0)
+        assertTrue(isValidCloudBillingCatalog(cloud + adFree, production = true))
+        assertFalse(isValidCloudBillingCatalog(listOf(cloud.first().copy(quotaBytes = 10L shl 30)), production = true))
+        assertFalse(isValidCloudBillingCatalog(listOf(cloud.first().copy(basePlanId = "weekly")), production = true))
+        assertFalse(isValidCloudBillingCatalog(listOf(plan), production = true))
+        assertTrue(isValidCloudBillingCatalog(listOf(CloudBillingProduct("gallipick_cloud_pilot", "monthly", 1L shl 30))))
+        assertTrue(cloud.all { isKnownGalliPickSubscription(it.productId) })
+        assertFalse(isKnownGalliPickSubscription("unrelated"))
+    }
+
+    @Test fun productionOriginalsRemainReadableWhileUploadRequiresActiveVerifiedStorage() {
+        val product = CloudBillingProduct("gallipick_cloud_10gb", "monthly", 10_000_000_000L)
+        val plan = CloudBillingPlan(
+            enabled = true,
+            products = listOf(product),
+            activeProductId = product.productId,
+            expiresAtMs = 2_000,
+            quotaBytes = product.quotaBytes,
+            uploadAllowed = true,
+            backupAvailable = true,
+            maxOriginalBytes = CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES,
+            backupObjectPrefix = CloudBackupNamespace.LICENSE_TEST.objectPrefix,
+        )
+        val access = checkNotNull(plan.productionBackupAccess())
+        assertEquals(CloudBackupNamespace.LICENSE_TEST, access.namespace)
+        assertTrue(access.allowsUpload(1_999))
+        assertFalse(access.allowsUpload(2_000))
+        assertFalse(checkNotNull(plan.copy(activeProductId = null).productionBackupAccess()).allowsUpload(0))
+        assertFalse(checkNotNull(plan.copy(uploadAllowed = false).productionBackupAccess()).allowsUpload(0))
+        assertFalse(checkNotNull(plan.copy(usedBytes = product.quotaBytes).productionBackupAccess()).allowsUpload(0))
+        assertNull(plan.copy(testPurchasesOnly = false).productionBackupAccess())
+        assertNull(plan.copy(backupAvailable = false).productionBackupAccess())
+        assertNull(plan.copy(maxOriginalBytes = CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES + 1).productionBackupAccess())
+
+        var uid: String? = "owner-a"
+        val state = CloudBackupAccessState { uid }
+        state.observe("owner-a", plan)
+        assertEquals(access, state.forAccount("owner-a"))
+        uid = "owner-b"
+        state.clearForAccountChange()
+        state.observe("owner-a", plan)
+        assertNull(state.forAccount("owner-b"))
+        uid = "owner-a"
+        assertNull(state.forAccount("owner-a"))
     }
 }

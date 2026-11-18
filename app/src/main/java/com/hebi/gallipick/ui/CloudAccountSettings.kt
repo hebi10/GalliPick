@@ -25,7 +25,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -38,10 +40,40 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudAccountNotice
 import com.hebi.gallipick.data.cloud.CloudAccountOperation
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+@Composable
+internal fun RefreshProductionCloudBackupAccess(connection: CloudAccountConnection?) {
+    val availability = connection?.backupAvailability ?: return
+    val account by connection.session.account.collectAsStateWithLifecycle()
+    val uid = account?.uid ?: return
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(connection, uid, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                try {
+                    connection.refreshBackupAccess(uid)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Keep verified read-only browsing metadata while the connection retries.
+                }
+                val access = availability.value?.takeIf { it.uid == uid }?.access
+                val untilExpiry = access?.uploadExpiryMillis?.minus(System.currentTimeMillis())
+                    ?.takeIf { it > 0L }
+                delay(minOf(300_000L, untilExpiry?.coerceAtLeast(5_000L) ?: 300_000L))
+            }
+        }
+    }
+}
 
 @Composable
 internal fun CloudScreen(
@@ -53,13 +85,22 @@ internal fun CloudScreen(
     val account by connection.session.account.collectAsStateWithLifecycle()
     val status by connection.session.status.collectAsStateWithLifecycle()
     val access = cloudAccessState(connection.session.available, account?.uid, status.operation)
+    val configuredBackup = connection.backupAvailability
+    val observation = configuredBackup?.collectAsStateWithLifecycle()?.value
+    val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == account?.uid }
+    val namespace = observation?.access?.namespace
     var requestedRoute by rememberSaveable(account?.uid) { mutableStateOf(CloudRoute.OVERVIEW) }
-    val route = if (onBackFromAdRemoval != null && connection.billing != null &&
+    val requested = if (onBackFromAdRemoval != null && connection.billing != null &&
         access != CloudAccessState.UNAVAILABLE
     ) {
         if (access == CloudAccessState.SIGNED_IN) CloudRoute.BILLING else CloudRoute.BILLING_SIGN_IN
     } else {
         cloudVisibleRoute(requestedRoute, access)
+    }
+    val route = when (requested) {
+        CloudRoute.LIBRARY, CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, CloudRoute.SPACE ->
+            if (backup != null) requested else CloudRoute.OVERVIEW
+        else -> requested
     }
     val onBack = onBackFromAdRemoval ?: {
         requestedRoute = CloudRoute.OVERVIEW
@@ -83,7 +124,8 @@ internal fun CloudScreen(
             when {
                 access == CloudAccessState.UNAVAILABLE ->
                     CloudStatusMessage("이 빌드에서 클라우드 로그인 설정을 확인할 수 없습니다.")
-                route != CloudRoute.OVERVIEW -> content(route)
+                route == CloudRoute.BILLING || route == CloudRoute.BILLING_SIGN_IN -> content(route)
+                route != CloudRoute.OVERVIEW -> key(namespace) { content(route) }
                 else -> {
                     content(CloudRoute.OVERVIEW)
                     val onNavigate: (CloudRoute) -> Unit = { requestedRoute = it }
@@ -94,7 +136,7 @@ internal fun CloudScreen(
                         } else {
                             CloudBillingOverviewNotice("이 빌드에서는 결제 기능을 사용할 수 없습니다.")
                         }
-                        if (connection.backup != null) {
+                        if (backup != null) {
                             CloudActionGroup(CloudRoute.LIBRARY, CloudRoute.BACKUP, onNavigate = onNavigate)
                             CloudActionGroup(CloudRoute.AUTO_BACKUP, CloudRoute.SPACE, onNavigate = onNavigate)
                         }
@@ -171,7 +213,11 @@ internal fun CloudAccountSettings(
             style = MaterialTheme.typography.titleSmall,
         )
         Text(
-            "클라우드에 원본을 보관하려면 로그인해 주세요. 기기에서 사진·동영상을 정리하는 기능은 로그인 없이 이용할 수 있습니다.",
+            if (connection.usesProductionBackupPlan) {
+                "Google 계정으로 로그인하면 구독과 백업 이용 상태를 확인할 수 있습니다. 기기 사진·동영상 정리는 로그인 없이 이용할 수 있습니다."
+            } else {
+                "클라우드에 원본을 보관하려면 로그인해 주세요. 기기에서 사진·동영상을 정리하는 기능은 로그인 없이 이용할 수 있습니다."
+            },
             color = Muted,
             style = MaterialTheme.typography.bodySmall,
         )

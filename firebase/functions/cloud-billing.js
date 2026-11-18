@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
-import { authorize, BackupError, createRequestLimiter } from './backup.js';
-import { AD_FREE_BASE_PLANS, AD_FREE_PRODUCT_ID, validateMonetizationCatalog,
-    verifiedMonetizationBenefits } from './monetization-entitlements.js';
+import { authorize, BackupError, createRequestLimiter, PRODUCTION_MAX_FILE_BYTES } from './backup.js';
+import { productionMonetizationCatalog, verifiedMonetizationBenefits } from './monetization-entitlements.js';
 
 export const PILOT_ACCOUNT_QUOTA_BYTES = 1024 ** 3;
 export const PLAY_BILLING_PACKAGE = 'com.hebi.gallipick';
@@ -41,7 +40,8 @@ export function billingSettings(project, env) {
 
 export function productionBillingSettings(project, env) {
     if (project !== PRODUCTION_PROJECT || env.GALLIPICK_PRODUCTION_AD_FREE_ENABLED !== 'true') {
-        return { enabled: false, products: [], mode: 'disabled', users: new Set(), emails: new Set() };
+        return { enabled: false, products: [], mode: 'disabled', users: new Set(), emails: new Set(),
+            cloudEnabled: false, maxOriginalBytes: null, backupNamespace: null };
     }
     const mode = env.GALLIPICK_PRODUCTION_BILLING_MODE;
     const users = new Set((env.GALLIPICK_PRODUCTION_BILLING_TEST_UIDS ?? '').split(',')
@@ -55,10 +55,55 @@ export function productionBillingSettings(project, env) {
         || [...emails].some(email => email.length > 254 || email.indexOf('@') > 64 || !TEST_EMAIL.test(email))) {
         throw new BackupError('failed-precondition', 'The production billing configuration is invalid.');
     }
-    const products = validateMonetizationCatalog(AD_FREE_BASE_PLANS.map(basePlanId => ({
-        productId: AD_FREE_PRODUCT_ID, basePlanId, kind: 'AD_FREE', quotaBytes: 0,
-    })), 0);
-    return { enabled: true, products, mode, users, emails };
+    const configuredLimit = env.GALLIPICK_PRODUCTION_CLOUD_MAX_ORIGINAL_BYTES;
+    const fileLimit = /^[1-9][0-9]{0,8}$/.test(configuredLimit ?? '') ? Number(configuredLimit) : 0;
+    const cloudEnabled = env.GALLIPICK_PRODUCTION_CLOUD_ENABLED === 'true'
+        && (mode === 'license-test' || env.GALLIPICK_PRODUCTION_CLOUD_LIVE_ENABLED === 'true')
+        && fileLimit > 0 && fileLimit <= PRODUCTION_MAX_FILE_BYTES;
+    const backupNamespace = mode === 'live' ? 'gallipickProductionBackup' : 'gallipickProductionLicenseBackup';
+    const verificationProducts = productionMonetizationCatalog(true);
+    return { enabled: true, products: cloudEnabled ? verificationProducts : productionMonetizationCatalog(false),
+        verificationProducts, mode, users, emails, cloudEnabled,
+        maxOriginalBytes: cloudEnabled ? fileLimit : null, backupNamespace };
+}
+
+function purchaseLine(purchase, settings, now) {
+    const items = purchase.lineItems;
+    const products = settings.verificationProducts ?? settings.products;
+    const invalid = () => new BackupError('failed-precondition', 'The purchase does not match an enabled subscription plan.');
+    if (!Array.isArray(items) || (items.length !== 1 &&
+        (!settings.verificationProducts || items.length !== 2 || !purchase.linkedPurchaseToken))) throw invalid();
+    const lines = items.map(item => {
+        const plan = products.find(candidate => candidate.productId === item?.productId
+            && candidate.basePlanId === item.offerDetails?.basePlanId);
+        const knownProduct = products.some(candidate => candidate.productId === item?.productId);
+        const expiresAtMs = Date.parse(item?.expiryTime);
+        if (!knownProduct || item.prepaidPlan || item.deferredItemRemoval != null) throw invalid();
+        return { item, plan, expiresAtMs };
+    });
+    const verifiedLine = line => {
+        if (!line?.plan || !line.item.autoRenewingPlan) throw invalid();
+        return line;
+    };
+    if (lines.length === 1) return verifiedLine(lines[0]);
+
+    // Play lists the old entitlement and its scheduled replacement on the same token.
+    const scheduled = lines.find(({ item }) => item.expiryTime == null);
+    if (scheduled) {
+        const current = verifiedLine(lines.find(line => line !== scheduled));
+        if (!Number.isFinite(current.expiresAtMs)
+            || current.item.deferredItemReplacement?.productId !== scheduled.item.productId
+            || scheduled.item.deferredItemReplacement != null
+            || (current.plan === scheduled.plan)) throw invalid();
+        return current;
+    }
+    if (lines.some(({ item, expiresAtMs }) => item.deferredItemReplacement != null || !Number.isFinite(expiresAtMs))) {
+        throw invalid();
+    }
+    const effective = lines.filter(line => line.expiresAtMs > now);
+    if (effective.length > 1) throw invalid();
+    // The retained historical item is never eligible once a replacement is effective.
+    return verifiedLine(effective[0] ?? lines.find(line => line.plan && line.item.autoRenewingPlan));
 }
 
 function inspectPurchase(purchase, owner, settings, now) {
@@ -71,24 +116,18 @@ function inspectPurchase(purchase, owner, settings, now) {
         || (production ? externalOwner != null && externalOwner !== owner : externalOwner !== owner)) {
         throw new BackupError('permission-denied', 'The Play purchase is not linked to this account or billing environment.');
     }
-    const [item] = Array.isArray(purchase.lineItems) ? purchase.lineItems : [];
-    const plan = item && settings.products.find(candidate => candidate.productId === item.productId
-        && candidate.basePlanId === item.offerDetails?.basePlanId);
-    if (!plan || purchase.lineItems.length !== 1 || !item.autoRenewingPlan || item.prepaidPlan) {
-        throw new BackupError('failed-precondition', 'The purchase does not match an enabled subscription plan.');
+    const linked = purchase.linkedPurchaseToken;
+    if (linked != null && (typeof linked !== 'string' || !PURCHASE_TOKEN.test(linked))) {
+        throw new BackupError('failed-precondition', 'The Play subscription replacement could not be verified.');
     }
+    const { plan, expiresAtMs } = purchaseLine(purchase, settings, now);
     const active = ACCEPTED_SUBSCRIPTION_STATES.has(purchase.subscriptionState);
     const uncompleted = UNCOMPLETED_SUBSCRIPTION_STATES.has(purchase.subscriptionState);
-    const expiresAtMs = Date.parse(item.expiryTime);
     const eligible = active && expiresAtMs > now;
     const acknowledgement = purchase.acknowledgementState;
     if ((!active && !uncompleted && !INACTIVE_SUBSCRIPTION_STATES.has(purchase.subscriptionState))
         || (active && !Number.isFinite(expiresAtMs)) || (eligible && acknowledgement !== ACK_PENDING && acknowledgement !== ACK_COMPLETE)) {
         throw new BackupError('failed-precondition', 'The Play subscription status could not be verified.');
-    }
-    const linked = purchase.linkedPurchaseToken;
-    if (linked != null && (typeof linked !== 'string' || !PURCHASE_TOKEN.test(linked))) {
-        throw new BackupError('failed-precondition', 'The Play subscription replacement could not be verified.');
     }
     return {
         plan,
@@ -117,7 +156,7 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
         ? 'gallipickProductionLicenseBilling' : 'gallipickCloudBilling';
     const ownerRef = owner => db.doc(`${scope}Accounts/${owner}`);
     const tokenRef = tokenHash => db.doc(`${scope}Tokens/${tokenHash}`);
-    const usageRef = owner => db.doc(`gallipickBackupAccounts/${owner}`);
+    const usageRef = owner => db.doc(`${production ? settings.backupNamespace : 'gallipickBackup'}Accounts/${owner}`);
     const users = production ? settings.users : pilotUsers;
     const emails = settings.emails ?? new Set();
     const allowedOwners = new Set([...(users ?? [])].map(hash));
@@ -131,16 +170,36 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
         return { owner, licenseEmailHash };
     }
     const pausedProductionPlan = { enabled: false, products: [], activeProductId: null,
-        expiresAtMs: null, adFreeProductId: null, adFreeExpiresAtMs: null, uploadAllowed: false,
-        obfuscatedAccountId: null, quotaBytes: 0, usedBytes: 0 };
+        activeBasePlanId: null, expiresAtMs: null, adFreeProductId: null, adFreeBasePlanId: null,
+        adFreeExpiresAtMs: null, backupAvailable: false, testPurchasesOnly: settings.mode === 'license-test',
+        uploadAllowed: false, obfuscatedAccountId: null, quotaBytes: 0, usedBytes: 0 };
+    const trustedProducts = settings.verificationProducts ?? settings.products;
+    const productionBenefits = account =>
+        verifiedMonetizationBenefits(Object.values(account?.entitlements ?? {}), trustedProducts, now());
 
     async function getPlanForOwner(owner) {
         if (production) {
             if (!settings.enabled) return pausedProductionPlan;
-            const account = (await ownerRef(owner).get()).data();
-            const verified = verifiedMonetizationBenefits(Object.values(account?.entitlements ?? {}), settings.products, now());
-            return { ...pausedProductionPlan, enabled: true, products: settings.products, obfuscatedAccountId: owner,
-                adFreeProductId: verified.adFreeProductId, adFreeExpiresAtMs: verified.adFreeExpiresAtMs };
+            const [account, usage] = await Promise.all([ownerRef(owner).get(),
+                settings.cloudEnabled ? usageRef(owner).get() : null]);
+            const verified = productionBenefits(account.data());
+            const usageRecord = usage?.data();
+            const usedBytes = usageRecord === undefined ? 0 : usageRecord?.allocatedBytes;
+            if (!Number.isSafeInteger(usedBytes) || usedBytes < 0) {
+                throw new BackupError('failed-precondition', 'The backup allocation needs reconciliation.');
+            }
+            const quotaBytes = settings.cloudEnabled ? verified.quotaBytes : 0;
+            // An already-paid Cloud subscriber keeps ad removal and is blocked from buying it twice.
+            const ownedCloud = !settings.cloudEnabled && verified.cloudProductId
+                ? trustedProducts.find(product => product.productId === verified.cloudProductId
+                    && product.basePlanId === verified.cloudBasePlanId)
+                : null;
+            const products = ownedCloud ? [...settings.products, ownedCloud] : settings.products;
+            return { ...pausedProductionPlan, enabled: true, products, obfuscatedAccountId: owner,
+                activeProductId: verified.cloudProductId, activeBasePlanId: verified.cloudBasePlanId,
+                expiresAtMs: verified.cloudExpiresAtMs, adFreeProductId: verified.adFreeProductId,
+                adFreeBasePlanId: verified.adFreeBasePlanId, adFreeExpiresAtMs: verified.adFreeExpiresAtMs,
+                backupAvailable: settings.cloudEnabled, quotaBytes, usedBytes, uploadAllowed: usedBytes < quotaBytes };
         }
         const [account, usage] = await Promise.all([ownerRef(owner).get(), usageRef(owner).get()]);
         const plan = settings.enabled ? currentPlan(account.data(), settings.products, now()) : null;
@@ -226,6 +285,14 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     }
 
     return {
+        authorizeBackup(auth) {
+            const { owner } = authorizeAccount(auth);
+            if (production && !settings.cloudEnabled) {
+                throw new BackupError('failed-precondition', 'Production Cloud backup is unavailable.');
+            }
+            return owner;
+        },
+
         async getPlan(auth) {
             const { owner } = authorizeAccount(auth);
             if (production && settings.enabled) await countProductionRequest(owner);
@@ -275,12 +342,16 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
         },
 
         // Read this in the same transaction as new reservations and before any writes.
-        async uploadQuota(transaction, owner, pilotLimit) {
-            if (production) return 0;
-            if (!settings.enabled) return pilotLimit;
+        async uploadQuota(transaction, owner, ownerLimit) {
+            if (production && !settings.cloudEnabled) return 0;
+            if (!Number.isSafeInteger(ownerLimit) || ownerLimit < 0) {
+                throw new BackupError('failed-precondition', 'The backup allocation limit is invalid.');
+            }
+            if (!settings.enabled) return ownerLimit;
             const account = (await transaction.get(ownerRef(owner))).data();
+            if (production) return Math.min(productionBenefits(account).quotaBytes, ownerLimit);
             const plan = currentPlan(account, settings.products, now());
-            return plan ? Math.min(plan.quotaBytes, pilotLimit) : 0;
+            return plan ? Math.min(plan.quotaBytes, ownerLimit) : 0;
         },
     };
 }

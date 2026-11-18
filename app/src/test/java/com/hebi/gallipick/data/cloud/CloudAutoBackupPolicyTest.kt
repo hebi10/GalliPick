@@ -10,6 +10,17 @@ import org.junit.Test
 
 class CloudAutoBackupPolicyTest {
     @Test
+    fun licenseTestConsentCannotAuthorizeLiveBackup() {
+        val folder = CloudAutoBackupFolder("external_primary", "DCIM/Camera")
+        val consent = CloudAutoBackupConsent(
+            autoBackupOwnerKey("owner-one", CloudBackupNamespace.LICENSE_TEST), "lease", folder,
+        )
+        assertTrue(consent.permits("owner-one", "lease", CloudBackupNamespace.LICENSE_TEST))
+        assertFalse(consent.permits("owner-one", "lease", CloudBackupNamespace.PRODUCTION))
+        assertFalse(consent.permits("owner-one", "lease", CloudBackupNamespace.DEVELOPMENT))
+    }
+
+    @Test
     fun onlyTheExactlyOptedInFolderAndItsVolumeCanBeSelected() {
         val folder = CloudAutoBackupFolder("external_primary", "DCIM/Camera/")
         val allowed = item(1)

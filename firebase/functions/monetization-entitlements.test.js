@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-    AD_FREE_PRODUCT_ID, validateMonetizationCatalog, verifiedMonetizationBenefits,
+    AD_FREE_PRODUCT_ID, productionMonetizationCatalog, validateMonetizationCatalog, verifiedMonetizationBenefits,
 } from './monetization-entitlements.js';
 
 const maximum = 500 * 1024 ** 3;
@@ -46,6 +46,7 @@ test('monthly and annual standalone ad-removal plans grant no cloud storage', ()
 test('an active cloud subscriber gets ad removal without paying for the standalone product', () => {
     const result = verifiedMonetizationBenefits([proof(catalog[2])], catalog, now);
     assert.equal(result.adsRemoved, true);
+    assert.equal(result.cloudBasePlanId, 'monthly');
     assert.equal(result.adFreeProductId, null);
     assert.equal(result.quotaBytes, 100 * 1024 ** 3);
     assert.equal(result.showStandaloneAdFreeUpsell, false);
@@ -61,10 +62,21 @@ test('independent cloud and ad-removal records are evaluated without overwriting
     assert.equal(adOnly.quotaBytes, 0);
 });
 
+test('overlapping cloud records never add storage quotas together', () => {
+    const production = productionMonetizationCatalog(true);
+    const small = production.find(item => item.productId === 'gallipick_cloud_10gb' && item.basePlanId === 'monthly');
+    const large = production.find(item => item.productId === 'gallipick_cloud_100gb' && item.basePlanId === 'annual');
+    const entitlements = [proof(small, now + 20_000), proof(large, now + 10_000)];
+    assert.equal(verifiedMonetizationBenefits(entitlements, production, now).quotaBytes, 100_000_000_000);
+    assert.equal(verifiedMonetizationBenefits(entitlements, production, now + 10_000).quotaBytes, 10_000_000_000);
+    assert.equal(verifiedMonetizationBenefits(entitlements, production, now + 20_000).quotaBytes, 0);
+});
+
 test('unverified, expired, unknown and malformed records never grant benefits', () => {
     const invalid = [
         proof(catalog[2], now),
         { ...proof(catalog[0]), checkedAtMs: now + 1 },
+        { ...proof(catalog[2]), checkedAtMs: -1 },
         { ...proof(catalog[0]), quotaBytes: 1 },
         { ...proof(catalog[2]), productId: 'forged_product' },
         { ...proof(catalog[0]), expiresAtMs: 'tomorrow' },

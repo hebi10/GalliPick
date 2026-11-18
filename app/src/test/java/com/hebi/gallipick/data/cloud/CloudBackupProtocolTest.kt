@@ -23,6 +23,17 @@ class CloudBackupProtocolTest {
     }
 
     @Test
+    fun productionAndLicenseTestUrlsUseSeparateObjectPrefixes() {
+        val live = url.replace("cloud02/users", "cloud02/production/users")
+        val trial = url.replace("cloud02/users", "cloud02/license-test/users")
+        assertNotNull(allowedTarget(live, namespace = CloudBackupNamespace.PRODUCTION))
+        assertNotNull(allowedTarget(trial, namespace = CloudBackupNamespace.LICENSE_TEST))
+        assertNull(allowedTarget(live, namespace = CloudBackupNamespace.LICENSE_TEST))
+        assertNull(allowedTarget(trial, namespace = CloudBackupNamespace.PRODUCTION))
+        assertNull(allowedTarget(trial))
+    }
+
+    @Test
     fun stagingHashesAndRetainsExactlyTheApprovedBytes() {
         val output = ByteArrayOutputStream()
         val original = byteArrayOf(97, 98, 99)
@@ -45,7 +56,10 @@ class CloudBackupProtocolTest {
         }
     }
 
-    private fun allowedTarget(location: String, signedHeaders: Map<String, String> = headers) =
+    private fun allowedTarget(
+        location: String, signedHeaders: Map<String, String> = headers,
+        namespace: CloudBackupNamespace = CloudBackupNamespace.DEVELOPMENT,
+    ) =
         validateBackupUpload(
             uploadUrl = location,
             uploadId = "$hash-2",
@@ -55,6 +69,7 @@ class CloudBackupProtocolTest {
             mimeType = "image/jpeg",
             headers = signedHeaders,
             allowedBuckets = setOf("test-bucket"),
+            namespace = namespace,
         )
 
     private val hash = "c4ffcd6e373236bc4d9a6962b928d68a958ddfdd33e9bbe89386c15388c69cd0"

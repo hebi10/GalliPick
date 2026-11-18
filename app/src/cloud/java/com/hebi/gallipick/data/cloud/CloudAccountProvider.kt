@@ -54,14 +54,21 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
     val transport = CloudBackupTransport(
         endpoint = runtime.functionsEndpoint,
         buckets = setOf(runtime.storageBucket),
+        productionProtocol = runtime.backupUsesServerPlan,
     )
-    val backup = if (runtime.backupEnabled) {
+    val backupAccess = if (runtime.backupUsesServerPlan) {
+        CloudBackupAccessState { auth.currentUser?.uid }.also { state ->
+            auth.addAuthStateListener { state.clearForAccountChange() }
+        }
+    } else null
+    val backup = if (runtime.backupEnabled || backupAccess != null) {
         CloudBackup(
             context = context,
             account = session.account,
             currentUid = { auth.currentUser?.uid },
             tokenFor = { uid -> backupIdToken(auth, uid) },
             transport = transport,
+            productionAccess = backupAccess,
         )
     } else null
     val billing = PlayCloudBilling(
@@ -70,8 +77,9 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
         { uid -> backupIdToken(auth, uid) },
         transport,
         testPurchasesOnly = runtime.projectId == "gallipick-dev",
+        backupAccess = backupAccess,
     )
-    return CloudAccountConnection(session, backup, billing = billing) { activity ->
+    return CloudAccountConnection(session, backup, billing = billing, productionBackupAccess = backupAccess) { activity ->
         googleIdToken(credentials, activity, webClientId)
     }
 }

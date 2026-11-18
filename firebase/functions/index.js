@@ -1,12 +1,14 @@
 import { initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldPath, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onMessagePublished } from 'firebase-functions/v2/pubsub';
-import { BackupError, createBackupService } from './backup.js';
+import { BackupError, createBackupService, productionBackupPlan, PRODUCTION_BACKUP_PREFIXES,
+    PRODUCTION_BACKUP_PROTOCOL_VERSION } from './backup.js';
 import { pilotSettings, requirePrivateBucket } from './pilot.js';
 import { billingSettings, createBillingService, PRODUCTION_PROJECT, productionBillingSettings } from './cloud-billing.js';
 import { createPlaySubscriptions } from './play-subscriptions.js';
+import { PRODUCTION_CLOUD_MAX_BYTES } from './monetization-entitlements.js';
 
 const app = initializeApp();
 const project = app.options.projectId ?? process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
@@ -20,36 +22,62 @@ const options = {
     timeoutSeconds: 120,
 };
 const topic = production ? 'gallipick-play-rtdn-production' : 'gallipick-play-rtdn-test';
+const PRODUCTION_BACKUP_BUCKET = 'gallipick-production.firebasestorage.app';
+
+async function checkedBucket(bucketName, allowLegacyRegional = false) {
+    const bucket = getStorage(app).bucket(bucketName);
+    const [metadata] = await bucket.getMetadata();
+    requirePrivateBucket(metadata, { allowLegacyRegional });
+    return bucket;
+}
 
 function services() {
     const db = getFirestore(app);
     if (production) {
         const settings = productionBillingSettings(project, process.env);
-        return { billing: createBillingService({ db, settings, play: createPlaySubscriptions() }), uploadsPaused: true };
+        const billing = createBillingService({ db, settings, play: createPlaySubscriptions() });
+        if (!settings.cloudEnabled) return { billing };
+
+        const uploadsPaused = process.env.GALLIPICK_PRODUCTION_CLOUD_UPLOADS_PAUSED !== 'false';
+        const getBucket = () => checkedBucket(PRODUCTION_BACKUP_BUCKET, true);
+        const backup = createBackupService({ db, getBucket, uploadQuota: billing.uploadQuota,
+            ownerLimit: PRODUCTION_CLOUD_MAX_BYTES, uploadsPaused,
+            production: { namespace: settings.backupNamespace, maxOriginalBytes: settings.maxOriginalBytes,
+                authorizeOwner: billing.authorizeBackup, catalogDocumentId: FieldPath.documentId() },
+        });
+        return { backup, billing, rollout: { objectPrefix: PRODUCTION_BACKUP_PREFIXES[settings.backupNamespace],
+            maxOriginalBytes: settings.maxOriginalBytes, uploadsPaused, getBucket } };
     }
     const settings = pilotSettings(project, process.env);
     const billing = createBillingService({ db, pilotUsers: settings.users, settings: billingSettings(project, process.env),
         play: createPlaySubscriptions() });
     const backup = createBackupService({ db, pilotUsers: settings.users, uploadQuota: billing.uploadQuota,
-        uploadsPaused: settings.uploadsPaused, getBucket: async () => {
-            const bucket = getStorage(app).bucket(settings.bucketName);
-            const [metadata] = await bucket.getMetadata();
-            requirePrivateBucket(metadata);
-            return bucket;
-        } });
+        uploadsPaused: settings.uploadsPaused, getBucket: () => checkedBucket(settings.bucketName) });
     return { backup, billing, uploadsPaused: settings.uploadsPaused };
 }
 
 function endpoint(operation, billingRequest = false) {
-    return onCall(options, async request => {
+    const callOptions = production && operation === 'finish' ? { ...options, timeoutSeconds: 540 } : options;
+    return onCall(callOptions, async request => {
         try {
             if (!request.auth) throw new BackupError('unauthenticated', 'Sign in to start a backup.');
-            if (production && !billingRequest) {
+            const { backup, billing, uploadsPaused, rollout } = services();
+            const protocolVersion = request.data?.cloudProtocolVersion;
+            if (production && !billingRequest && (!backup || protocolVersion !== PRODUCTION_BACKUP_PROTOCOL_VERSION)) {
                 throw new BackupError('failed-precondition', 'Production Cloud backup is unavailable.');
             }
-            const { backup, billing, uploadsPaused } = services();
             if (billingRequest && !production) await backup.countBillingRequest(request.auth);
             const result = await (billingRequest ? billing : backup)[operation](request.auth, request.data);
+            if (billingRequest && production) {
+                if (rollout && !rollout.uploadsPaused && protocolVersion === PRODUCTION_BACKUP_PROTOCOL_VERSION) {
+                    try {
+                        await rollout.getBucket();
+                    } catch {
+                        return productionBackupPlan(result, protocolVersion, { ...rollout, uploadsPaused: true });
+                    }
+                }
+                return productionBackupPlan(result, protocolVersion, rollout);
+            }
             return billingRequest && uploadsPaused ? { ...result, uploadAllowed: false } : result;
         } catch (error) {
             if (error instanceof BackupError) throw new HttpsError(error.code, error.message);

@@ -1,14 +1,18 @@
 // Verified server-side subscription records only; never consume a client-declared purchase.
 export const AD_FREE_PRODUCT_ID = 'gallipick_ad_free';
 export const AD_FREE_BASE_PLANS = Object.freeze(['monthly', 'annual']);
+export const PRODUCTION_CLOUD_MAX_BYTES = 100_000_000_000;
+
+const PRODUCTION_CLOUD_TIERS = [
+    ['gallipick_cloud_10gb', 10_000_000_000],
+    ['gallipick_cloud_50gb', 50_000_000_000],
+    ['gallipick_cloud_100gb', PRODUCTION_CLOUD_MAX_BYTES],
+];
 
 const PRODUCT_ID = /^[a-z0-9][a-z0-9_.]{0,149}$/;
 const BASE_PLAN_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-/**
- * The cloud catalog is intentionally external: production sizes and prices have
- * not yet been approved. The caller must provide a bounded capacity policy.
- */
+/** Validate trusted, bounded product definitions before using them for entitlement checks. */
 export function validateMonetizationCatalog(products, maxCloudBytes) {
     if (!Array.isArray(products) || products.length < 1 || products.length > 20
         || !Number.isSafeInteger(maxCloudBytes) || maxCloudBytes < 0) {
@@ -38,6 +42,15 @@ export function validateMonetizationCatalog(products, maxCloudBytes) {
     });
 }
 
+export function productionMonetizationCatalog(cloudEnabled) {
+    const adFree = AD_FREE_BASE_PLANS.map(basePlanId => ({
+        productId: AD_FREE_PRODUCT_ID, basePlanId, kind: 'AD_FREE', quotaBytes: 0,
+    }));
+    const cloud = cloudEnabled ? PRODUCTION_CLOUD_TIERS.flatMap(([productId, quotaBytes]) =>
+        AD_FREE_BASE_PLANS.map(basePlanId => ({ productId, basePlanId, kind: 'CLOUD', quotaBytes }))) : [];
+    return validateMonetizationCatalog([...adFree, ...cloud], cloudEnabled ? PRODUCTION_CLOUD_MAX_BYTES : 0);
+}
+
 /**
  * Expects records read from one server-verified UID's entitlement document.
  * Pending/expired/malformed records and unknown catalog offers grant nothing.
@@ -52,24 +65,26 @@ export function verifiedMonetizationBenefits(entitlements, catalog, now) {
     let standalone = null;
     for (const raw of Array.isArray(entitlements) ? entitlements : []) {
         if (!raw || !Number.isSafeInteger(raw.expiresAtMs) || raw.expiresAtMs <= now
-            || !Number.isSafeInteger(raw.checkedAtMs) || raw.checkedAtMs > now
+            || !Number.isSafeInteger(raw.checkedAtMs) || raw.checkedAtMs < 0 || raw.checkedAtMs > now
             || !Number.isSafeInteger(raw.quotaBytes)) continue;
         const plan = plans.get(`${raw.productId}:${raw.basePlanId}`);
         if (!plan || raw.quotaBytes !== plan.quotaBytes) continue;
         if (plan.kind === 'CLOUD') {
             if (!cloudPlan || plan.quotaBytes > cloudPlan.quotaBytes ||
                 (plan.quotaBytes === cloudPlan.quotaBytes && raw.expiresAtMs > cloudPlan.expiresAtMs)) {
-                cloudPlan = { productId: plan.productId, quotaBytes: plan.quotaBytes, expiresAtMs: raw.expiresAtMs };
+                cloudPlan = { ...plan, expiresAtMs: raw.expiresAtMs };
             }
         } else if (!standalone || raw.expiresAtMs > standalone.expiresAtMs) {
-            standalone = { productId: plan.productId, expiresAtMs: raw.expiresAtMs };
+            standalone = { ...plan, expiresAtMs: raw.expiresAtMs };
         }
     }
     return {
         cloudProductId: cloudPlan?.productId ?? null,
+        cloudBasePlanId: cloudPlan?.basePlanId ?? null,
         cloudExpiresAtMs: cloudPlan?.expiresAtMs ?? null,
         quotaBytes: cloudPlan?.quotaBytes ?? 0,
         adFreeProductId: standalone?.productId ?? null,
+        adFreeBasePlanId: standalone?.basePlanId ?? null,
         adFreeExpiresAtMs: standalone?.expiresAtMs ?? null,
         adsRemoved: Boolean(cloudPlan || standalone),
         // Never sell duplicate ad removal to an account already covered by Cloud.

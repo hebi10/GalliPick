@@ -79,6 +79,7 @@ internal fun GalliPickApp(
     val destination = if (selectedDestination in destinations) selectedDestination else Destination.HOME
     val canOpenAdRemoval = adsConfigured && cloudEnabled && cloudConnection != null &&
         cloudConnection.session.available && cloudConnection.billing != null
+    if (!adsConfigured) RefreshProductionCloudBackupAccess(cloudConnection)
     val cloudFiles = rememberCloudFilesState(
         cloudConnection,
         active = destination == Destination.FILES,

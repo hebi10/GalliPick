@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createBackupService, MAX_FILE_BYTES, readOriginal } from './backup.js';
+import { authorize, createBackupService, MAX_FILE_BYTES, productionBackupPlan,
+    PRODUCTION_MAX_FILE_BYTES, readOriginal } from './backup.js';
 import { pilotSettings, requirePrivateBucket } from './pilot.js';
 
 const photo = Buffer.from('small synthetic photo bytes');
@@ -11,25 +12,41 @@ const data = { sha256, sizeBytes: photo.length, mimeType: 'image/jpeg' };
 const googleUser = uid => ({ uid, token: { firebase: { sign_in_provider: 'google.com' } } });
 const isCode = code => error => error.code === code;
 
-function createHarness({ ownerLimit = 1024, pilotLimit = 2048, requestsPerHour, uploadQuota } = {}) {
+function createHarness({ ownerLimit = 1024, pilotLimit = 2048, requestsPerHour, uploadQuota, production } = {}) {
     const records = new Map();
     const bucketObjects = new Map();
     const signedOptions = [];
     let pendingTransaction = Promise.resolve();
+    function query(path, key, value, { ordered = false, cursor } = {}) {
+        const prefix = `${path}/`;
+        return {
+            orderBy(field) {
+                assert.equal(field, '__name__');
+                return query(path, key, value, { ordered: true, cursor });
+            },
+            startAfter(after) {
+                assert.equal(ordered, true);
+                return query(path, key, value, { ordered, cursor: after });
+            },
+            limit: limit => ({
+                async get() {
+                    const matching = [...records].filter(([id, record]) => id.startsWith(prefix) &&
+                        !id.slice(prefix.length).includes('/') && record[key] === value &&
+                        (cursor === undefined || id.slice(prefix.length) > cursor));
+                    if (ordered) matching.sort(([left], [right]) => left < right ? -1 : Number(left !== right));
+                    return { docs: matching.slice(0, limit).map(([id, record]) =>
+                        ({ id: id.slice(prefix.length), data: () => record })) };
+                },
+            }),
+        };
+    }
     const db = {
         doc: path => ({ path, get: async () => ({ data: () => records.get(path) }) }),
         collection: path => ({
-            where: (key, operator, value) => ({
-                limit: limit => ({
-                    async get() {
-                        assert.equal(operator, '==');
-                        const prefix = `${path}/`;
-                        return { docs: [...records].filter(([id, record]) =>
-                            id.startsWith(prefix) && !id.slice(prefix.length).includes('/') && record[key] === value)
-                            .slice(0, limit).map(([id, record]) => ({ id: id.slice(prefix.length), data: () => record })) };
-                    },
-                }),
-            }),
+            where: (key, operator, value) => {
+                assert.equal(operator, '==');
+                return query(path, key, value);
+            },
         }),
         runTransaction(run) {
             const running = pendingTransaction.then(async () => {
@@ -58,21 +75,164 @@ function createHarness({ ownerLimit = 1024, pilotLimit = 2048, requestsPerHour, 
                     if (!object || (options.generation && options.generation !== object.generation)) {
                         throw Object.assign(new Error('Not found'), { code: 404 });
                     }
-                    return [{ size: String(object.bytes.length), generation: object.generation,
+                    return [{ size: String(object.sizeBytes ?? object.bytes.length), generation: object.generation,
                         contentType: object.mimeType }];
                 },
-                createReadStream() {
+                createReadStream(streamOptions) {
                     const object = bucketObjects.get(key);
                     assert.equal(options.generation, object.generation);
-                    return Readable.from([object.bytes]);
+                    assert.deepEqual(streamOptions, { validation: 'crc32c', decompress: false });
+                    return Readable.from(object.chunks ? object.chunks() : [object.bytes]);
                 },
             };
         },
     };
-    const createService = uploadsPaused => createBackupService({ db, getBucket: async () => bucket,
-        pilotUsers: new Set(['owner-a', 'owner-b']), ownerLimit, pilotLimit, requestsPerHour, uploadQuota, uploadsPaused });
+    const createService = (uploadsPaused, productionSettings = production) => createBackupService({
+        db, getBucket: async () => bucket, pilotUsers: new Set(['owner-a', 'owner-b']), ownerLimit, pilotLimit,
+        requestsPerHour, uploadQuota, uploadsPaused, production: productionSettings,
+    });
     return { service: createService(), createService, signedOptions, bucketObjects, records };
 }
+
+const productionLicense = {
+    namespace: 'gallipickProductionLicenseBackup', maxOriginalBytes: PRODUCTION_MAX_FILE_BYTES,
+    authorizeOwner: auth => authorize(auth, new Set(['owner-a', 'owner-b'])), catalogDocumentId: '__name__',
+};
+
+test('production storage cannot default to a quota or use an unrecognized namespace or file limit', () => {
+    assert.throws(() => createHarness({ production: productionLicense }), isCode('failed-precondition'));
+    for (const changes of [{ namespace: 'gallipickBackup' }, { maxOriginalBytes: undefined },
+        { maxOriginalBytes: PRODUCTION_MAX_FILE_BYTES + 1 }, { maxOriginalBytes: 0 }, { authorizeOwner: undefined }]) {
+        assert.throws(() => createHarness({ production: { ...productionLicense, ...changes }, uploadQuota: async () => 100 }),
+            isCode('failed-precondition'));
+    }
+});
+
+test('production plan hides Cloud offers from legacy clients and allows owner restores when uploads pause', () => {
+    const ad = { productId: 'gallipick_ad_free', quotaBytes: 0 };
+    const smaller = { productId: 'gallipick_cloud_10gb', quotaBytes: 10_000_000_000 };
+    const larger = { productId: 'gallipick_cloud_100gb', quotaBytes: 100_000_000_000 };
+    const plan = { products: [ad, smaller, larger], activeProductId: null, uploadAllowed: true };
+    const rollout = { objectPrefix: 'cloud02/license-test/users', maxOriginalBytes: PRODUCTION_MAX_FILE_BYTES,
+        uploadsPaused: false };
+    for (const version of [undefined, '1', 2]) {
+        const legacy = productionBackupPlan(plan, version, rollout);
+        assert.deepEqual(legacy.products, [ad]);
+        assert.equal(legacy.backupAvailable, false);
+        assert.equal(legacy.cloudCheckoutAllowed, false);
+        assert.equal(legacy.uploadAllowed, false);
+        assert.equal(legacy.backupObjectPrefix, undefined);
+    }
+    assert.deepEqual(productionBackupPlan({ ...plan, activeProductId: smaller.productId }, undefined, rollout).products,
+        [ad, smaller]);
+    const supported = productionBackupPlan(plan, 1, rollout);
+    assert.equal(supported.cloudCheckoutAllowed, true);
+    assert.equal(supported.backupAvailable, true);
+    assert.equal(supported.backupObjectPrefix, rollout.objectPrefix);
+    assert.equal(supported.maxOriginalBytes, rollout.maxOriginalBytes);
+    assert.deepEqual(supported.products, plan.products);
+    const paused = productionBackupPlan(plan, 1, { ...rollout, uploadsPaused: true });
+    assert.equal(paused.backupAvailable, true);
+    assert.equal(paused.cloudCheckoutAllowed, false);
+    assert.equal(paused.uploadAllowed, false);
+    assert.deepEqual(paused.products, plan.products);
+    assert.equal(productionBackupPlan(plan, 1, undefined).backupAvailable, false);
+});
+
+test('production finalize rejects lapsed or lowered quotas even if bytes arrived after reservation', async () => {
+    let quota = photo.length;
+    const { service, createService, signedOptions, bucketObjects, records } = createHarness({
+        production: productionLicense, uploadQuota: async () => quota,
+    });
+    const owner = googleUser('owner-a');
+    const otherOwner = googleUser('owner-b');
+    const beforeSigning = Date.now();
+    const { uploadId } = await service.begin(owner, data);
+    const [signed] = signedOptions;
+    assert.match(signed.key, /^cloud02\/license-test\/users\//);
+    assert.ok(signed.expires >= beforeSigning + 15 * 60 * 1000 && signed.expires <= Date.now() + 15 * 60 * 1000);
+    await assert.rejects(createService(true).begin(owner, data), isCode('failed-precondition'));
+    let streamed = false;
+    const object = { generation: '1740000000000000', bytes: photo, mimeType: data.mimeType,
+        async *chunks() { streamed = true; quota = photo.length - 1; yield photo; } };
+    bucketObjects.set(signed.key, object);
+    quota = 0;
+    await assert.rejects(service.finish(owner, { uploadId }), isCode('resource-exhausted'));
+    assert.equal(streamed, false);
+    quota = photo.length;
+    await assert.rejects(service.finish(owner, { uploadId }), isCode('resource-exhausted'));
+    assert.equal(streamed, true);
+    assert.equal((await service.list(owner)).items.length, 0);
+    assert.equal([...records.values()].filter(record => record.state === 'RESERVED').length, 1);
+
+    quota = photo.length;
+    delete object.chunks;
+    await assert.rejects(service.finish(otherOwner, { uploadId }), isCode('not-found'));
+    assert.deepEqual(await service.finish(owner, { uploadId }), { state: 'VERIFIED' });
+    quota = 0;
+    await assert.rejects(service.begin(owner, { ...data, sourceFolder: 'New folder' }), isCode('resource-exhausted'));
+    assert.equal((await service.list(owner)).items.length, 1);
+    assert.equal((await service.list(owner)).items[0].sourceFolders, undefined);
+    assert.equal((await service.list(otherOwner)).items.length, 0);
+    await assert.rejects(service.download(otherOwner, { uploadId }), isCode('not-found'));
+    assert.equal((await createService(true).download(owner, { uploadId })).generation, object.generation);
+    assert.equal(signedOptions.at(-1).action, 'read');
+    assert.deepEqual(signedOptions.at(-1).queryParams, { generation: object.generation });
+    const live = createService(false, { ...productionLicense, namespace: 'gallipickProductionBackup' });
+    assert.deepEqual(await live.list(owner), { items: [] });
+    await assert.rejects(live.download(owner, { uploadId }), isCode('not-found'));
+    await assert.rejects(service.download(googleUser('unapproved'), { uploadId }), isCode('permission-denied'));
+});
+
+test('production verifies a synthetic large original with a bounded stream and retains reads if the cap falls', async () => {
+    const chunk = Buffer.alloc(1024 * 1024, 90);
+    const chunkCount = PRODUCTION_MAX_FILE_BYTES / chunk.length;
+    const hash = createHash('sha256');
+    for (let i = 0; i < chunkCount; i += 1) hash.update(chunk);
+    const sizeBytes = chunk.length * chunkCount;
+    const original = { sha256: hash.digest('hex'), sizeBytes, mimeType: 'video/mp4' };
+    const { service, createService, signedOptions, bucketObjects, records } = createHarness({
+        ownerLimit: 100_000_000_000, pilotLimit: 1, production: productionLicense,
+        uploadQuota: async () => 10_000_000_000,
+    });
+    const owner = googleUser('owner-a');
+    await assert.rejects(service.begin(owner, { ...original, sizeBytes: sizeBytes + 1 }), isCode('invalid-argument'));
+    const { uploadId, headers } = await service.begin(owner, original);
+    assert.match(uploadId, /-[1-9][0-9]{8}$/);
+    assert.equal(headers['x-goog-content-length-range'], `${sizeBytes},${sizeBytes}`);
+    assert.equal(records.has('gallipickBackupControl/pilot'), false);
+    bucketObjects.set(signedOptions[0].key, { generation: '1740000000000000', sizeBytes, mimeType: original.mimeType,
+        async *chunks() { for (let i = 0; i < chunkCount; i += 1) yield chunk; } });
+    assert.deepEqual(await service.finish(owner, { uploadId }), { state: 'VERIFIED' });
+    const lowerCap = createService(false, { ...productionLicense, maxOriginalBytes: MAX_FILE_BYTES });
+    await assert.rejects(lowerCap.begin(owner, original), isCode('invalid-argument'));
+    assert.equal((await lowerCap.list(owner)).items[0].sizeBytes, sizeBytes);
+    assert.equal((await lowerCap.download(owner, { uploadId })).sha256, original.sha256);
+});
+
+test('production catalogue pages in stable owner-scoped order without mixing reservations or modes', async () => {
+    const { service, records } = createHarness({ production: productionLicense, uploadQuota: async () => 0 });
+    const owner = googleUser('owner-a');
+    const storagePath = `gallipickProductionLicenseBackupAccounts/${productionLicense.authorizeOwner(owner)}/originals`;
+    const expected = [];
+    for (let i = 104; i >= 0; i -= 1) {
+        const sha = i.toString(16).padStart(64, '0');
+        const uploadId = `${sha}-${photo.length}`;
+        const state = i === 102 ? 'RESERVED' : 'VERIFIED';
+        records.set(`${storagePath}/${uploadId}`, { ...data, sha256: sha, state,
+            generation: '1740000000000000', verifiedAt: new Date(1000 + i) });
+        if (state === 'VERIFIED') expected.unshift(uploadId);
+    }
+    await assert.rejects(service.list(owner, { cursor: '../some-account' }), isCode('invalid-argument'));
+    const first = await service.list(owner);
+    assert.equal(first.items.length, 100);
+    assert.equal(first.nextCursor, expected[99]);
+    assert.deepEqual(first.items.map(item => item.uploadId), expected.slice(0, 100));
+    const next = await service.list(owner, { cursor: first.nextCursor });
+    assert.deepEqual(next.items.map(item => item.uploadId), expected.slice(100));
+    assert.equal(next.nextCursor, undefined);
+    assert.deepEqual(await service.list(googleUser('owner-b'), { cursor: first.nextCursor }), { items: [] });
+});
 
 test('only allowlisted Google accounts may reserve an original within pilot limits', async () => {
     const { service, records } = createHarness();
