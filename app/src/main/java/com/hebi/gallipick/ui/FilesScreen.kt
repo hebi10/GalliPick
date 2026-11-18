@@ -58,12 +58,17 @@ internal fun FilesScreen(
     state: AppUiState, vm: AppViewModel, wide: Boolean,
     trash: (List<MediaItem>) -> Unit, open: (MediaItem) -> Unit, requestAccess: () -> Unit,
     cloudFiles: CloudFilesUiState = CloudFilesUiState(), openCloud: () -> Unit = {},
+    resumeDetailUri: String? = null,
+    onDetailResumed: () -> Unit = {},
+    onCloudSignInFromDetail: (String) -> Unit = {},
 ) {
     FilesScreenContent(state, wide, trash, open, requestAccess, FilesScreenActions(
         vm::setFilter, vm::selectAllFiltered, vm::toggleSelection, vm::clearSelection,
         vm::savePreset, vm::deletePreset, { item, protected -> vm.setProtected(item, protected) },
         vm::refresh, vm::startOcrIndex, vm::pauseOcrIndex, vm::resumeOcrIndex,
-    ), cloudFiles = cloudFiles, openCloud = openCloud)
+    ), cloudFiles = cloudFiles, openCloud = openCloud,
+        resumeDetailUri = resumeDetailUri, onDetailResumed = onDetailResumed,
+        onCloudSignInFromDetail = onCloudSignInFromDetail)
 }
 
 @Composable
@@ -76,13 +81,22 @@ internal fun FilesScreenContent(
     actions: FilesScreenActions,
     cloudFiles: CloudFilesUiState = CloudFilesUiState(),
     openCloud: () -> Unit = {},
+    resumeDetailUri: String? = null,
+    onDetailResumed: () -> Unit = {},
+    onCloudSignInFromDetail: (String) -> Unit = {},
 ) {
     var showFilter by remember { mutableStateOf(false) }
     var showSave by remember { mutableStateOf(false) }
     var gridView by rememberSaveable { mutableStateOf(true) }
     var searchMode by rememberSaveable { mutableStateOf(FileSearchMode.FILES) }
     var ocrQuery by rememberSaveable { mutableStateOf("") }
-    var detailUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var detailUri by rememberSaveable { mutableStateOf<String?>(resumeDetailUri) }
+    LaunchedEffect(resumeDetailUri) {
+        if (resumeDetailUri != null) {
+            detailUri = resumeDetailUri
+            onDetailResumed()
+        }
+    }
     var detailCloudId by rememberSaveable(cloudFiles.accountUid) { mutableStateOf<String?>(null) }
     var sourceFilter by rememberSaveable { mutableStateOf(GallerySourceFilter.ALL) }
     var visiblePages by rememberSaveable { mutableIntStateOf(1) }
@@ -441,7 +455,10 @@ internal fun FilesScreenContent(
                                     cloudBackup = cloudFiles.backup,
                                     accountUid = cloudFiles.accountUid,
                                     cloudVerified = detailVerified,
-                                    onRequestCloud = openCloud)
+                                    onRequestCloud = {
+                                        if (detail != null) onCloudSignInFromDetail(detail.uri)
+                                        else openCloud()
+                                    })
                             }
                         }
                     }
@@ -454,7 +471,10 @@ internal fun FilesScreenContent(
                         cloudBackup = cloudFiles.backup,
                         accountUid = cloudFiles.accountUid,
                         cloudVerified = detailVerified,
-                        onRequestCloud = openCloud,
+                        onRequestCloud = {
+                            if (detail != null) onCloudSignInFromDetail(detail.uri)
+                            else openCloud()
+                        },
                     )
                 }
             }
