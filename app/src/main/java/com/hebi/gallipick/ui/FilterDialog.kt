@@ -78,6 +78,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.hebi.gallipick.data.cloud.CloudOriginal
 import com.hebi.gallipick.domain.DateField
 import com.hebi.gallipick.domain.FileGroupMode
 import com.hebi.gallipick.domain.MediaFilter
@@ -104,6 +105,7 @@ fun FilterDialog(
     items: List<MediaItem>,
     onApply: (MediaFilter) -> Unit,
     onDismiss: () -> Unit,
+    cloudItems: List<CloudOriginal> = emptyList(),
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -114,7 +116,7 @@ fun FilterDialog(
                 .windowInsetsPadding(WindowInsets.safeDrawing),
             contentAlignment = Alignment.Center,
         ) {
-            FilterDialogContent(current, items, onApply, onDismiss, Modifier.fillMaxSize())
+            FilterDialogContent(current, items, onApply, onDismiss, Modifier.fillMaxSize(), cloudItems)
         }
     }
 }
@@ -128,6 +130,7 @@ internal fun FilterDialogContent(
     onApply: (MediaFilter) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    cloudItems: List<CloudOriginal> = emptyList(),
 ) {
     var kind by remember(current) { mutableStateOf(current.kind) }
     var query by remember(current) { mutableStateOf(current.query) }
@@ -164,12 +167,12 @@ internal fun FilterDialogContent(
                 current.favoritesOnly || current.protectedOnly,
         )
     }
-    val folders = remember(items, current.folder) {
-        (items.map { it.relativePath }.filter { it.isNotBlank() } + current.folder)
+    val folders = remember(items, cloudItems, current.folder) {
+        (items.map { it.relativePath } + cloudItems.flatMap { it.sourceFolders } + current.folder)
             .filter { it.isNotBlank() }.distinct().sorted()
     }
-    val mimeTypes = remember(items, current.mimeType) {
-        (items.map { it.mimeType }.filter { it.isNotBlank() } + current.mimeType)
+    val mimeTypes = remember(items, cloudItems, current.mimeType) {
+        (items.map { it.mimeType } + cloudItems.map { it.mimeType } + current.mimeType)
             .filter { it.isNotBlank() }.distinct().sorted()
     }
     val activeAdvancedCount = listOf(
