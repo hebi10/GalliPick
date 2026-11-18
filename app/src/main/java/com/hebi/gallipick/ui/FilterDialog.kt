@@ -79,6 +79,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.hebi.gallipick.domain.DateField
+import com.hebi.gallipick.domain.FileGroupMode
 import com.hebi.gallipick.domain.MediaFilter
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
