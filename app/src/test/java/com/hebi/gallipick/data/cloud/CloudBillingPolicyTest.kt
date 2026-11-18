@@ -27,6 +27,25 @@ class CloudBillingPolicyTest {
         assertFalse(match(priceMicros = 0))
     }
 
+    @Test fun adFreeBasePlansAcceptOnlyTheApprovedMonthlyAndAnnualPeriods() {
+        assertTrue(matchesStandaloneAdFreeOffer("gallipick_ad_free", "monthly",
+            null, "P1M", true, 1_000_000L))
+        assertTrue(matchesStandaloneAdFreeOffer("gallipick_ad_free", "annual",
+            null, "P1Y", true, 9_900_000L))
+        assertFalse(matchesStandaloneAdFreeOffer("gallipick_ad_free", "monthly",
+            null, "P1Y", true, 9_900_000L))
+        assertFalse(matchesStandaloneAdFreeOffer("gallipick_ad_free", "annual",
+            null, "P1M", true, 1_000_000L))
+        assertFalse(matchesStandaloneAdFreeOffer("unknown", "annual",
+            null, "P1Y", true, 9_900_000L))
+        assertFalse(matchesStandaloneAdFreeOffer("gallipick_ad_free", "annual",
+            "offer", "P1Y", true, 9_900_000L))
+        assertFalse(matchesStandaloneAdFreeOffer("gallipick_ad_free", "annual",
+            null, "P1Y", false, 9_900_000L))
+        assertFalse(matchesStandaloneAdFreeOffer("gallipick_ad_free", "annual",
+            null, "P1Y", true, 0L))
+    }
+
     @Test fun recoveryIgnoresUnrelatedOrUnboundPlayPurchases() {
         fun match(playAccount: String?, playProducts: List<String>) =
             cloudBillingPurchaseMatches(account, listOf(plan), playAccount, playProducts)
