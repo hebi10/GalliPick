@@ -159,11 +159,13 @@ private fun CloudBillingControls(
         }
     }
     val plan = snapshot?.plan
-    val verifiedProductId = plan?.activeProductId?.takeIf { plan.verifiedAdFree() }
+    val verifiedCloudProductId = plan?.activeProductId?.takeIf { plan.verifiedAdFree() }
+    val verifiedStandaloneProductId = plan?.adFreeProductId?.takeIf { plan.verifiedAdFree() }
+    val verifiedProductId = verifiedCloudProductId ?: verifiedStandaloneProductId
     val purchaseConfirmed = verifiedProductId != null && notice == CloudBillingNotice.VERIFIED
     val waitingForPurchase = verifiedProductId == null && notice.awaitingPurchaseConfirmation()
     val showOffers = !busy && !waitingForPurchase && notice != CloudBillingNotice.PRICE_CHANGED &&
-        plan?.enabled == true && plan.activeProductId == null
+        plan?.enabled == true && verifiedCloudProductId == null && verifiedStandaloneProductId == null
     var managementFailed by remember(verifiedProductId) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (purchaseConfirmed) {
@@ -219,8 +221,14 @@ private fun CloudBillingControls(
                         CloudStatusMessage("Google Play에서 결제 내역을 확인할 수 있습니다. 결제가 확인되면 홈 배너 광고가 자동으로 사라집니다.")
                         CloudPrimaryAction("결제 상태 확인", { scope.launch { refresh() } })
                     }
-                    verifiedProductId != null -> {
+                    verifiedCloudProductId != null -> {
                         BillingPlanDetails(checkNotNull(plan), snapshot?.autoRenewing)
+                        if (!purchaseConfirmed) notice?.let { CloudStatusMessage(it.displayText()) }
+                    }
+                    verifiedStandaloneProductId != null -> {
+                        BillingHeading("광고 제거 구독 이용 중")
+                        CloudStatusMessage("광고 제거가 적용되어 있습니다. 클라우드 저장공간은 제공되지 않습니다.")
+                        CloudStatusMessage("클라우드 요금제로 변경하려면 Google Play에서 기존 구독을 확인하고 중복 결제를 방지해 주세요.")
                         if (!purchaseConfirmed) notice?.let { CloudStatusMessage(it.displayText()) }
                     }
                     else -> {
