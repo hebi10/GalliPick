@@ -70,35 +70,25 @@ internal fun UnifiedFilesList(
     accountUid: String? = null,
     autoLoadThumbnails: Boolean = true,
     modifier: Modifier = Modifier,
+    gridColumns: Int? = null,
 ) {
-    val groups = remember(entries, filter.dateField, filter.sortField, filter.sortDirection, filter.groupByDate) {
-        if (!filter.groupByDate) emptyList() else {
-            val field = when (filter.dateField) {
-                DateField.CAPTURED -> SortField.CAPTURED
-                DateField.ADDED -> SortField.ADDED
-                DateField.MODIFIED -> SortField.MODIFIED
-            }
-            val ascending = filter.sortField != field || filter.sortDirection == SortDirection.ASCENDING
-            GalleryFileQuery.groupByDate(entries, filter.dateField, ascending)
-        }
-    }
+    val groups = remember(entries, filter) { FileSections.unified(entries, filter) }
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val tabletGrid = wide && availableWidth >= 720.dp
 
     if (gridView) {
         LazyVerticalGrid(
-            columns = if (tabletGrid) GridCells.Fixed(tabletMediaGridColumns(availableWidth, fontScale))
-                else GridCells.Adaptive(if (fontScale >= 1.5f) 132.dp else 108.dp),
+            columns = fileGridCells(gridColumns, availableWidth, fontScale, tabletGrid),
             state = gridState,
             modifier = modifier.semantics { contentDescription = "기기와 클라우드 미디어 파일 목록" },
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
         ) {
-            if (filter.groupByDate) {
+            if (groups.isNotEmpty()) {
                 groups.forEach { group ->
-                    item(key = "date:${group.date}", span = { GridItemSpan(maxLineSpan) }) {
-                        DateGroupHeader(group.date, group.items.size, filter.dateField)
+                    item(key = "section:${group.title}", span = { GridItemSpan(maxLineSpan) }) {
+                        FileSectionHeader(group.title, group.items.size, filter.dateField.takeIf { group.isDate })
                     }
                     items(group.items, key = ::galleryItemKey) { item ->
                         UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid,
@@ -118,10 +108,10 @@ internal fun UnifiedFilesList(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
         ) {
-            if (filter.groupByDate) {
+            if (groups.isNotEmpty()) {
                 groups.forEach { group ->
-                    item(key = "date:${group.date}") {
-                        DateGroupHeader(group.date, group.items.size, filter.dateField)
+                    item(key = "section:${group.title}") {
+                        FileSectionHeader(group.title, group.items.size, filter.dateField.takeIf { group.isDate })
                     }
                     listItems(group.items, key = ::galleryItemKey) { item ->
                         UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField,
@@ -192,7 +182,7 @@ private fun CloudOnlyTile(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            CloudThumbnail(original, Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)), backup, accountUid, autoLoadThumbnails, open)
+            CloudThumbnail(original, Modifier.size(76.dp), backup, accountUid, autoLoadThumbnails, open)
             Column(
                 Modifier.weight(1f).plainClick(action = open),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -205,8 +195,7 @@ private fun CloudOnlyTile(
         }
     } else {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            CloudThumbnail(original, Modifier.fillMaxWidth().aspectRatio(1f)
-                .clip(RoundedCornerShape(10.dp)), backup, accountUid, autoLoadThumbnails, open)
+            CloudThumbnail(original, Modifier.fillMaxWidth().aspectRatio(1f), backup, accountUid, autoLoadThumbnails, open)
             Text(original.displayName, style = if (tabletGrid) MaterialTheme.typography.bodySmall
                 else MaterialTheme.typography.labelSmall, maxLines = if (tabletGrid) 2 else 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().plainClick(action = open))

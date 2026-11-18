@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -611,6 +612,25 @@ internal fun SettingsScreen(
                         icon = Icons.Outlined.Cloud,
                     )
                 }
+            }
+            SettingsSection("파일 보기") {
+                Text("한 줄에 표시할 사진 수", style = MaterialTheme.typography.bodyMedium)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf<Int?>(null, 3, 4, 5, 6).forEach { columns ->
+                        FilterChip(
+                            selected = state.fileGridColumns == columns,
+                            onClick = { vm.setFileGridColumns(columns) },
+                            label = { Text(columns?.let { "${it}개" } ?: "자동") },
+                        )
+                    }
+                }
+                Text(
+                    "선택한 개수에 맞춰 사진 크기가 변경됩니다. 작은 화면에서는 터치하기 안전한 개수로 조정됩니다.",
+                    color = Muted, style = MaterialTheme.typography.bodySmall,
+                )
             }
             SettingsSection("화면 테마") {
                 Text("기기 설정을 따르거나 모드를 직접 선택하세요.", color = Muted, style = MaterialTheme.typography.bodySmall)

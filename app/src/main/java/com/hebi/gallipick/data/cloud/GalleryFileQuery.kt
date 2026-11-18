@@ -21,7 +21,11 @@ internal data class GalleryDateGroup(val date: String, val items: List<GalleryEn
  */
 internal object GalleryFileQuery {
     fun apply(entries: List<GalleryEntry>, filter: MediaFilter, source: GallerySourceFilter): List<GalleryEntry> {
-        val localMatches = MediaQuery.apply(entries.mapNotNull { it.device }, filter)
+        val selectedFolder = normalizedGalleryFolder(filter.folder)
+        val localFilter = if (selectedFolder.isNotEmpty()) filter.copy(folder = "") else filter
+        val localMatches = MediaQuery.apply(entries.mapNotNull { it.device }, localFilter)
+            .filter { selectedFolder.isEmpty() ||
+                normalizedGalleryFolder(it.relativePath) == selectedFolder }
             .mapTo(hashSetOf()) { it.uri }
         val result = entries.filter { entry ->
             val deviceMatch = entry.device?.uri in localMatches
@@ -60,6 +64,9 @@ internal object GalleryFileQuery {
         }
     }
 
+    private fun normalizedGalleryFolder(path: String): String =
+        normalizeCloudFolderPath(path)?.trimEnd('/') ?: path.trimEnd('/')
+
     private fun matchesCloud(original: CloudOriginal, filter: MediaFilter): Boolean {
         val kind = if (original.mimeType.startsWith("video/")) MediaKind.VIDEO else MediaKind.PHOTO
         val query = filter.query.trim()
@@ -69,12 +76,13 @@ internal object GalleryFileQuery {
             DateField.MODIFIED -> null
         }
         if (filter.favoritesOnly || filter.protectedOnly || filter.downloadsOnly) return false
-        val folder = filter.folder.trimEnd('/')
+        val folder = normalizedGalleryFolder(filter.folder)
         if (filter.kind != null && filter.kind != kind) return false
         if (query.isNotEmpty() && !original.displayName.contains(query, ignoreCase = true) &&
             original.sourceFolders.none { it.contains(query, ignoreCase = true) }
         ) return false
-        if (folder.isNotEmpty() && original.sourceFolders.none { it == folder }) return false
+        if (folder.isNotEmpty() &&
+            original.sourceFolders.none { normalizedGalleryFolder(it) == folder }) return false
         if (filter.mimeType.isNotEmpty() && !original.mimeType.equals(filter.mimeType, ignoreCase = true)) return false
         if (filter.minSizeBytes?.let { original.sizeBytes < it } == true ||
             filter.maxSizeBytes?.let { original.sizeBytes > it } == true

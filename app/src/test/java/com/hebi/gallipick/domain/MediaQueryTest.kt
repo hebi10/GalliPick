@@ -57,6 +57,16 @@ class MediaQueryTest {
     }
 
     @Test
+    fun directoryFiltersTreatTrailingSeparatorAsEquivalent() {
+        val original = media("same").copy(relativePath = "DCIM/Camera/")
+        for (selected in listOf("DCIM/Camera", "DCIM/Camera/")) {
+            assertEquals(listOf("same"), uris(MediaQuery.apply(
+                listOf(original), MediaFilter(folder = selected))))
+        }
+        assertTrue(MediaQuery.apply(listOf(original), MediaFilter(folder = "DCIM/Other")).isEmpty())
+    }
+
+    @Test
     fun searchMatchesNameOrFullPathWithoutCaseSensitivity() {
         val items = listOf(
             media("name").copy(displayName = "SunSET.JPG"),

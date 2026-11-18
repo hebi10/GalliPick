@@ -58,12 +58,17 @@ internal fun FilesScreen(
     state: AppUiState, vm: AppViewModel, wide: Boolean,
     trash: (List<MediaItem>) -> Unit, open: (MediaItem) -> Unit, requestAccess: () -> Unit,
     cloudFiles: CloudFilesUiState = CloudFilesUiState(), openCloud: () -> Unit = {},
+    resumeDetailUri: String? = null,
+    onDetailResumed: () -> Unit = {},
+    onCloudSignInFromDetail: (String) -> Unit = {},
 ) {
     FilesScreenContent(state, wide, trash, open, requestAccess, FilesScreenActions(
         vm::setFilter, vm::selectAllFiltered, vm::toggleSelection, vm::clearSelection,
         vm::savePreset, vm::deletePreset, { item, protected -> vm.setProtected(item, protected) },
         vm::refresh, vm::startOcrIndex, vm::pauseOcrIndex, vm::resumeOcrIndex,
-    ), cloudFiles = cloudFiles, openCloud = openCloud)
+    ), cloudFiles = cloudFiles, openCloud = openCloud,
+        resumeDetailUri = resumeDetailUri, onDetailResumed = onDetailResumed,
+        onCloudSignInFromDetail = onCloudSignInFromDetail)
 }
 
 @Composable
@@ -76,13 +81,23 @@ internal fun FilesScreenContent(
     actions: FilesScreenActions,
     cloudFiles: CloudFilesUiState = CloudFilesUiState(),
     openCloud: () -> Unit = {},
+    resumeDetailUri: String? = null,
+    onDetailResumed: () -> Unit = {},
+    onCloudSignInFromDetail: (String) -> Unit = {},
 ) {
     var showFilter by remember { mutableStateOf(false) }
     var showSave by remember { mutableStateOf(false) }
     var gridView by rememberSaveable { mutableStateOf(true) }
     var searchMode by rememberSaveable { mutableStateOf(FileSearchMode.FILES) }
     var ocrQuery by rememberSaveable { mutableStateOf("") }
-    var detailUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var detailUri by rememberSaveable { mutableStateOf<String?>(resumeDetailUri) }
+    LaunchedEffect(resumeDetailUri) {
+        if (resumeDetailUri != null) {
+            detailUri = resumeDetailUri
+            onDetailResumed()
+        }
+    }
+    var detailCloudId by rememberSaveable(cloudFiles.accountUid) { mutableStateOf<String?>(null) }
     var sourceFilter by rememberSaveable { mutableStateOf(GallerySourceFilter.ALL) }
     var visiblePages by rememberSaveable { mutableIntStateOf(1) }
     var allowMeteredThumbnails by rememberSaveable { mutableStateOf(false) }
@@ -117,6 +132,10 @@ internal fun FilesScreenContent(
             visibleItems, cloudFiles.snapshot, cloudFiles.accountUid, cloudFiles.verifiedMatches,
         )
     }
+    val detailCloud = galleryItems.firstNotNullOfOrNull { it.cloud?.takeIf { cloud -> cloud.uploadId == detailCloudId } }
+    val detailVerified = detail?.let { device ->
+        galleryItems.any { it.device?.uri == device.uri && it.cloud != null }
+    } == true
     val galleryFiltered = remember(galleryItems, state.filter, sourceFilter) {
         GalleryFileQuery.apply(galleryItems, state.filter, sourceFilter)
     }
@@ -136,17 +155,8 @@ internal fun FilesScreenContent(
         entry.source == com.hebi.gallipick.data.cloud.GallerySource.BOTH &&
             (entry.device?.uri?.let { it in selectedUris } == true)
     } else 0
-    val groupByDate = state.filter.groupByDate
-    val dateGroups = remember(filtered, state.filter.dateField, state.filter.sortField, state.filter.sortDirection, groupByDate) {
-        if (!groupByDate) emptyList() else {
-            val dateSortField = when (state.filter.dateField) {
-                DateField.CAPTURED -> SortField.CAPTURED
-                DateField.ADDED -> SortField.ADDED
-                DateField.MODIFIED -> SortField.MODIFIED
-            }
-            val ascending = state.filter.sortField != dateSortField || state.filter.sortDirection == SortDirection.ASCENDING
-            MediaDateGroups.group(filtered, state.filter.dateField, ascending)
-        }
+    val fileSections = remember(filtered, state.filter) {
+        FileSections.local(filtered, state.filter)
     }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
@@ -301,15 +311,22 @@ internal fun FilesScreenContent(
                                                     Text("기기 사진 접근이 제한되어 클라우드 파일만 표시됩니다.",
                                                         color = Muted, style = MaterialTheme.typography.bodySmall)
                                                 }
+                                                if (gridView && state.fileGridColumns != null) {
+                                                    val applied = resolvedFileGridColumns(state.fileGridColumns,
+                                                        availableGridWidth, screenFontScale, tabletGrid)
+                                                    Text("한 줄 ${applied}개 표시 · 설정 ${state.fileGridColumns}개",
+                                                        color = Muted, style = MaterialTheme.typography.bodySmall)
+                                                }
                                                 UnifiedFilesList(
                                                     entries = visibleGallery, filter = state.filter, source = sourceFilter,
                                                     gridView = gridView, wide = wide, availableWidth = availableGridWidth,
                                                     gridState = gridState, selected = state.selected,
                                                     toggleDevice = actions.toggleSelection, openDevice = { detailUri = it },
-                                                    openCloud = { chosenCloud = it },
+                                                    openCloud = { detailCloudId = it.uploadId },
                                                     backup = cloudFiles.backup, accountUid = cloudFiles.accountUid,
                                                     autoLoadThumbnails = autoLoadThumbnails,
                                                     modifier = Modifier.weight(1f),
+                                                    gridColumns = state.fileGridColumns,
                                                 )
                                                 if (visibleGallery.size < galleryFiltered.size) {
                                                     Row(Modifier.fillMaxWidth(),
@@ -358,21 +375,25 @@ internal fun FilesScreenContent(
                                         screenWidth - detailWidth - 14.dp
                                     else if (ocrSidebar) screenWidth - sidebarWidth - 14.dp
                                     else screenWidth
-                                    val tabletColumns = tabletMediaGridColumns(availableGridWidth, fontScale)
                                     if (gridView) {
+                                        if (state.fileGridColumns != null) {
+                                            val applied = resolvedFileGridColumns(state.fileGridColumns,
+                                                availableGridWidth, fontScale, tabletGrid)
+                                            Text("한 줄 ${applied}개 표시 · 설정 ${state.fileGridColumns}개",
+                                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                                        }
                                         LazyVerticalGrid(
-                                            columns = if (tabletGrid) GridCells.Fixed(tabletColumns)
-                                                else GridCells.Adaptive(if (fontScale >= 1.5f) 132.dp else 108.dp),
+                                            columns = fileGridCells(state.fileGridColumns, availableGridWidth, fontScale, tabletGrid),
                                             state = gridState,
                                             modifier = Modifier.weight(1f).semantics { contentDescription = "미디어 파일 목록" },
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalArrangement = Arrangement.spacedBy(8.dp),
                                             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
                                         ) {
-                                            if (groupByDate) {
-                                                dateGroups.forEach { group ->
-                                                    item(key = "date:${group.date}", span = { GridItemSpan(maxLineSpan) }) {
-                                                        DateGroupHeader(group.date, group.items.size, state.filter.dateField)
+                                            if (fileSections.isNotEmpty()) {
+                                                fileSections.forEach { group ->
+                                                    item(key = "section:${group.title}", span = { GridItemSpan(maxLineSpan) }) {
+                                                        FileSectionHeader(group.title, group.items.size, state.filter.dateField.takeIf { group.isDate })
                                                     }
                                                     items(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
@@ -400,10 +421,10 @@ internal fun FilesScreenContent(
                                             verticalArrangement = Arrangement.spacedBy(6.dp),
                                             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
                                         ) {
-                                            if (groupByDate) {
-                                                dateGroups.forEach { group ->
-                                                    item(key = "date:${group.date}") {
-                                                        DateGroupHeader(group.date, group.items.size, state.filter.dateField)
+                                            if (fileSections.isNotEmpty()) {
+                                                fileSections.forEach { group ->
+                                                    item(key = "section:${group.title}") {
+                                                        FileSectionHeader(group.title, group.items.size, state.filter.dateField.takeIf { group.isDate })
                                                     }
                                                     listItems(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
@@ -442,7 +463,14 @@ internal fun FilesScreenContent(
                                     Modifier.weight(1f), detail.hasFolderProtection(state.protectedFolders),
                                     ocrText = if (searchMode == FileSearchMode.OCR)
                                         ocrRows[detail.uri]?.recognizedText else null,
-                                    ocrQuery = ocrQuery)
+                                    ocrQuery = ocrQuery,
+                                    cloudBackup = cloudFiles.backup,
+                                    accountUid = cloudFiles.accountUid,
+                                    cloudVerified = detailVerified,
+                                    onRequestCloud = {
+                                        if (detail != null) onCloudSignInFromDetail(detail.uri)
+                                        else openCloud()
+                                    })
                             }
                         }
                     }
@@ -452,6 +480,13 @@ internal fun FilesScreenContent(
                         ocrText = if (searchMode == FileSearchMode.OCR)
                             ocrRows[detail.uri]?.recognizedText else null,
                         ocrQuery = ocrQuery,
+                        cloudBackup = cloudFiles.backup,
+                        accountUid = cloudFiles.accountUid,
+                        cloudVerified = detailVerified,
+                        onRequestCloud = {
+                            if (detail != null) onCloudSignInFromDetail(detail.uri)
+                            else openCloud()
+                        },
                     )
                 }
             }
@@ -473,8 +508,26 @@ internal fun FilesScreenContent(
         }
         if (showFilter) FilterDialog(state.filter, visibleItems, {
             actions.setFilter(MediaFilterActions.sort(it, it.sortField, it.sortDirection)); showFilter = false
-        }, { showFilter = false })
+        }, { showFilter = false }, cloudItems = cloudFiles.snapshot?.originals.orEmpty(),
+            sourceFilter = if (cloudFiles.enabled) sourceFilter else null,
+            onSourceFilterChange = { option ->
+                if (sourceFilter != option) {
+                    sourceFilter = option
+                    detailUri = null
+                    detailCloudId = null
+                    chosenCloud = null
+                    if (option == GallerySourceFilter.CLOUD) actions.clearSelection()
+                }
+            })
         if (showSave) SavePresetDialog({ actions.savePreset(it); showSave = false }, { showSave = false })
+        detailCloud?.let { original ->
+            CloudFileDetailDialog(
+                original = original, uid = cloudFiles.accountUid, backup = cloudFiles.backup,
+                offline = !cloudFiles.online, onDismiss = { detailCloudId = null },
+                onPreview = { detailCloudId = null; chosenCloud = original },
+                onRestored = actions.refresh, autoLoadThumbnails = autoLoadThumbnails,
+            )
+        }
         chosenCloud?.let { original ->
             val uid = cloudFiles.accountUid
             val backup = cloudFiles.backup
@@ -505,6 +558,23 @@ internal fun FilesScreenContent(
                 },
                 dismissButton = { TextAction("닫기", { chosenCloud = null }) },
             )
+        }
+    }
+}
+
+@Composable
+internal fun FileSectionHeader(title: String, count: Int, dateField: DateField?) {
+    if (dateField != null) {
+        DateGroupHeader(title, count, dateField)
+    } else {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(title, modifier = Modifier.weight(1f).semantics { heading() },
+                style = MaterialTheme.typography.titleSmall, color = Ink)
+            Text("${count}개", style = MaterialTheme.typography.bodySmall, color = Muted)
         }
     }
 }
@@ -572,7 +642,7 @@ internal fun MediaTile(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)).plainClick(action = detail)) {
+            Box(Modifier.size(76.dp).plainClick(action = detail)) {
                 MediaThumbnail(item, Modifier.fillMaxSize())
             }
             Column(Modifier.weight(1f).plainClick(action = detail), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -602,10 +672,8 @@ internal fun MediaTile(
         ), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Box(
                 Modifier.fillMaxWidth().aspectRatio(1f)
-                    .clip(RoundedCornerShape(10.dp))
                     .border(if (selected) 2.dp else 0.dp,
-                        if (selected) Primary else androidx.compose.ui.graphics.Color.Transparent,
-                        RoundedCornerShape(10.dp))
+                        if (selected) Primary else androidx.compose.ui.graphics.Color.Transparent)
                     .plainClick(action = detail),
             ) {
                 MediaThumbnail(item, Modifier.fillMaxSize())

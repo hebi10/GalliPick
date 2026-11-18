@@ -80,7 +80,7 @@ class MediaPreviewTest {
         compose.waitUntil(10_000) {
             compose.onAllNodesWithContentDescription(item.displayName).fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("앱에서 미리보기").performScrollTo().performClick()
+        compose.onNodeWithText("미리보기").performScrollTo().performClick()
         waitForPhoto(item)
         compose.onNodeWithContentDescription("사진 확대").performClick()
         compose.onNodeWithContentDescription("사진 미리보기: ${item.displayName}")

@@ -63,6 +63,23 @@ class GalleryFileQueryTest {
     }
 
     @Test
+    fun localAndCloudFolderPathsUseTheSameNormalizedIdentity() {
+        val shared = cloud().copy(sourceFolders = listOf("DCIM/Camera"))
+        val catalog = combineGalleryCatalog(
+            listOf(device()), CloudGallerySnapshot("owner", listOf(shared)), "owner",
+        )
+        for (folder in listOf("DCIM/Camera/", "DCIM/Camera")) {
+            val result = GalleryFileQuery.apply(catalog,
+                MediaFilter(folder = folder), GallerySourceFilter.ALL)
+            assertEquals(setOf("봄꽃.jpg", "바다.mp4"), result.map { it.displayName }.toSet())
+            assertEquals(1, GalleryFileQuery.apply(catalog,
+                MediaFilter(folder = folder), GallerySourceFilter.DEVICE).size)
+            assertEquals(1, GalleryFileQuery.apply(catalog,
+                MediaFilter(folder = folder), GallerySourceFilter.CLOUD).size)
+        }
+    }
+
+    @Test
     fun unsupportedLocalOnlyFlagsCannotPretendCloudMetadataExists() {
         for (filter in listOf(MediaFilter(favoritesOnly = true),
             MediaFilter(protectedOnly = true), MediaFilter(downloadsOnly = true))) {

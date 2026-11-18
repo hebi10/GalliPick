@@ -5,6 +5,7 @@ enum class DateField { CAPTURED, ADDED, MODIFIED }
 enum class SortField { CAPTURED, ADDED, MODIFIED, SIZE, DURATION, NAME, PIXELS }
 enum class SortDirection { ASCENDING, DESCENDING }
 enum class Orientation { LANDSCAPE, PORTRAIT, SQUARE }
+enum class FileGroupMode { AUTO, NONE, DATE, KIND, FOLDER, SIZE }
 
 data class MediaItem(
     val uri: String,
@@ -52,6 +53,7 @@ data class MediaFilter(
     val sortDirection: SortDirection = SortDirection.DESCENDING,
     val downloadsOnly: Boolean = false,
     val groupByDate: Boolean = false,
+    val groupMode: FileGroupMode = FileGroupMode.AUTO,
 )
 
 data class FilterPreset(val id: String, val name: String, val filter: MediaFilter)

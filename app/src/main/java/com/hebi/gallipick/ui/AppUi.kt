@@ -74,6 +74,7 @@ internal fun GalliPickApp(
     val cloudEnabled = cloudContent != null
     val destinations = remember(cloudEnabled) { visibleDestinations(cloudEnabled) }
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.HOME) }
+    var resumeFileDetailUri by rememberSaveable { mutableStateOf<String?>(null) }
     var adRemovalOrigin by rememberSaveable { mutableStateOf<Destination?>(null) }
     val destination = if (selectedDestination in destinations) selectedDestination else Destination.HOME
     val canOpenAdRemoval = adsConfigured && cloudEnabled && cloudConnection != null &&
@@ -436,7 +437,13 @@ internal fun GalliPickApp(
                                             } else null,
                                         )
                                         Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission,
-                                             cloudFiles = cloudFiles, openCloud = { navigate(Destination.CLOUD) })
+                                             cloudFiles = cloudFiles, openCloud = { navigate(Destination.CLOUD) },
+                                             resumeDetailUri = resumeFileDetailUri,
+                                             onDetailResumed = { resumeFileDetailUri = null },
+                                             onCloudSignInFromDetail = { uri ->
+                                                 resumeFileDetailUri = uri
+                                                 navigate(Destination.CLOUD)
+                                             })
                                         Destination.CLEANUP -> CleanupScreen(
                                             state, onOpenDuplicates = ::openDuplicates,
                                             onOpenFolderStorage = ::openFolderStorage,

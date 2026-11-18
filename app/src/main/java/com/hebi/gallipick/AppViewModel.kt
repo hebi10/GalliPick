@@ -41,6 +41,7 @@ data class AppUiState(
     val totalStorageBytes: Long = 0,
     val freeStorageBytes: Long = 0,
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    val fileGridColumns: Int? = null,
 )
 
 private data class PhotoReviewSnapshot(
@@ -53,7 +54,7 @@ private data class PhotoReviewSnapshot(
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     val repository = (application as GalliPickApplication).repository
     private val settings = AppSettings(application)
-    private val _ui = MutableStateFlow(AppUiState(filter = settings.loadFilter(), presets = settings.loadPresets(), themeMode = settings.loadThemeMode()))
+    private val _ui = MutableStateFlow(AppUiState(filter = settings.loadFilter(), presets = settings.loadPresets(), themeMode = settings.loadThemeMode(), fileGridColumns = settings.loadFileGridColumns()))
     val ui: StateFlow<AppUiState> = _ui.asStateFlow()
     private var filterJob: Job? = null
     private var refreshJob: Job? = null
@@ -225,6 +226,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun applyPreset(preset: FilterPreset) = setFilter(preset.filter)
+
+    fun setFileGridColumns(columns: Int?) {
+        settings.saveFileGridColumns(columns)
+        _ui.update { it.copy(fileGridColumns = columns) }
+    }
 
     fun setThemeMode(mode: AppThemeMode) {
         settings.saveThemeMode(mode)

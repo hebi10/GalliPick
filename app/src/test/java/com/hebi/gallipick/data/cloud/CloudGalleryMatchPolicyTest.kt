@@ -75,6 +75,21 @@ class CloudGalleryMatchPolicyTest {
         assertTrue(CloudGalleryMatchPolicy.nextBatch(candidates, -1).isEmpty())
     }
 
+    @Test fun recentlyUploadedItemIsComparedFirstButRequiresMatchingOwnerAndFingerprint() {
+        val original = original()
+        val first = device(id = 1)
+        val latest = device(id = 2)
+        val candidates = CloudGalleryMatchPolicy.candidates(listOf(first, latest), listOf(original))
+        val fresh = RecentVerifiedCloudUpload("owner", latest.uri, latest.fingerprint, latest.volumeVersion)
+        assertEquals(listOf(latest, first),
+            CloudGalleryMatchPolicy.prioritizeRecentUpload(candidates, fresh, "owner"))
+        assertEquals(candidates, CloudGalleryMatchPolicy.prioritizeRecentUpload(candidates, fresh, "another"))
+        assertEquals(candidates, CloudGalleryMatchPolicy.prioritizeRecentUpload(
+            candidates, fresh.copy(fingerprint = "changed"), "owner"))
+        assertEquals(candidates, CloudGalleryMatchPolicy.prioritizeRecentUpload(
+            candidates, fresh.copy(volumeVersion = "different"), "owner"))
+    }
+
     @Test fun localMetadataChangesInvalidateAPreviouslyVerifiedLink() {
         val local = device()
         assertTrue(CloudGalleryMatchPolicy.sameDeviceOriginal(local, local.copy()))
