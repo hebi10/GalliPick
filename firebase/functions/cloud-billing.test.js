@@ -211,8 +211,9 @@ test('a confirmed plan remains available until its Play expiry without a new dev
     assert.equal((await service.getPlan(user('owner-a'))).uploadAllowed, false);
 });
 
-const productionEnv = (mode, uids = '') => ({ GALLIPICK_PRODUCTION_AD_FREE_ENABLED: 'true',
-    GALLIPICK_PRODUCTION_BILLING_MODE: mode, GALLIPICK_PRODUCTION_BILLING_TEST_UIDS: uids });
+const productionEnv = (mode, uids = '', emails = '') => ({ GALLIPICK_PRODUCTION_AD_FREE_ENABLED: 'true',
+    GALLIPICK_PRODUCTION_BILLING_MODE: mode, GALLIPICK_PRODUCTION_BILLING_TEST_UIDS: uids,
+    GALLIPICK_PRODUCTION_BILLING_TEST_EMAILS: emails });
 const live = productionBillingSettings(PRODUCTION_PROJECT, productionEnv('live'));
 const license = productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', 'owner-a'));
 const [monthly, annual] = live.products;
@@ -292,4 +293,50 @@ test('production notifications recheck canonical billing state without binding p
     purchases.set(token(1), subscription({ product: monthly, testPurchase: null, state: 'ON_HOLD' }));
     assert.equal(await service.reconcileNotification(renewalEvent(token(1))), true);
     assert.equal((await service.getPlan(user('owner-a'))).adFreeProductId, null);
+});
+
+test('verified Google email can enroll a new UID only in the production license test environment', async () => {
+    const email = 'cloud-tester@example.com';
+    const settings = productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', '', email));
+    const { service, purchases } = createHarness({ settings });
+    const uid = 'new-license-tester';
+    function auth(provider, verified, firebaseEmail = email) {
+        return { uid, token: { email: firebaseEmail, email_verified: verified, firebase: { sign_in_provider: provider } } };
+    }
+    const allowedAuth = auth('google.com', true, email.toUpperCase());
+    const request = { purchaseToken: token(1), email };
+    purchases.set(token(1), subscription({ uid, product: monthly }));
+    await assert.rejects(service.getPlan(auth('google.com', false)), isCode('permission-denied'));
+    await assert.rejects(service.getPlan(auth('password', true)), isCode('permission-denied'));
+    await assert.rejects(service.verify(auth('google.com', true, 'another@example.com'), request), isCode('permission-denied'));
+    assert.equal((await service.getPlan(allowedAuth)).obfuscatedAccountId, accountId(uid));
+    assert.equal((await service.verify(allowedAuth, request)).adFreeProductId, productId);
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', '', email.toUpperCase())),
+        isCode('failed-precondition'));
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', '', 'missing-domain')),
+        isCode('failed-precondition'));
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, productionEnv('live', '', email)),
+        isCode('failed-precondition'));
+});
+
+test('license RTDN refresh uses only a verified existing email binding and respects allowlist removal', async () => {
+    const email = 'cloud-tester@example.com';
+    const settings = productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', '', email));
+    const { service, serviceFor, purchases, records } = createHarness({ settings });
+    const uid = 'new-license-tester';
+    const auth = { uid, token: { email, email_verified: true, firebase: { sign_in_provider: 'google.com' } } };
+    purchases.set(token(1), subscription({ uid, product: monthly }));
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), false);
+    await service.verify(auth, { purchaseToken: token(1) });
+    assert.equal(JSON.stringify([...records]).includes(email), false);
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), true);
+
+    purchases.set(token(2), { ...subscription({ product: annual, linkedPurchaseToken: token(1) }),
+        externalAccountIdentifiers: undefined });
+    assert.equal(await service.reconcileNotification(renewalEvent(token(2))), true);
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), false);
+
+    const afterRemoval = serviceFor(productionBillingSettings(PRODUCTION_PROJECT, productionEnv('license-test', 'owner-a')));
+    assert.equal(await afterRemoval.reconcileNotification(renewalEvent(token(2))), false);
+    await assert.rejects(afterRemoval.getPlan(auth), isCode('permission-denied'));
 });
