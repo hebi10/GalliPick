@@ -41,6 +41,7 @@ import com.hebi.gallipick.data.cloud.CloudBackupPhase
 import com.hebi.gallipick.data.cloud.CloudBackupResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -185,10 +186,17 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
     var previewOpen by remember(item.uri, item.fingerprint, item.volumeVersion) { mutableStateOf(false) }
     if (previewOpen) MediaPreviewDialog(item, onDismiss = { previewOpen = false }, onOpen = onOpen)
     val scope = rememberCoroutineScope()
-    var uploadPhase by remember(item.uri, accountUid) { mutableStateOf<CloudBackupPhase?>(null) }
-    var uploadBusy by remember(item.uri, accountUid) { mutableStateOf(false) }
-    var uploadResult by remember(item.uri, accountUid) { mutableStateOf<CloudBackupResult?>(null) }
-    var uploaded by remember(item.uri, accountUid) { mutableStateOf(false) }
+    val uploadKey = listOf(item.uri, item.fingerprint, item.volumeVersion, accountUid)
+    var uploadPhase by remember(uploadKey) { mutableStateOf<CloudBackupPhase?>(null) }
+    var uploadBusy by remember(uploadKey) { mutableStateOf(false) }
+    var uploadResult by remember(uploadKey) { mutableStateOf<CloudBackupResult?>(null) }
+    var uploaded by remember(uploadKey) { mutableStateOf(false) }
+    var confirmUpload by remember(uploadKey) { mutableStateOf(false) }
+    var uploadCancelled by remember(uploadKey) { mutableStateOf(false) }
+    var uploadJob by remember(uploadKey) { mutableStateOf<Job?>(null) }
+    DisposableEffect(uploadKey) {
+        onDispose { uploadJob?.cancel() }
+    }
     val backedUp = cloudVerified || uploaded
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val beside = maxWidth >= 840.dp || (maxWidth >= 600.dp && maxHeight < 500.dp)
@@ -197,33 +205,53 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
             ActionButton("미리보기", { previewOpen = true }, actionModifier, filled = true,
                 icon = if (item.kind == MediaKind.VIDEO) Icons.Outlined.PlayArrow else Icons.Outlined.ZoomIn)
         }
+        if (confirmUpload && cloudBackup != null && accountUid != null) {
+            AlertDialog(
+                onDismissRequest = { confirmUpload = false },
+                title = { Text("클라우드에 보관") },
+                text = {
+                    Text("${item.displayName} 원본(${bytesLabel(item.sizeBytes)})을 현재 Google 계정의 클라우드로 전송합니다. " +
+                        "모바일 데이터가 사용될 수 있으며 현재 시험 환경에는 파일 크기 및 저장 용량 제한이 있습니다.")
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmUpload = false
+                        if (!uploadBusy && !backedUp) {
+                            val backup = cloudBackup
+                            val uid = accountUid
+                            uploadBusy = true
+                            uploadCancelled = false
+                            uploadResult = null
+                            uploadJob = scope.launch {
+                                try {
+                                    val result = backup.upload(item, uid) { uploadPhase = it }
+                                    uploadResult = result
+                                    if (result == CloudBackupResult.VERIFIED) uploaded = true
+                                } catch (_: CancellationException) {
+                                    uploadCancelled = true
+                                } catch (_: Exception) {
+                                    uploadResult = CloudBackupResult.FAILED
+                                } finally {
+                                    uploadBusy = false
+                                    uploadPhase = null
+                                    uploadJob = null
+                                }
+                            }
+                        }
+                    }) { Text("보관 시작") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmUpload = false }) { Text("취소") }
+                },
+            )
+        }
         val cloudAction: @Composable (Modifier) -> Unit = { actionModifier ->
             ActionButton(
                 if (backedUp) "보관 완료" else if (uploadBusy) "보관 중" else "클라우드 보관",
                 onClick = {
-                    val backup = cloudBackup
-                    val uid = accountUid
-                    if (backup == null) return@ActionButton
-                    if (uid == null) {
-                        onRequestCloud()
-                    } else if (!backedUp && !uploadBusy) {
-                        uploadBusy = true
-                        uploadResult = null
-                        scope.launch {
-                            try {
-                                val result = backup.upload(item, uid) { uploadPhase = it }
-                                uploadResult = result
-                                if (result == CloudBackupResult.VERIFIED) uploaded = true
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (_: Exception) {
-                                uploadResult = CloudBackupResult.FAILED
-                            } finally {
-                                uploadBusy = false
-                                uploadPhase = null
-                            }
-                        }
-                    }
+                    if (cloudBackup == null) return@ActionButton
+                    if (accountUid == null) onRequestCloud()
+                    else if (!backedUp && !uploadBusy) confirmUpload = true
                 },
                 modifier = actionModifier,
                 enabled = cloudBackup != null && !uploadBusy && !backedUp,
@@ -269,12 +297,19 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
                 }
                 if (!beside) actions(Modifier.fillMaxWidth())
                 if (uploadBusy) {
+                    TextAction("보관 중지", {
+                        uploadCancelled = true
+                        uploadJob?.cancel()
+                    })
                     Text(when (uploadPhase) {
                         CloudBackupPhase.READING_ORIGINAL -> "원본 확인 중"
                         CloudBackupPhase.UPLOADING -> "클라우드 업로드 중"
                         CloudBackupPhase.VERIFYING -> "서버에서 원본 검증 중"
                         null -> "클라우드 보관 준비 중"
                     }, color = Muted, style = MaterialTheme.typography.bodySmall)
+                } else if (uploadCancelled) {
+                    Text("보관을 중단했습니다. 서버에서 이미 완료되었을 수 있으므로 보관함을 다시 확인해 주세요.",
+                        color = Muted, style = MaterialTheme.typography.bodySmall)
                 } else if (uploadResult != null && !backedUp) {
                     val message = when (uploadResult) {
                         CloudBackupResult.QUOTA_REACHED -> "클라우드 저장 용량이 부족합니다."
