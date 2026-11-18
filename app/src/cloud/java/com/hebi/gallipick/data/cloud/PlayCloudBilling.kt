@@ -176,6 +176,10 @@ internal class PlayCloudBilling(
             if (products.distinctBy { it.productId }.size != products.size) unavailable()
             val activeProductId = response.opt("activeProductId") as? String
             if (activeProductId != null && products.none { it.productId == activeProductId }) unavailable()
+            val standalone = response.opt("adFreeProductId") as? String
+            if (standalone != null && standalone != GALLIPICK_STANDALONE_AD_FREE) unavailable()
+            val standaloneExpiry = response.optLong("adFreeExpiresAtMs").takeIf { it > 0 }
+            if (standalone != null && standaloneExpiry == null) unavailable()
             return CloudBillingPlan(
                 enabled = true,
                 products = products,
@@ -185,6 +189,8 @@ internal class PlayCloudBilling(
                 quotaBytes = response.optLong("quotaBytes").coerceAtLeast(0),
                 usedBytes = response.optLong("usedBytes").coerceAtLeast(0),
                 obfuscatedAccountId = obfuscatedId,
+                adFreeProductId = standalone,
+                adFreeExpiresAtMs = standaloneExpiry,
             )
         }
 
