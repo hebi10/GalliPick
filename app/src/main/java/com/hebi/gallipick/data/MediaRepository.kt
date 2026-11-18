@@ -508,3 +508,12 @@ internal object Coordinator {
         }.also { sharedCatalog = it }
     }
 }
+
+/** A cached pHash is only evidence for the exact reviewed original and storage epoch. */
+internal fun cachedSimilarProofMatches(photo: SimilarPhoto, proof: CachedPhotoHash?): Boolean {
+    if (proof?.phash == null) return false
+    return proof.uri == photo.item.uri &&
+        proof.fingerprint == photo.item.fingerprint &&
+        proof.volumeVersion == photo.item.volumeVersion &&
+        proof.phash == photo.phash
+}
