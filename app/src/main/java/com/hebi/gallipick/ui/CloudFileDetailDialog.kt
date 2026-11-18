@@ -65,11 +65,7 @@ internal fun CloudFileDetailDialog(
             Column {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 6.dp, end = 4.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("파일 상세", style = MaterialTheme.typography.titleLarge)
-                        Text(if (original.mimeType.startsWith("video/")) "동영상 정보" else "사진 정보",
-                            style = MaterialTheme.typography.bodySmall, color = Muted)
-                    }
+                    Text("파일 상세", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                     IconAction("닫기", Icons.Outlined.Close, onClick = onDismiss)
                 }
                 Column(

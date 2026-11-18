@@ -55,6 +55,7 @@ class PhotoOcrFilesScreenTest {
                                 savePreset = {}, deletePreset = {}, setProtected = { _, _ -> },
                                 refresh = {},
                             ),
+                            showSearch = true,
                         )
                     }
                 }
@@ -85,7 +86,7 @@ class PhotoOcrFilesScreenTest {
                 CompositionLocalProvider(LocalDensity provides Density(.7f)) {
                     Surface(Modifier.requiredSize(400.dp, 720.dp)) {
                         FilesScreenContent(state, false, {}, {}, {}, FilesScreenActions(
-                            {}, {}, {}, {}, {}, {}, { _, _ -> }, {}))
+                            {}, {}, {}, {}, {}, {}, { _, _ -> }, {}), showSearch = true)
                     }
                 }
             }

@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 const MIB = 1024 * 1024;
 export const MAX_FILE_BYTES = 64 * MIB;
 export const PRODUCTION_MAX_FILE_BYTES = 256 * MIB;
-const PILOT_MAX_OWNER_FILES = 250;
-const PRODUCTION_MAX_OWNER_FILES = 20_000;
+export const PILOT_MAX_OWNER_FILES = 250;
+export const PRODUCTION_MAX_OWNER_FILES = 20_000;
 const PRODUCTION_CATALOG_PAGE_SIZE = 100;
 const PRODUCTION_CATALOG_REQUESTS_PER_HOUR = 480;
 const SIGNED_UPLOAD_MS = 5 * 60 * 1000;
@@ -118,7 +118,7 @@ function verifiedMetadata(record) {
     return result;
 }
 
-function originalInput(data, maxOriginalBytes) {
+export function originalInput(data, maxOriginalBytes) {
     const { sha256, sizeBytes, mimeType, displayName } = data ?? {};
     if (typeof sha256 !== 'string' || !SHA256.test(sha256) || !Number.isSafeInteger(sizeBytes)
         || sizeBytes <= 0 || sizeBytes > maxOriginalBytes || typeof mimeType !== 'string' || !MEDIA_TYPE.test(mimeType)) {
@@ -171,7 +171,7 @@ function validGeneration(generation) {
         && Number.isSafeInteger(Number(generation));
 }
 
-function catalogOriginal(uploadId, record, protocolFileLimit) {
+export function catalogOriginal(uploadId, record, protocolFileLimit) {
     if (typeof record.sha256 !== 'string' || !SHA256.test(record.sha256)
         || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes <= 0 || record.sizeBytes > protocolFileLimit
         || typeof record.mimeType !== 'string' || !MEDIA_TYPE.test(record.mimeType)
@@ -183,7 +183,7 @@ function catalogOriginal(uploadId, record, protocolFileLimit) {
         mimeType, sizeBytes, sha256, ...verifiedMetadata(record) };
 }
 
-function readAllocation(current) {
+export function readAllocation(current) {
     const { allocatedBytes, files } = current ?? { allocatedBytes: 0, files: 0 };
     if (!Number.isSafeInteger(allocatedBytes) || allocatedBytes < 0 || !Number.isSafeInteger(files) || files < 0) {
         throw new BackupError('failed-precondition', 'The backup allocation needs reconciliation.');
@@ -191,7 +191,7 @@ function readAllocation(current) {
     return { allocatedBytes, files };
 }
 
-function checkAllocation(current, byteLimit, countLimit, requestedBytes) {
+export function checkAllocation(current, byteLimit, countLimit, requestedBytes) {
     const { allocatedBytes, files } = readAllocation(current);
     if (allocatedBytes + requestedBytes > byteLimit || files + 1 > countLimit) {
         throw new BackupError('resource-exhausted', 'The backup allocation is full.');
@@ -271,7 +271,7 @@ export function createRequestLimiter(db, collection, requestsPerHour) {
 }
 
 export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 1024 * MIB, pilotLimit = 2048 * MIB,
-    requestsPerHour = 120, uploadQuota, uploadsPaused = false, production }) {
+    requestsPerHour = 120, uploadQuota, uploadsPaused = false, production, privateVault = false }) {
     if (production && (!Object.hasOwn(PRODUCTION_BACKUP_PREFIXES, production.namespace)
         || typeof production.authorizeOwner !== 'function' || !production.catalogDocumentId
         || !Number.isSafeInteger(production.maxOriginalBytes) || production.maxOriginalBytes <= 0
@@ -288,12 +288,14 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
     const authorizeOwner = production?.authorizeOwner ?? (auth => authorize(auth, pilotUsers));
     const getUploadQuota = uploadQuota ?? (async (_transaction, _owner, limit) => limit);
     const pilotAllocation = production ? null : db.doc('gallipickBackupControl/pilot');
-    const ownerPath = owner => `${namespace}Accounts/${owner}`;
+    const catalogNamespace = privateVault ? `${namespace}Vault` : namespace;
+    const ownerPath = owner => `${catalogNamespace}Accounts/${owner}`;
+    const allocationPath = owner => `${namespace}Accounts/${owner}`;
     const objectRecord = (owner, uploadId) => db.doc(`${ownerPath(owner)}/originals/${uploadId}`);
-    const objectKey = (owner, uploadId) => `${objectPrefix}/${owner}/${uploadId}`;
-    const countRequest = createRequestLimiter(db, `${namespace}RequestLimits`, requestsPerHour);
+    const objectKey = (owner, uploadId) => `${objectPrefix}/${owner}/${privateVault ? 'secret/' : ''}${uploadId}`;
+    const countRequest = createRequestLimiter(db, `${catalogNamespace}RequestLimits`, requestsPerHour);
     const countListRequest = production
-        ? createRequestLimiter(db, `${namespace}CatalogRequestLimits`, PRODUCTION_CATALOG_REQUESTS_PER_HOUR)
+        ? createRequestLimiter(db, `${catalogNamespace}CatalogRequestLimits`, PRODUCTION_CATALOG_REQUESTS_PER_HOUR)
         : countRequest;
 
     async function requireUploadQuota(transaction, owner, ownerAllocation) {
@@ -318,7 +320,7 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
             const request = originalInput(input, maxOriginalBytes);
             const uploadId = `${request.sha256}-${request.sizeBytes}`;
             const recordRef = objectRecord(owner, uploadId);
-            const ownerAllocation = db.doc(ownerPath(owner));
+            const ownerAllocation = db.doc(allocationPath(owner));
             await countRequest(owner);
             const bucket = await getBucket();
 
@@ -358,7 +360,7 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
             }
             await countRequest(owner);
             const recordRef = objectRecord(owner, uploadId);
-            const ownerAllocation = db.doc(ownerPath(owner));
+            const ownerAllocation = db.doc(allocationPath(owner));
             const record = (await recordRef.get()).data();
             if (!record) throw new BackupError('not-found', 'The backup reservation was not found.');
             const key = objectKey(owner, uploadId);

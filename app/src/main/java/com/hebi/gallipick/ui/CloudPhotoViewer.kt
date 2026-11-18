@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -37,13 +36,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.SecureFlagPolicy
 import com.hebi.gallipick.data.cloud.CloudBackup
 import com.hebi.gallipick.data.cloud.CloudBackupException
 import com.hebi.gallipick.data.cloud.CloudBackupResult
 import com.hebi.gallipick.data.cloud.CloudOriginal
 import com.hebi.gallipick.data.cloud.cloudPhotoPosition
 import com.hebi.gallipick.data.cloud.cloudPhotoSupportsThumbnail
-import com.hebi.gallipick.data.cloud.cloudPhotoSupportsViewer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -122,15 +121,6 @@ internal fun CloudPhotoThumbnail(
             Image(loaded.asImageBitmap(), contentDescription = null,
                 modifier = Modifier.fillMaxSize(), contentScale = contentScale)
         }
-        Row(
-            Modifier.align(Alignment.BottomStart).padding(4.dp)
-                .background(AppSurface).padding(horizontal = 5.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-        ) {
-            GalliIcon(Icons.Outlined.Cloud, null, Modifier.size(13.dp), tint = Ink)
-            Text("클라우드", style = MaterialTheme.typography.labelSmall, color = Ink)
-        }
     }
 }
 
@@ -157,7 +147,7 @@ internal fun CloudPhotoViewer(
             error = "인터넷 연결이 필요합니다. 연결 후 다시 시도해 주세요."
             return@LaunchedEffect
         }
-        if (!cloudPhotoSupportsViewer(original)) {
+        if (!backup.canPreviewPhoto(original)) {
             error = "지원하지 않는 클라우드 사진입니다."
             loading = false
             return@LaunchedEffect
@@ -183,7 +173,13 @@ internal fun CloudPhotoViewer(
         }
     }
 
-    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(
+        onDismissRequest = dismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            securePolicy = if (backup.isPrivateVault) SecureFlagPolicy.SecureOn else SecureFlagPolicy.Inherit,
+        ),
+    ) {
         Surface(Modifier.fillMaxSize(), color = AppSurface) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 Row(

@@ -37,6 +37,7 @@ import com.hebi.gallipick.ui.CloudAccountCard
 import com.hebi.gallipick.ui.CloudAccountSettings
 import com.hebi.gallipick.ui.CloudAdPlanObservation
 import com.hebi.gallipick.ui.CloudRoute
+import com.hebi.gallipick.ui.SecretCloudSection
 import com.hebi.gallipick.ui.CloudAutoBackupSection
 import com.hebi.gallipick.ui.CloudBackupSection
 import com.hebi.gallipick.ui.CloudBillingSection
@@ -250,6 +251,9 @@ class MainActivity : ComponentActivity() {
                                 CloudBackupSection(cloudAccount, uiState) {
                                     permissionLauncher.launch(requiredPermissions())
                                 }
+                            CloudRoute.SECRET -> SecretCloudSection(cloudAccount, uiState) {
+                                permissionLauncher.launch(requiredPermissions())
+                            }
                             CloudRoute.AUTO_BACKUP ->
                                 CloudAutoBackupSection(cloudAccount, uiState) {
                                     permissionLauncher.launch(requiredPermissions())

@@ -22,11 +22,15 @@ class CloudLibraryProtocolTest {
         assertNull(validateDownload(url.replace("&generation=902", "")))
         assertNull(validateDownload("$url&generation=903"))
         assertNull(validateDownload(url.replace("X-Goog-Expires=120", "X-Goog-Expires=301")))
+        val resumable = url.replace("/$sha256-3?", "/v2/files/$sha256-3?")
+        assertNull(validateDownload(resumable))
+        assertNotNull(validateDownload(resumable, resumable = true))
+        assertNull(validateDownload(url, resumable = true))
     }
 
     @Test
     fun largeVerifiedOriginalsAreCopiedWithoutBufferingTheWholeFile() {
-        val size = (CLOUD_BACKUP_MAX_BYTES + 8_192L).toInt()
+        val size = (CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES + 8_192L).toInt()
         val chunk = ByteArray(8_192)
         val hash = MessageDigest.getInstance("SHA-256")
         repeat(size / chunk.size) { hash.update(chunk) }
@@ -42,12 +46,12 @@ class CloudLibraryProtocolTest {
                 return length
             }
         }
-        copyAndVerifyCloudOriginal(original, OutputStream.nullOutputStream(), size.toLong(), expected) {}
         assertThrows(CloudBackupException::class.java) {
             copyAndVerifyCloudOriginal(
-                original, OutputStream.nullOutputStream(), CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES + 1, expected,
+                original, OutputStream.nullOutputStream(), size.toLong(), expected,
             ) {}
         }
+        copyAndVerifyCloudOriginal(original, OutputStream.nullOutputStream(), size.toLong(), expected, resumable = true) {}
     }
 
     @Test
@@ -65,12 +69,13 @@ class CloudLibraryProtocolTest {
         }
     }
 
-    private fun validateDownload(url: String) = validateBackupDownload(
+    private fun validateDownload(url: String, resumable: Boolean = false) = validateBackupDownload(
         downloadUrl = url,
         uploadId = "$sha256-3",
         uid = "test-account",
         generation = "902",
         allowedBuckets = setOf("test-bucket"),
+        resumable = resumable,
     )
 
     private val sha256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"

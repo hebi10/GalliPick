@@ -10,10 +10,20 @@ class AppSettings(context: Context) {
     private val prefs = context.getSharedPreferences("filters", Context.MODE_PRIVATE)
     fun loadThemeMode(): AppThemeMode = AppThemeMode.fromStored(prefs.getString("theme_mode", null))
     fun loadFileGridColumns(): Int? = prefs.getInt("file_grid_columns", 0).takeIf { it in 3..6 }
+    fun loadFileListView(): Boolean = prefs.getBoolean("file_list_view", false)
+    fun loadSecretCloudVisible(): Boolean = prefs.getBoolean("secret_cloud_visible", false)
+
+    fun saveSecretCloudVisible(visible: Boolean) {
+        prefs.edit().putBoolean("secret_cloud_visible", visible).apply()
+    }
 
     fun saveFileGridColumns(columns: Int?) {
         require(columns == null || columns in 3..6)
         prefs.edit().putInt("file_grid_columns", columns ?: 0).apply()
+    }
+
+    fun saveFileListView(listView: Boolean) {
+        prefs.edit().putBoolean("file_list_view", listView).apply()
     }
 
     fun saveThemeMode(mode: AppThemeMode) {

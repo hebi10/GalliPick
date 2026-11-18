@@ -24,6 +24,7 @@ class ReferenceNavigationFlowTest {
 
     private val tabMatcher = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
     private fun tab(label: String) = compose.onNode(tabMatcher and hasText(label))
+    private fun screenTitle(label: String) = compose.onNode(hasText(label) and !tabMatcher)
 
     @Test fun cloudManagementAppearsOnlyInItsOwnTab() {
         val vm = AppViewModel(compose.activity.application)
@@ -48,16 +49,39 @@ class ReferenceNavigationFlowTest {
             }
         }
 
+        val brand = compose.onNodeWithText("GalliPick")
+        val globalRefresh = compose.onNodeWithContentDescription("새로고침")
         compose.onAllNodes(tabMatcher).assertCountEquals(5)
+        brand.assertIsDisplayed()
+        globalRefresh.assertDoesNotExist()
+
         tab("설정").performClick()
+        screenTitle("설정").assertIsDisplayed()
+        brand.assertDoesNotExist()
+        globalRefresh.assertDoesNotExist()
         compose.onNodeWithText(managementLabel).assertDoesNotExist()
         tab("클라우드").performClick()
         tab("클라우드").assertIsSelected()
+        screenTitle("클라우드").assertIsDisplayed()
+        brand.assertDoesNotExist()
+        globalRefresh.assertDoesNotExist()
         compose.onNodeWithText(managementLabel).assertIsDisplayed()
 
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
         tab("홈").assertIsSelected()
+        brand.assertIsDisplayed()
         compose.onNodeWithText(managementLabel).assertDoesNotExist()
+
+        tab("정리").performClick()
+        screenTitle("정리").assertIsDisplayed()
+        brand.assertDoesNotExist()
+        globalRefresh.assertDoesNotExist()
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        tab("홈").assertIsSelected()
+
+        tab("파일").performClick()
+        screenTitle("파일").assertIsDisplayed()
+        brand.assertDoesNotExist()
     }
 
     @Test fun fourMainTabsAndCleanupDuplicateChildKeepBackAndSelectionCorrect() {

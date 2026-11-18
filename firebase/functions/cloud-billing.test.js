@@ -19,10 +19,20 @@ function createHarness({ enabled = true, acknowledge, settings = { enabled, prod
     const records = new Map();
     const purchases = new Map();
     const acknowledged = [];
+    const catalogQueries = [];
     let time = now;
     let pending = Promise.resolve();
     const db = {
         doc: path => ({ path, get: async () => ({ data: () => records.get(path) }) }),
+        collection: path => ({ where: (field, operator, value) => ({ limit: maximum => ({ count: () => ({
+            async get() {
+                catalogQueries.push({ path, field, operator, value, maximum });
+                const prefix = `${path}/`;
+                const count = [...records].filter(([key, record]) => key.startsWith(prefix)
+                    && !key.slice(prefix.length).includes('/') && record[field] === value).length;
+                return { data: () => ({ count: Math.min(count, maximum) }) };
+            },
+        }) }) }) }),
         runTransaction(run) {
             const started = pending.then(async () => {
                 const writes = new Map();
@@ -50,19 +60,19 @@ function createHarness({ enabled = true, acknowledge, settings = { enabled, prod
     };
     const serviceFor = settings => createBillingService({ db, play, settings,
         pilotUsers: new Set(['owner-a', 'owner-b']), now: () => time });
-    return { records, purchases, acknowledged, service: serviceFor(settings), serviceFor, db,
+    return { records, purchases, acknowledged, catalogQueries, service: serviceFor(settings), serviceFor, db,
         setTime: value => { time = value; } };
 }
 
 function subscription({ uid = 'owner-a', product = products[0], state = 'ACTIVE', expires = now + 20_000,
-    acknowledged = true, testPurchase = {}, linkedPurchaseToken } = {}) {
+    acknowledged = true, testPurchase = {}, linkedPurchaseToken, recurringPrice } = {}) {
     return {
         testPurchase, linkedPurchaseToken,
         externalAccountIdentifiers: { obfuscatedExternalAccountId: accountId(uid) },
         subscriptionState: `SUBSCRIPTION_STATE_${state}`,
         acknowledgementState: `ACKNOWLEDGEMENT_STATE_${acknowledged ? 'ACKNOWLEDGED' : 'PENDING'}`,
         lineItems: [{ productId: product.productId, expiryTime: new Date(expires).toISOString(),
-            offerDetails: { basePlanId: product.basePlanId }, autoRenewingPlan: { autoRenewEnabled: true } }],
+            offerDetails: { basePlanId: product.basePlanId }, autoRenewingPlan: { autoRenewEnabled: true, recurringPrice } }],
     };
 }
 
@@ -223,10 +233,87 @@ const liveCloud = productionBillingSettings(PRODUCTION_PROJECT, cloudEnv('live')
 const licenseCloud = productionBillingSettings(PRODUCTION_PROJECT, cloudEnv('license-test', 'owner-a'));
 const [monthly, annual] = live.products;
 const productId = 'gallipick_ad_free';
-const verify = (service, uid, purchaseToken) => service.verify(user(uid), { purchaseToken });
+const verify = (service, uid, purchaseToken) => service.verify(user(uid), { purchaseToken, cloudProtocolVersion: 1 });
 const renewalEvent = purchaseToken => ({ packageName: 'com.hebi.gallipick', subscriptionNotification: { purchaseToken } });
 const cloudOffer = (gb, base = 'monthly') => liveCloud.products.find(item =>
     item.productId === `gallipick_cloud_${gb}gb` && item.basePlanId === base);
+const checkoutCloud = productionBillingSettings(PRODUCTION_PROJECT, { ...cloudEnv('license-test', 'owner-a,owner-b'),
+    GALLIPICK_PRODUCTION_CLOUD_UPLOADS_PAUSED: 'false' });
+
+test('only the authenticated ordinary catalog is counted for an opted-in production overview', async () => {
+    const { service, records, catalogQueries } = createHarness({ settings: licenseCloud });
+    const owner = accountId('owner-a');
+    const path = `gallipickProductionLicenseBackupAccounts/${owner}/originals`;
+    records.set(`${path}/one`, { state: 'VERIFIED' });
+    records.set(`${path}/two`, { state: 'VERIFIED' });
+    records.set(`${path}/pending`, { state: 'PENDING' });
+    records.set(`gallipickProductionLicenseBackupVaultAccounts/${owner}/originals/private`, { state: 'VERIFIED' });
+    records.set(`gallipickProductionBackupAccounts/${owner}/originals/live`, { state: 'VERIFIED' });
+    records.set(`gallipickProductionLicenseBackupAccounts/${accountId('owner-b')}/originals/other`, { state: 'VERIFIED' });
+    const input = { includeVerifiedCount: true, cloudProtocolVersion: 1, uid: 'owner-b' };
+
+    assert.equal((await service.getPlan(user('owner-a'))).verifiedMediaCount, undefined);
+    assert.equal((await service.getPlan(user('owner-a'), { includeVerifiedCount: true })).verifiedMediaCount, undefined);
+    await assert.rejects(service.getPlan(user('owner-b'), input), isCode('permission-denied'));
+    assert.deepEqual(catalogQueries, []);
+    assert.equal((await service.getPlan(user('owner-a'), input)).verifiedMediaCount, 2);
+    assert.deepEqual(catalogQueries, [{ path, field: 'state', operator: '==', value: 'VERIFIED', maximum: 20_000 }]);
+});
+
+test('empty, bounded and unavailable catalog aggregation preserve the original plan and usage', async () => {
+    const { service, db, records, catalogQueries } = createHarness();
+    const owner = accountId('owner-a');
+    const path = `gallipickBackupAccounts/${owner}/originals`;
+    const input = { includeVerifiedCount: true };
+    records.set(`gallipickBackupAccounts/${owner}`, { allocatedBytes: 512 });
+    assert.equal((await service.getPlan(user('owner-a'), input)).verifiedMediaCount, 0);
+    for (let index = 0; index < 250; index++) records.set(`${path}/${index}`, { state: 'VERIFIED' });
+    assert.equal((await service.getPlan(user('owner-a'), input)).verifiedMediaCount, null);
+    assert.equal(catalogQueries.at(-1).maximum, 250);
+    db.collection = () => { throw new Error('Aggregation unavailable'); };
+    const plan = await service.getPlan(user('owner-a'), input);
+    assert.equal(plan.verifiedMediaCount, null);
+    assert.equal(plan.usedBytes, 512);
+});
+
+test('only fresh verification of the sole active token returns its Play recurring price for a replacement', async () => {
+    const { service, purchases, records } = createHarness({ settings: checkoutCloud });
+    const recurringPrice = { currencyCode: 'USD', units: '7', nanos: 490_000_000 };
+    purchases.set(token(1), subscription({ product: cloudOffer(10), recurringPrice }));
+    purchases.set(token(2), subscription({ product: annual, recurringPrice }));
+    const plan = await verify(service, 'owner-a', token(1));
+    assert.equal(plan.replacementSourceAllowed, true);
+    assert.deepEqual(plan.replacementSourcePrice, { amountMicros: 7_490_000, currencyCode: 'USD' });
+    assert.equal(plan.scheduledReplacement, null);
+    assert.equal(JSON.stringify(plan).includes(token(1)), false);
+    assert.equal(JSON.stringify([...records]).includes(token(1)), false);
+    assert.equal((await service.getPlan(user('owner-a'))).replacementSourceAllowed, false);
+    assert.equal((await service.verify(user('owner-a'), { purchaseToken: token(1) })).replacementSourceAllowed, false);
+    await assert.rejects(verify(service, 'owner-b', token(1)), isCode('permission-denied'));
+
+    assert.equal((await verify(service, 'owner-a', token(2))).replacementSourceAllowed, false);
+    assert.equal((await verify(service, 'owner-a', token(1))).replacementSourceAllowed, false);
+});
+
+test('paused checkout, inactive renewal and an imprecise Play price cannot authorize a replacement', async () => {
+    const { service, serviceFor, purchases } = createHarness({ settings: checkoutCloud });
+    const price = { currencyCode: 'KRW', units: '1900' };
+    const active = subscription({ product: cloudOffer(10), recurringPrice: price });
+    purchases.set(token(1), active);
+    assert.equal((await verify(serviceFor(licenseCloud), 'owner-a', token(1))).replacementSourceAllowed, false);
+    for (const current of [
+        subscription({ product: cloudOffer(10), state: 'IN_GRACE_PERIOD', recurringPrice: price }),
+        subscription({ product: cloudOffer(10), acknowledged: false, recurringPrice: price }),
+        subscription({ product: cloudOffer(10), recurringPrice: { ...price, nanos: 1 } }),
+        { ...active, lineItems: [{ ...active.lineItems[0], autoRenewingPlan: { autoRenewEnabled: false, recurringPrice: price } }] },
+    ]) {
+        purchases.set(token(1), current);
+        const plan = await verify(service, 'owner-a', token(1));
+        assert.equal(plan.replacementSourceAllowed, false);
+        assert.equal(plan.replacementSourcePrice, null);
+        assert.equal(plan.quotaBytes, 10_000_000_000);
+    }
+});
 
 test('paid Cloud requires an explicit project-scoped rollout and bounded original size', async () => {
     for (const value of [undefined, '0', '-64', '268435457', '64.5', '2e7', ' 256 ']) {
@@ -339,7 +426,7 @@ test('test and live Cloud keep paid plans and usage isolated and reject pending 
 
 test('deferred Play changes preserve the old verified tier until the replacement becomes effective', async () => {
     for (const [previousGb, replacementGb] of [[10, 100], [100, 10]]) {
-        const { service, purchases, setTime } = createHarness({ settings: licenseCloud });
+        const { service, purchases, acknowledged, setTime } = createHarness({ settings: licenseCloud });
         const uid = 'owner-a';
         const auth = user(uid);
         const previous = subscription({ product: cloudOffer(previousGb), expires: now + 20_000 });
@@ -349,17 +436,23 @@ test('deferred Play changes preserve the old verified tier until the replacement
         const futureItem = replacement.lineItems[0];
         purchases.set(token(1), previous);
         await verify(service, uid, token(1));
-        purchases.set(token(2), { ...replacement, lineItems: [
+        purchases.set(token(2), { ...replacement, acknowledgementState: 'ACKNOWLEDGEMENT_STATE_PENDING', lineItems: [
             { ...oldItem, autoRenewingPlan: { autoRenewEnabled: false },
                 deferredItemReplacement: { productId: futureItem.productId } },
             { ...futureItem, expiryTime: undefined, autoRenewingPlan: undefined },
         ] });
         assert.equal(await service.reconcileNotification(renewalEvent(token(2))), true);
+        assert.deepEqual(acknowledged, [[token(2), futureItem.productId]]);
         assert.equal(await service.reconcileNotification(renewalEvent(token(1))), false);
         assert.equal((await service.getPlan(auth)).quotaBytes, previousGb * 1_000_000_000);
         assert.equal((await service.getPlan(auth)).activeBasePlanId, 'monthly');
+        assert.deepEqual((await service.getPlan(auth)).scheduledReplacement, {
+            productId: futureItem.productId, basePlanId: 'annual', effectiveAtMs: now + 20_000,
+        });
+        assert.equal((await verify(service, uid, token(2))).replacementSourceAllowed, false);
         setTime(now + 20_000);
         assert.equal((await service.getPlan(auth)).quotaBytes, 0);
+        assert.equal((await service.getPlan(auth)).scheduledReplacement, null);
         purchases.set(token(2), { ...replacement, lineItems: [oldItem, futureItem] });
         assert.equal(await service.reconcileNotification(renewalEvent(token(2))), true);
         assert.equal((await service.getPlan(auth)).quotaBytes, replacementGb * 1_000_000_000);

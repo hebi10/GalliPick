@@ -314,18 +314,36 @@ class AdaptiveOverviewTest {
 
     @Test fun settingsKeepReadableWidthInWideWindows() {
         val vm = AppViewModel(compose.activity.application)
+        val photoListView = mutableStateOf(false)
         compose.setContent {
             GalliPickTheme {
                 CompositionLocalProvider(LocalDensity provides Density(.6f)) {
                     Surface(Modifier.requiredSize(1100.dp, 760.dp)) {
-                        SettingsScreen(AppUiState(access = MediaAccess.FULL), vm, {}, {}, {})
+                        SettingsScreen(
+                            AppUiState(access = MediaAccess.FULL), vm, {}, {}, {},
+                            adsPrivacyOptionsRequired = true,
+                            openAdRemoval = {},
+                            photoListView = photoListView.value,
+                            onPhotoListViewChange = { photoListView.value = it },
+                        )
                     }
                 }
             }
         }
-        val themeChoice = compose.onNodeWithText("기기 설정 따르기").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("격자").assertIsSelected()
+        compose.onNodeWithText("목록").assertIsNotSelected().performClick().assertIsSelected()
+        compose.onNodeWithText("격자").assertIsNotSelected().performClick().assertIsSelected()
+        val themeChoice = compose.onNodeWithText("기기 설정 따르기").performScrollTo().assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot
         assertTrue("Settings controls should keep a readable line length", themeChoice.width <= 640 * .6f + 1f)
-        compose.onNodeWithText("개인정보처리방침").performScrollTo().assertIsDisplayed()
+        listOf(
+            "광고 제거", "접근 범위 변경", "앱 권한 설정", "휴지통 열기", "분석 캐시 비우기",
+            "사진 글자 색인 초기화", "광고 개인정보 선택 변경", "개인정보처리방침", "오류 보고 메일 작성",
+        ).forEach { label ->
+            val button = compose.onNode(hasText(label) and hasClickAction()).performScrollTo().assertIsDisplayed()
+                .fetchSemanticsNode().boundsInRoot
+            assertTrue("$label should fill the settings card", button.width >= 560 * .6f - 1f)
+        }
     }
 
     private fun homeState() = AppUiState(access = MediaAccess.FULL, totalStorageBytes = 128L * 1024 * 1024 * 1024, freeStorageBytes = 32L * 1024 * 1024 * 1024)

@@ -34,6 +34,14 @@ class CloudBackupProtocolTest {
     }
 
     @Test
+    fun secretUploadsCannotUseTheOrdinaryObjectPath() {
+        val secret = url.replace("/$hash-2?", "/secret/$hash-2?")
+        assertNotNull(allowedTarget(secret, privateVault = true))
+        assertNull(allowedTarget(secret))
+        assertNull(allowedTarget(url, privateVault = true))
+    }
+
+    @Test
     fun stagingHashesAndRetainsExactlyTheApprovedBytes() {
         val output = ByteArrayOutputStream()
         val original = byteArrayOf(97, 98, 99)
@@ -59,6 +67,7 @@ class CloudBackupProtocolTest {
     private fun allowedTarget(
         location: String, signedHeaders: Map<String, String> = headers,
         namespace: CloudBackupNamespace = CloudBackupNamespace.DEVELOPMENT,
+        privateVault: Boolean = false,
     ) =
         validateBackupUpload(
             uploadUrl = location,
@@ -70,6 +79,7 @@ class CloudBackupProtocolTest {
             headers = signedHeaders,
             allowedBuckets = setOf("test-bucket"),
             namespace = namespace,
+            privateVault = privateVault,
         )
 
     private val hash = "c4ffcd6e373236bc4d9a6962b928d68a958ddfdd33e9bbe89386c15388c69cd0"

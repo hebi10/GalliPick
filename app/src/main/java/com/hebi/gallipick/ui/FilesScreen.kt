@@ -51,6 +51,7 @@ internal data class FilesScreenActions(
     val startOcr: () -> Unit = {},
     val pauseOcr: () -> Unit = {},
     val resumeOcr: () -> Unit = {},
+    val setFileListView: (Boolean) -> Unit = {},
 )
 
 @Composable
@@ -61,14 +62,16 @@ internal fun FilesScreen(
     resumeDetailUri: String? = null,
     onDetailResumed: () -> Unit = {},
     onCloudSignInFromDetail: (String) -> Unit = {},
+    showSearch: Boolean = false,
 ) {
     FilesScreenContent(state, wide, trash, open, requestAccess, FilesScreenActions(
         vm::setFilter, vm::selectAllFiltered, vm::toggleSelection, vm::clearSelection,
         vm::savePreset, vm::deletePreset, { item, protected -> vm.setProtected(item, protected) },
         vm::refresh, vm::startOcrIndex, vm::pauseOcrIndex, vm::resumeOcrIndex,
+        setFileListView = vm::setFileListView,
     ), cloudFiles = cloudFiles, openCloud = openCloud,
         resumeDetailUri = resumeDetailUri, onDetailResumed = onDetailResumed,
-        onCloudSignInFromDetail = onCloudSignInFromDetail)
+        onCloudSignInFromDetail = onCloudSignInFromDetail, showSearch = showSearch)
 }
 
 @Composable
@@ -84,10 +87,11 @@ internal fun FilesScreenContent(
     resumeDetailUri: String? = null,
     onDetailResumed: () -> Unit = {},
     onCloudSignInFromDetail: (String) -> Unit = {},
+    showSearch: Boolean = false,
 ) {
     var showFilter by remember { mutableStateOf(false) }
     var showSave by remember { mutableStateOf(false) }
-    var gridView by rememberSaveable { mutableStateOf(true) }
+    val gridView = !state.fileListView
     var searchMode by rememberSaveable { mutableStateOf(FileSearchMode.FILES) }
     var ocrQuery by rememberSaveable { mutableStateOf("") }
     var detailUri by rememberSaveable { mutableStateOf<String?>(resumeDetailUri) }
@@ -133,9 +137,10 @@ internal fun FilesScreenContent(
         )
     }
     val detailCloud = galleryItems.firstNotNullOfOrNull { it.cloud?.takeIf { cloud -> cloud.uploadId == detailCloudId } }
-    val detailVerified = detail?.let { device ->
-        galleryItems.any { it.device?.uri == device.uri && it.cloud != null }
-    } == true
+    val backedUpDeviceUris = remember(galleryItems) {
+        galleryItems.mapNotNull { entry -> entry.device?.uri?.takeIf { entry.cloud != null } }.toSet()
+    }
+    val detailVerified = detail?.uri in backedUpDeviceUris
     val galleryFiltered = remember(galleryItems, state.filter, sourceFilter) {
         GalleryFileQuery.apply(galleryItems, state.filter, sourceFilter)
     }
@@ -170,7 +175,8 @@ internal fun FilesScreenContent(
                         FileToolbar(state.filter, state.presets, actions.setFilter,
                             advanced = { showFilter = true }, save = { showSave = true },
                             deletePreset = actions.deletePreset, gridView = gridView,
-                            onGridViewChange = { gridView = it }, searchMode = searchMode,
+                            onGridViewChange = { actions.setFileListView(!it) }, searchMode = searchMode,
+                            showSearch = showSearch,
                             ocrQuery = ocrQuery,
                             onSearchModeChange = { searchMode = it; detailUri = null },
                             onOcrQueryChange = { ocrQuery = it },
@@ -401,7 +407,7 @@ internal fun FilesScreenContent(
                                                             state.filter.sortField, tabletGrid = tabletGrid,
                                                             ocrText = if (searchMode == FileSearchMode.OCR)
                                                                 ocrRows[item.uri]?.recognizedText else null,
-                                                            ocrQuery = ocrQuery)
+                                                            ocrQuery = ocrQuery, hasCloudOriginal = item.uri in backedUpDeviceUris)
                                                     }
                                                 }
                                             } else {
@@ -411,7 +417,7 @@ internal fun FilesScreenContent(
                                                         state.filter.sortField, tabletGrid = tabletGrid,
                                                             ocrText = if (searchMode == FileSearchMode.OCR)
                                                                 ocrRows[item.uri]?.recognizedText else null,
-                                                            ocrQuery = ocrQuery)
+                                                            ocrQuery = ocrQuery, hasCloudOriginal = item.uri in backedUpDeviceUris)
                                                 }
                                             }
                                         }
@@ -433,7 +439,7 @@ internal fun FilesScreenContent(
                                                             dateMs = MediaQuery.dateOf(item, state.filter.dateField),
                                                             ocrText = if (searchMode == FileSearchMode.OCR)
                                                                 ocrRows[item.uri]?.recognizedText else null,
-                                                            ocrQuery = ocrQuery)
+                                                            ocrQuery = ocrQuery, hasCloudOriginal = item.uri in backedUpDeviceUris)
                                                     }
                                                 }
                                             } else {
@@ -443,7 +449,7 @@ internal fun FilesScreenContent(
                                                         state.filter.sortField, listView = true,
                                                         ocrText = if (searchMode == FileSearchMode.OCR)
                                                             ocrRows[item.uri]?.recognizedText else null,
-                                                        ocrQuery = ocrQuery)
+                                                        ocrQuery = ocrQuery, hasCloudOriginal = item.uri in backedUpDeviceUris)
                                                 }
                                             }
                                         }
@@ -633,7 +639,7 @@ internal fun MediaTile(
     tabletGrid: Boolean = false,
     ocrText: String? = null,
     ocrQuery: String = "",
-    sourceLabel: String? = null,
+    hasCloudOriginal: Boolean = false,
     allowSelection: Boolean = true,
 ) {
     if (listView) {
@@ -644,11 +650,11 @@ internal fun MediaTile(
         ) {
             Box(Modifier.size(76.dp).plainClick(action = detail)) {
                 MediaThumbnail(item, Modifier.fillMaxSize())
+                if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
             }
             Column(Modifier.weight(1f).plainClick(action = detail), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(item.displayName, style = MaterialTheme.typography.bodyMedium,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (sourceLabel != null) Text(sourceLabel, style = MaterialTheme.typography.labelSmall, color = Muted)
                 Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(dateMs).substringBefore(" "),
                     style = MaterialTheme.typography.bodySmall, color = Muted)
                 if (ocrText != null) {
@@ -682,11 +688,7 @@ internal fun MediaTile(
                     if (item.canTrash()) item.displayName + " 선택" else item.displayName + " 즐겨찾기 또는 보호 파일",
                     toggle, Modifier.align(Alignment.TopStart), indicatorAtTopStart = true,
                 )
-                if (sourceLabel != null) {
-                    Text(sourceLabel, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
-                        .background(AppSurface, RoundedCornerShape(6.dp)).padding(horizontal = 5.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall, color = Ink)
-                }
+                if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
                 if (item.kind == MediaKind.VIDEO) {
                     Text(durationLabel(item.durationMs), color = MaterialTheme.colorScheme.onPrimary,
                         style = MaterialTheme.typography.labelSmall,

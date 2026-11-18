@@ -80,6 +80,7 @@ internal fun CloudScreen(
     connection: CloudAccountConnection,
     onBackFromAdRemoval: (() -> Unit)? = null,
     onBillingScreenVisible: (Boolean) -> Unit = {},
+    showSecretCloud: Boolean = false,
     content: @Composable (CloudRoute) -> Unit,
 ) {
     val account by connection.session.account.collectAsStateWithLifecycle()
@@ -100,6 +101,7 @@ internal fun CloudScreen(
     val route = when (requested) {
         CloudRoute.LIBRARY, CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, CloudRoute.SPACE ->
             if (backup != null) requested else CloudRoute.OVERVIEW
+        CloudRoute.SECRET -> if (showSecretCloud) requested else CloudRoute.OVERVIEW
         else -> requested
     }
     val onBack = onBackFromAdRemoval ?: {
@@ -112,6 +114,13 @@ internal fun CloudScreen(
             reportBillingVisibility(true)
             onDispose { reportBillingVisibility(false) }
         }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            Column(Modifier.widthIn(max = 660.dp).fillMaxSize()) {
+                Box(Modifier.padding(horizontal = 8.dp)) { CloudHeader(route, onBack) }
+                Box(Modifier.weight(1f).fillMaxWidth()) { content(route) }
+            }
+        }
+        return
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -124,13 +133,14 @@ internal fun CloudScreen(
             when {
                 access == CloudAccessState.UNAVAILABLE ->
                     CloudStatusMessage("이 빌드에서 클라우드 로그인 설정을 확인할 수 없습니다.")
-                route == CloudRoute.BILLING || route == CloudRoute.BILLING_SIGN_IN -> content(route)
+                route == CloudRoute.BILLING_SIGN_IN -> content(route)
                 route != CloudRoute.OVERVIEW -> key(namespace) { content(route) }
                 else -> {
                     content(CloudRoute.OVERVIEW)
                     val onNavigate: (CloudRoute) -> Unit = { requestedRoute = it }
                     val billingAvailable = connection.billing != null
                     if (access == CloudAccessState.SIGNED_IN) {
+                        account?.uid?.let { uid -> CloudOverviewStorageCard(connection, uid) }
                         if (billingAvailable) {
                             CloudActionGroup(CloudRoute.BILLING, onNavigate = onNavigate)
                         } else {
@@ -140,6 +150,7 @@ internal fun CloudScreen(
                             CloudActionGroup(CloudRoute.LIBRARY, CloudRoute.BACKUP, onNavigate = onNavigate)
                             CloudActionGroup(CloudRoute.AUTO_BACKUP, CloudRoute.SPACE, onNavigate = onNavigate)
                         }
+                        if (showSecretCloud) CloudActionGroup(CloudRoute.SECRET, onNavigate = onNavigate)
                     } else if (access == CloudAccessState.SIGNED_OUT) {
                         CloudBillingOverviewNotice(
                             if (billingAvailable) "Google 로그인 후 요금제와 구독 상태를 확인할 수 있습니다."

@@ -2,6 +2,7 @@ package com.hebi.gallipick
 
 import android.Manifest
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
@@ -16,11 +17,20 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
-import com.hebi.gallipick.domain.MediaKind
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsSelected
@@ -37,17 +47,38 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.hebi.gallipick.data.cloud.CloudAccountBackend
+import com.hebi.gallipick.data.cloud.CloudAccountConnection
+import com.hebi.gallipick.data.cloud.CloudAccountIdentity
+import com.hebi.gallipick.data.cloud.CloudAccountSession
+import com.hebi.gallipick.data.cloud.CloudBilling
+import com.hebi.gallipick.data.cloud.CloudBillingOffer
+import com.hebi.gallipick.data.cloud.CloudBillingPlan
+import com.hebi.gallipick.data.cloud.CloudBillingSession
+import com.hebi.gallipick.data.cloud.CloudBillingSnapshot
+import com.hebi.gallipick.data.cloud.CloudBillingUpdate
+import com.hebi.gallipick.data.cloud.GALLIPICK_STANDALONE_AD_FREE
+import com.hebi.gallipick.data.cloud.productionBillingProduct
+import com.hebi.gallipick.domain.MediaKind
+import com.hebi.gallipick.ui.AppBackground
+import com.hebi.gallipick.ui.CloudBillingSection
+import com.hebi.gallipick.ui.CloudRoute
+import com.hebi.gallipick.ui.CloudScreen
+import com.hebi.gallipick.ui.GalliPickTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.util.Locale
 
 /**
  * Capture-only instrumentation: launches the real activity and reads real MediaStore rows.
@@ -101,6 +132,7 @@ class NativeScreenCaptureTest {
         val prefs = app.getSharedPreferences("filters", Context.MODE_PRIVATE)
         val originalFilter = prefs.getString("default_filter", null)
         val originalTheme = prefs.getString("theme_mode", null)
+        val originalFileListView = prefs.getBoolean("file_list_view", false).takeIf { prefs.contains("file_list_view") }
         var scenario: ActivityScenario<MainActivity>? = null
         var testFailure: Throwable? = null
         try {
@@ -109,7 +141,8 @@ class NativeScreenCaptureTest {
             // createEmptyComposeRule does not launch an activity before permissions/fixtures exist.
             recordStage("grant-media-access")
             grantMediaAccess()
-            prefs.edit().remove("default_filter").putString("theme_mode", captureTheme.name).commit()
+            prefs.edit().remove("default_filter").putString("theme_mode", captureTheme.name)
+                .putBoolean("file_list_view", false).commit()
             recordStage("seed-example-media")
             seedExampleMedia()
             recordStage("load-example-catalog")
@@ -136,12 +169,15 @@ class NativeScreenCaptureTest {
             compose.onNodeWithContentDescription("파일 조건 선택").assertIsDisplayed()
             saveViewport("02-files")
             captureDetail("02b-files-list") {
-                compose.onNodeWithContentDescription("목록 보기").performClick()
-                compose.onNodeWithContentDescription("그리드 보기").assertIsDisplayed()
+                compose.onNodeWithContentDescription("파일 추가 작업").performClick()
+                compose.onNodeWithText("목록 보기").performClick()
             }
-            compose.onNodeWithContentDescription("그리드 보기").performClick()
+            compose.onNodeWithContentDescription("파일 추가 작업").performClick()
+            compose.onNodeWithText("격자 보기").performClick()
             captureDetail("02c-real-jpeg-detail") {
-                compose.onNodeWithContentDescription("미디어 파일 목록")
+                val mediaList = hasContentDescription("미디어 파일 목록") or
+                    hasContentDescription("기기와 클라우드 미디어 파일 목록")
+                compose.onNode(mediaList)
                     .performScrollToNode(hasText("EXAMPLE_scene_20.jpg"))
                 compose.onNodeWithText("EXAMPLE_scene_20.jpg").performClick()
                 compose.onNodeWithText("미리보기").assertIsDisplayed()
@@ -241,7 +277,7 @@ class NativeScreenCaptureTest {
             dismissDialogIfPresent("비교 닫기", contentDescription = true)
 
             assertTrue("All fifteen rich-fixture captures must exist", captures.length() == 15)
-            assertTrue("Every detail capture must succeed", detailFailures.length() == 0)
+            assertTrue("Every detail capture must succeed: $detailFailures", detailFailures.length() == 0)
         } catch (failure: Throwable) {
             testFailure = failure
             failureStage = currentStage
@@ -272,11 +308,108 @@ class NativeScreenCaptureTest {
                 prefs.edit().apply {
                     if (originalFilter == null) remove("default_filter") else putString("default_filter", originalFilter)
                     if (originalTheme == null) remove("theme_mode") else putString("theme_mode", originalTheme)
+                    if (originalFileListView == null) remove("file_list_view") else putBoolean("file_list_view", originalFileListView)
                 }.commit()
             }
             finish("write-manifest") { writeManifest(testFailure) }
             if (testFailure == null) finalizationFailure?.let { throw it }
         }
+    }
+
+    @Test fun captureBillingPlanSelection() {
+        assumeTrue(
+            "The subscription fixture is enabled only by captureBillingSelection",
+            arguments.getString("captureBillingSelection") == "true",
+        )
+        val offers = billingCaptureOffers()
+        val connection = billingCaptureConnection(offers)
+        ActivityScenario.launch(ComponentActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.enableEdgeToEdge()
+                activity.setContent {
+                    GalliPickTheme(captureTheme) {
+                        Surface(Modifier.fillMaxSize(), color = AppBackground) {
+                            Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                                CloudScreen(connection, onBackFromAdRemoval = {}) { route ->
+                                    check(route == CloudRoute.BILLING)
+                                    CloudBillingSection(connection, activity) { _, _ -> }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            compose.onNodeWithText("요금제·결제").assertIsDisplayed()
+            for (row in listOf("10 GB", "50 GB", "100 GB", "광고 제거만")) {
+                compose.onNodeWithText(row).assertIsDisplayed()
+            }
+            compose.onNodeWithText("월간").performClick()
+            compose.onNodeWithText("10 GB").performClick()
+            compose.onNodeWithText("10 GB 구독하기 · 월 ₩1,900").assertIsDisplayed()
+            saveViewport("billing-monthly-10gb")
+
+            compose.onNodeWithText("연간").performClick()
+            compose.onNodeWithText("10 GB").performClick()
+            compose.onNodeWithText("10 GB 구독하기 · 연 ₩19,900").assertIsDisplayed()
+            saveViewport("billing-annual-10gb")
+        }
+        File(outputDirectory, "$capturePrefix-billing-manifest.json").writeText(JSONObject()
+            .put("screen", "CloudScreen/CloudBillingSection")
+            .put("fixture", "synthetic KR quotes for four products; no Google Play or Firebase calls")
+            .put("theme", captureTheme.name.lowercase(Locale.ROOT))
+            .put("fontScale", app.resources.configuration.fontScale)
+            .put("densityDpi", app.resources.configuration.densityDpi)
+            .put("offers", JSONArray(offers.map { offer -> JSONObject()
+                .put("productId", offer.product.productId)
+                .put("basePlanId", offer.product.basePlanId)
+                .put("formattedPrice", offer.formattedPrice) }))
+            .put("captures", captures)
+            .toString(2))
+    }
+
+    private fun billingCaptureOffers(): List<CloudBillingOffer> = listOf(
+        Triple("gallipick_cloud_10gb", 1_900, 19_900),
+        Triple("gallipick_cloud_50gb", 5_900, 59_900),
+        Triple("gallipick_cloud_100gb", 10_900, 109_000),
+        Triple(GALLIPICK_STANDALONE_AD_FREE, 1_000, 9_900),
+    ).flatMap { (productId, monthly, annual) ->
+        listOf("monthly" to monthly, "annual" to annual).map { (basePlanId, price) ->
+            val product = checkNotNull(productionBillingProduct(productId, basePlanId))
+            val title = if (product.isStandaloneAdFree) "광고 제거만" else "${product.quotaBytes / 1_000_000_000L} GB"
+            CloudBillingOffer(product, title, String.format(Locale.KOREA, "₩%,d", price), price * 1_000_000L, "KRW")
+        }
+    }
+
+    private fun billingCaptureConnection(offers: List<CloudBillingOffer>): CloudAccountConnection {
+        val identity = CloudAccountIdentity("billing-capture", "화면 확인 계정", null)
+        val account = object : CloudAccountBackend {
+            override val account = MutableStateFlow<CloudAccountIdentity?>(identity)
+            override suspend fun signIn(googleIdToken: String): Unit = error("Capture fixture is already signed in")
+            override fun signOut() { account.value = null }
+            override suspend fun clearGoogleState() = Unit
+        }
+        val snapshot = CloudBillingSnapshot(
+            CloudBillingPlan(enabled = true, products = offers.map { it.product }, testPurchasesOnly = false,
+                cloudCheckoutAllowed = true),
+            offers,
+        )
+        return CloudAccountConnection(
+            session = CloudAccountSession(account),
+            billing = object : CloudBilling {
+                override fun open(uid: String): CloudBillingSession {
+                    check(uid == identity.uid)
+                    return object : CloudBillingSession {
+                        override suspend fun loadPlan(): CloudBillingPlan = snapshot.plan
+                        override suspend fun load(): CloudBillingSnapshot = snapshot
+                        override suspend fun recover(): CloudBillingUpdate = error("Capture fixture cannot recover purchases")
+                        override suspend fun purchase(activity: Activity, offer: CloudBillingOffer): CloudBillingUpdate =
+                            error("Capture fixture cannot launch checkout")
+                        override fun close() = Unit
+                    }
+                }
+            },
+            getGoogleIdToken = { error("Capture fixture cannot access Google accounts") },
+        )
     }
 
     private fun grantMediaAccess() {
@@ -398,9 +531,16 @@ class NativeScreenCaptureTest {
             awaitVisibleKeyboard(name)
             instrumentation.waitForIdleSync()
             SystemClock.sleep(300)
+            val focusedQuery = compose.onNodeWithText("파일 이름 검색")
+            // The real IME can resize the form after the initial pre-focus scroll.
+            focusedQuery.assertIsFocused().performScrollTo().assertIsFocused().assertIsDisplayed()
+            compose.waitForIdle()
+            instrumentation.waitForIdleSync()
             compose.onNodeWithText("필터 적용").assertIsDisplayed()
-            val field = compose.onNodeWithText("파일 이름 검색").assertIsDisplayed().fetchSemanticsNode()
+            val field = focusedQuery.fetchSemanticsNode()
             assertTrue("The focused field must remain fully visible above the keyboard: visible=${field.boundsInRoot}, measured=${field.size}", field.boundsInRoot.height >= field.size.height - 1f)
+            val actions = compose.onNodeWithContentDescription("필터 작업").fetchSemanticsNode().boundsInRoot
+            assertTrue("The focused field must stay above the fixed filter actions", field.boundsInRoot.bottom <= actions.top + 1f)
         }
         val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot()) {
             "Android did not provide a full viewport screenshot for $name"

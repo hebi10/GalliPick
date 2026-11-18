@@ -50,6 +50,19 @@ class AdaptiveFilterTest {
         compose.onNodeWithText("필터 적용").assertIsDisplayed().assertIsEnabled()
     }
 
+    @Test fun footerPutsApplyFirstAndResetStillRestoresDefaults() {
+        var applied: MediaFilter? = null
+        showFilter(width = 320, height = 520, current = MediaFilter(query = "여행"), onApply = { applied = it })
+
+        val apply = compose.onNodeWithText("필터 적용").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val cancel = compose.onNodeWithText("취소").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val reset = compose.onNodeWithText("초기화").assertIsDisplayed()
+        val resetBounds = reset.fetchSemanticsNode().boundsInRoot
+        assertTrue(apply.right <= cancel.left && cancel.right <= resetBounds.left)
+        reset.performClick()
+        compose.runOnIdle { assertEquals(MediaFilter(), applied) }
+    }
+
     @Test fun narrowFormExplicitlyRevealsAdvancedConditionsAndAppliesTheirValues() {
         var applied: MediaFilter? = null
         showFilter(width = 320, height = 520, onApply = { applied = it })

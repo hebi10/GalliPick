@@ -7,6 +7,7 @@ internal class CloudAccountConnection(
     private val backupTransport: CloudBackup? = null,
     val billing: CloudBilling? = null,
     private val productionBackupAccess: CloudBackupAccessState? = null,
+    val secretVault: CloudSecretVault? = null,
     private val getGoogleIdToken: suspend (Activity) -> String,
 ) {
     val backupAvailability = productionBackupAccess?.observations
@@ -17,7 +18,7 @@ internal class CloudAccountConnection(
                 session.account.value?.uid?.let(productionBackupAccess::forAccount) != null
         }
 
-    val usesProductionBackupPlan: Boolean get() = productionBackupAccess != null
+    val usesProductionBackupPlan: Boolean get() = productionBackupAccess?.development == false
 
     suspend fun refreshBackupAccess(uid: String) {
         if (productionBackupAccess == null || session.account.value?.uid != uid) return

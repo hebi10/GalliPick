@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Sync
@@ -42,6 +43,7 @@ internal enum class CloudRoute(val title: String, val description: String) {
     OVERVIEW("클라우드", ""),
     LIBRARY("내 보관함", "클라우드에 보관한 사진과 동영상을 봅니다."),
     BACKUP("원본 백업", "선택한 원본을 클라우드에 보관합니다."),
+    SECRET("시크릿 클라우드", "비밀번호로 잠긴 사진과 동영상을 보관합니다."),
     AUTO_BACKUP("자동 백업", "선택 폴더의 자동 백업을 설정합니다."),
     SPACE("공간 확보 검토", "백업이 확인된 기기 파일을 검토합니다."),
     BILLING_SIGN_IN("광고 제거", "클라우드 구독 혜택 보기"),
@@ -181,6 +183,7 @@ private val CloudRoute.icon: ImageVector get() = when (this) {
     CloudRoute.OVERVIEW -> Icons.Outlined.Cloud
     CloudRoute.LIBRARY -> Icons.Outlined.PhotoLibrary
     CloudRoute.BACKUP -> Icons.Outlined.CloudUpload
+    CloudRoute.SECRET -> Icons.Outlined.Lock
     CloudRoute.AUTO_BACKUP -> Icons.Outlined.Sync
     CloudRoute.SPACE -> Icons.Outlined.Storage
     CloudRoute.BILLING_SIGN_IN -> Icons.Outlined.Cloud

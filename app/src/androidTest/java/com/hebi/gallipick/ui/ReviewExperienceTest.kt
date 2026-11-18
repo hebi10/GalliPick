@@ -59,7 +59,7 @@ class ReviewExperienceTest {
                     onFilter = { filter -> state.value = state.value.copy(filter = filter, filtered = MediaQuery.apply(all, filter), selected = emptySet()) },
                     onToggle = { uri -> state.value = state.value.copy(selected = state.value.selected + uri) },
                     onClear = { state.value = state.value.copy(selected = emptySet()) },
-                ))
+                ), showSearch = true)
             }
         }
         compose.onNodeWithText("휴지통으로").assertDoesNotExist()
@@ -85,11 +85,9 @@ class ReviewExperienceTest {
         compose.onNodeWithText("1년 이전 영상").performScrollTo().performClick()
         compose.onNodeWithText(oldVideo.displayName).assertIsDisplayed()
         compose.onNodeWithText(recentPhoto.displayName).assertDoesNotExist()
-        compose.onNodeWithContentDescription("파일 검색").performClick()
         compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색").performTextInput("missing")
         compose.onNodeWithText("검색 완료").performClick()
         compose.onNodeWithText("조건에 맞는 파일이 없습니다").assertIsDisplayed()
-        compose.onNodeWithContentDescription("파일 검색").performClick()
         compose.onNodeWithContentDescription("검색어 지우기").performClick()
         compose.onNodeWithText("검색 완료").performClick()
         compose.onNodeWithText(oldVideo.displayName).assertIsDisplayed()

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { authorize, BackupError, createRequestLimiter, PRODUCTION_MAX_FILE_BYTES } from './backup.js';
+import { authorize, BackupError, createRequestLimiter, PILOT_MAX_OWNER_FILES, PRODUCTION_BACKUP_PROTOCOL_VERSION,
+    PRODUCTION_MAX_FILE_BYTES, PRODUCTION_MAX_OWNER_FILES } from './backup.js';
 import { productionMonetizationCatalog, verifiedMonetizationBenefits } from './monetization-entitlements.js';
 
 export const PILOT_ACCOUNT_QUOTA_BYTES = 1024 ** 3;
@@ -64,7 +65,8 @@ export function productionBillingSettings(project, env) {
     const verificationProducts = productionMonetizationCatalog(true);
     return { enabled: true, products: cloudEnabled ? verificationProducts : productionMonetizationCatalog(false),
         verificationProducts, mode, users, emails, cloudEnabled,
-        maxOriginalBytes: cloudEnabled ? fileLimit : null, backupNamespace };
+        maxOriginalBytes: cloudEnabled ? fileLimit : null, backupNamespace,
+        replacementCheckoutEnabled: cloudEnabled && env.GALLIPICK_PRODUCTION_CLOUD_UPLOADS_PAUSED === 'false' };
 }
 
 function purchaseLine(purchase, settings, now) {
@@ -95,7 +97,9 @@ function purchaseLine(purchase, settings, now) {
             || current.item.deferredItemReplacement?.productId !== scheduled.item.productId
             || scheduled.item.deferredItemReplacement != null
             || (current.plan === scheduled.plan)) throw invalid();
-        return current;
+        const scheduledReplacement = scheduled.plan ? { productId: scheduled.plan.productId,
+            basePlanId: scheduled.plan.basePlanId, effectiveAtMs: current.expiresAtMs } : null;
+        return { ...current, scheduledReplacement, purchasedProductId: scheduled.item.productId };
     }
     if (lines.some(({ item, expiresAtMs }) => item.deferredItemReplacement != null || !Number.isFinite(expiresAtMs))) {
         throw invalid();
@@ -104,6 +108,17 @@ function purchaseLine(purchase, settings, now) {
     if (effective.length > 1) throw invalid();
     // The retained historical item is never eligible once a replacement is effective.
     return verifiedLine(effective[0] ?? lines.find(line => line.plan && line.item.autoRenewingPlan));
+}
+
+function playRecurringPrice(price) {
+    const units = price?.units ?? '0';
+    const nanos = price?.nanos ?? 0;
+    if (typeof price?.currencyCode !== 'string' || !/^[A-Z]{3}$/.test(price.currencyCode)
+        || typeof units !== 'string' || !/^(0|[1-9][0-9]{0,9})$/.test(units)
+        || !Number.isSafeInteger(nanos) || nanos < 0 || nanos >= 1_000_000_000 || nanos % 1_000 !== 0) return null;
+    const amountMicros = Number(units) * 1_000_000 + nanos / 1_000;
+    if (!Number.isSafeInteger(amountMicros) || amountMicros <= 0) return null;
+    return { amountMicros, currencyCode: price.currencyCode };
 }
 
 function inspectPurchase(purchase, owner, settings, now) {
@@ -120,7 +135,8 @@ function inspectPurchase(purchase, owner, settings, now) {
     if (linked != null && (typeof linked !== 'string' || !PURCHASE_TOKEN.test(linked))) {
         throw new BackupError('failed-precondition', 'The Play subscription replacement could not be verified.');
     }
-    const { plan, expiresAtMs } = purchaseLine(purchase, settings, now);
+    const { item, plan, expiresAtMs, scheduledReplacement, purchasedProductId = plan.productId } =
+        purchaseLine(purchase, settings, now);
     const active = ACCEPTED_SUBSCRIPTION_STATES.has(purchase.subscriptionState);
     const uncompleted = UNCOMPLETED_SUBSCRIPTION_STATES.has(purchase.subscriptionState);
     const eligible = active && expiresAtMs > now;
@@ -129,12 +145,18 @@ function inspectPurchase(purchase, owner, settings, now) {
         || (active && !Number.isFinite(expiresAtMs)) || (eligible && acknowledgement !== ACK_PENDING && acknowledgement !== ACK_COMPLETE)) {
         throw new BackupError('failed-precondition', 'The Play subscription status could not be verified.');
     }
+    const canReplace = settings.replacementCheckoutEnabled && eligible && externalOwner === owner
+        && purchase.subscriptionState === 'SUBSCRIPTION_STATE_ACTIVE' && acknowledgement === ACK_COMPLETE
+        && item.autoRenewingPlan.autoRenewEnabled === true && item.deferredItemReplacement == null;
+    const entitlement = eligible ? { ...plan, expiresAtMs, checkedAtMs: now } : null;
+    if (entitlement && scheduledReplacement) entitlement.scheduledReplacement = scheduledReplacement;
     return {
-        plan,
+        purchasedProductId,
         externalOwner,
-        entitlement: eligible ? { ...plan, expiresAtMs, checkedAtMs: now } : null,
+        entitlement,
         acknowledge: eligible && acknowledgement === ACK_PENDING,
         linkedHash: !uncompleted && typeof linked === 'string' ? hash(linked) : null,
+        replacementSourcePrice: canReplace ? playRecurringPrice(item.autoRenewingPlan.recurringPrice) : null,
     };
 }
 
@@ -156,7 +178,8 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
         ? 'gallipickProductionLicenseBilling' : 'gallipickCloudBilling';
     const ownerRef = owner => db.doc(`${scope}Accounts/${owner}`);
     const tokenRef = tokenHash => db.doc(`${scope}Tokens/${tokenHash}`);
-    const usageRef = owner => db.doc(`${production ? settings.backupNamespace : 'gallipickBackup'}Accounts/${owner}`);
+    const backupOwnerPath = owner => `${production ? settings.backupNamespace : 'gallipickBackup'}Accounts/${owner}`;
+    const usageRef = owner => db.doc(backupOwnerPath(owner));
     const users = production ? settings.users : pilotUsers;
     const emails = settings.emails ?? new Set();
     const allowedOwners = new Set([...(users ?? [])].map(hash));
@@ -172,17 +195,45 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     const pausedProductionPlan = { enabled: false, products: [], activeProductId: null,
         activeBasePlanId: null, expiresAtMs: null, adFreeProductId: null, adFreeBasePlanId: null,
         adFreeExpiresAtMs: null, backupAvailable: false, testPurchasesOnly: settings.mode === 'license-test',
-        uploadAllowed: false, obfuscatedAccountId: null, quotaBytes: 0, usedBytes: 0 };
+        uploadAllowed: false, obfuscatedAccountId: null, quotaBytes: 0, usedBytes: 0,
+        scheduledReplacement: null, replacementSourceAllowed: false, replacementSourcePrice: null };
     const trustedProducts = settings.verificationProducts ?? settings.products;
-    const productionBenefits = account =>
-        verifiedMonetizationBenefits(Object.values(account?.entitlements ?? {}), trustedProducts, now());
+    const productionBenefits = (account, time = now()) =>
+        verifiedMonetizationBenefits(Object.values(account?.entitlements ?? {}), trustedProducts, time);
 
-    async function getPlanForOwner(owner) {
+    async function countVerifiedMedia(owner) {
+        const maximum = production ? PRODUCTION_MAX_OWNER_FILES : PILOT_MAX_OWNER_FILES;
+        try {
+            const result = await db.collection(`${backupOwnerPath(owner)}/originals`)
+                .where('state', '==', 'VERIFIED').limit(maximum).count().get();
+            const count = result.data().count;
+            // A result at the limit could be truncated. Leave it out rather than presenting a partial count.
+            return Number.isSafeInteger(count) && count >= 0 && count < maximum ? count : null;
+        } catch {
+            return null;
+        }
+    }
+
+    async function getPlanForOwner(owner, checkedSource) {
         if (production) {
             if (!settings.enabled) return pausedProductionPlan;
             const [account, usage] = await Promise.all([ownerRef(owner).get(),
                 settings.cloudEnabled ? usageRef(owner).get() : null]);
-            const verified = productionBenefits(account.data());
+            const current = account.data();
+            const evaluatedAt = now();
+            const verified = productionBenefits(current, evaluatedAt);
+            const active = Object.entries(current?.entitlements ?? {}).filter(([key, entitlement]) =>
+                HASH.test(key) && Number.isSafeInteger(entitlement?.expiresAtMs) && entitlement.expiresAtMs > evaluatedAt);
+            const [activeTokenHash, activeEntitlement] = active.length === 1 && verified.adsRemoved ? active[0] : [];
+            const scheduled = activeEntitlement?.scheduledReplacement;
+            const scheduledReplacement = scheduled && scheduled.effectiveAtMs === activeEntitlement.expiresAtMs
+                && trustedProducts.some(product => product.productId === scheduled.productId
+                    && product.basePlanId === scheduled.basePlanId)
+                ? { productId: scheduled.productId, basePlanId: scheduled.basePlanId, effectiveAtMs: scheduled.effectiveAtMs }
+                : null;
+            const replacementSourcePrice = settings.replacementCheckoutEnabled && checkedSource?.price
+                && activeTokenHash === checkedSource.tokenHash && current.revision === checkedSource.revision
+                && !scheduled ? checkedSource.price : null;
             const usageRecord = usage?.data();
             const usedBytes = usageRecord === undefined ? 0 : usageRecord?.allocatedBytes;
             if (!Number.isSafeInteger(usedBytes) || usedBytes < 0) {
@@ -199,7 +250,8 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
                 activeProductId: verified.cloudProductId, activeBasePlanId: verified.cloudBasePlanId,
                 expiresAtMs: verified.cloudExpiresAtMs, adFreeProductId: verified.adFreeProductId,
                 adFreeBasePlanId: verified.adFreeBasePlanId, adFreeExpiresAtMs: verified.adFreeExpiresAtMs,
-                backupAvailable: settings.cloudEnabled, quotaBytes, usedBytes, uploadAllowed: usedBytes < quotaBytes };
+                backupAvailable: settings.cloudEnabled, quotaBytes, usedBytes, uploadAllowed: usedBytes < quotaBytes,
+                scheduledReplacement, replacementSourceAllowed: replacementSourcePrice !== null, replacementSourcePrice };
         }
         const [account, usage] = await Promise.all([ownerRef(owner).get(), usageRef(owner).get()]);
         const plan = settings.enabled ? currentPlan(account.data(), settings.products, now()) : null;
@@ -277,11 +329,12 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
         if (purchase.linkedHash === tokenHash) throw new BackupError('data-loss', 'The Play subscription replacement is invalid.');
         if (await persist(owner, tokenHash, revision, purchase, licenseEmailHash)) {
             try {
-                await play.acknowledge(purchaseToken, purchase.plan.productId);
+                await play.acknowledge(purchaseToken, purchase.purchasedProductId);
             } catch {
                 throw new BackupError('unavailable', 'The purchase was recorded. Retry to confirm it with Play.');
             }
         }
+        return { tokenHash, revision, price: purchase.replacementSourcePrice };
     }
 
     return {
@@ -293,10 +346,14 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             return owner;
         },
 
-        async getPlan(auth) {
+        async getPlan(auth, input) {
             const { owner } = authorizeAccount(auth);
             if (production && settings.enabled) await countProductionRequest(owner);
-            return getPlanForOwner(owner);
+            const plan = await getPlanForOwner(owner);
+            const canCount = plan.enabled && (!production || (plan.backupAvailable
+                && input?.cloudProtocolVersion === PRODUCTION_BACKUP_PROTOCOL_VERSION));
+            if (!canCount || input?.includeVerifiedCount !== true) return plan;
+            return { ...plan, verifiedMediaCount: await countVerifiedMedia(owner) };
         },
 
         async verify(auth, input) {
@@ -307,8 +364,9 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
                 throw new BackupError('invalid-argument', 'A valid Play purchase token is required.');
             }
             if (production) await countProductionRequest(owner);
-            await reconcile(owner, purchaseToken, licenseEmailHash);
-            return getPlanForOwner(owner);
+            const checkedSource = await reconcile(owner, purchaseToken, licenseEmailHash);
+            return getPlanForOwner(owner, input?.cloudProtocolVersion === PRODUCTION_BACKUP_PROTOCOL_VERSION
+                ? checkedSource : undefined);
         },
 
         // Invoke only from the dedicated Play Pub/Sub subscription, never from an HTTP client.

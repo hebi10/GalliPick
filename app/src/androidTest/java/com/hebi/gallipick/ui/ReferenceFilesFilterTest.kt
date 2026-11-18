@@ -7,12 +7,16 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hebi.gallipick.AppUiState
+import com.hebi.gallipick.AppSettings
+import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.MediaFilter
 import com.hebi.gallipick.domain.MediaItem
@@ -38,14 +42,17 @@ class ReferenceFilesFilterTest {
 
     @Test fun narrowFilesGridShowsThreePhotoColumnsAndCanSwitchToReadableList() {
         val items = (1L..7L).map(::media)
+        val listView = mutableStateOf(false)
         var selectAllCount = 0
-        val actions = FilesScreenActions({}, { selectAllCount++ }, {}, {}, {}, {}, { _, _ -> }, {})
+        val actions = FilesScreenActions({}, { selectAllCount++ }, {}, {}, {}, {}, { _, _ -> }, {},
+            setFileListView = { listView.value = it })
         compose.setContent {
             GalliPickTheme {
                 CompositionLocalProvider(LocalDensity provides Density(.6f)) {
                     Box(Modifier.requiredSize(420.dp, 760.dp)) {
                         FilesScreenContent(
-                            AppUiState(access = MediaAccess.FULL, items = items, filtered = items),
+                            AppUiState(access = MediaAccess.FULL, items = items, filtered = items,
+                                fileListView = listView.value),
                             false, {}, {}, {}, actions,
                         )
                     }
@@ -61,11 +68,53 @@ class ReferenceFilesFilterTest {
         compose.onNodeWithContentDescription("파일 목록 요약").assertExists()
         compose.onNodeWithText("모두 선택").performClick()
         compose.runOnIdle { assertEquals(1, selectAllCount) }
-        compose.onNodeWithContentDescription("목록 보기").performClick()
+        compose.onNodeWithContentDescription("파일 추가 작업").performClick()
+        compose.onNodeWithText("목록 보기").performClick()
         compose.onNodeWithText("sample-1.jpg").assertIsDisplayed()
         compose.onNodeWithText("2 KB · 1970.01.01").assertExists()
-        compose.onNodeWithContentDescription("그리드 보기").performClick()
+        compose.onNodeWithContentDescription("파일 추가 작업").performClick()
+        compose.onNodeWithText("격자 보기").performClick()
         compose.onNodeWithContentDescription("sample-1.jpg 선택").assertExists()
+    }
+
+    @Test fun fileSearchStartsClosedAndUsesTheHeaderButton() {
+        val vm = AppViewModel(compose.activity.application)
+        compose.setContent { GalliPickTheme { GalliPickApp(vm, {}, {}, {}, {}) } }
+        openTab("파일")
+        val input = compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색")
+        input.assertDoesNotExist()
+        compose.onNodeWithContentDescription("새로고침").assertIsDisplayed()
+        compose.onNodeWithContentDescription("파일 검색").performClick()
+        input.assertIsDisplayed()
+        compose.onNodeWithContentDescription("파일 검색 닫기").performClick()
+        input.assertDoesNotExist()
+        compose.onNodeWithContentDescription("파일 조건 선택").assertIsDisplayed()
+    }
+
+    @Test fun settingsAndFilesMenuShareTheSavedViewMode() {
+        val application = compose.activity.application
+        val vm = AppViewModel(application)
+        val settings = AppSettings(application)
+        val previous = settings.loadFileListView()
+        try {
+            compose.setContent { GalliPickTheme { GalliPickApp(vm, {}, {}, {}, {}) } }
+            openTab("설정")
+            compose.onNodeWithText("목록", substring = false).performScrollTo().performClick()
+            compose.runOnIdle { assertTrue(settings.loadFileListView()) }
+            openTab("파일")
+            compose.onNodeWithContentDescription("파일 추가 작업").performClick()
+            compose.onNodeWithText("격자 보기").performClick()
+            compose.runOnIdle { assertEquals(false, settings.loadFileListView()) }
+            openTab("설정")
+            compose.onNodeWithText("격자", substring = false).performScrollTo().assertIsSelected()
+        } finally {
+            compose.runOnIdle { vm.setFileListView(previous) }
+        }
+    }
+
+    private fun openTab(title: String) {
+        val tab = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
+        compose.onNode(hasText(title) and tab).performClick()
     }
 
     @Test fun gridSelectionIndicatorMovesToCornerWhileHitTargetRemainsAccessible() {
@@ -132,5 +181,26 @@ class ReferenceFilesFilterTest {
             assertEquals(end.getActualMaximum(Calendar.DAY_OF_MONTH), end.get(Calendar.DAY_OF_MONTH))
             assertTrue(requireNotNull(result.toDateMs) >= requireNotNull(result.fromDateMs))
         }
+    }
+
+    @Test fun photoDetailKeepsFileActionsAndShowsSizeOnlyInTheMetadata() {
+        val item = media(1)
+        val shown = mutableStateOf(true)
+        var opened: MediaItem? = null
+        compose.setContent {
+            GalliPickTheme {
+                if (shown.value) MediaDetailDialog(item, { shown.value = false }, { opened = it }, {})
+            }
+        }
+
+        compose.onNodeWithText(item.displayName).assertIsDisplayed()
+        compose.onNodeWithText("사진 정보").assertDoesNotExist()
+        compose.onNodeWithText("사진 · 2 KB").assertDoesNotExist()
+        compose.onNodeWithText("용량").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("2 KB").assertIsDisplayed()
+        compose.onNodeWithText("파일 열기").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(item, opened) }
+        compose.onNodeWithContentDescription("닫기").performClick()
+        compose.onNodeWithText("파일 상세").assertDoesNotExist()
     }
 }
