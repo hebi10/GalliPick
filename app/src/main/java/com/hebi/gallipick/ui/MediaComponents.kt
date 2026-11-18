@@ -231,9 +231,19 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
             )
         }
         val actions: @Composable (Modifier) -> Unit = { actionModifier ->
-            Row(actionModifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                previewAction(Modifier.weight(1f))
-                cloudAction(Modifier.weight(1f))
+            BoxWithConstraints(actionModifier.fillMaxWidth()) {
+                val narrow = maxWidth < 272.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                if (narrow) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        previewAction(Modifier.fillMaxWidth())
+                        cloudAction(Modifier.fillMaxWidth())
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        previewAction(Modifier.weight(1f))
+                        cloudAction(Modifier.weight(1f))
+                    }
+                }
             }
         }
         val metadata: @Composable (Modifier) -> Unit = { detailModifier ->
