@@ -496,7 +496,7 @@ internal fun FilesScreenContent(
         }
         if (showFilter) FilterDialog(state.filter, visibleItems, {
             actions.setFilter(MediaFilterActions.sort(it, it.sortField, it.sortDirection)); showFilter = false
-        }, { showFilter = false })
+        }, { showFilter = false }, cloudItems = cloudFiles.snapshot?.originals.orEmpty())
         if (showSave) SavePresetDialog({ actions.savePreset(it); showSave = false }, { showSave = false })
         detailCloud?.let { original ->
             CloudFileDetailDialog(
