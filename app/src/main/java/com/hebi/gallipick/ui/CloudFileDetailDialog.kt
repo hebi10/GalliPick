@@ -50,6 +50,8 @@ internal fun CloudFileDetailDialog(
     offline: Boolean,
     onDismiss: () -> Unit,
     onPreview: () -> Unit,
+    onRestored: () -> Unit = {},
+    autoLoadThumbnails: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
     var saving by remember(original.uploadId, uid) { mutableStateOf(false) }
@@ -78,7 +80,7 @@ internal fun CloudFileDetailDialog(
                         contentAlignment = Alignment.Center) {
                         if (original.mimeType.startsWith("image/")) {
                             CloudPhotoThumbnail(original, uid, backup, Modifier.fillMaxSize(),
-                                open = onPreview, autoLoad = !offline)
+                                open = onPreview, autoLoad = !offline && autoLoadThumbnails)
                         } else {
                             GalliIcon(Icons.Outlined.Movie, "클라우드 동영상", tint = Muted)
                         }
@@ -117,6 +119,7 @@ internal fun CloudFileDetailDialog(
                             scope.launch {
                                 try {
                                     backup.restore(original, uid)
+                                    onRestored()
                                     message = "원본 파일을 기기에 저장했습니다."
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
