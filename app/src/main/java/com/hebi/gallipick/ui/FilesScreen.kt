@@ -503,6 +503,7 @@ internal fun FilesScreenContent(
                 original = original, uid = cloudFiles.accountUid, backup = cloudFiles.backup,
                 offline = !cloudFiles.online, onDismiss = { detailCloudId = null },
                 onPreview = { detailCloudId = null; chosenCloud = original },
+                onRestored = actions.refresh, autoLoadThumbnails = autoLoadThumbnails,
             )
         }
         chosenCloud?.let { original ->
