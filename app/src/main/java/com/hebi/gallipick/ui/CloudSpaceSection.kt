@@ -167,7 +167,7 @@ private fun CloudSpaceControls(
             val file = candidate.file
             val status = when {
                 candidate.verifiedBackup -> "백업 확인"
-                file.sizeBytes > CLOUD_BACKUP_MAX_BYTES -> "시험 백업 64 MiB 한도 초과"
+                file.sizeBytes > CLOUD_BACKUP_MAX_BYTES -> "기기 파일 확인 한도(64 MiB) 초과"
                 else -> "백업 미확인"
             }
             Text("${file.displayName} · ${sizeLabel(file.sizeBytes)} · $status", style = MaterialTheme.typography.bodySmall)

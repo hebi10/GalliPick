@@ -42,6 +42,8 @@ data class AppUiState(
     val freeStorageBytes: Long = 0,
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val fileGridColumns: Int? = null,
+    val fileListView: Boolean = false,
+    val secretCloudVisible: Boolean = false,
 )
 
 private data class PhotoReviewSnapshot(
@@ -54,7 +56,11 @@ private data class PhotoReviewSnapshot(
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     val repository = (application as GalliPickApplication).repository
     private val settings = AppSettings(application)
-    private val _ui = MutableStateFlow(AppUiState(filter = settings.loadFilter(), presets = settings.loadPresets(), themeMode = settings.loadThemeMode(), fileGridColumns = settings.loadFileGridColumns()))
+    private val _ui = MutableStateFlow(AppUiState(
+        filter = settings.loadFilter(), presets = settings.loadPresets(), themeMode = settings.loadThemeMode(),
+        fileGridColumns = settings.loadFileGridColumns(), fileListView = settings.loadFileListView(),
+        secretCloudVisible = settings.loadSecretCloudVisible(),
+    ))
     val ui: StateFlow<AppUiState> = _ui.asStateFlow()
     private var filterJob: Job? = null
     private var refreshJob: Job? = null
@@ -230,6 +236,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setFileGridColumns(columns: Int?) {
         settings.saveFileGridColumns(columns)
         _ui.update { it.copy(fileGridColumns = columns) }
+    }
+
+    fun setFileListView(listView: Boolean) {
+        settings.saveFileListView(listView)
+        _ui.update { it.copy(fileListView = listView) }
+    }
+
+    fun setSecretCloudVisible(visible: Boolean) {
+        settings.saveSecretCloudVisible(visible)
+        _ui.update { it.copy(secretCloudVisible = visible) }
     }
 
     fun setThemeMode(mode: AppThemeMode) {

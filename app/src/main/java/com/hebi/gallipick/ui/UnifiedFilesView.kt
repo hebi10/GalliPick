@@ -18,10 +18,9 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,7 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -45,7 +44,6 @@ import com.hebi.gallipick.data.cloud.GallerySource
 import com.hebi.gallipick.data.cloud.GallerySourceFilter
 import com.hebi.gallipick.domain.DateField
 import com.hebi.gallipick.domain.MediaFilter
-import com.hebi.gallipick.domain.SortDirection
 import com.hebi.gallipick.domain.SortField
 
 internal fun galleryItemKey(entry: GalleryEntry): String = when (val key = entry.key) {
@@ -160,7 +158,7 @@ private fun UnifiedMediaTile(
             listView = listView,
             dateMs = GalleryFileQuery.dateOf(entry, dateField) ?: 0L,
             tabletGrid = tabletGrid,
-            sourceLabel = if (entry.source == GallerySource.BOTH) "기기·클라우드" else "기기",
+            hasCloudOriginal = entry.source == GallerySource.BOTH,
             allowSelection = sourceFilter != GallerySourceFilter.CLOUD,
         )
     } else {
@@ -189,7 +187,7 @@ private fun CloudOnlyTile(
             ) {
                 Text(original.displayName, style = MaterialTheme.typography.bodyMedium,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(bytesLabel(original.sizeBytes) + " · 클라우드",
+                Text(bytesLabel(original.sizeBytes),
                     style = MaterialTheme.typography.bodySmall, color = Muted)
             }
         }
@@ -210,23 +208,23 @@ private fun CloudThumbnail(
     original: CloudOriginal, modifier: Modifier,
     backup: CloudBackup?, accountUid: String?, autoLoadThumbnails: Boolean, open: () -> Unit,
 ) {
-    if (original.mimeType.startsWith("image/")) {
-        CloudPhotoThumbnail(original, accountUid, backup, modifier, open,
-            autoLoad = autoLoadThumbnails)
-    } else {
-        Box(modifier.background(Panel).plainClick(action = open)
-            .semantics { contentDescription = "클라우드 동영상: ${original.displayName}" }) {
-            GalliIcon(Icons.Outlined.Movie, null, Modifier.align(Alignment.Center).size(32.dp), tint = Muted)
-            Row(
-                Modifier.align(Alignment.BottomStart).padding(4.dp)
-                    .background(AppSurface, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 5.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                GalliIcon(Icons.Outlined.Cloud, null, Modifier.size(13.dp), tint = Ink)
-                Text("클라우드", style = MaterialTheme.typography.labelSmall, color = Ink)
+    Box(modifier) {
+        if (original.mimeType.startsWith("image/")) {
+            CloudPhotoThumbnail(original, accountUid, backup, Modifier.fillMaxSize(), open,
+                autoLoad = autoLoadThumbnails)
+        } else {
+            Box(Modifier.fillMaxSize().background(Panel).plainClick(action = open)
+                .semantics { contentDescription = "클라우드 동영상: ${original.displayName}" }) {
+                GalliIcon(Icons.Outlined.Movie, null, Modifier.align(Alignment.Center).size(32.dp), tint = Muted)
             }
         }
+        CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
+    }
+}
+
+@Composable
+internal fun CloudFileBadge(modifier: Modifier = Modifier) {
+    Box(modifier.size(24.dp).background(Color.White, CircleShape), contentAlignment = Alignment.Center) {
+        GalliIcon(Icons.Filled.Cloud, "클라우드에 보관됨", Modifier.size(14.dp), tint = Color.Black)
     }
 }

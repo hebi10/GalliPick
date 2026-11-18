@@ -56,7 +56,7 @@ class GalliDesignSystemTest {
             GalliPickTheme(AppThemeMode.DARK) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.6f)) {
                     Column(Modifier.requiredSize(360.dp, 440.dp)) {
-                        GalliAppHeader(false) { refreshClicks++ }
+                        GalliAppHeader(loading = false)
                         GalliCard {
                             Text("공통 카드")
                             ActionButton("주요 작업", { primaryClicks++ }, filled = true)

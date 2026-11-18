@@ -234,7 +234,7 @@ internal fun GalliHomeBanner(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp).galliCardSurface(Panel).padding(12.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("광고 표시 테스트", style = MaterialTheme.typography.labelMedium, color = Muted)
+                Text("광고", style = MaterialTheme.typography.labelMedium, color = Muted)
             }
         }
         return

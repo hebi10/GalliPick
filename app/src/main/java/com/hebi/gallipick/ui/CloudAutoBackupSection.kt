@@ -66,7 +66,6 @@ private fun CloudAutoBackupControls(
     val permission = state.access == MediaAccess.FULL && hasFullAutoBackupPermission(context)
     val maximumOriginalBytes = minOf(access.maximumOriginalBytes, CLOUD_BACKUP_MAX_BYTES)
     val uploadAllowed = access.allowsUpload(System.currentTimeMillis())
-    val storage = if (access.namespace == CloudBackupNamespace.PRODUCTION) "클라우드 보관함" else "테스트 보관함"
     val limitLabel = cloudOriginalLimitLabel(maximumOriginalBytes)
     val folders = remember(state.items, permission, uploadAllowed, maximumOriginalBytes) {
         if (!permission || !uploadAllowed) emptyList()
@@ -149,7 +148,7 @@ private fun CloudAutoBackupControls(
         AlertDialog(
             onDismissRequest = { selected = null },
             title = { Text("이 폴더의 자동 백업을 켤까요?") },
-            text = { Text("${folder.label()}에서 ${limitLabel} 이하 원본과 촬영 정보를 현재 Google 계정의 ${storage}으로 보냅니다. 현재 폴더와 나중에 이 폴더에 추가되는 파일이 포함됩니다.") },
+            text = { Text("${folder.label()}에서 ${limitLabel} 이하 원본과 촬영 정보를 현재 Google 계정의 클라우드 보관함으로 보냅니다. 현재 폴더와 나중에 이 폴더에 추가되는 파일이 포함됩니다.") },
             confirmButton = {
                 TextButton({
                     selected = null

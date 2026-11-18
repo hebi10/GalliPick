@@ -32,19 +32,18 @@ internal class CloudBackupTransport(
     private val endpoint: String,
     private val buckets: Set<String>,
     private val productionProtocol: Boolean = false,
+    private val vaultSessionToken: (() -> String)? = null,
 ) {
+    val isPrivateVault = vaultSessionToken != null
+
+    fun assertVaultSessionOpen() { vaultSessionToken?.invoke() }
+
     suspend fun begin(
         uid: String, token: String, hash: String, size: Long, mimeType: String, displayName: String,
         metadata: CloudUploadMetadata = CloudUploadMetadata(),
         namespace: CloudBackupNamespace = CloudBackupNamespace.DEVELOPMENT,
     ): CloudUploadTarget? {
-        val data = JSONObject().put("sha256", hash).put("sizeBytes", size).put("mimeType", mimeType)
-        cloudOriginalBasename(displayName).takeIf { it.isNotEmpty() }?.let { data.put("displayName", it) }
-        metadata.sourceFolder?.let { data.put("sourceFolder", it) }
-        metadata.capturedAtMs?.let { data.put("capturedAtMs", it) }
-        metadata.width?.let { data.put("width", it) }
-        metadata.height?.let { data.put("height", it) }
-        metadata.durationMs?.let { data.put("durationMs", it) }
+        val data = uploadMetadata(hash, size, mimeType, displayName, metadata)
         val result = call("beginBackup", token, data)
         when (result.optString("state")) {
             "VERIFIED" -> return null
@@ -52,13 +51,110 @@ internal class CloudBackupTransport(
             else -> failBackup(CloudBackupResult.FAILED)
         }
         val id = result.optString("uploadId")
-        val rawHeaders = result.optJSONObject("headers") ?: failBackup(CloudBackupResult.FAILED)
-        val headers = rawHeaders.keys().asSequence().associateWith { name ->
-            rawHeaders.opt(name) as? String ?: failBackup(CloudBackupResult.FAILED)
-        }
-        val url = validateBackupUpload(result.optString("uploadUrl"), id, uid, hash, size, mimeType, headers, buckets, namespace)
+        val headers = result.uploadHeaders()
+        val url = validateBackupUpload(result.optString("uploadUrl"), id, uid, hash, size, mimeType, headers, buckets, namespace, isPrivateVault)
             ?: failBackup(CloudBackupResult.FAILED)
         return CloudUploadTarget(id, url, headers)
+    }
+
+    suspend fun beginResumable(
+        token: String, hash: String, size: Long, mimeType: String, displayName: String, metadata: CloudUploadMetadata,
+    ): Pair<CloudResumableUpload, CloudResumableState> {
+        val reply = call("beginBackup", token, uploadMetadata(hash, size, mimeType, displayName, metadata),
+            protocolVersion = CLOUD_RESUMABLE_PROTOCOL_VERSION)
+        val count = reply.exactLong("partCount")?.takeIf { it in 1..Int.MAX_VALUE }?.toInt()
+            ?: failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        val firstPart = if (reply.has("nextPartIndex")) {
+            reply.exactLong("nextPartIndex")?.takeIf { it in 0..count.toLong() }?.toInt()
+                ?: failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        } else 0
+        val upload = cloudResumableUpload(reply.optString("uploadId"), hash, size, reply.optString("transferId"),
+            reply.exactLong("partSizeBytes") ?: 0L, count, firstPart) ?: failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        return upload to reply.resumableState(upload.id)
+    }
+
+    suspend fun resumablePart(
+        uid: String, token: String, upload: CloudResumableUpload, part: CloudResumablePart, mimeType: String,
+        namespace: CloudBackupNamespace,
+    ): CloudUploadTarget? {
+        val reply = call("getBackupPart", token, JSONObject().put("uploadId", upload.id).put("partIndex", part.index),
+            protocolVersion = CLOUD_RESUMABLE_PROTOCOL_VERSION)
+        if (reply.exactLong("offsetBytes") != part.offsetBytes || reply.exactLong("sizeBytes") != part.sizeBytes) {
+            failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        }
+        when (reply.optString("state")) {
+            "UPLOADED" -> return null
+            "UPLOAD" -> Unit
+            else -> failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        }
+        val headers = reply.uploadHeaders()
+        val url = validateResumablePartUpload(reply.optString("uploadUrl"), uid, upload, part, mimeType,
+            headers, buckets, namespace, isPrivateVault) ?: failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        return CloudUploadTarget(upload.id, url, headers)
+    }
+
+    suspend fun putResumablePart(
+        target: CloudUploadTarget, part: CloudResumablePart, source: CloudResumableSource, checkAccount: () -> Unit,
+    ) {
+        exchange(target.url.toURL()) { connection, ensureActive ->
+            connection.requestMethod = "PUT"
+            target.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+            connection.doOutput = true
+            connection.setFixedLengthStreamingMode(part.sizeBytes)
+            checkAccount()
+            connection.outputStream.use { output ->
+                source.copyPart(part, output) {
+                    ensureActive()
+                    checkAccount()
+                }
+            }
+            checkAccount()
+            when (connection.responseCode) {
+                HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_CREATED, HttpURLConnection.HTTP_NO_CONTENT -> Unit
+                // A disconnect can occur after GCS has stored the part. Re-query the server before retrying.
+                HttpURLConnection.HTTP_PRECON_FAILED, HttpURLConnection.HTTP_UNAUTHORIZED,
+                HttpURLConnection.HTTP_FORBIDDEN, HttpURLConnection.HTTP_CLIENT_TIMEOUT, 429, in 500..599 ->
+                    failBackup(CloudBackupResult.NETWORK_ERROR)
+                else -> failBackup(CloudBackupResult.FAILED)
+            }
+        }
+    }
+
+    suspend fun finishResumable(uploadId: String, token: String): CloudResumableState =
+        call("finishBackup", token, JSONObject().put("uploadId", uploadId),
+            protocolVersion = CLOUD_RESUMABLE_PROTOCOL_VERSION).resumableState(uploadId)
+
+    suspend fun resumableStatus(uploadId: String, token: String): CloudResumableState =
+        call("getBackupStatus", token, JSONObject().put("uploadId", uploadId),
+            protocolVersion = CLOUD_RESUMABLE_PROTOCOL_VERSION).resumableState(uploadId)
+
+    private fun uploadMetadata(
+        hash: String, size: Long, mimeType: String, displayName: String, metadata: CloudUploadMetadata,
+    ): JSONObject = JSONObject().put("sha256", hash).put("sizeBytes", size).put("mimeType", mimeType).apply {
+        cloudOriginalBasename(displayName).takeIf { it.isNotEmpty() }?.let { put("displayName", it) }
+        metadata.sourceFolder?.let { put("sourceFolder", it) }
+        metadata.capturedAtMs?.let { put("capturedAtMs", it) }
+        metadata.width?.let { put("width", it) }
+        metadata.height?.let { put("height", it) }
+        metadata.durationMs?.let { put("durationMs", it) }
+    }
+
+    private fun JSONObject.uploadHeaders(): Map<String, String> {
+        val headers = optJSONObject("headers") ?: failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        return headers.keys().asSequence().associateWith { name ->
+            headers.opt(name) as? String ?: failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        }
+    }
+
+    private fun JSONObject.exactLong(key: String): Long? {
+        val value = opt(key) as? Number ?: return null
+        return value.toLong().takeIf { it.toDouble() == value.toDouble() }
+    }
+
+    private fun JSONObject.resumableState(uploadId: String): CloudResumableState {
+        if (has("uploadId") && optString("uploadId") != uploadId) failBackup(CloudBackupResult.INTEGRITY_ERROR)
+        return CloudResumableState.entries.find { it.name == optString("state") }
+            ?: failBackup(CloudBackupResult.INTEGRITY_ERROR)
     }
 
     suspend fun put(
@@ -101,14 +197,15 @@ internal class CloudBackupTransport(
         if (result.optString("state") != "VERIFIED") failBackup(CloudBackupResult.FAILED)
     }
 
-    suspend fun listOriginals(token: String, namespace: CloudBackupNamespace): List<CloudOriginal> {
-        val paginated = namespace != CloudBackupNamespace.DEVELOPMENT
+    suspend fun listOriginals(token: String, namespace: CloudBackupNamespace, resumable: Boolean = false): List<CloudOriginal> {
+        val paginated = resumable || namespace != CloudBackupNamespace.DEVELOPMENT
+        val protocolVersion = if (resumable) CLOUD_RESUMABLE_PROTOCOL_VERSION else 1
         val catalog = linkedMapOf<String, CloudOriginal>()
         var cursor: String? = null
         repeat(if (paginated) MAX_PRODUCTION_CATALOG_PAGES else 1) {
             val query = JSONObject()
             cursor?.let { query.put("cursor", it) }
-            val page = call("listBackups", token, query, MAX_CATALOG_RESPONSE_BYTES)
+            val page = call("listBackups", token, query, MAX_CATALOG_RESPONSE_BYTES, protocolVersion = protocolVersion)
             val items = page.optJSONArray("items") ?: failBackup(CloudBackupResult.FAILED)
             val limit = if (paginated) PRODUCTION_CATALOG_PAGE_SIZE else MAX_DEV_CATALOG_ITEMS
             if (items.length() > limit) failBackup(CloudBackupResult.FAILED)
@@ -117,7 +214,7 @@ internal class CloudBackupTransport(
                 val item = items.optJSONObject(index) ?: failBackup(CloudBackupResult.FAILED)
                 val verifiedAtMs = item.optLong("verifiedAtMs", -1)
                 if (verifiedAtMs < 0) failBackup(CloudBackupResult.FAILED)
-                val original = item.cloudOriginal(verifiedAtMs, namespace)
+                val original = item.cloudOriginal(verifiedAtMs, namespace, protocolVersion)
                 if ((paginated && lastId?.let { original.uploadId <= it } == true) ||
                     catalog.put(original.uploadId, original) != null
                 ) failBackup(CloudBackupResult.INTEGRITY_ERROR)
@@ -140,15 +237,17 @@ internal class CloudBackupTransport(
     suspend fun getDownload(
         uid: String, token: String, item: CloudOriginal, namespace: CloudBackupNamespace,
     ): CloudDownloadTarget {
-        val result = call("getBackupDownload", token, JSONObject().put("uploadId", item.uploadId))
-        val returned = result.cloudOriginal(item.verifiedAtMs, namespace)
+        val result = call("getBackupDownload", token, JSONObject().put("uploadId", item.uploadId),
+            protocolVersion = item.transferProtocolVersion)
+        val returned = result.cloudOriginal(item.verifiedAtMs, namespace, item.transferProtocolVersion)
         // Folder memberships may change after catalog fetch; only immutable content is pinned here.
         if (returned.uploadId != item.uploadId || returned.sha256 != item.sha256 ||
             returned.sizeBytes != item.sizeBytes || returned.mimeType != item.mimeType ||
             returned.displayName != item.displayName
         ) failBackup(CloudBackupResult.INTEGRITY_ERROR)
         val generation = result.optString("generation")
-        val target = validateBackupDownload(result.optString("downloadUrl"), item.uploadId, uid, generation, buckets, namespace)
+        val target = validateBackupDownload(result.optString("downloadUrl"), item.uploadId, uid, generation, buckets,
+            namespace, isPrivateVault, resumable = item.transferProtocolVersion == CLOUD_RESUMABLE_PROTOCOL_VERSION)
             ?: failBackup(CloudBackupResult.INTEGRITY_ERROR)
         return CloudDownloadTarget(target, generation)
     }
@@ -199,7 +298,8 @@ internal class CloudBackupTransport(
                 (length != null && length.toLongOrNull() != item.sizeBytes)
             ) failBackup(CloudBackupResult.INTEGRITY_ERROR)
             connection.inputStream.use { source ->
-                copyAndVerifyCloudOriginal(source, output, item.sizeBytes, item.sha256) {
+                copyAndVerifyCloudOriginal(source, output, item.sizeBytes, item.sha256,
+                    resumable = item.transferProtocolVersion == CLOUD_RESUMABLE_PROTOCOL_VERSION) {
                     ensureActive()
                     checkAccount()
                 }
@@ -210,10 +310,17 @@ internal class CloudBackupTransport(
     internal suspend fun call(
         route: String, token: String, data: JSONObject, maxResponseBytes: Int = MAX_RESPONSE_BYTES,
         readTimeoutMillis: Int = DEFAULT_READ_TIMEOUT_MS,
+        protocolVersion: Int = 1,
     ): JSONObject {
-        if (productionProtocol) data.put("cloudProtocolVersion", 1)
+        if (productionProtocol || protocolVersion == CLOUD_RESUMABLE_PROTOCOL_VERSION) {
+            data.put("cloudProtocolVersion", protocolVersion)
+        }
+        val destination = if (vaultSessionToken == null) route else {
+            data.put("action", route).put("token", vaultSessionToken.invoke())
+            "secretCloud"
+        }
         val body = JSONObject().put("data", data).toString().toByteArray(Charsets.UTF_8)
-        return exchange(URL("$endpoint/$route"), readTimeoutMillis = readTimeoutMillis) { connection, ensureActive ->
+        return exchange(URL("$endpoint/$destination"), readTimeoutMillis = readTimeoutMillis) { connection, ensureActive ->
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             connection.setRequestProperty("Authorization", "Bearer $token")
@@ -287,14 +394,20 @@ internal class CloudBackupTransport(
         }
     }
 
-    private fun JSONObject.cloudOriginal(verifiedAtMs: Long, namespace: CloudBackupNamespace): CloudOriginal {
+    private fun JSONObject.cloudOriginal(verifiedAtMs: Long, namespace: CloudBackupNamespace, protocolVersion: Int): CloudOriginal {
+        if ((protocolVersion == CLOUD_RESUMABLE_PROTOCOL_VERSION || has("transferVersion")) &&
+            exactLong("transferVersion") != protocolVersion.toLong()
+        ) failBackup(CloudBackupResult.INTEGRITY_ERROR)
         val sha256 = optString("sha256")
         val uploadId = optString("uploadId")
-        val size = optLong("sizeBytes", -1)
+        val size = exactLong("sizeBytes") ?: -1L
         val mimeType = optString("mimeType")
         val name = cloudOriginalBasename(optString("displayName"))
-        val protocolLimit = if (namespace == CloudBackupNamespace.DEVELOPMENT) CLOUD_BACKUP_MAX_BYTES
-            else CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES
+        val protocolLimit = when {
+            protocolVersion == CLOUD_RESUMABLE_PROTOCOL_VERSION -> CLOUD_RESUMABLE_ORIGINAL_MAX_BYTES
+            namespace == CloudBackupNamespace.DEVELOPMENT -> CLOUD_BACKUP_MAX_BYTES
+            else -> CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES
+        }
         if (!SHA256.matches(sha256) || uploadId != "$sha256-$size" ||
             size !in 1..protocolLimit || !CLOUD_MEDIA_MIME_TYPE.matches(mimeType) || name.isBlank()
         ) failBackup(CloudBackupResult.INTEGRITY_ERROR)
@@ -330,6 +443,7 @@ internal class CloudBackupTransport(
             width = optionalPositiveLong("width", 100_000L)?.toInt(),
             height = optionalPositiveLong("height", 100_000L)?.toInt(),
             durationMs = optionalPositiveLong("durationMs", 9_007_199_254_740_991L),
+            transferProtocolVersion = protocolVersion,
         )
     }
 

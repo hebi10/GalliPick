@@ -1,6 +1,7 @@
 package com.hebi.gallipick.ui
 
 import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -77,6 +78,20 @@ class CloudScreenNavigationTest {
     }
 
     @Test
+    fun secretRouteRequiresBothTheSettingAndASignedInAccount() {
+        val backend = FakeAccountBackend("test-user-1")
+        val enabled = mutableStateOf(false)
+        showCloud(backend, billingAvailable = false, showSecretCloud = { enabled.value })
+        compose.onNodeWithTag("cloud-route-SECRET").assertDoesNotExist()
+        compose.runOnIdle { enabled.value = true }
+        compose.onNodeWithTag("cloud-route-SECRET").performClick()
+        compose.onNodeWithText("screen-SECRET").assertIsDisplayed()
+        compose.runOnIdle { backend.active.value = null }
+        compose.onNodeWithText("screen-SECRET").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-route-SECRET").assertDoesNotExist()
+    }
+
+    @Test
     fun adRemovalShortcutOpensBillingAfterSignInAndBackReturnsToOrigin() {
         val backend = FakeAccountBackend("test-user-1")
         backend.active.value = null
@@ -113,6 +128,7 @@ class CloudScreenNavigationTest {
         billingAvailable: Boolean = true,
         onBackFromAdRemoval: (() -> Unit)? = null,
         onBillingScreenVisible: (Boolean) -> Unit = {},
+        showSecretCloud: () -> Boolean = { false },
     ) {
         val billing = if (billingAvailable) object : CloudBilling {
             override fun open(uid: String): CloudBillingSession = error("The route test cannot start purchases")
@@ -124,7 +140,7 @@ class CloudScreenNavigationTest {
         )
         compose.setContent {
             GalliPickTheme {
-                CloudScreen(connection, onBackFromAdRemoval, onBillingScreenVisible) { route ->
+                CloudScreen(connection, onBackFromAdRemoval, onBillingScreenVisible, showSecretCloud()) { route ->
                     Text("screen-${route.name}")
                 }
             }

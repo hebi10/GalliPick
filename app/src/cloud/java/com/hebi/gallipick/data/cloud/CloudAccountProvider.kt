@@ -56,8 +56,8 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
         buckets = setOf(runtime.storageBucket),
         productionProtocol = runtime.backupUsesServerPlan,
     )
-    val backupAccess = if (runtime.backupUsesServerPlan) {
-        CloudBackupAccessState { auth.currentUser?.uid }.also { state ->
+    val backupAccess = if (runtime.backupEnabled || runtime.backupUsesServerPlan) {
+        CloudBackupAccessState(development = !runtime.backupUsesServerPlan) { auth.currentUser?.uid }.also { state ->
             auth.addAuthStateListener { state.clearForAccountChange() }
         }
     } else null
@@ -79,7 +79,22 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
         testPurchasesOnly = runtime.projectId == "gallipick-dev",
         backupAccess = backupAccess,
     )
-    return CloudAccountConnection(session, backup, billing = billing, productionBackupAccess = backupAccess) { activity ->
+    val vault = if (backup != null) CloudSecretVault(transport, { uid -> backupIdToken(auth, uid) }) { vaultToken ->
+        CloudBackup(
+            context = context,
+            account = session.account,
+            currentUid = { auth.currentUser?.uid },
+            tokenFor = { uid -> backupIdToken(auth, uid) },
+            transport = CloudBackupTransport(
+                endpoint = runtime.functionsEndpoint,
+                buckets = setOf(runtime.storageBucket),
+                productionProtocol = runtime.backupUsesServerPlan,
+                vaultSessionToken = vaultToken,
+            ),
+            productionAccess = backupAccess,
+        )
+    } else null
+    return CloudAccountConnection(session, backup, billing = billing, productionBackupAccess = backupAccess, secretVault = vault) { activity ->
         googleIdToken(credentials, activity, webClientId)
     }
 }

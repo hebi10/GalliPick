@@ -53,6 +53,7 @@ internal fun FileToolbar(
     sourceFilter: GallerySourceFilter = GallerySourceFilter.ALL,
     showSourceFilter: Boolean = false,
     onSourceFilterChange: (GallerySourceFilter) -> Unit = {},
+    showSearch: Boolean = true,
 ) {
     var menu by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
@@ -70,188 +71,15 @@ internal fun FileToolbar(
         filter.minDurationMs != null || filter.maxDurationMs != null, filter.fromDateMs != null || filter.toDateMs != null,
         filter.minPixels != null, filter.orientation != null, filter.favoritesOnly, filter.protectedOnly,
     ).count { it }
-    var searchFocused by remember { mutableStateOf(false) }
+    var searchFocused by remember(showSearch) { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
-    val compactSearchScope = LocalConfiguration.current.screenHeightDp < 520 ||
-        LocalDensity.current.fontScale >= 1.5f
-    Column(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
+    val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+    val compactSearchScope = LocalConfiguration.current.screenHeightDp < 520 || fontScale >= 1.5f
+    val fileActions: @Composable () -> Unit = {
         Row(
-            Modifier.fillMaxWidth(),
+            Modifier.semantics { contentDescription = "파일 도구 모음" },
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            OutlinedTextField(
-                value = if (searchMode == FileSearchMode.OCR) ocrQuery else filter.query,
-                onValueChange = {
-                    if (searchMode == FileSearchMode.OCR) onOcrQueryChange(it)
-                    else change(filter.copy(query = it))
-                },
-                modifier = Modifier.weight(1f).focusRequester(focus)
-                    .onFocusChanged { searchFocused = it.isFocused }
-                    .semantics {
-                        contentDescription =
-                            if (searchMode == FileSearchMode.OCR) "사진 속 글자 검색" else "파일 이름 또는 폴더 검색"
-                    },
-                placeholder = {
-                    Text(if (searchMode == FileSearchMode.OCR) "사진 속 글자 검색" else "파일 이름 또는 폴더 검색")
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
-                textStyle = MaterialTheme.typography.bodyMedium,
-                leadingIcon = {
-                    IconAction("파일 검색", Icons.Outlined.Search) {
-                        focus.requestFocus()
-                        keyboard?.show()
-                    }
-                },
-                trailingIcon = {
-                    if ((if (searchMode == FileSearchMode.OCR) ocrQuery else filter.query).isNotEmpty()) {
-                        IconAction("검색어 지우기", Icons.Outlined.Close) {
-                            if (searchMode == FileSearchMode.OCR) onOcrQueryChange("")
-                            else change(filter.copy(query = ""))
-                            focus.requestFocus()
-                        }
-                    }
-                },
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = {
-                    focusManager.clearFocus()
-                    keyboard?.hide()
-                }),
-            )
-            if (compactSearchScope) {
-                Box {
-                    IconAction("검색 범위 변경", Icons.Outlined.FindInPage) { menu = "search-scope" }
-                    DropdownMenu(expanded = menu == "search-scope", onDismissRequest = { menu = null }) {
-                        DropdownMenuItem(text = { Text("파일명·폴더") }, onClick = {
-                            onSearchModeChange(FileSearchMode.FILES)
-                            menu = null
-                        })
-                        DropdownMenuItem(text = { Text("사진 속 글자") }, onClick = {
-                            onSearchModeChange(FileSearchMode.OCR)
-                            menu = null
-                        })
-                    }
-                }
-            }
-            if (searchFocused ||
-                (if (searchMode == FileSearchMode.OCR) ocrQuery else filter.query).isNotBlank()) {
-                TextAction("검색 완료", {
-                    focusManager.clearFocus()
-                    keyboard?.hide()
-                })
-            }
-        }
-        if (!compactSearchScope) {
-            Row(
-                Modifier.fillMaxWidth().semantics { contentDescription = "검색 범위 선택" },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChip(
-                    selected = searchMode == FileSearchMode.FILES,
-                    onClick = { onSearchModeChange(FileSearchMode.FILES) },
-                    label = { Text("파일명·폴더") },
-                )
-                FilterChip(
-                    selected = searchMode == FileSearchMode.OCR,
-                    onClick = { onSearchModeChange(FileSearchMode.OCR) },
-                    label = { Text("사진 속 글자") },
-                )
-            }
-        }
-        Row(
-            Modifier.fillMaxWidth().semantics { contentDescription = "파일 도구 모음" },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Row(
-                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Box {
-                    ToolbarChoice(
-                        "유형: ${kindLabel(filter.kind)}", "미디어 유형 선택",
-                        kindLabel(filter.kind), filter.kind != null,
-                        Modifier.testTag("files-kind-filter"), { menu = "kind" },
-                    )
-                    DropdownMenu(expanded = menu == "kind", onDismissRequest = { menu = null }) {
-                        listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
-                            val label = kindLabel(kind)
-                            val key = when (kind) {
-                                null -> "all"
-                                MediaKind.PHOTO -> "photo"
-                                MediaKind.VIDEO -> "video"
-                            }
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    change(MediaFilterActions.kind(filter, kind))
-                                    menu = null
-                                },
-                                modifier = Modifier.testTag("files-kind-$key")
-                                    .semantics { selected = filter.kind == kind },
-                                trailingIcon = {
-                                    if (filter.kind == kind) GalliIcon(Icons.Outlined.Check, null)
-                                },
-                            )
-                        }
-                    }
-                }
-                if (showSourceFilter && searchMode == FileSearchMode.FILES) {
-                    Box {
-                        ToolbarChoice(
-                            "위치: ${sourceLabel(sourceFilter)}", "저장 위치 선택",
-                            sourceLabel(sourceFilter), sourceFilter != GallerySourceFilter.ALL,
-                            Modifier.testTag("files-source-filter"), { menu = "source" },
-                        )
-                        DropdownMenu(expanded = menu == "source", onDismissRequest = { menu = null }) {
-                            GallerySourceFilter.entries.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { Text(sourceLabel(option)) },
-                                    onClick = {
-                                        onSourceFilterChange(option)
-                                        menu = null
-                                    },
-                                    modifier = Modifier.testTag("files-source-${option.name.lowercase()}")
-                                        .semantics { selected = sourceFilter == option },
-                                    trailingIcon = {
-                                        if (sourceFilter == option) GalliIcon(Icons.Outlined.Check, null)
-                                    },
-                                )
-                            }
-                        }
-                    }
-                }
-                Box {
-                    ToolbarChoice(shortSortLabel(filter), "정렬 기준 선택", sortChoiceLabel(filter), false) { menu = "sort" }
-                }
-                Box {
-                    ToolbarChoice(
-                        "그룹: ${fileGroupModeLabel(filter.groupMode)}", "그룹 보기 선택",
-                        fileGroupModeLabel(filter.groupMode), filter.groupMode != FileGroupMode.AUTO,
-                    ) { menu = "group" }
-                    DropdownMenu(expanded = menu == "group", onDismissRequest = { menu = null }) {
-                        FileGroupMode.entries.forEach { mode ->
-                            DropdownMenuItem(
-                                text = { Text(fileGroupModeLabel(mode)) },
-                                onClick = {
-                                    change(filter.copy(groupMode = mode, groupByDate =
-                                        mode == FileGroupMode.AUTO && filter.groupByDate))
-                                    menu = null
-                                },
-                                trailingIcon = {
-                                    if (filter.groupMode == mode) GalliIcon(Icons.Outlined.Check, null)
-                                },
-                            )
-                        }
-                    }
-                }
-            }
             Box {
                 IconAction("파일 조건 선택", Icons.Outlined.Tune) { advanced() }
                 DropdownMenu(expanded = menu == "conditions", onDismissRequest = { menu = null },
@@ -295,34 +123,228 @@ internal fun FileToolbar(
             Box {
                 IconAction("파일 추가 작업", Icons.Outlined.MoreVert) { menu = "more" }
                 DropdownMenu(expanded = menu == "more", onDismissRequest = { menu = null }) {
+                    DropdownMenuItem(
+                        text = { Text(if (gridView) "목록 보기" else "격자 보기") },
+                        onClick = { menu = null; onGridViewChange(!gridView) },
+                        modifier = Modifier.testTag("files-view-toggle"),
+                    )
                     DropdownMenuItem(text = { Text("현재 조건 저장") }, onClick = { menu = null; save() })
                     DropdownMenuItem(text = { Text("조건 초기화") }, onClick = { change(MediaFilter()); menu = null })
                     DropdownMenuItem(text = { Text("빠른 조건·저장한 조건") }, onClick = { menu = "conditions" })
                 }
             }
-            IconAction(
-                if (gridView) "목록 보기" else "그리드 보기",
-                if (gridView) Icons.Outlined.ViewList else Icons.Outlined.GridView,
-            ) { onGridViewChange(!gridView) }
         }
-            if (menu == "sort") {
-                Dialog(onDismissRequest = { menu = null }) {
-                    Surface(shape = RoundedCornerShape(16.dp), color = AppSurface) {
-                        Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                            SortChoices.forEach { choice ->
-                                DropdownMenuItem(text = { Text(choice.label) }, onClick = {
-                                    change(MediaFilterActions.sort(filter, choice.field, choice.direction))
+    }
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (showSearch) {
+            val query = if (searchMode == FileSearchMode.OCR) ocrQuery else filter.query
+            val updateQuery: (String) -> Unit = {
+                if (searchMode == FileSearchMode.OCR) onOcrQueryChange(it)
+                else change(filter.copy(query = it))
+            }
+            val searchLabel = if (searchMode == FileSearchMode.OCR) "사진 속 글자 검색" else "파일 이름 또는 폴더 검색"
+            val finishSearch: () -> Unit = {
+                focusManager.clearFocus()
+                keyboard?.hide()
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = updateQuery,
+                    modifier = Modifier.weight(1f).focusRequester(focus)
+                        .onFocusChanged { searchFocused = it.isFocused }
+                        .semantics { contentDescription = searchLabel },
+                    placeholder = { Text(searchLabel) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconAction("검색어 지우기", Icons.Outlined.Close) {
+                                updateQuery("")
+                                focus.requestFocus()
+                            }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { finishSearch() }),
+                )
+                if (searchFocused || query.isNotBlank()) {
+                    TextAction("검색 완료", finishSearch)
+                }
+            }
+        }
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            when {
+                compactSearchScope -> {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Box {
+                            IconAction("검색 범위 변경", Icons.Outlined.FindInPage) { menu = "search-scope" }
+                            DropdownMenu(expanded = menu == "search-scope", onDismissRequest = { menu = null }) {
+                                DropdownMenuItem(text = { Text("파일명·폴더") }, onClick = {
+                                    onSearchModeChange(FileSearchMode.FILES)
                                     menu = null
-                                }, trailingIcon = {
-                                    if (filter.sortField == choice.field && filter.sortDirection == choice.direction) {
-                                        GalliIcon(Icons.Outlined.Check, null)
-                                    }
+                                })
+                                DropdownMenuItem(text = { Text("사진 속 글자") }, onClick = {
+                                    onSearchModeChange(FileSearchMode.OCR)
+                                    menu = null
                                 })
                             }
+                        }
+                        fileActions()
+                    }
+                }
+                maxWidth >= 344.dp * fontScale -> {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        FileSearchScopeChips(searchMode, onSearchModeChange, Modifier.weight(1f))
+                        fileActions()
+                    }
+                }
+                else -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        FileSearchScopeChips(searchMode, onSearchModeChange)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            fileActions()
                         }
                     }
                 }
             }
+        }
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                .semantics { contentDescription = "파일 빠른 필터" },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box {
+                ToolbarChoice(
+                    "유형: ${kindLabel(filter.kind)}", "미디어 유형 선택",
+                    kindLabel(filter.kind), filter.kind != null,
+                    Modifier.testTag("files-kind-filter"), { menu = "kind" },
+                )
+                DropdownMenu(expanded = menu == "kind", onDismissRequest = { menu = null }) {
+                    listOf(null, MediaKind.PHOTO, MediaKind.VIDEO).forEach { kind ->
+                        val label = kindLabel(kind)
+                        val key = when (kind) {
+                            null -> "all"
+                            MediaKind.PHOTO -> "photo"
+                            MediaKind.VIDEO -> "video"
+                        }
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = {
+                                change(MediaFilterActions.kind(filter, kind))
+                                menu = null
+                            },
+                            modifier = Modifier.testTag("files-kind-$key")
+                                .semantics { selected = filter.kind == kind },
+                            trailingIcon = {
+                                if (filter.kind == kind) GalliIcon(Icons.Outlined.Check, null)
+                            },
+                        )
+                    }
+                }
+            }
+            if (showSourceFilter && searchMode == FileSearchMode.FILES) {
+                Box {
+                    ToolbarChoice(
+                        "위치: ${sourceLabel(sourceFilter)}", "저장 위치 선택",
+                        sourceLabel(sourceFilter), sourceFilter != GallerySourceFilter.ALL,
+                        Modifier.testTag("files-source-filter"), { menu = "source" },
+                    )
+                    DropdownMenu(expanded = menu == "source", onDismissRequest = { menu = null }) {
+                        GallerySourceFilter.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { Text(sourceLabel(option)) },
+                                onClick = {
+                                    onSourceFilterChange(option)
+                                    menu = null
+                                },
+                                modifier = Modifier.testTag("files-source-${option.name.lowercase()}")
+                                    .semantics { selected = sourceFilter == option },
+                                trailingIcon = {
+                                    if (sourceFilter == option) GalliIcon(Icons.Outlined.Check, null)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            Box {
+                ToolbarChoice(shortSortLabel(filter), "정렬 기준 선택", sortChoiceLabel(filter), false) { menu = "sort" }
+            }
+            Box {
+                ToolbarChoice(
+                    "그룹: ${fileGroupModeLabel(filter.groupMode)}", "그룹 보기 선택",
+                    fileGroupModeLabel(filter.groupMode), filter.groupMode != FileGroupMode.AUTO,
+                ) { menu = "group" }
+                DropdownMenu(expanded = menu == "group", onDismissRequest = { menu = null }) {
+                    FileGroupMode.entries.forEach { mode ->
+                        DropdownMenuItem(
+                            text = { Text(fileGroupModeLabel(mode)) },
+                            onClick = {
+                                change(filter.copy(groupMode = mode, groupByDate =
+                                    mode == FileGroupMode.AUTO && filter.groupByDate))
+                                menu = null
+                            },
+                            trailingIcon = {
+                                if (filter.groupMode == mode) GalliIcon(Icons.Outlined.Check, null)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        if (menu == "sort") {
+            Dialog(onDismissRequest = { menu = null }) {
+                Surface(shape = RoundedCornerShape(16.dp), color = AppSurface) {
+                    Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                        SortChoices.forEach { choice ->
+                            DropdownMenuItem(text = { Text(choice.label) }, onClick = {
+                                change(MediaFilterActions.sort(filter, choice.field, choice.direction))
+                                menu = null
+                            }, trailingIcon = {
+                                if (filter.sortField == choice.field && filter.sortDirection == choice.direction) {
+                                    GalliIcon(Icons.Outlined.Check, null)
+                                }
+                            })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FileSearchScopeChips(
+    searchMode: FileSearchMode,
+    onSearchModeChange: (FileSearchMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier.semantics { contentDescription = "검색 범위 선택" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        FilterChip(
+            selected = searchMode == FileSearchMode.FILES,
+            onClick = { onSearchModeChange(FileSearchMode.FILES) },
+            label = { Text("파일명·폴더", maxLines = 1) },
+        )
+        FilterChip(
+            selected = searchMode == FileSearchMode.OCR,
+            onClick = { onSearchModeChange(FileSearchMode.OCR) },
+            label = { Text("사진 속 글자", maxLines = 1) },
+        )
     }
 }
 

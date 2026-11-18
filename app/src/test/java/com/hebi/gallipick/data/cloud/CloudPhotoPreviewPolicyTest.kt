@@ -29,6 +29,11 @@ class CloudPhotoPreviewPolicyTest {
         assertFalse(cloudPhotoSupportsViewer(photo().copy(mimeType = "video/mp4")))
     }
 
+    @Test fun vaultViewerSupportsAnOriginalAtTheProductionProtocolLimit() {
+        assertTrue(cloudPhotoSupportsViewer(photo(CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES), CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES))
+        assertFalse(cloudPhotoSupportsViewer(photo(CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES + 1), CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES))
+    }
+
     @Test fun photoNavigationUsesStableUploadIdNotFilename() {
         val first = photo().copy(displayName = "same.jpg")
         val second = photo(6L * 1024 * 1024).copy(displayName = "same.jpg")

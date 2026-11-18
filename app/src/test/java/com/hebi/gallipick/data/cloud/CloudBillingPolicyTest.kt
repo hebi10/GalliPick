@@ -135,4 +135,78 @@ class CloudBillingPolicyTest {
         uid = "owner-a"
         assertNull(state.forAccount("owner-a"))
     }
+
+    @Test fun replacementsUseActualCurrentPriceAndKeepTheSameBillingPeriod() {
+        val current = CloudBillingProduct("gallipick_cloud_50gb", "monthly", 50_000_000_000L)
+        val smaller = CloudBillingProduct("gallipick_cloud_10gb", "monthly", 10_000_000_000L)
+        val larger = CloudBillingProduct("gallipick_cloud_100gb", "monthly", 100_000_000_000L)
+        val higherAnnual = larger.copy(basePlanId = "annual")
+        val adFree = CloudBillingProduct(GALLIPICK_STANDALONE_AD_FREE, "monthly", 0L)
+        val decision = verifiedReplacementPlan(current, listOf(current, smaller, larger, higherAnnual, adFree))
+
+        val available = decision.replacementOffers(listOf(
+            replacementQuote(larger, 10_900_000_000), replacementQuote(smaller, 1_900_000_000),
+            replacementQuote(higherAnnual, 109_000_000_000), replacementQuote(current, 5_900_000_000),
+            replacementQuote(adFree, 1_000_000_000),
+        ), nowMillis = 100)
+        assertEquals(listOf(
+            "gallipick_cloud_100gb" to CloudBillingReplacementTiming.IMMEDIATE_PRORATED,
+            "gallipick_cloud_10gb" to CloudBillingReplacementTiming.NEXT_RENEWAL,
+            GALLIPICK_STANDALONE_AD_FREE to CloudBillingReplacementTiming.NEXT_RENEWAL,
+        ), available.map { it.target.product.productId to it.timing })
+        assertTrue(decision.replacementOffers(listOf(replacementQuote(larger, 5_000_000_000)), 100).isEmpty())
+        assertTrue(decision.replacementOffers(listOf(replacementQuote(larger, 10_900_000_000, "USD")), 100).isEmpty())
+    }
+
+    @Test fun activeV2ReservationCanResumeWhenItAlreadyFillsThePlan() {
+        val product = checkNotNull(productionBillingProduct("gallipick_cloud_100gb", "monthly"))
+        val plan = CloudBillingPlan(
+            enabled = true,
+            products = listOf(product),
+            activeProductId = product.productId,
+            expiresAtMs = 2_000,
+            quotaBytes = product.quotaBytes,
+            usedBytes = product.quotaBytes,
+            backupAvailable = true,
+            maxOriginalBytes = CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES,
+            backupObjectPrefix = CloudBackupNamespace.LICENSE_TEST.objectPrefix,
+            supportsResumableTransfers = true,
+            resumableUploadAllowed = true,
+        )
+        val access = checkNotNull(plan.productionBackupAccess())
+        assertFalse(access.allowsUpload(1_999))
+        assertTrue(access.allowsResumableUpload(1_999))
+        assertTrue(access.allowsManualUpload(1_999))
+        assertEquals(product.quotaBytes, access.maximumManualOriginalBytes(1_999))
+        assertFalse(access.allowsManualUpload(2_000))
+        assertFalse(checkNotNull(plan.copy(usedBytes = product.quotaBytes + 1).productionBackupAccess())
+            .allowsResumableUpload(0))
+        assertFalse(checkNotNull(plan.copy(supportsResumableTransfers = false).productionBackupAccess())
+            .allowsResumableUpload(0))
+    }
+
+    @Test fun replacementRequiresFreshUnambiguousSourceAndNoScheduledChange() {
+        val current = CloudBillingProduct("gallipick_cloud_10gb", "annual", 10_000_000_000L)
+        val target = CloudBillingProduct("gallipick_cloud_50gb", "annual", 50_000_000_000L)
+        val verified = verifiedReplacementPlan(current, listOf(current, target))
+        val targetQuote = listOf(replacementQuote(target, 59_900_000_000))
+        assertEquals(1, verified.replacementOffers(targetQuote, 100).size)
+        for (blocked in listOf(
+            verified.copy(replacementSourceAllowed = false), verified.copy(replacementSourcePrice = null),
+            verified.copy(expiresAtMs = 100), verified.copy(activeBasePlanId = "monthly"),
+            verified.copy(cloudCheckoutAllowed = false),
+            verified.copy(adFreeProductId = GALLIPICK_STANDALONE_AD_FREE, adFreeExpiresAtMs = 200),
+            verified.copy(scheduledReplacement = CloudBillingScheduledReplacement(target.productId, "annual", 200)),
+        )) {
+            assertTrue(blocked.replacementOffers(targetQuote, 100).isEmpty())
+        }
+    }
+
+    private fun verifiedReplacementPlan(current: CloudBillingProduct, catalog: List<CloudBillingProduct>) =
+        CloudBillingPlan(enabled = true, products = catalog, activeProductId = current.productId,
+            activeBasePlanId = current.basePlanId, expiresAtMs = 200, cloudCheckoutAllowed = true,
+            replacementSourceAllowed = true, replacementSourcePrice = CloudBillingReplacementPrice(5_900_000_000, "KRW"))
+
+    private fun replacementQuote(product: CloudBillingProduct, price: Long, currency: String = "KRW") =
+        CloudBillingOffer(product, product.productId, "Play price", price, currency)
 }

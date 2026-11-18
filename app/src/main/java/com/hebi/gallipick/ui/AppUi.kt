@@ -23,13 +23,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
@@ -74,9 +78,19 @@ internal fun GalliPickApp(
     val cloudEnabled = cloudContent != null
     val destinations = remember(cloudEnabled) { visibleDestinations(cloudEnabled) }
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.HOME) }
+    var filesSearchVisible by rememberSaveable { mutableStateOf(false) }
     var resumeFileDetailUri by rememberSaveable { mutableStateOf<String?>(null) }
     var adRemovalOrigin by rememberSaveable { mutableStateOf<Destination?>(null) }
     val destination = if (selectedDestination in destinations) selectedDestination else Destination.HOME
+    var cloudBillingVisible by remember { mutableStateOf(false) }
+    val dedicatedBilling = destination == Destination.CLOUD && cloudBillingVisible
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    fun closeFilesSearch() {
+        focusManager.clearFocus()
+        keyboard?.hide()
+        filesSearchVisible = false
+    }
     val canOpenAdRemoval = adsConfigured && cloudEnabled && cloudConnection != null &&
         cloudConnection.session.available && cloudConnection.billing != null
     if (!adsConfigured) RefreshProductionCloudBackupAccess(cloudConnection)
@@ -208,6 +222,7 @@ internal fun GalliPickApp(
             showReviewInbox -> showReviewInbox = false
             showSimilarResults || showSoftFocusResults -> closeSimilarReview()
             showPhotoAnalysis -> showPhotoAnalysis = false
+            destination == Destination.FILES && filesSearchVisible -> closeFilesSearch()
             else -> navigate(Destination.HOME)
         }
     }
@@ -224,27 +239,32 @@ internal fun GalliPickApp(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage || showCleanupHistory, showPhotoAnalysis || showReviewInbox, Triple(showSimilarResults || showSoftFocusResults, similarCompareId, photoReviewMode))), state.filter),
                     header = {
-                        if (destination == Destination.FILES && !showTrash && !showDuplicates && !showFolderStorage && !showPhotoAnalysis) {
-                            GalliFilesHeader(state.loading, vm::refresh)
-                        } else {
-                            GalliAppHeader(state.loading, vm::refresh)
+                        when {
+                            destination == Destination.HOME -> GalliAppHeader(state.loading)
+                            destination == Destination.FILES && !showTrash && !showDuplicates &&
+                                !showFolderStorage && !showPhotoAnalysis -> {
+                                GalliFilesHeader(state.loading, vm::refresh, filesSearchVisible) {
+                                    if (filesSearchVisible) closeFilesSearch() else filesSearchVisible = true
+                                }
+                            }
                         }
                     },
                 ) {
                     Column(Modifier.fillMaxSize()) {
-                        if (state.loading) LinearProgressIndicator(
+                        if (!dedicatedBilling && state.loading) LinearProgressIndicator(
                             Modifier.fillMaxWidth().height(3.dp),
                             color = Primary, trackColor = Panel,
                         )
-                        if (state.catalogError != null && state.catalogError != state.message) {
+                        val catalogError = state.catalogError
+                        if (!dedicatedBilling && catalogError != null) {
                             GalliInlineNotice(
-                                message = "파일을 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요.",
+                                message = catalogError,
                                 actionLabel = "다시 시도",
                                 onAction = vm::refresh,
                                 icon = Icons.Outlined.ErrorOutline,
                             )
                         }
-                        if (state.message != null) {
+                        if (!dedicatedBilling && state.message != null && state.message != catalogError) {
                             GalliInlineNotice(
                                 message = state.message.orEmpty(),
                                 actionLabel = "알림 닫기",
@@ -252,7 +272,7 @@ internal fun GalliPickApp(
                                 icon = Icons.Outlined.Info,
                             )
                         }
-                        if (state.access == MediaAccess.PARTIAL) {
+                        if (!dedicatedBilling && state.access == MediaAccess.PARTIAL) {
                             GalliInlineNotice(
                                 message = "허용된 사진·동영상만 표시 중",
                                 actionLabel = "접근 변경",
@@ -261,7 +281,7 @@ internal fun GalliPickApp(
                             )
                         }
                         Row(Modifier.weight(1f).fillMaxWidth()) {
-                            if (wide) {
+                            if (wide && !dedicatedBilling) {
                                 AppDestinationRail(destination, ::navigate, destinations = destinations)
                             }
                             Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -439,6 +459,7 @@ internal fun GalliPickApp(
                                         )
                                         Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission,
                                              cloudFiles = cloudFiles, openCloud = { navigate(Destination.CLOUD) },
+                                             showSearch = filesSearchVisible,
                                              resumeDetailUri = resumeFileDetailUri,
                                              onDetailResumed = { resumeFileDetailUri = null },
                                              onCloudSignInFromDetail = { uri ->
@@ -459,7 +480,11 @@ internal fun GalliPickApp(
                                                 onBackFromAdRemoval = adRemovalOrigin?.let { origin ->
                                                     { navigate(origin) }
                                                 },
-                                                onBillingScreenVisible = onBillingScreenVisible,
+                                                onBillingScreenVisible = { visible ->
+                                                    cloudBillingVisible = visible
+                                                    onBillingScreenVisible(visible)
+                                                },
+                                                showSecretCloud = state.secretCloudVisible,
                                             ) { route ->
                                                 cloudContent(route) { navigate(Destination.HOME) }
                                             }
@@ -472,6 +497,8 @@ internal fun GalliPickApp(
                                                 { openAdRemoval(Destination.SETTINGS) }
                                             } else null,
                                             adRemoval = adRemoval,
+                                            photoListView = state.fileListView,
+                                            onPhotoListViewChange = vm::setFileListView,
                                         )
                                     }
                                 }
@@ -485,7 +512,7 @@ internal fun GalliPickApp(
                     !showReviewInbox && similarCompareId == null && result == null) {
                     homeBanner()
                 }
-                if (!wide) {
+                if (!wide && !dedicatedBilling) {
                     Row(
                         Modifier.fillMaxWidth().background(AppSurface, RoundedCornerShape(
                             topStart = GalliUiMetrics.navigationCorner, topEnd = GalliUiMetrics.navigationCorner,
@@ -551,7 +578,12 @@ internal fun GalliInlineNotice(
 }
 
 @Composable
-internal fun GalliFilesHeader(loading: Boolean, onRefresh: () -> Unit) {
+internal fun GalliFilesHeader(
+    loading: Boolean,
+    onRefresh: () -> Unit,
+    searchVisible: Boolean,
+    onToggleSearch: () -> Unit,
+) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.headerHeight)
             .padding(horizontal = 16.dp, vertical = 2.dp),
@@ -560,12 +592,17 @@ internal fun GalliFilesHeader(loading: Boolean, onRefresh: () -> Unit) {
         Text("파일", style = MaterialTheme.typography.titleLarge, color = Ink,
             modifier = Modifier.weight(1f))
         if (loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted)
+        IconAction(
+            if (searchVisible) "파일 검색 닫기" else "파일 검색",
+            if (searchVisible) Icons.Outlined.Close else Icons.Outlined.Search,
+            onClick = onToggleSearch,
+        )
         IconAction("새로고침", Icons.Outlined.Refresh, onClick = onRefresh)
     }
 }
 
 @Composable
-internal fun GalliAppHeader(loading: Boolean, onRefresh: () -> Unit) {
+internal fun GalliAppHeader(loading: Boolean) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.headerHeight)
             .padding(horizontal = 16.dp, vertical = 2.dp),
@@ -578,13 +615,15 @@ internal fun GalliAppHeader(loading: Boolean, onRefresh: () -> Unit) {
             maxLines = 1, modifier = Modifier.weight(1f),
         )
         if (loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted, maxLines = 1)
-        IconAction("새로고침", Icons.Outlined.Refresh, onClick = onRefresh)
     }
 }
 
 @Composable
-internal fun Modifier.galliCardSurface(backgroundColor: Color = AppSurface): Modifier {
-    val shape = RoundedCornerShape(GalliUiMetrics.cardCorner)
+internal fun Modifier.galliCardSurface(
+    backgroundColor: Color = AppSurface,
+    cornerRadius: Dp = GalliUiMetrics.cardCorner,
+): Modifier {
+    val shape = RoundedCornerShape(cornerRadius)
     return clip(shape).background(backgroundColor).border(1.dp, Line, shape)
 }
 
@@ -652,7 +691,15 @@ internal fun Modifier.plainClick(enabled: Boolean = true, action: () -> Unit): M
 )
 
 @Composable
-internal fun ActionButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, filled: Boolean = false, enabled: Boolean = true, icon: ImageVector? = null) {
+internal fun ActionButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    filled: Boolean = false,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+    labelStyle: TextStyle = MaterialTheme.typography.labelLarge,
+) {
     val background = if (filled && enabled) Primary else if (!enabled) Panel else AppSurface
     val foreground = if (filled && enabled) OnPrimary else if (!enabled) Muted else Ink
     val shape = RoundedCornerShape(GalliUiMetrics.buttonCorner)
@@ -664,16 +711,21 @@ internal fun ActionButton(label: String, onClick: () -> Unit, modifier: Modifier
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) { GalliIcon(icon, null, tint = foreground, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(7.dp)) }
-        Text(label, color = foreground, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+        Text(label, color = foreground, style = labelStyle, textAlign = TextAlign.Center)
     }
 }
 
 @Composable
-internal fun TextAction(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun TextAction(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    labelStyle: TextStyle = MaterialTheme.typography.labelLarge,
+) {
     Box(modifier.heightIn(min = GalliUiMetrics.touchTarget)
         .clip(RoundedCornerShape(GalliUiMetrics.buttonCorner)).semantics { role = Role.Button }
         .plainClick(action = onClick).padding(horizontal = 10.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
-        Text(label, color = Ink, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+        Text(label, color = Ink, style = labelStyle, textAlign = TextAlign.Center)
     }
 }
 

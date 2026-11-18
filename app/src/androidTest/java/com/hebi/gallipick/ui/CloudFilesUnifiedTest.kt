@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -59,9 +60,11 @@ class CloudFilesUnifiedTest {
         }
         chooseSource("cloud")
         compose.onNodeWithText("cloud-holiday.jpg").assertExists()
+        compose.onNodeWithContentDescription("클라우드에 보관됨").assertExists()
         compose.onNodeWithText("local-photo.jpg").assertDoesNotExist()
         compose.onNodeWithText("cloud-holiday.jpg").performClick()
         compose.onNodeWithText("파일 상세").assertIsDisplayed()
+        compose.onNodeWithText("사진 정보").assertDoesNotExist()
         compose.onNodeWithText("보관 완료").assertExists()
         compose.runOnIdle { assertFalse(opened.value) }
     }
@@ -83,6 +86,8 @@ class CloudFilesUnifiedTest {
         chooseSource("device")
         compose.onNodeWithText("local-photo.jpg").assertExists()
         compose.onNodeWithText("cloud-holiday.jpg").assertDoesNotExist()
+        compose.onNodeWithText("기기").assertDoesNotExist()
+        compose.onNodeWithContentDescription("클라우드에 보관됨").assertDoesNotExist()
         chooseSource("all")
         compose.onNodeWithText("cloud-holiday.jpg").assertExists()
         compose.onNodeWithText("local-photo.jpg").assertExists()
@@ -109,6 +114,7 @@ class CloudFilesUnifiedTest {
         }
         chooseSource("cloud")
         compose.onNodeWithText("local-photo.jpg").assertExists()
+        compose.onNodeWithContentDescription("클라우드에 보관됨").assertExists()
         compose.onNodeWithText("cloud-holiday.jpg").assertDoesNotExist()
         compose.onNodeWithText("local-photo.jpg").performClick()
         compose.onNodeWithText("파일 상세").assertIsDisplayed()

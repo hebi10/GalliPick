@@ -80,6 +80,7 @@ class PhotoOcrNativeCaptureTest {
                                     ocrScan = OcrScanState(OcrPhase.COMPLETE, 2, 2)),
                                 wide = maxWidth >= 650.dp, trash = {}, open = {}, requestAccess = {},
                                 actions = FilesScreenActions({}, {}, {}, {}, {}, {}, { _, _ -> }, {}),
+                                showSearch = true,
                             )
                         }
                     }

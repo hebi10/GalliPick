@@ -87,9 +87,9 @@ function createHarness({ ownerLimit = 1024, pilotLimit = 2048, requestsPerHour, 
             };
         },
     };
-    const createService = (uploadsPaused, productionSettings = production) => createBackupService({
+    const createService = (uploadsPaused, productionSettings = production, privateVault = false) => createBackupService({
         db, getBucket: async () => bucket, pilotUsers: new Set(['owner-a', 'owner-b']), ownerLimit, pilotLimit,
-        requestsPerHour, uploadQuota, uploadsPaused, production: productionSettings,
+        requestsPerHour, uploadQuota, uploadsPaused, production: productionSettings, privateVault,
     });
     return { service: createService(), createService, signedOptions, bucketObjects, records };
 }
@@ -98,6 +98,24 @@ const productionLicense = {
     namespace: 'gallipickProductionLicenseBackup', maxOriginalBytes: PRODUCTION_MAX_FILE_BYTES,
     authorizeOwner: auth => authorize(auth, new Set(['owner-a', 'owner-b'])), catalogDocumentId: '__name__',
 };
+
+test('secret originals use a separate catalog and object path while charging the shared quota', async () => {
+    const { service, createService, signedOptions, bucketObjects } = createHarness({
+        production: productionLicense, uploadQuota: async () => photo.length,
+    });
+    const vault = createService(false, productionLicense, true);
+    const owner = googleUser('owner-a');
+    const privateUpload = await vault.begin(owner, data);
+    const [signed] = signedOptions;
+    assert.match(signed.key, /^cloud02\/license-test\/users\/[a-f0-9]{64}\/secret\//);
+    bucketObjects.set(signed.key, { generation: '1740000000000000', bytes: photo, mimeType: data.mimeType });
+    await vault.finish(owner, { uploadId: privateUpload.uploadId });
+    assert.deepEqual((await service.list(owner)).items, []);
+    assert.deepEqual((await vault.list(owner)).items.map(item => item.uploadId), [privateUpload.uploadId]);
+    await assert.rejects(service.download(owner, { uploadId: privateUpload.uploadId }), isCode('not-found'));
+    assert.equal((await vault.download(owner, { uploadId: privateUpload.uploadId })).uploadId, privateUpload.uploadId);
+    await assert.rejects(service.begin(owner, data), isCode('resource-exhausted'));
+});
 
 test('production storage cannot default to a quota or use an unrecognized namespace or file limit', () => {
     assert.throws(() => createHarness({ production: productionLicense }), isCode('failed-precondition'));

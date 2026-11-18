@@ -4,6 +4,7 @@ import android.app.Activity
 import java.io.Closeable
 
 internal const val GALLIPICK_STANDALONE_AD_FREE = "gallipick_ad_free"
+internal const val GALLIPICK_RETIRED_CLOUD_PILOT = "gallipick_cloud_pilot"
 private val PRODUCTION_CLOUD_QUOTAS = mapOf(
     "gallipick_cloud_10gb" to 10_000_000_000L,
     "gallipick_cloud_50gb" to 50_000_000_000L,
@@ -11,7 +12,7 @@ private val PRODUCTION_CLOUD_QUOTAS = mapOf(
 )
 internal fun isKnownGalliPickSubscription(productId: String): Boolean =
     productId == GALLIPICK_STANDALONE_AD_FREE || productId in PRODUCTION_CLOUD_QUOTAS ||
-        productId == "gallipick_cloud_pilot"
+        productId == GALLIPICK_RETIRED_CLOUD_PILOT
 private val CLOUD_PRODUCT_ID = Regex("[a-z0-9][a-z0-9_.]{0,149}")
 private val CLOUD_BASE_PLAN_ID = Regex("[a-z0-9][a-z0-9-]{0,62}")
 
@@ -33,14 +34,23 @@ internal interface CloudBilling {
 
 internal interface CloudBillingSession : Closeable {
     suspend fun loadPlan(): CloudBillingPlan
+    suspend fun loadOverviewPlan(): CloudBillingPlan = loadPlan()
     suspend fun load(): CloudBillingSnapshot
     suspend fun recover(): CloudBillingUpdate
     suspend fun purchase(activity: Activity, offer: CloudBillingOffer): CloudBillingUpdate
+    suspend fun replace(activity: Activity, offer: CloudBillingReplacementOffer): CloudBillingUpdate =
+        CloudBillingUpdate(notice = CloudBillingNotice.UNAVAILABLE)
 }
 
 internal data class CloudBillingProduct(val productId: String, val basePlanId: String, val quotaBytes: Long) {
     val isStandaloneAdFree: Boolean get() = productId == GALLIPICK_STANDALONE_AD_FREE
     val billingPeriod: String get() = if (basePlanId == "annual") "P1Y" else "P1M"
+}
+
+internal fun productionBillingProduct(productId: String, basePlanId: String): CloudBillingProduct? {
+    if (basePlanId != "monthly" && basePlanId != "annual") return null
+    val limit = if (productId == GALLIPICK_STANDALONE_AD_FREE) 0L else PRODUCTION_CLOUD_QUOTAS[productId] ?: return null
+    return CloudBillingProduct(productId, basePlanId, limit)
 }
 
 internal fun isValidCloudBillingCatalog(
@@ -76,6 +86,14 @@ internal data class CloudBillingPlan(
     val maxOriginalBytes: Long = 0,
     val backupObjectPrefix: String? = null,
     val cloudCheckoutAllowed: Boolean = false,
+    val activeBasePlanId: String? = null,
+    val adFreeBasePlanId: String? = null,
+    val scheduledReplacement: CloudBillingScheduledReplacement? = null,
+    val replacementSourceAllowed: Boolean = false,
+    val replacementSourcePrice: CloudBillingReplacementPrice? = null,
+    val verifiedMediaCount: Int? = null,
+    val supportsResumableTransfers: Boolean = false,
+    val resumableUploadAllowed: Boolean = false,
 )
 
 internal fun CloudBillingPlan.productionBackupAccess(): CloudBackupAccess? {
@@ -88,7 +106,26 @@ internal fun CloudBillingPlan.productionBackupAccess(): CloudBackupAccess? {
     val uploadExpiryMillis = expiresAtMs.takeIf {
         enabled && activeVerified && uploadAllowed && quotaBytes == quota && usedBytes in 0L until quotaBytes
     }
-    return CloudBackupAccess(namespace, maxOriginalBytes, uploadExpiryMillis)
+    val canResume = supportsResumableTransfers && enabled && activeVerified && quotaBytes == quota &&
+        usedBytes in 0L..quotaBytes && resumableUploadAllowed
+    return CloudBackupAccess(
+        namespace,
+        maxOriginalBytes,
+        uploadExpiryMillis,
+        supportsResumableTransfers,
+        expiresAtMs.takeIf { canResume },
+        quotaBytes.takeIf { canResume } ?: 0L,
+    )
+}
+
+internal fun CloudBillingPlan.developmentBackupAccess(): CloudBackupAccess {
+    val canResume = supportsResumableTransfers && resumableUploadAllowed && quotaBytes in 1L..(1024L * 1024L * 1024L) &&
+        usedBytes in 0L..quotaBytes
+    return CloudBackupAccess.development.copy(
+        supportsResumableTransfers = supportsResumableTransfers,
+        resumableUploadExpiryMillis = (expiresAtMs ?: Long.MAX_VALUE).takeIf { canResume },
+        maximumResumableOriginalBytes = quotaBytes.takeIf { canResume } ?: 0L,
+    )
 }
 
 internal fun CloudBillingPlan.activeCloudProductId(nowMillis: Long): String? = activeProductId?.takeIf { id ->
@@ -114,11 +151,77 @@ internal data class CloudBillingOffer(
     val currencyCode: String,
 )
 
+internal enum class CloudBillingReplacementTiming { IMMEDIATE_PRORATED, NEXT_RENEWAL }
+
+internal data class CloudBillingReplacementOffer(
+    val current: CloudBillingProduct,
+    val target: CloudBillingOffer,
+    val timing: CloudBillingReplacementTiming,
+)
+
+internal data class CloudBillingScheduledReplacement(
+    val productId: String,
+    val basePlanId: String,
+    val effectiveAtMs: Long,
+)
+
+internal data class CloudBillingReplacementPrice(val amountMicros: Long, val currencyCode: String)
+
+internal fun CloudBillingPlan.currentReplacementProduct(nowMillis: Long): CloudBillingProduct? {
+    val cloud = activeCloudProductId(nowMillis)
+    val adFree = activeStandaloneAdFreeProductId(nowMillis)
+    if ((cloud == null) == (adFree == null)) return null
+    val id = cloud ?: checkNotNull(adFree)
+    val basePlan = (if (cloud == null) adFreeBasePlanId else activeBasePlanId) ?: return null
+    return productionBillingProduct(id, basePlan)?.takeIf { it in products }
+}
+
+internal fun CloudBillingPlan.confirmedReplacement(
+    productId: String,
+    basePlanId: String,
+    nowMillis: Long,
+): CloudBillingNotice? {
+    val target = productionBillingProduct(productId, basePlanId)?.takeIf { enabled && it in products } ?: return null
+    val scheduled = scheduledReplacement
+    return when {
+        scheduled?.productId == target.productId && scheduled.basePlanId == target.basePlanId &&
+            scheduled.effectiveAtMs > nowMillis -> CloudBillingNotice.CHANGE_SCHEDULED
+        currentReplacementProduct(nowMillis) == target -> CloudBillingNotice.VERIFIED
+        else -> null
+    }
+}
+
+internal fun CloudBillingPlan.replacementOffers(
+    offers: List<CloudBillingOffer>,
+    nowMillis: Long,
+): List<CloudBillingReplacementOffer> {
+    if (!cloudCheckoutAllowed || !replacementSourceAllowed || scheduledReplacement != null) return emptyList()
+    val current = currentReplacementProduct(nowMillis) ?: return emptyList()
+    val currentPrice = replacementSourcePrice ?: return emptyList()
+    return offers.mapNotNull { quote ->
+        val target = quote.product
+        if (target !in products || productionBillingProduct(target.productId, target.basePlanId) != target ||
+            current.productId == target.productId || current.basePlanId != target.basePlanId ||
+            currentPrice.currencyCode != quote.currencyCode || quote.priceAmountMicros <= 0L ||
+            currentPrice.amountMicros <= 0L
+        ) return@mapNotNull null
+        val timing = when {
+            target.quotaBytes > current.quotaBytes && quote.priceAmountMicros > currentPrice.amountMicros ->
+                CloudBillingReplacementTiming.IMMEDIATE_PRORATED
+            target.quotaBytes < current.quotaBytes && quote.priceAmountMicros < currentPrice.amountMicros ->
+                CloudBillingReplacementTiming.NEXT_RENEWAL
+            else -> return@mapNotNull null
+        }
+        CloudBillingReplacementOffer(current, quote, timing)
+    }
+}
+
 internal data class CloudBillingSnapshot(
     val plan: CloudBillingPlan,
     val offers: List<CloudBillingOffer>,
     val notice: CloudBillingNotice? = null,
     val autoRenewing: Boolean? = null,
+    val replacementOffers: List<CloudBillingReplacementOffer> = emptyList(),
 )
 
 internal data class CloudBillingUpdate(
@@ -129,7 +232,7 @@ internal data class CloudBillingUpdate(
 
 internal enum class CloudBillingNotice {
     VERIFIED, PENDING, CANCELLED, NO_PURCHASE, ALREADY_OWNED, PRICE_CHANGED, ACCOUNT_CHANGED,
-    PURCHASE_LINKED_TO_ANOTHER_ACCOUNT, UNAVAILABLE, FAILED,
+    PURCHASE_LINKED_TO_ANOTHER_ACCOUNT, UNAVAILABLE, FAILED, CHANGE_SCHEDULED,
 }
 
 internal class CloudBillingException(val notice: CloudBillingNotice) : Exception()

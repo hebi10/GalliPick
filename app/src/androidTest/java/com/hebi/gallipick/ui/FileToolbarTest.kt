@@ -27,10 +27,12 @@ class FileToolbarTest {
 
     @Test fun compactToolbarExposesSearchAndFilterRowWithoutHidingFiles() {
         val all = (0..40).map { media(it.toLong()) }
+        val searchVisible = mutableStateOf(false)
         compose.setContent { GalliPickTheme {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1.6f)) {
                 Box(Modifier.requiredSize(320.dp, 280.dp)) {
-                    FilesScreenContent(AppUiState(access = MediaAccess.FULL, items = all, filtered = all), false, {}, {}, {}, actions())
+                    FilesScreenContent(AppUiState(access = MediaAccess.FULL, items = all, filtered = all),
+                        false, {}, {}, {}, actions(), showSearch = searchVisible.value)
                 }
             }
         } }
@@ -38,10 +40,9 @@ class FileToolbarTest {
         compose.onNodeWithContentDescription("미디어 유형 선택").assertExists()
         compose.onNodeWithTag("files-kind-filter").assertIsDisplayed()
         assertTrue("Sort and advanced filter actions should stay on one compact row", toolbar.height <= 56f)
-        val grid = compose.onNodeWithContentDescription("미디어 파일 목록").fetchSemanticsNode().boundsInRoot
-        assertTrue("The search and chip header must leave usable media space", grid.height >= 60f)
-        compose.onNodeWithContentDescription("파일 검색").assertIsDisplayed()
-        compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색").assertIsDisplayed()
+        compose.onNodeWithContentDescription("파일 검색").assertDoesNotExist()
+        val input = compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색")
+        input.assertDoesNotExist()
         compose.onNodeWithText("유형: 전체").assertIsDisplayed()
         compose.onNodeWithTag("files-kind-filter").performClick()
         listOf("files-kind-all", "files-kind-photo", "files-kind-video")
@@ -49,11 +50,16 @@ class FileToolbarTest {
         compose.onNodeWithTag("files-kind-all").performClick()
         compose.onNodeWithContentDescription("파일 조건 선택").assertIsDisplayed()
         compose.onNodeWithContentDescription("정렬 기준 선택").assertExists()
-        compose.onNodeWithContentDescription("목록 보기").assertIsDisplayed()
-        // The constrained header can scroll away when the 280dp viewport's body moves.
-        // Verify that the control remains in the tree. The sort workflow is checked
-        // by sortDropdownChangesRealOrderAndPreservesCompatibleConditions below.
-        compose.onNodeWithContentDescription("정렬 기준 선택").assertExists()
+        compose.onNodeWithContentDescription("파일 추가 작업").performClick()
+        compose.onNodeWithText("목록 보기").assertIsDisplayed()
+        compose.onNodeWithText("조건 초기화").assertIsDisplayed()
+        compose.onNodeWithText("목록 보기").performClick()
+        compose.runOnIdle { searchVisible.value = true }
+        input.performScrollTo().assertIsDisplayed()
+        val grid = compose.onNodeWithContentDescription("미디어 파일 목록").fetchSemanticsNode().boundsInRoot
+        assertTrue("The expanded search must leave usable media space", grid.height >= 60f)
+        input.performTouchInput { swipeUp() }
+        compose.onNodeWithTag("files-kind-filter").assertIsDisplayed()
     }
 
     @Test fun mediaTypeDropdownPreservesFolderAndSizeConditions() {

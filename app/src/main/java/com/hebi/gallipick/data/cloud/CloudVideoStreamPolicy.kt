@@ -17,9 +17,9 @@ internal class CloudVideoStreamCapability(
     override fun toString(): String = "CloudVideoStreamCapability(redacted)"
 }
 
-internal fun isCloudVideoStreamable(original: CloudOriginal): Boolean =
+internal fun isCloudVideoStreamable(original: CloudOriginal, maximumBytes: Long = CLOUD_BACKUP_MAX_BYTES): Boolean =
     original.mimeType.startsWith("video/") &&
-        original.sizeBytes in 1..CLOUD_BACKUP_MAX_BYTES &&
+        original.sizeBytes in 1..maximumBytes &&
         original.sha256.matches(Regex("[a-f0-9]{64}")) &&
         original.uploadId == "${original.sha256}-${original.sizeBytes}"
 

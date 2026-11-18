@@ -33,6 +33,12 @@ class CloudVideoStreamPolicyTest {
     }
 
     @Test
+    fun vaultPlayerSupportsAnOriginalAtTheProductionProtocolLimit() {
+        assertTrue(isCloudVideoStreamable(original(bytes = CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES), CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES))
+        assertFalse(isCloudVideoStreamable(original(bytes = CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES + 1), CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES))
+    }
+
+    @Test
     fun shortLivedCapabilityIsNotLoggedAndRenewsBeforeTheServerExpiry() {
         val secret = "X-Goog-Signature=" + "a".repeat(512)
         val capability = CloudVideoStreamCapability(

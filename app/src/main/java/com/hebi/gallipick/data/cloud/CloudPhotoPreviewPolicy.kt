@@ -9,9 +9,9 @@ internal fun cloudPhotoSupportsThumbnail(original: CloudOriginal): Boolean =
     original.mimeType.startsWith("image/") &&
         original.sizeBytes in 1..CLOUD_PREVIEW_MAX_BYTES
 
-internal fun cloudPhotoSupportsViewer(original: CloudOriginal): Boolean =
+internal fun cloudPhotoSupportsViewer(original: CloudOriginal, maximumBytes: Long = CLOUD_BACKUP_MAX_BYTES): Boolean =
     original.mimeType.startsWith("image/") &&
-        original.sizeBytes in 1..CLOUD_BACKUP_MAX_BYTES
+        original.sizeBytes in 1..maximumBytes
 
 internal fun cloudPhotoPosition(photos: List<CloudOriginal>, current: CloudOriginal): Int =
     photos.indexOfFirst { it.uploadId == current.uploadId }

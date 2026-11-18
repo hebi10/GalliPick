@@ -535,12 +535,6 @@ internal fun FilterDialogContent(
                             Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-                            TextAction("초기화", onClick = {
-                                onApply(MediaFilter())
-                                selectedSource?.let { onSourceFilterChange(GallerySourceFilter.ALL) }
-                                onDismiss()
-                            }, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
-                            TextAction("취소", onClick = onDismiss, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
                             ActionButton(
                                 label = "필터 적용", filled = true, modifier = if (roomyFooter) Modifier else Modifier.weight(1.5f),
                                 onClick = {
@@ -582,6 +576,12 @@ internal fun FilterDialogContent(
                                     }
                                 },
                             )
+                            TextAction("취소", onClick = onDismiss, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
+                            TextAction("초기화", onClick = {
+                                onApply(MediaFilter())
+                                selectedSource?.let { onSourceFilterChange(GallerySourceFilter.ALL) }
+                                onDismiss()
+                            }, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
                         }
                     }
                 }
