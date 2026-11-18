@@ -5,7 +5,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -91,6 +96,37 @@ class MediaSnapshotDatabaseTest {
         assertTrue(dao.allHashes().isEmpty())
         assertTrue(dao.allPhotoHashes().isEmpty())
         assertTrue(dao.allOcrIndex().isEmpty())
+    }
+
+    @Test fun sharedCatalogCanReopenAfterUnchangedSnapshotWithoutRoomWriteEvents() = runBlocking {
+        val snapshot = listOf(media("unchanged", "primary"))
+        val versions = mapOf("primary" to "epoch")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val catalog = SharedMediaCatalog(
+                dao.observeMedia(), dao.observeProtection(), dao.observeFolders(),
+                dao.observeVolumeVersions(), dao.observeHashes(), scope,
+            )
+            dao.replaceAccessible(snapshot, versions)
+            withTimeout(5_000) { catalog.awaitSnapshot(snapshot, versions) }
+            catalog.markReady()
+            catalog.markRefreshing()
+            dao.replaceAccessible(snapshot, versions)
+            withTimeout(5_000) { catalog.awaitSnapshot(snapshot, versions) }
+            catalog.markReady()
+            assertTrue(catalog.ready.value)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test fun largePermissionRevocationDeletesAllPreviouslyAccessibleMediaInBoundedChunks() = runBlocking {
+        val snapshot = (0 until 1_100).map { media("row-$it", "primary") }
+        val versions = mapOf("primary" to "one")
+        dao.replaceAccessible(snapshot, versions)
+        assertEquals(1_100, dao.allMedia().size)
+        dao.replaceAccessible(emptyList(), versions)
+        assertTrue(dao.allMedia().isEmpty())
     }
 
     @Test fun epochChangeInvalidatesOnlyThatVolumesHashesEvenWhenFingerprintIsUnchanged() = runBlocking {
