@@ -31,6 +31,11 @@ on:
         type: boolean
         required: false
         default: false
+      cloud_production:
+        description: 'Build with production Firebase instead of the development pilot'
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -51,6 +56,7 @@ jobs:
       REQUIRED_CI_JSON: '["Android verification","Android device tests"]'
       RELEASE_TAG: ${{ inputs.release_tag }}
       CLOUD_PILOT: ${{ inputs.cloud_pilot }}
+      CLOUD_PRODUCTION: ${{ inputs.cloud_production }}
       VERSION_CODE: ${{ inputs.version_code }}
       BUILD_WORKFLOW: 'play-bundle.yml'
     steps:
@@ -74,6 +80,7 @@ jobs:
           repo=os.environ["GITHUB_REPOSITORY"]
           if os.environ["GITHUB_EVENT_NAME"]!="workflow_dispatch" or os.environ["GITHUB_REF"]!="refs/heads/main": refuse("Explicit main-only manual request required")
           if os.environ["FINAL_BATCH_APPROVED"]!="true": refuse("Final planned work and QA must be explicitly approved")
+          if os.environ.get("CLOUD_PILOT")==os.environ.get("CLOUD_PRODUCTION")=="true": refuse("Select only one Firebase environment")
           if not re.fullmatch("[a-f0-9]{40}",sha) or sha!=os.environ["GITHUB_SHA"]: refuse("Expected main SHA differs from this workflow source")
           if not re.fullmatch(r"20\d{2}-\d{2}-\d{2}-[A-Za-z0-9-]{2,50}",batch): refuse("Invalid KST release batch ID")
           if api("repos/"+repo+"/git/ref/heads/main")["object"]["sha"]!=sha: refuse("main changed after request")
@@ -100,8 +107,11 @@ jobs:
           set -euo pipefail
           args=(-f ref=main)
           args+=(-f "inputs[version]=$RELEASE_TAG")
+          args+=(-f "inputs[expected_main_sha]=$EXPECTED_MAIN_SHA")
           if [[ "$CLOUD_PILOT" == true ]]; then
             args+=(-F 'inputs[cloud_pilot]=true')
+          elif [[ "$CLOUD_PRODUCTION" == true ]]; then
+            args+=(-F 'inputs[cloud_production]=true')
           fi
           gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/$BUILD_WORKFLOW/dispatches" "${args[@]}"
           actual="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
@@ -115,7 +125,7 @@ jobs:
           from datetime import datetime
           from pathlib import Path
           from zoneinfo import ZoneInfo
-          data={"schema":"ops03-build-request-v1","repo":os.environ["GITHUB_REPOSITORY"],"main_sha":os.environ["EXPECTED_MAIN_SHA"],"batch_id":os.environ["BATCH_ID"],"builder_workflow":os.environ["BUILD_WORKFLOW"],"request_run_id":os.environ["GITHUB_RUN_ID"],"requested_at_kst":datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),"status":"dispatched_unverified","aab_built":False,"play_uploaded":False,"version_code_request":os.environ["VERSION_CODE"],"release_tag_request":os.environ["RELEASE_TAG"],"cloud_pilot":os.environ["CLOUD_PILOT"]=="true"}
+          data={"schema":"ops03-build-request-v1","repo":os.environ["GITHUB_REPOSITORY"],"main_sha":os.environ["EXPECTED_MAIN_SHA"],"batch_id":os.environ["BATCH_ID"],"builder_workflow":os.environ["BUILD_WORKFLOW"],"request_run_id":os.environ["GITHUB_RUN_ID"],"requested_at_kst":datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),"status":"dispatched_unverified","aab_built":False,"play_uploaded":False,"version_code_request":os.environ["VERSION_CODE"],"release_tag_request":os.environ["RELEASE_TAG"],"cloud_pilot":os.environ["CLOUD_PILOT"]=="true","cloud_production":os.environ["CLOUD_PRODUCTION"]=="true"}
           Path("ops03/request.json").write_text(json.dumps(data,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
           PY
           {

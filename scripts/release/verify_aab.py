@@ -18,6 +18,7 @@ from verify_apk import TAG_PATTERN, parse_source_version
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 JAVA_VERIFIER = Path(__file__).with_name("VerifyAabSignature.java")
 PRIVATE_MARKER = re.compile(rb"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----")
+CLOUD_PROJECTS = {"development": "gallipick-dev", "production": "gallipick-production"}
 
 
 def parse_manifest(xml):
@@ -54,6 +55,15 @@ def validate_metadata(tag, source, metadata):
     if metadata != expected:
         raise ReleaseError("The AAB package, version, SDK levels or release flags do not match the source.")
     return version, code
+
+
+def validate_cloud_project(resources, environment):
+    project = CLOUD_PROJECTS[environment]
+    pattern = (r"Package 'com\.hebi\.gallipick':\n"
+               r"0x[0-9a-f]{8} - string/cloud_firebase_project_id\n"
+               rf'\s*\(default\) - \[STR\] "{re.escape(project)}"')
+    if not re.fullmatch(pattern, resources.strip()):
+        raise ReleaseError("The AAB Firebase project does not match the selected Cloud environment.")
 
 
 def verify_archive(bundle):
@@ -118,7 +128,8 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def stage_release(bundle, destination, tag, metadata, signature, source_commit, bundletool_sha256):
+def stage_release(bundle, destination, tag, metadata, signature, source_commit, bundletool_sha256,
+                  cloud_environment=None):
     if not re.fullmatch(TAG_PATTERN, tag) or not re.fullmatch(r"[0-9a-f]{40}", source_commit):
         raise ReleaseError("The AAB provenance identity is invalid.")
     if destination.exists() and (not destination.is_dir() or any(destination.iterdir())):
@@ -137,6 +148,10 @@ def stage_release(bundle, destination, tag, metadata, signature, source_commit, 
         "bundletool_sha256": bundletool_sha256,
         "validation": ["bundletool validate", "base manifest matches source", "all payload JAR signatures match pinned signer", "private signing material absent"],
     }
+    if cloud_environment:
+        provenance.update(cloud_environment=cloud_environment,
+                          firebase_project_id=CLOUD_PROJECTS[cloud_environment])
+        provenance["validation"].append("signed Firebase project resource matches selected environment")
     (destination / "provenance.json").write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return output
 
@@ -147,6 +162,7 @@ def main():
     parser.add_argument("--bundletool", type=Path, required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--cloud-environment", choices=CLOUD_PROJECTS)
     args = parser.parse_args()
     if not args.bundle.is_file() or not args.bundletool.is_file():
         raise ReleaseError("A built AAB and verified bundletool JAR are required.")
@@ -164,7 +180,13 @@ def main():
         xml = command_output(tool + ["dump", "manifest", "--bundle=" + str(snapshot), "--module=base"], "Bundletool manifest inspection")
         metadata = parse_manifest(xml)
         validate_metadata(args.tag, source, metadata)
-        output = stage_release(snapshot, args.output, args.tag, metadata, signature, commit, sha256(args.bundletool))
+        if args.cloud_environment:
+            resources = command_output(tool + ["dump", "resources", "--bundle=" + str(snapshot),
+                                               "--resource=string/cloud_firebase_project_id", "--values"],
+                                       "Bundletool Firebase project inspection")
+            validate_cloud_project(resources, args.cloud_environment)
+        output = stage_release(snapshot, args.output, args.tag, metadata, signature, commit,
+                               sha256(args.bundletool), args.cloud_environment)
     print(f"Verified Play upload bundle staged: {output.name} with SHA256SUMS and public provenance.")
 
 

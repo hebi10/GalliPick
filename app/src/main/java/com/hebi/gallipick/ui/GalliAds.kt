@@ -182,11 +182,11 @@ internal fun rememberCloudAdRemovalStatus(
             var retries = 0
             while (true) {
                 val beforeRequest = System.currentTimeMillis()
-                val expired = currentPlan?.plan?.expiresAtMs?.let { it <= beforeRequest } == true
-                if (expired) currentPlan = null
+                val needsRecheck = currentPlan?.removalFor(uid, beforeRequest) == AdRemovalStatus.VERIFYING
+                if (needsRecheck) currentPlan = null
                 val plan = try {
                     billing.open(uid).use { session ->
-                        loadCloudAdPlan(session, recoverPurchase || expired, beforeRequest)
+                        loadCloudAdPlan(session, recoverPurchase || needsRecheck, beforeRequest)
                     }
                 } catch (error: CancellationException) {
                     throw error
@@ -202,7 +202,7 @@ internal fun rememberCloudAdRemovalStatus(
                     retries++
                     delay(CLOUD_AD_ENTITLEMENT_RETRY_MS * retries)
                 } else {
-                    val expiresAt = plan?.expiresAtMs?.takeIf { status == AdRemovalStatus.VERIFIED_AD_FREE }
+                    val expiresAt = plan?.verifiedAdRemovalExpiry(now)
                     delay(expiresAt?.let { minOf(it - now, CLOUD_AD_ENTITLEMENT_REFRESH_MS) }
                         ?: CLOUD_AD_ENTITLEMENT_REFRESH_MS)
                     retries = 0

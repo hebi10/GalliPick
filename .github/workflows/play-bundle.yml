@@ -13,6 +13,15 @@ on:
         type: boolean
         required: false
         default: false
+      cloud_production:
+        description: 'Build with production Firebase instead of the development pilot'
+        type: boolean
+        required: false
+        default: false
+      expected_main_sha:
+        description: 'Approved main SHA, required for a production Cloud build'
+        type: string
+        required: false
 permissions:
   contents: read
 concurrency:
@@ -25,6 +34,10 @@ jobs:
     timeout-minutes: 30
     env:
       RELEASE_TAG: ${{ inputs.version }}
+      EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+      CLOUD_PILOT: ${{ inputs.cloud_pilot }}
+      CLOUD_PRODUCTION: ${{ inputs.cloud_production }}
+      CLOUD_ENVIRONMENT: ${{ inputs.cloud_production && 'production' || 'development' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,22 +51,37 @@ jobs:
             echo 'Play bundles must be built from main.' >&2
             exit 1
           fi
+          if [[ "$CLOUD_PILOT" == true && "$CLOUD_PRODUCTION" == true ]]; then
+            echo 'Select only one Firebase environment.' >&2
+            exit 1
+          fi
+          if [[ "$CLOUD_PRODUCTION" == true || -n "$EXPECTED_MAIN_SHA" ]]; then
+            if [[ ! "$EXPECTED_MAIN_SHA" =~ ^[a-f0-9]{40}$ || "$EXPECTED_MAIN_SHA" != "$GITHUB_SHA" ]]; then
+              echo 'The approved main SHA must match the bundle workflow source.' >&2
+              exit 1
+            fi
+          fi
           python3 scripts/release/verify_apk.py source --tag "$RELEASE_TAG"
-      - name: Prepare cloud pilot build configuration
-        if: inputs.cloud_pilot
+      - name: Prepare the selected Firebase build configuration
+        if: inputs.cloud_pilot || inputs.cloud_production
         env:
-          CLOUD_CONFIG_BASE64: ${{ secrets.GALLIPICK_PLAY_CLOUD_CONFIG_BASE64 }}
+          DEVELOPMENT_CONFIG_BASE64: ${{ inputs.cloud_pilot && secrets.GALLIPICK_PLAY_CLOUD_CONFIG_BASE64 || '' }}
+          PRODUCTION_CONFIG_BASE64: ${{ inputs.cloud_production && secrets.GALLIPICK_PLAY_PRODUCTION_CLOUD_CONFIG_BASE64 || '' }}
           PLAY_APP_SIGNING_SHA1: ${{ vars.GALLIPICK_PLAY_APP_SIGNING_SHA1 }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "$CLOUD_CONFIG_BASE64" || -z "$PLAY_APP_SIGNING_SHA1" ]]; then
-            echo 'Cloud pilot build configuration or Play app-signing fingerprint is missing.' >&2
+          config="$DEVELOPMENT_CONFIG_BASE64"
+          if [[ "$CLOUD_ENVIRONMENT" == production ]]; then
+            config="$PRODUCTION_CONFIG_BASE64"
+          fi
+          if [[ -z "$config" || -z "$PLAY_APP_SIGNING_SHA1" ]]; then
+            echo 'Selected Firebase configuration or Play app-signing fingerprint is missing.' >&2
             exit 1
           fi
           umask 077
           mkdir -p app/src/release
-          printf '%s' "$CLOUD_CONFIG_BASE64" | base64 --decode > app/src/release/google-services.json
+          printf '%s' "$config" | base64 --decode > app/src/release/google-services.json
       - name: Restore fixed signing key privately
         env:
           GALLIPICK_SIGNING_BUNDLE_BASE64: ${{ secrets.GALLIPICK_SIGNING_BUNDLE_BASE64 }}
@@ -83,21 +111,29 @@ jobs:
         run: python3 -m unittest discover -s scripts/release -p 'test_*.py'
       - name: Build fixed-key release bundle
         env:
-          ORG_GRADLE_PROJECT_gallipickPlayCloudPilot: ${{ inputs.cloud_pilot }}
+          ORG_GRADLE_PROJECT_gallipickPlayCloudPilot: ${{ inputs.cloud_pilot || inputs.cloud_production }}
+          ORG_GRADLE_PROJECT_gallipickCloudEnvironment: ${{ env.CLOUD_ENVIRONMENT }}
           ORG_GRADLE_PROJECT_gallipickPlayAppSigningSha1: ${{ vars.GALLIPICK_PLAY_APP_SIGNING_SHA1 }}
         run: gradle --no-daemon --no-configuration-cache :app:verifyGalliPickSigning :app:testDebugUnitTest :app:lintRelease :app:bundleRelease --max-workers=2
       - name: Verify and stage Play bundle
-        run: python3 scripts/release/verify_aab.py --tag "$RELEASE_TAG" --bundle app/build/outputs/bundle/release/app-release.aab --bundletool "$RUNNER_TEMP/bundletool.jar" --output play-dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$CLOUD_PILOT" == true || "$CLOUD_PRODUCTION" == true ]]; then
+            args+=(--cloud-environment "$CLOUD_ENVIRONMENT")
+          fi
+          python3 scripts/release/verify_aab.py --tag "$RELEASE_TAG" --bundle app/build/outputs/bundle/release/app-release.aab --bundletool "$RUNNER_TEMP/bundletool.jar" --output play-dist "${args[@]}"
       - name: Save verified Play upload files
         uses: actions/upload-artifact@v4
         with:
-          name: GalliPick-${{ inputs.version }}${{ inputs.cloud_pilot && '-cloud-pilot' || '' }}-play-bundle
+          name: GalliPick-${{ inputs.version }}${{ inputs.cloud_production && '-cloud-production' || inputs.cloud_pilot && '-cloud-pilot' || '' }}-play-bundle
           path: play-dist/
           if-no-files-found: error
           retention-days: 14
       - name: Remove private signing files
         if: always()
         run: python3 scripts/release/signing_bundle.py cleanup
-      - name: Remove the temporary cloud pilot configuration
-        if: always() && inputs.cloud_pilot
+      - name: Remove the temporary Firebase configuration
+        if: always() && (inputs.cloud_pilot || inputs.cloud_production)
         run: rm -f -- app/src/release/google-services.json

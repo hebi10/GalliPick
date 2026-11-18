@@ -4,6 +4,8 @@ import android.app.Activity
 import java.io.Closeable
 
 internal const val GALLIPICK_STANDALONE_AD_FREE = "gallipick_ad_free"
+private val CLOUD_PRODUCT_ID = Regex("[a-z0-9][a-z0-9_.]{0,149}")
+private val CLOUD_BASE_PLAN_ID = Regex("[a-z0-9][a-z0-9-]{0,62}")
 
 internal fun matchesStandaloneAdFreeOffer(
     productId: String,
@@ -28,7 +30,21 @@ internal interface CloudBillingSession : Closeable {
     suspend fun purchase(activity: Activity, offer: CloudBillingOffer): CloudBillingUpdate
 }
 
-internal data class CloudBillingProduct(val productId: String, val basePlanId: String, val quotaBytes: Long)
+internal data class CloudBillingProduct(val productId: String, val basePlanId: String, val quotaBytes: Long) {
+    val isStandaloneAdFree: Boolean get() = productId == GALLIPICK_STANDALONE_AD_FREE
+    val billingPeriod: String get() = if (basePlanId == "annual") "P1Y" else "P1M"
+}
+
+internal fun isValidCloudBillingCatalog(products: List<CloudBillingProduct>): Boolean =
+    products.isNotEmpty() && products.distinctBy { it.productId to it.basePlanId }.size == products.size &&
+        products.all { product ->
+            CLOUD_PRODUCT_ID.matches(product.productId) && CLOUD_BASE_PLAN_ID.matches(product.basePlanId) &&
+                if (product.isStandaloneAdFree) {
+                    product.quotaBytes == 0L && product.basePlanId in setOf("monthly", "annual")
+                } else {
+                    product.quotaBytes > 0L
+                }
+        }
 
 internal data class CloudBillingPlan(
     val enabled: Boolean = false,
@@ -41,7 +57,20 @@ internal data class CloudBillingPlan(
     val obfuscatedAccountId: String = "",
     val adFreeProductId: String? = null,
     val adFreeExpiresAtMs: Long? = null,
+    val testPurchasesOnly: Boolean = true,
 )
+
+internal fun CloudBillingPlan.activeCloudProductId(nowMillis: Long): String? = activeProductId?.takeIf { id ->
+    enabled && expiresAtMs?.let { it > nowMillis } == true &&
+        products.any { it.productId == id && !it.isStandaloneAdFree }
+}
+
+internal fun CloudBillingPlan.activeStandaloneAdFreeProductId(nowMillis: Long): String? = adFreeProductId?.takeIf {
+    enabled && it == GALLIPICK_STANDALONE_AD_FREE && adFreeExpiresAtMs?.let { expiry -> expiry > nowMillis } == true
+}
+
+internal fun CloudBillingPlan.activeSubscriptionProductId(nowMillis: Long): String? =
+    activeCloudProductId(nowMillis) ?: activeStandaloneAdFreeProductId(nowMillis)
 
 internal data class CloudBillingOffer(
     val product: CloudBillingProduct,
@@ -65,7 +94,8 @@ internal data class CloudBillingUpdate(
 )
 
 internal enum class CloudBillingNotice {
-    VERIFIED, PENDING, CANCELLED, NO_PURCHASE, ALREADY_OWNED, PRICE_CHANGED, ACCOUNT_CHANGED, UNAVAILABLE, FAILED,
+    VERIFIED, PENDING, CANCELLED, NO_PURCHASE, ALREADY_OWNED, PRICE_CHANGED, ACCOUNT_CHANGED,
+    PURCHASE_LINKED_TO_ANOTHER_ACCOUNT, UNAVAILABLE, FAILED,
 }
 
 internal class CloudBillingException(val notice: CloudBillingNotice) : Exception()
@@ -78,8 +108,16 @@ internal fun cloudBillingOfferMatches(
     billingPeriod: String,
     recurring: Boolean,
     priceAmountMicros: Long,
-): Boolean = expected.productId == productId && expected.basePlanId == basePlanId && offerId == null &&
-    billingPeriod == "P1M" && recurring && priceAmountMicros > 0
+): Boolean {
+    if (expected.productId != productId || expected.basePlanId != basePlanId) return false
+    return if (expected.isStandaloneAdFree) {
+        expected.quotaBytes == 0L &&
+            matchesStandaloneAdFreeOffer(productId, basePlanId, offerId, billingPeriod, recurring, priceAmountMicros)
+    } else {
+        expected.quotaBytes > 0L && offerId == null && billingPeriod == expected.billingPeriod &&
+            recurring && priceAmountMicros > 0
+    }
+}
 
 internal fun cloudBillingPurchaseMatches(
     expectedAccount: String,

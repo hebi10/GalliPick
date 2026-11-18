@@ -48,6 +48,18 @@ def github(path):
     except ValueError:
         raise GateError("Malformed GitHub evidence") from None
 
+def verify_cloud_artifact_selection(env):
+    production = env.get("CLOUD_PRODUCTION", "false")
+    require(production in {"true", "false"}, "Invalid Firebase environment selection")
+    artifact = env["ARTIFACT_NAME"]
+    expected = f"GalliPick-v{env['VERSION_NAME']}-cloud-production-play-bundle"
+    if production == "true":
+        require(artifact == expected, "Select the exact signed production Cloud artifact")
+    else:
+        require(not artifact.endswith("-cloud-production-play-bundle"),
+                "Select production Cloud explicitly for a production Cloud artifact")
+    return production == "true"
+
 def guard():
     env = os.environ
     source = env.get("EXPECTED_MAIN_SHA", "")
@@ -67,6 +79,7 @@ def guard():
     require(bool(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*", release_name)), "Invalid version name")
     require(bool(re.fullmatch("[0-9a-f]{64}", env.get("AAB_SHA256", ""))), "Expected AAB SHA-256 required")
     require(mode in {"check", "publish"}, "Unsupported operation")
+    verify_cloud_artifact_selection(env)
     if mode == "publish":
         require(env.get("FINAL_RELEASE_APPROVED") == "true"
                 and env.get("APPROVAL_PHRASE") == "PUBLISH_VERIFIED_INTERNAL_AAB",
@@ -128,6 +141,13 @@ def verify():
             and metadata.get("version_name") == env["VERSION_NAME"]
             and metadata.get("package") == env["APP_PACKAGE"],
             "Original GalliPick signed build provenance mismatch")
+    production = verify_cloud_artifact_selection(env)
+    require((evidence.get("cloud_environment") == "production") == production,
+            "Signed build Firebase environment differs from the approved selection")
+    if production:
+        require(evidence.get("firebase_project_id") == "gallipick-production",
+                "Production Firebase project evidence is required")
+    cloud_environment = evidence.get("cloud_environment")
     OUT.mkdir(exist_ok=True)
     evidence = {"schema": "ops04-verified-aab-v1", "source_sha": env["EXPECTED_MAIN_SHA"],
                 "batch_id": env["BATCH_ID"], "build_run_id": env["BUILD_RUN_ID"],
@@ -135,6 +155,8 @@ def verify():
                 "certificate_sha256": signer, "application_id": identity[0],
                 "version_code": int(identity[1]), "version_name": identity[2],
                 "aab_path": str(aab), "play_uploaded": False}
+    if cloud_environment:
+        evidence["cloud_environment"] = cloud_environment
     (OUT / "verified.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
     with Path(env["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
         output.write("aab=" + str(aab) + "\n")

@@ -1,6 +1,7 @@
 package com.hebi.gallipick.data.cloud
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -10,6 +11,7 @@ class CloudRuntimeTargetTest {
         val dev = requireNotNull(cloudRuntimeFor("gallipick-dev"))
         assertEquals("https://asia-northeast3-gallipick-dev.cloudfunctions.net", dev.functionsEndpoint)
         assertEquals("gallipick-dev.firebasestorage.app", dev.storageBucket)
+        assertTrue(dev.backupEnabled)
     }
 
     @Test fun productionTargetNeverReusesDevelopmentStorageOrFunctions() {
@@ -18,6 +20,7 @@ class CloudRuntimeTargetTest {
         assertTrue(prod.functionsEndpoint.startsWith("https://"))
         assertTrue(prod.functionsEndpoint != dev.functionsEndpoint)
         assertTrue(prod.storageBucket != dev.storageBucket)
+        assertFalse(prod.backupEnabled)
     }
 
     @Test fun unknownProjectIsRejectedWithoutNetworkFallback() {

@@ -52,14 +52,22 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
         endpoint = runtime.functionsEndpoint,
         buckets = setOf(runtime.storageBucket),
     )
-    val backup = CloudBackup(
-        context = context,
-        account = session.account,
-        currentUid = { auth.currentUser?.uid },
-        tokenFor = { uid -> backupIdToken(auth, uid) },
-        transport = transport,
+    val backup = if (runtime.backupEnabled) {
+        CloudBackup(
+            context = context,
+            account = session.account,
+            currentUid = { auth.currentUser?.uid },
+            tokenFor = { uid -> backupIdToken(auth, uid) },
+            transport = transport,
+        )
+    } else null
+    val billing = PlayCloudBilling(
+        context,
+        { auth.currentUser?.uid },
+        { uid -> backupIdToken(auth, uid) },
+        transport,
+        testPurchasesOnly = runtime.projectId == "gallipick-dev",
     )
-    val billing = PlayCloudBilling(context, { auth.currentUser?.uid }, { uid -> backupIdToken(auth, uid) }, transport)
     return CloudAccountConnection(session, backup, billing = billing) { activity ->
         googleIdToken(credentials, activity, webClientId)
     }

@@ -4,6 +4,9 @@ import com.hebi.gallipick.data.cloud.CloudBillingNotice
 import com.hebi.gallipick.data.cloud.CloudBillingPlan
 import com.hebi.gallipick.data.cloud.CloudBillingSession
 import com.hebi.gallipick.data.cloud.GALLIPICK_STANDALONE_AD_FREE
+import com.hebi.gallipick.data.cloud.activeCloudProductId
+import com.hebi.gallipick.data.cloud.activeStandaloneAdFreeProductId
+import com.hebi.gallipick.data.cloud.activeSubscriptionProductId
 
 internal enum class AdRemovalStatus {
     NOT_PURCHASED,
@@ -14,18 +17,22 @@ internal enum class AdRemovalStatus {
 internal fun cloudAdRemovalStatus(plan: CloudBillingPlan?, nowMillis: Long): AdRemovalStatus {
     if (plan == null) return AdRemovalStatus.VERIFYING
     if (!plan.enabled) return AdRemovalStatus.NOT_PURCHASED
-    if (plan.activeProductId != null) {
-        val expiresAtMillis = plan.expiresAtMs ?: return AdRemovalStatus.VERIFYING
-        if (plan.products.none { it.productId == plan.activeProductId }) return AdRemovalStatus.VERIFYING
-        if (expiresAtMillis > nowMillis) return AdRemovalStatus.VERIFIED_AD_FREE
+    if (plan.activeSubscriptionProductId(nowMillis) != null) return AdRemovalStatus.VERIFIED_AD_FREE
+    if (plan.activeProductId != null && (plan.expiresAtMs == null ||
+            plan.products.none { it.productId == plan.activeProductId && !it.isStandaloneAdFree })) {
+        return AdRemovalStatus.VERIFYING
     }
-    if (plan.adFreeProductId != null) {
-        if (plan.adFreeProductId != GALLIPICK_STANDALONE_AD_FREE) return AdRemovalStatus.VERIFYING
-        val expiresAtMillis = plan.adFreeExpiresAtMs ?: return AdRemovalStatus.VERIFYING
-        if (expiresAtMillis > nowMillis) return AdRemovalStatus.VERIFIED_AD_FREE
+    if (plan.adFreeProductId != null &&
+        (plan.adFreeProductId != GALLIPICK_STANDALONE_AD_FREE || plan.adFreeExpiresAtMs == null)) {
+        return AdRemovalStatus.VERIFYING
     }
     return AdRemovalStatus.NOT_PURCHASED
 }
+
+internal fun CloudBillingPlan.verifiedAdRemovalExpiry(nowMillis: Long): Long? = listOfNotNull(
+    expiresAtMs.takeIf { activeCloudProductId(nowMillis) != null },
+    adFreeExpiresAtMs.takeIf { activeStandaloneAdFreeProductId(nowMillis) != null },
+).maxOrNull()
 
 internal data class CloudAdPlanObservation(val uid: String, val plan: CloudBillingPlan) {
     fun removalFor(currentUid: String, nowMillis: Long): AdRemovalStatus? {

@@ -19,11 +19,11 @@ export class BackupError extends Error {
     }
 }
 
-export function authorize(auth, pilotUsers) {
+export function authorize(auth, pilotUsers, allowAnyGoogleUser = false) {
     if (typeof auth?.uid !== 'string' || auth.uid.length === 0) {
         throw new BackupError('unauthenticated', 'Sign in to start a backup.');
     }
-    if (auth.token?.firebase?.sign_in_provider !== 'google.com' || !pilotUsers.has(auth.uid)) {
+    if (auth.token?.firebase?.sign_in_provider !== 'google.com' || (!allowAnyGoogleUser && !pilotUsers?.has(auth.uid))) {
         throw new BackupError('permission-denied', 'This account is not enrolled in the backup pilot.');
     }
     return createHash('sha256').update(auth.uid).digest('hex');
@@ -225,15 +225,9 @@ async function verifiedOriginal(bucket, key, record) {
     throw new BackupError('data-loss', 'The verified original is unavailable.');
 }
 
-export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 1024 * MIB, pilotLimit = 2048 * MIB,
-    requestsPerHour = 120, uploadQuota = async (_transaction, _owner, limit) => limit, uploadsPaused = false }) {
-    const pilotAllocation = db.doc('gallipickBackupControl/pilot');
-    const ownerPath = owner => `gallipickBackupAccounts/${owner}`;
-    const objectRecord = (owner, uploadId) => db.doc(`${ownerPath(owner)}/originals/${uploadId}`);
-    const objectKey = (owner, uploadId) => `cloud02/users/${owner}/${uploadId}`;
-
-    function countRequest(owner) {
-        const ref = db.doc(`gallipickBackupRequestLimits/${owner}`);
+export function createRequestLimiter(db, collection, requestsPerHour) {
+    return function countRequest(owner) {
+        const ref = db.doc(`${collection}/${owner}`);
         const hour = Math.floor(Date.now() / HOUR_MS);
         return db.runTransaction(async transaction => {
             const previous = (await transaction.get(ref)).data();
@@ -243,7 +237,16 @@ export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 10
             }
             transaction.set(ref, { hour, requests: requests + 1 });
         });
-    }
+    };
+}
+
+export function createBackupService({ db, getBucket, pilotUsers, ownerLimit = 1024 * MIB, pilotLimit = 2048 * MIB,
+    requestsPerHour = 120, uploadQuota = async (_transaction, _owner, limit) => limit, uploadsPaused = false }) {
+    const pilotAllocation = db.doc('gallipickBackupControl/pilot');
+    const ownerPath = owner => `gallipickBackupAccounts/${owner}`;
+    const objectRecord = (owner, uploadId) => db.doc(`${ownerPath(owner)}/originals/${uploadId}`);
+    const objectKey = (owner, uploadId) => `cloud02/users/${owner}/${uploadId}`;
+    const countRequest = createRequestLimiter(db, 'gallipickBackupRequestLimits', requestsPerHour);
 
     return {
         async countBillingRequest(auth) { await countRequest(authorize(auth, pilotUsers)); },

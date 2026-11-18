@@ -11,7 +11,7 @@ const BASE_PLAN_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
  */
 export function validateMonetizationCatalog(products, maxCloudBytes) {
     if (!Array.isArray(products) || products.length < 1 || products.length > 20
-        || !Number.isSafeInteger(maxCloudBytes) || maxCloudBytes < 1) {
+        || !Number.isSafeInteger(maxCloudBytes) || maxCloudBytes < 0) {
         throw new Error('An approved bounded subscription catalog is required.');
     }
     const unique = new Set();

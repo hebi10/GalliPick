@@ -32,6 +32,11 @@ on:
         description: 'Exactly the signed AAB versionName'
         type: string
         required: true
+      cloud_production:
+        description: 'Confirm the approved AAB targets production Firebase'
+        type: boolean
+        required: false
+        default: false
       batch_id:
         description: 'Asia/Seoul batch ID (YYYY-MM-DD-app)'
         type: string
@@ -58,6 +63,7 @@ env:
   AAB_SHA256: ${{ inputs.aab_sha256 }}
   VERSION_CODE: ${{ inputs.version_code }}
   VERSION_NAME: ${{ inputs.version_name }}
+  CLOUD_PRODUCTION: ${{ inputs.cloud_production }}
   BATCH_ID: ${{ inputs.batch_id }}
   DEPLOY_MODE: ${{ inputs.mode }}
   FINAL_RELEASE_APPROVED: ${{ inputs.final_release_approved }}
