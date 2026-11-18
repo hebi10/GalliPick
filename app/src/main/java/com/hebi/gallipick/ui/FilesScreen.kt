@@ -136,17 +136,8 @@ internal fun FilesScreenContent(
         entry.source == com.hebi.gallipick.data.cloud.GallerySource.BOTH &&
             (entry.device?.uri?.let { it in selectedUris } == true)
     } else 0
-    val groupByDate = state.filter.groupByDate
-    val dateGroups = remember(filtered, state.filter.dateField, state.filter.sortField, state.filter.sortDirection, groupByDate) {
-        if (!groupByDate) emptyList() else {
-            val dateSortField = when (state.filter.dateField) {
-                DateField.CAPTURED -> SortField.CAPTURED
-                DateField.ADDED -> SortField.ADDED
-                DateField.MODIFIED -> SortField.MODIFIED
-            }
-            val ascending = state.filter.sortField != dateSortField || state.filter.sortDirection == SortDirection.ASCENDING
-            MediaDateGroups.group(filtered, state.filter.dateField, ascending)
-        }
+    val fileSections = remember(filtered, state.filter) {
+        FileSections.local(filtered, state.filter)
     }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
@@ -310,6 +301,7 @@ internal fun FilesScreenContent(
                                                     backup = cloudFiles.backup, accountUid = cloudFiles.accountUid,
                                                     autoLoadThumbnails = autoLoadThumbnails,
                                                     modifier = Modifier.weight(1f),
+                                                    gridColumns = state.fileGridColumns,
                                                 )
                                                 if (visibleGallery.size < galleryFiltered.size) {
                                                     Row(Modifier.fillMaxWidth(),
@@ -358,21 +350,19 @@ internal fun FilesScreenContent(
                                         screenWidth - detailWidth - 14.dp
                                     else if (ocrSidebar) screenWidth - sidebarWidth - 14.dp
                                     else screenWidth
-                                    val tabletColumns = tabletMediaGridColumns(availableGridWidth, fontScale)
                                     if (gridView) {
                                         LazyVerticalGrid(
-                                            columns = if (tabletGrid) GridCells.Fixed(tabletColumns)
-                                                else GridCells.Adaptive(if (fontScale >= 1.5f) 132.dp else 108.dp),
+                                            columns = fileGridCells(state.fileGridColumns, availableGridWidth, fontScale, tabletGrid),
                                             state = gridState,
                                             modifier = Modifier.weight(1f).semantics { contentDescription = "미디어 파일 목록" },
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalArrangement = Arrangement.spacedBy(8.dp),
                                             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
                                         ) {
-                                            if (groupByDate) {
-                                                dateGroups.forEach { group ->
-                                                    item(key = "date:${group.date}", span = { GridItemSpan(maxLineSpan) }) {
-                                                        DateGroupHeader(group.date, group.items.size, state.filter.dateField)
+                                            if (fileSections.isNotEmpty()) {
+                                                fileSections.forEach { group ->
+                                                    item(key = "section:${group.title}", span = { GridItemSpan(maxLineSpan) }) {
+                                                        FileSectionHeader(group.title, group.items.size, state.filter.dateField.takeIf { group.isDate })
                                                     }
                                                     items(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
@@ -400,10 +390,10 @@ internal fun FilesScreenContent(
                                             verticalArrangement = Arrangement.spacedBy(6.dp),
                                             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
                                         ) {
-                                            if (groupByDate) {
-                                                dateGroups.forEach { group ->
-                                                    item(key = "date:${group.date}") {
-                                                        DateGroupHeader(group.date, group.items.size, state.filter.dateField)
+                                            if (fileSections.isNotEmpty()) {
+                                                fileSections.forEach { group ->
+                                                    item(key = "section:${group.title}") {
+                                                        FileSectionHeader(group.title, group.items.size, state.filter.dateField.takeIf { group.isDate })
                                                     }
                                                     listItems(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
@@ -505,6 +495,23 @@ internal fun FilesScreenContent(
                 },
                 dismissButton = { TextAction("닫기", { chosenCloud = null }) },
             )
+        }
+    }
+}
+
+@Composable
+internal fun FileSectionHeader(title: String, count: Int, dateField: DateField?) {
+    if (dateField != null) {
+        DateGroupHeader(title, count, dateField)
+    } else {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(title, modifier = Modifier.weight(1f).semantics { heading() },
+                style = MaterialTheme.typography.titleSmall, color = Ink)
+            Text("${count}개", style = MaterialTheme.typography.bodySmall, color = Muted)
         }
     }
 }
