@@ -51,6 +51,7 @@ internal fun rememberCloudFilesState(
     val network = rememberCloudNetworkStatus(enabled = connection != null)
     LaunchedEffect(uid) { CloudPhotoThumbnailStore.activate(uid) }
     val revision by backup.catalogRevision.collectAsStateWithLifecycle()
+    val recentUpload by backup.recentVerifiedUpload.collectAsStateWithLifecycle()
     var retryKey by remember(uid) { mutableIntStateOf(0) }
     var seenOffline by remember(uid) { mutableStateOf(false) }
     LaunchedEffect(uid, network.online) {
@@ -94,9 +95,12 @@ internal fun rememberCloudFilesState(
     val analyzer = remember(repository) {
         repository?.let { CloudSpaceAnalysis(it.appContext, it) }
     }
-    val candidates = remember(snapshot, deviceItems, uid) {
+    val candidates = remember(snapshot, deviceItems, uid, recentUpload) {
         if (snapshot?.accountUid != uid) emptyList()
-        else CloudGalleryMatchPolicy.candidates(deviceItems, snapshot?.originals.orEmpty())
+        else CloudGalleryMatchPolicy.prioritizeRecentUpload(
+            CloudGalleryMatchPolicy.candidates(deviceItems, snapshot?.originals.orEmpty()),
+            recentUpload, uid,
+        )
     }
     var verifiedMatches by remember(uid, snapshot, deviceItems) {
         mutableStateOf(emptyList<VerifiedGalleryMatch>())
