@@ -83,6 +83,7 @@ internal fun FilesScreenContent(
     var searchMode by rememberSaveable { mutableStateOf(FileSearchMode.FILES) }
     var ocrQuery by rememberSaveable { mutableStateOf("") }
     var detailUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var detailCloudId by rememberSaveable(cloudFiles.accountUid) { mutableStateOf<String?>(null) }
     var sourceFilter by rememberSaveable { mutableStateOf(GallerySourceFilter.ALL) }
     var visiblePages by rememberSaveable { mutableIntStateOf(1) }
     var allowMeteredThumbnails by rememberSaveable { mutableStateOf(false) }
@@ -117,6 +118,10 @@ internal fun FilesScreenContent(
             visibleItems, cloudFiles.snapshot, cloudFiles.accountUid, cloudFiles.verifiedMatches,
         )
     }
+    val detailCloud = galleryItems.firstNotNullOfOrNull { it.cloud?.takeIf { cloud -> cloud.uploadId == detailCloudId } }
+    val detailVerified = detail?.let { device ->
+        galleryItems.any { it.device?.uri == device.uri && it.cloud != null }
+    } == true
     val galleryFiltered = remember(galleryItems, state.filter, sourceFilter) {
         GalleryFileQuery.apply(galleryItems, state.filter, sourceFilter)
     }
@@ -297,7 +302,7 @@ internal fun FilesScreenContent(
                                                     gridView = gridView, wide = wide, availableWidth = availableGridWidth,
                                                     gridState = gridState, selected = state.selected,
                                                     toggleDevice = actions.toggleSelection, openDevice = { detailUri = it },
-                                                    openCloud = { chosenCloud = it },
+                                                    openCloud = { detailCloudId = it.uploadId },
                                                     backup = cloudFiles.backup, accountUid = cloudFiles.accountUid,
                                                     autoLoadThumbnails = autoLoadThumbnails,
                                                     modifier = Modifier.weight(1f),
@@ -432,7 +437,11 @@ internal fun FilesScreenContent(
                                     Modifier.weight(1f), detail.hasFolderProtection(state.protectedFolders),
                                     ocrText = if (searchMode == FileSearchMode.OCR)
                                         ocrRows[detail.uri]?.recognizedText else null,
-                                    ocrQuery = ocrQuery)
+                                    ocrQuery = ocrQuery,
+                                    cloudBackup = cloudFiles.backup,
+                                    accountUid = cloudFiles.accountUid,
+                                    cloudVerified = detailVerified,
+                                    onRequestCloud = openCloud)
                             }
                         }
                     }
@@ -442,6 +451,10 @@ internal fun FilesScreenContent(
                         ocrText = if (searchMode == FileSearchMode.OCR)
                             ocrRows[detail.uri]?.recognizedText else null,
                         ocrQuery = ocrQuery,
+                        cloudBackup = cloudFiles.backup,
+                        accountUid = cloudFiles.accountUid,
+                        cloudVerified = detailVerified,
+                        onRequestCloud = openCloud,
                     )
                 }
             }
@@ -465,6 +478,13 @@ internal fun FilesScreenContent(
             actions.setFilter(MediaFilterActions.sort(it, it.sortField, it.sortDirection)); showFilter = false
         }, { showFilter = false })
         if (showSave) SavePresetDialog({ actions.savePreset(it); showSave = false }, { showSave = false })
+        detailCloud?.let { original ->
+            CloudFileDetailDialog(
+                original = original, uid = cloudFiles.accountUid, backup = cloudFiles.backup,
+                offline = !cloudFiles.online, onDismiss = { detailCloudId = null },
+                onPreview = { detailCloudId = null; chosenCloud = original },
+            )
+        }
         chosenCloud?.let { original ->
             val uid = cloudFiles.accountUid
             val backup = cloudFiles.backup
