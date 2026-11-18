@@ -160,9 +160,8 @@ internal fun FilterDialogContent(
     var advancedExpanded by remember(current) {
         mutableStateOf(
             current.mimeType.isNotBlank() ||
-                current.dateField != DateField.CAPTURED || current.orientation != null || current.minPixels != null ||
-                current.favoritesOnly || current.protectedOnly || current.sortField != SortField.CAPTURED ||
-                current.sortDirection != SortDirection.DESCENDING,
+                current.orientation != null || current.minPixels != null ||
+                current.favoritesOnly || current.protectedOnly,
         )
     }
     val folders = remember(items, current.folder) {
@@ -173,6 +172,10 @@ internal fun FilterDialogContent(
         (items.map { it.mimeType }.filter { it.isNotBlank() } + current.mimeType)
             .filter { it.isNotBlank() }.distinct().sorted()
     }
+    val activeAdvancedCount = listOf(
+        mimeType.isNotBlank(), orientation != null, minPixels != null,
+        favoritesOnly, protectedOnly,
+    ).count { it }
     val basicContent: @Composable ColumnScope.() -> Unit = {
         FilterGroup("미디어 유형") {
             FlowRow(
@@ -426,6 +429,15 @@ internal fun FilterDialogContent(
                             .padding(horizontal = 20.dp, vertical = if (compactChrome) 0.dp else 8.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        Text(
+                            "선택: ${when (kind) { MediaKind.PHOTO -> "사진"; MediaKind.VIDEO -> "동영상"; null -> "전체" }}" +
+                                " · ${if (fromDate.isBlank() && toDate.isBlank()) "전체 기간" else "기간 지정"}" +
+                                " · ${fileGroupModeLabel(groupMode)} 그룹" +
+                                " · ${sortFieldLabel(sortField)}" +
+                                if (activeAdvancedCount > 0) " · 세부 ${activeAdvancedCount}개" else "",
+                            color = Muted,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                         if (wide) {
                             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                                 Column(Modifier.weight(1f).semantics { contentDescription = "기본 필터 조건" },
@@ -444,7 +456,9 @@ internal fun FilterDialogContent(
                                         stateDescription = if (advancedExpanded) "펼쳐짐" else "접힘"
                                     },
                                 )
-                                Text("파일 형식 · 날짜 · 화면 방향 · 해상도 · 정렬", color = Muted, style = MaterialTheme.typography.bodySmall)
+                                Text(if (activeAdvancedCount > 0) "세부 조건 ${activeAdvancedCount}개 적용 중"
+                                    else "파일 형식 · 화면 방향 · 해상도 · 보호 · 즐겨찾기",
+                                    color = Muted, style = MaterialTheme.typography.bodySmall)
                             }
                             if (advancedExpanded) {
                                 Column(Modifier.fillMaxWidth().semantics { contentDescription = "고급 필터 조건" },
