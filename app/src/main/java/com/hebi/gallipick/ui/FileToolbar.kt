@@ -232,6 +232,27 @@ internal fun FileToolbar(
                 }
                 Box {
                     ToolbarChoice(
+                        "그룹: ${fileGroupModeLabel(filter.groupMode)}", "그룹 보기 선택",
+                        fileGroupModeLabel(filter.groupMode), filter.groupMode != FileGroupMode.AUTO,
+                    ) { menu = "group" }
+                    DropdownMenu(expanded = menu == "group", onDismissRequest = { menu = null }) {
+                        FileGroupMode.entries.forEach { mode ->
+                            DropdownMenuItem(
+                                text = { Text(fileGroupModeLabel(mode)) },
+                                onClick = {
+                                    change(filter.copy(groupMode = mode, groupByDate =
+                                        mode == FileGroupMode.AUTO && filter.groupByDate))
+                                    menu = null
+                                },
+                                trailingIcon = {
+                                    if (filter.groupMode == mode) GalliIcon(Icons.Outlined.Check, null)
+                                },
+                            )
+                        }
+                    }
+                }
+                Box {
+                    ToolbarChoice(
                         if (conditionCount == 0) "필터" else "필터 $conditionCount",
                         "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0,
                     ) { advanced() }
@@ -322,6 +343,15 @@ private fun ToolbarChoice(label: String, description: String, state: String, act
 }
 
 private fun kindLabel(kind: MediaKind?): String = when (kind) { null -> "전체"; MediaKind.PHOTO -> "사진"; MediaKind.VIDEO -> "동영상" }
+
+internal fun fileGroupModeLabel(mode: FileGroupMode): String = when (mode) {
+    FileGroupMode.AUTO -> "자동"
+    FileGroupMode.NONE -> "없음"
+    FileGroupMode.DATE -> "날짜별"
+    FileGroupMode.KIND -> "종류별"
+    FileGroupMode.FOLDER -> "폴더별"
+    FileGroupMode.SIZE -> "크기별"
+}
 
 private fun sourceLabel(source: GallerySourceFilter): String = when (source) {
     GallerySourceFilter.ALL -> "전체"
