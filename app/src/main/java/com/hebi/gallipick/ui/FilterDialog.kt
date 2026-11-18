@@ -37,6 +37,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -46,6 +48,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,6 +84,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.hebi.gallipick.data.cloud.CloudOriginal
+import com.hebi.gallipick.data.cloud.GallerySourceFilter
 import com.hebi.gallipick.domain.DateField
 import com.hebi.gallipick.domain.FileGroupMode
 import com.hebi.gallipick.domain.MediaFilter
@@ -106,6 +112,8 @@ internal fun FilterDialog(
     onApply: (MediaFilter) -> Unit,
     onDismiss: () -> Unit,
     cloudItems: List<CloudOriginal> = emptyList(),
+    sourceFilter: GallerySourceFilter? = null,
+    onSourceFilterChange: (GallerySourceFilter) -> Unit = {},
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -116,7 +124,8 @@ internal fun FilterDialog(
                 .windowInsetsPadding(WindowInsets.safeDrawing),
             contentAlignment = Alignment.Center,
         ) {
-            FilterDialogContent(current, items, onApply, onDismiss, Modifier.fillMaxSize(), cloudItems)
+            FilterDialogContent(current, items, onApply, onDismiss, Modifier.fillMaxSize(),
+                cloudItems, sourceFilter, onSourceFilterChange)
         }
     }
 }
@@ -131,6 +140,8 @@ internal fun FilterDialogContent(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     cloudItems: List<CloudOriginal> = emptyList(),
+    sourceFilter: GallerySourceFilter? = null,
+    onSourceFilterChange: (GallerySourceFilter) -> Unit = {},
 ) {
     var kind by remember(current) { mutableStateOf(current.kind) }
     var query by remember(current) { mutableStateOf(current.query) }
@@ -152,7 +163,24 @@ internal fun FilterDialogContent(
     var protectedOnly by remember(current) { mutableStateOf(current.protectedOnly) }
     var sortField by remember(current) { mutableStateOf(current.sortField) }
     var sortDirection by remember(current) { mutableStateOf(current.sortDirection) }
+    var selectedSource by remember(sourceFilter) { mutableStateOf(sourceFilter) }
     var error by remember { mutableStateOf<String?>(null) }
+    var invalidTarget by remember { mutableStateOf<String?>(null) }
+    var validationAttempt by remember { mutableIntStateOf(0) }
+    val dateRequester = remember { BringIntoViewRequester() }
+    val sizeRequester = remember { BringIntoViewRequester() }
+    val durationRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(validationAttempt) {
+        if (validationAttempt > 0) {
+            withFrameNanos { }
+            val requester = when (invalidTarget) {
+                "date" -> dateRequester
+                "duration" -> durationRequester
+                else -> sizeRequester
+            }
+            runCatching { requester.bringIntoView() }
+        }
+    }
     var quickDateSelection by remember(current) { mutableStateOf(matchingDatePreset(current.fromDateMs, current.toDateMs)) }
     var calendarField by remember { mutableStateOf<String?>(null) }
     val scrollState = rememberScrollState()
@@ -164,7 +192,10 @@ internal fun FilterDialogContent(
         mutableStateOf(
             current.mimeType.isNotBlank() ||
                 current.orientation != null || current.minPixels != null ||
-                current.favoritesOnly || current.protectedOnly,
+                current.favoritesOnly || current.protectedOnly ||
+                current.query.isNotBlank() || current.folder.isNotBlank() || current.downloadsOnly ||
+                current.minSizeBytes != null || current.maxSizeBytes != null ||
+                current.minDurationMs != null || current.maxDurationMs != null,
         )
     }
     val folders = remember(items, cloudItems, current.folder) {
@@ -176,6 +207,9 @@ internal fun FilterDialogContent(
             .filter { it.isNotBlank() }.distinct().sorted()
     }
     val activeAdvancedCount = listOf(
+        query.isNotBlank(), folder.isNotBlank(), downloadsOnly,
+        minSize.isNotBlank() || maxSize.isNotBlank(),
+        minDuration.isNotBlank() || maxDuration.isNotBlank(),
         mimeType.isNotBlank(), orientation != null, minPixels != null,
         favoritesOnly, protectedOnly,
     ).count { it }
@@ -190,6 +224,7 @@ internal fun FilterDialogContent(
                 FilterChoice("동영상", kind == MediaKind.VIDEO) { kind = MediaKind.VIDEO }
             }
         }
+        Column(Modifier.bringIntoViewRequester(dateRequester)) {
         FilterGroup("날짜 범위") {
             Text("${dateFieldLabel(dateField)} 기준", style = MaterialTheme.typography.titleSmall, color = Ink)
             Text(dateBasisHelp(dateField), color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -265,6 +300,7 @@ internal fun FilterDialogContent(
                 color = Muted, style = MaterialTheme.typography.bodySmall,
             )
         }
+        }
         FilterGroup("그룹 보기") {
             Text("선택한 정렬과 필터에 맞춰 파일을 묶습니다.", color = Muted,
                 style = MaterialTheme.typography.bodySmall)
@@ -294,6 +330,20 @@ internal fun FilterDialogContent(
                 }
             }
         }
+        if (sourceFilter != null) {
+            FilterGroup("저장 위치") {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GallerySourceFilter.entries.forEach { option ->
+                        FilterChoice(sourceLabel(option), selectedSource == option) {
+                            selectedSource = option
+                        }
+                    }
+                }
+            }
+        }
+    }
+    val advancedContent: @Composable ColumnScope.() -> Unit = {
         FilterGroup("검색과 폴더") {
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
@@ -309,6 +359,7 @@ internal fun FilterDialogContent(
                 downloadsOnly = !downloadsOnly
             }
         }
+        Column(Modifier.bringIntoViewRequester(sizeRequester)) {
         FilterGroup("파일 크기 · MB") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("최소·최대 파일 크기", style = MaterialTheme.typography.bodySmall, color = Muted, modifier = Modifier.weight(1f))
@@ -323,15 +374,16 @@ internal fun FilterDialogContent(
                 )
             }
         }
+        }
         if (kind == MediaKind.VIDEO) {
-            FilterGroup("동영상 길이 · 분") {
-                FilterBounds(minDuration, { minDuration = it }, maxDuration, { maxDuration = it }, "최소 분", "최대 분")
+            Column(Modifier.bringIntoViewRequester(durationRequester)) {
+                FilterGroup("동영상 길이 · 분") {
+                    FilterBounds(minDuration, { minDuration = it }, maxDuration, { maxDuration = it }, "최소 분", "최대 분")
+                }
             }
         } else {
             Text("길이 조건은 동영상 유형에서 설정할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
         }
-    }
-    val advancedContent: @Composable ColumnScope.() -> Unit = {
         FilterGroup("파일 형식") {
             FilterDropdown(
                 "파일 형식", mimeType.ifBlank { "모든 형식" },
@@ -437,7 +489,8 @@ internal fun FilterDialogContent(
                                 " · ${if (fromDate.isBlank() && toDate.isBlank()) "전체 기간" else "기간 지정"}" +
                                 " · ${fileGroupModeLabel(groupMode)} 그룹" +
                                 " · ${sortFieldLabel(sortField)}" +
-                                if (activeAdvancedCount > 0) " · 세부 ${activeAdvancedCount}개" else "",
+                                (selectedSource?.let { " · 위치: ${sourceLabel(it)}" } ?: "") +
+                                (if (activeAdvancedCount > 0) " · 세부 ${activeAdvancedCount}개" else ""),
                             color = Muted,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -460,7 +513,7 @@ internal fun FilterDialogContent(
                                     },
                                 )
                                 Text(if (activeAdvancedCount > 0) "세부 조건 ${activeAdvancedCount}개 적용 중"
-                                    else "파일 형식 · 화면 방향 · 해상도 · 보호 · 즐겨찾기",
+                                    else "검색 · 폴더 · 크기 · 길이 · 형식 · 해상도 · 보호",
                                     color = Muted, style = MaterialTheme.typography.bodySmall)
                             }
                             if (advancedExpanded) {
@@ -482,7 +535,11 @@ internal fun FilterDialogContent(
                             Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-                            TextAction("초기화", onClick = { onApply(MediaFilter()); onDismiss() }, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
+                            TextAction("초기화", onClick = {
+                                onApply(MediaFilter())
+                                selectedSource?.let { onSourceFilterChange(GallerySourceFilter.ALL) }
+                                onDismiss()
+                            }, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
                             TextAction("취소", onClick = onDismiss, modifier = if (roomyFooter) Modifier else Modifier.weight(1f))
                             ActionButton(
                                 label = "필터 적용", filled = true, modifier = if (roomyFooter) Modifier else Modifier.weight(1.5f),
@@ -508,9 +565,17 @@ internal fun FilterDialogContent(
                                             favoritesOnly = favoritesOnly, protectedOnly = protectedOnly,
                                             sortField = sortField, sortDirection = sortDirection,
                                         ))
+                                        selectedSource?.let(onSourceFilterChange)
                                         onDismiss()
                                     } catch (invalid: IllegalArgumentException) {
                                         error = invalid.message ?: "입력한 조건을 확인해 주세요."
+                                        invalidTarget = when {
+                                            error.orEmpty().contains("날짜") -> "date"
+                                            error.orEmpty().contains("길이") -> "duration"
+                                            else -> "size"
+                                        }
+                                        if (invalidTarget != "date") advancedExpanded = true
+                                        validationAttempt++
                                         focusManager.clearFocus()
                                         keyboardController?.hide()
                                         if (compactChrome) scope.launch { scrollState.scrollTo(0) }

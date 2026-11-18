@@ -20,6 +20,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.hebi.gallipick.data.cloud.GallerySourceFilter
 import com.hebi.gallipick.domain.DateField
 import com.hebi.gallipick.domain.MediaFilter
 import com.hebi.gallipick.domain.MediaKind
@@ -200,10 +201,35 @@ class AdaptiveFilterTest {
         compose.runOnIdle { assertNull(applied) }
     }
 
+    @Test fun sourceChoiceRemainsDraftUntilApply() {
+        var appliedSource: GallerySourceFilter? = null
+        var applied: MediaFilter? = null
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                Box(Modifier.requiredSize(360.dp, 740.dp)) {
+                    FilterDialogContent(
+                        MediaFilter(), emptyList(), { applied = it }, {},
+                        Modifier.fillMaxSize(), sourceFilter = GallerySourceFilter.CLOUD,
+                        onSourceFilterChange = { appliedSource = it },
+                    )
+                }
+            }
+        } }
+        compose.onNodeWithText("위치: 클라우드", substring = true).assertExists()
+        compose.onNodeWithText("기기", substring = false).performScrollTo().performClick()
+        compose.runOnIdle { assertNull(appliedSource) }
+        compose.onNodeWithText("필터 적용").performClick()
+        compose.runOnIdle {
+            assertEquals(GallerySourceFilter.DEVICE, appliedSource)
+            assertNotNull(applied)
+        }
+    }
+
     @Test fun enteringMbUsesTheSameBinaryBytesAsTheAppsSizeLabels() {
         var applied: MediaFilter? = null
         showFilter(width = 320, height = 520, onApply = { applied = it })
 
+        compose.onNodeWithText("고급 조건 열기").performScrollTo().performClick()
         compose.onNodeWithText("앱의 용량 표기와 같은 기준입니다. 1 MB = 1,048,576바이트.").assertDoesNotExist()
         compose.onNodeWithText("용량 단위 안내").performScrollTo().performClick()
         compose.onNodeWithText("앱의 용량 표기와 같은 기준입니다. 1 MB = 1,048,576바이트.").performScrollTo().assertIsDisplayed()

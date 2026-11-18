@@ -353,7 +353,7 @@ internal fun fileGroupModeLabel(mode: FileGroupMode): String = when (mode) {
     FileGroupMode.SIZE -> "크기별"
 }
 
-private fun sourceLabel(source: GallerySourceFilter): String = when (source) {
+internal fun sourceLabel(source: GallerySourceFilter): String = when (source) {
     GallerySourceFilter.ALL -> "전체"
     GallerySourceFilter.DEVICE -> "기기"
     GallerySourceFilter.CLOUD -> "클라우드"
