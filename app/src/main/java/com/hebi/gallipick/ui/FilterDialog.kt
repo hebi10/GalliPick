@@ -133,6 +133,7 @@ internal fun FilterDialogContent(
     var folder by remember(current) { mutableStateOf(current.folder) }
     var downloadsOnly by remember(current) { mutableStateOf(current.downloadsOnly) }
     var groupByDate by remember(current) { mutableStateOf(current.groupByDate) }
+    var groupMode by remember(current) { mutableStateOf(current.groupMode) }
     var mimeType by remember(current) { mutableStateOf(current.mimeType) }
     var minSize by remember(current) { mutableStateOf(numberText(current.minSizeBytes, BYTES_PER_MB)) }
     var maxSize by remember(current) { mutableStateOf(numberText(current.maxSizeBytes, BYTES_PER_MB)) }
@@ -197,6 +198,11 @@ internal fun FilterDialogContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                FilterChoice("전체 기간", fromDate.isBlank() && toDate.isBlank()) {
+                    fromDate = ""
+                    toDate = ""
+                    quickDateSelection = "all"
+                }
                 FilterChoice("오늘", quickDateSelection == "today") {
                     val today = dateText(Calendar.getInstance().timeInMillis)
                     fromDate = today
@@ -216,11 +222,6 @@ internal fun FilterDialogContent(
                     end.add(Calendar.DAY_OF_MONTH, -29)
                     fromDate = dateText(end.timeInMillis)
                     quickDateSelection = "30"
-                }
-                FilterChoice("전체 기간", fromDate.isBlank() && toDate.isBlank()) {
-                    fromDate = ""
-                    toDate = ""
-                    quickDateSelection = "all"
                 }
                 FilterChoice("이번 달", quickDateSelection == "month") {
                     val today = Calendar.getInstance()
@@ -257,6 +258,35 @@ internal fun FilterDialogContent(
                 color = Muted, style = MaterialTheme.typography.bodySmall,
             )
         }
+        FilterGroup("그룹 보기") {
+            Text("선택한 정렬과 필터에 맞춰 파일을 묶습니다.", color = Muted,
+                style = MaterialTheme.typography.bodySmall)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FileGroupMode.entries.forEach { mode ->
+                    FilterChoice(fileGroupModeLabel(mode), groupMode == mode) {
+                        groupMode = mode
+                        if (mode != FileGroupMode.AUTO) groupByDate = false
+                    }
+                }
+            }
+        }
+        FilterGroup("정렬") {
+            FilterDropdown("정렬 기준", sortFieldLabel(sortField), SortField.entries.map { it to sortFieldLabel(it) }) {
+                sortField = it
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChoice("내림차순", sortDirection == SortDirection.DESCENDING) {
+                    sortDirection = SortDirection.DESCENDING
+                }
+                FilterChoice("오름차순", sortDirection == SortDirection.ASCENDING) {
+                    sortDirection = SortDirection.ASCENDING
+                }
+            }
+        }
         FilterGroup("검색과 폴더") {
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
@@ -270,7 +300,6 @@ internal fun FilterDialogContent(
             ) { folder = it }
             FilterChoice("다운로드 폴더만 (하위 폴더 포함)", downloadsOnly) {
                 downloadsOnly = !downloadsOnly
-                if (!downloadsOnly) groupByDate = false
             }
         }
         FilterGroup("파일 크기 · MB") {
@@ -348,22 +377,6 @@ internal fun FilterDialogContent(
                 }
             }
         }
-        FilterGroup("정렬") {
-            FilterDropdown("정렬 기준", sortFieldLabel(sortField), SortField.entries.map { it to sortFieldLabel(it) }) {
-                sortField = it
-            }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChoice("내림차순", sortDirection == SortDirection.DESCENDING) {
-                    sortDirection = SortDirection.DESCENDING
-                }
-                FilterChoice("오름차순", sortDirection == SortDirection.ASCENDING) {
-                    sortDirection = SortDirection.ASCENDING
-                }
-            }
-        }
     }
     BackHandler(enabled = calendarField != null) { calendarField = null }
     Surface(
@@ -415,13 +428,13 @@ internal fun FilterDialogContent(
                         if (wide) {
                             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                                 Column(Modifier.weight(1f).semantics { contentDescription = "기본 필터 조건" },
-                                    verticalArrangement = Arrangement.spacedBy(14.dp), content = basicContent)
+                                    verticalArrangement = Arrangement.spacedBy(10.dp), content = basicContent)
                                 Column(Modifier.weight(1f).semantics { contentDescription = "고급 필터 조건" },
                                     verticalArrangement = Arrangement.spacedBy(14.dp), content = advancedContent)
                             }
                         } else {
                             Column(Modifier.fillMaxWidth().semantics { contentDescription = "기본 필터 조건" },
-                                verticalArrangement = Arrangement.spacedBy(14.dp), content = basicContent)
+                                verticalArrangement = Arrangement.spacedBy(10.dp), content = basicContent)
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 ActionButton(
                                     if (advancedExpanded) "고급 조건 접기" else "고급 조건 열기",
@@ -469,6 +482,7 @@ internal fun FilterDialogContent(
                                         onApply(current.copy(
                                             kind = kind, query = query.trim(), folder = folder, mimeType = mimeType,
                                             downloadsOnly = downloadsOnly, groupByDate = groupByDate,
+                                            groupMode = groupMode,
                                             minSizeBytes = minimumSize, maxSizeBytes = maximumSize,
                                             minDurationMs = minimumDuration, maxDurationMs = maximumDuration,
                                             dateField = dateField, fromDateMs = from, toDateMs = to,
