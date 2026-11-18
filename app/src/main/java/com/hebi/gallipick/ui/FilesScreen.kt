@@ -311,6 +311,12 @@ internal fun FilesScreenContent(
                                                     Text("기기 사진 접근이 제한되어 클라우드 파일만 표시됩니다.",
                                                         color = Muted, style = MaterialTheme.typography.bodySmall)
                                                 }
+                                                if (gridView && state.fileGridColumns != null) {
+                                                    val applied = resolvedFileGridColumns(state.fileGridColumns,
+                                                        availableGridWidth, screenFontScale, tabletGrid)
+                                                    Text("한 줄 ${applied}개 표시 · 설정 ${state.fileGridColumns}개",
+                                                        color = Muted, style = MaterialTheme.typography.bodySmall)
+                                                }
                                                 UnifiedFilesList(
                                                     entries = visibleGallery, filter = state.filter, source = sourceFilter,
                                                     gridView = gridView, wide = wide, availableWidth = availableGridWidth,
@@ -370,6 +376,12 @@ internal fun FilesScreenContent(
                                     else if (ocrSidebar) screenWidth - sidebarWidth - 14.dp
                                     else screenWidth
                                     if (gridView) {
+                                        if (state.fileGridColumns != null) {
+                                            val applied = resolvedFileGridColumns(state.fileGridColumns,
+                                                availableGridWidth, fontScale, tabletGrid)
+                                            Text("한 줄 ${applied}개 표시 · 설정 ${state.fileGridColumns}개",
+                                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                                        }
                                         LazyVerticalGrid(
                                             columns = fileGridCells(state.fileGridColumns, availableGridWidth, fontScale, tabletGrid),
                                             state = gridState,

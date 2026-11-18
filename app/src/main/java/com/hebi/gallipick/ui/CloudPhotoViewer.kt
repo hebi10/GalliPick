@@ -96,6 +96,7 @@ internal fun CloudPhotoThumbnail(
     modifier: Modifier = Modifier,
     open: () -> Unit,
     autoLoad: Boolean = true,
+    contentScale: ContentScale = ContentScale.Crop,
 ) {
     var bitmap by remember(uid, original.uploadId) {
         mutableStateOf(uid?.let { CloudPhotoThumbnailStore.peek(it, original) })
@@ -119,7 +120,7 @@ internal fun CloudPhotoThumbnail(
             GalliIcon(Icons.Outlined.Image, null, Modifier.align(Alignment.Center).size(32.dp), tint = Muted)
         } else {
             Image(loaded.asImageBitmap(), contentDescription = null,
-                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                modifier = Modifier.fillMaxSize(), contentScale = contentScale)
         }
         Row(
             Modifier.align(Alignment.BottomStart).padding(4.dp)

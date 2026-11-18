@@ -9,7 +9,7 @@ object MediaQuery {
             val date = dateOf(item, filter.dateField)
             (filter.kind == null || item.kind == filter.kind) &&
                 (query.isEmpty() || item.displayName.contains(query, ignoreCase = true) || item.relativePath.contains(query, ignoreCase = true)) &&
-                (filter.folder.isEmpty() || item.relativePath == filter.folder) &&
+                (filter.folder.isEmpty() || item.relativePath.trimEnd('/') == filter.folder.trimEnd('/')) &&
                 (!filter.downloadsOnly || isDownloadsFolder(item.relativePath)) &&
                 (filter.mimeType.isEmpty() || item.mimeType.equals(filter.mimeType, ignoreCase = true)) &&
                 (filter.minSizeBytes == null || item.sizeBytes >= filter.minSizeBytes) &&

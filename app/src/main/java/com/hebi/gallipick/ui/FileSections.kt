@@ -71,12 +71,22 @@ internal object FileSections {
     }
 }
 
-internal fun fileGridCells(requested: Int?, availableWidth: Dp, fontScale: Float, tablet: Boolean): GridCells {
+internal fun resolvedFileGridColumns(
+    requested: Int?, availableWidth: Dp, fontScale: Float, tablet: Boolean,
+): Int {
     if (requested == null) {
-        return if (tablet) GridCells.Fixed(tabletMediaGridColumns(availableWidth, fontScale))
-        else GridCells.Adaptive(if (fontScale >= 1.5f) 132.dp else 108.dp)
+        if (tablet) return tabletMediaGridColumns(availableWidth, fontScale)
+        val tile = if (fontScale >= 1.5f) 132f else 108f
+        return ((availableWidth.value + 6f) / (tile + 6f)).toInt().coerceAtLeast(1)
     }
-    val minimumTileDp = 48f * fontScale.coerceIn(1f, 1.5f)
-    val safeColumns = ((availableWidth.value + 6f) / (minimumTileDp + 6f)).toInt().coerceAtLeast(1)
-    return GridCells.Fixed(requested.coerceIn(3, 6).coerceAtMost(safeColumns))
+    val minimumTile = 48f * fontScale.coerceIn(1f, 1.5f)
+    val safe = ((availableWidth.value + 6f) / (minimumTile + 6f)).toInt().coerceAtLeast(1)
+    return requested.coerceIn(3, 6).coerceAtMost(safe)
+}
+
+internal fun fileGridCells(requested: Int?, availableWidth: Dp, fontScale: Float, tablet: Boolean): GridCells {
+    if (requested == null && !tablet) {
+        return GridCells.Adaptive(if (fontScale >= 1.5f) 132.dp else 108.dp)
+    }
+    return GridCells.Fixed(resolvedFileGridColumns(requested, availableWidth, fontScale, tablet))
 }

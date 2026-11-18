@@ -10,6 +10,7 @@ import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.SortDirection
 import com.hebi.gallipick.domain.SortField
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,6 +19,13 @@ import org.junit.Test
 class FileSectionsTest {
     private val recent = media(1, "DCIM/Camera/", 1_760_000_000_000L, 2L * 1024 * 1024)
     private val earlier = media(2, "Pictures/", 1_730_000_000_000L, 700L * 1024 * 1024)
+
+    @Test fun manualGridCountShowsItsSafeResolvedColumnCount() {
+        assertEquals(6, resolvedFileGridColumns(6, 600.dp, 1f, false))
+        assertEquals(3, resolvedFileGridColumns(6, 200.dp, 1f, false))
+        assertEquals(2, resolvedFileGridColumns(6, 180.dp, 1.6f, false))
+        assertEquals(3, resolvedFileGridColumns(3, 600.dp, 1f, false))
+    }
 
     @Test fun automaticallyGroupsByCaptureDateAndStartsWithNewest() {
         val groups = FileSections.local(listOf(earlier, recent), MediaFilter())

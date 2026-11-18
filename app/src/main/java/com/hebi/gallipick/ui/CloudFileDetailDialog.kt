@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -80,7 +81,8 @@ internal fun CloudFileDetailDialog(
                         contentAlignment = Alignment.Center) {
                         if (original.mimeType.startsWith("image/")) {
                             CloudPhotoThumbnail(original, uid, backup, Modifier.fillMaxSize(),
-                                open = onPreview, autoLoad = !offline && autoLoadThumbnails)
+                                open = onPreview, autoLoad = !offline && autoLoadThumbnails,
+                                contentScale = ContentScale.Fit)
                         } else {
                             GalliIcon(Icons.Outlined.Movie, "클라우드 동영상", tint = Muted)
                         }
