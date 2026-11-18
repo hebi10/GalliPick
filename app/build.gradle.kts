@@ -61,18 +61,25 @@ fun readCloudFirebaseConfig(
     playSigningSha1: String? = null,
     expectedProjectId: String = cloudTestFirebaseProjectId,
     externalAndroidOAuthClientId: String? = null,
+    externalWebOAuthClientId: String? = null,
     developmentReference: (() -> String)? = null,
 ): Map<String, String> {
     fun Map<*, *>.objectField(name: String): Map<*, *> = this[name] as? Map<*, *> ?: emptyMap<Any, Any>()
     fun Map<*, *>.objectArray(name: String): List<Map<*, *>> =
         (this[name] as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
 
-    fun androidClientFor(source: String, projectId: String): Map<*, *> {
-        val config = JsonSlurper().parseText(source) as Map<*, *>
+    fun androidClientFor(config: Map<*, *>, projectId: String): Map<*, *> {
         require(config.objectField("project_info")["project_id"] == projectId)
         return config.objectArray("client").single {
             it.objectField("client_info").objectField("android_client_info")["package_name"] == galliPickApplicationId
         }
+    }
+
+    fun requireSameProjectOAuth(config: Map<*, *>, androidId: String, webId: String) {
+        val projectNumber = config.objectField("project_info")["project_number"] as? String
+        require(projectNumber != null && projectNumber.matches(Regex("[0-9]+")))
+        val projectClientId = Regex("$projectNumber-[a-zA-Z0-9_-]+\\.apps\\.googleusercontent\\.com")
+        require(androidId.matches(projectClientId) && webId.matches(projectClientId) && androidId != webId)
     }
 
     fun isPlaySigningAndroidClient(oauth: Map<*, *>): Boolean {
@@ -82,24 +89,35 @@ fun readCloudFirebaseConfig(
             normalizedSha1(android["certificate_hash"] as? String) == playSigningSha1
     }
 
-    val client = androidClientFor(json, expectedProjectId)
+    val config = JsonSlurper().parseText(json) as Map<*, *>
+    val client = androidClientFor(config, expectedProjectId)
     val oauthClients = client.objectArray("oauth_client")
     val webClients = oauthClients.filter { (it["client_type"] as? Number)?.toInt() == 3 }
-    val webClient = if (expectedProjectId == cloudProductionFirebaseProjectId) webClients.single() else webClients.first()
-    if (playSigningSha1 != null && oauthClients.none(::isPlaySigningAndroidClient)) {
-        require(expectedProjectId == cloudProductionFirebaseProjectId)
-        val externalId = requireNotNull(externalAndroidOAuthClientId)
-        require(externalId.matches(Regex("[a-zA-Z0-9_-]+\\.apps\\.googleusercontent\\.com")))
-        val reference = androidClientFor(requireNotNull(developmentReference).invoke(), cloudTestFirebaseProjectId)
-        require(reference.objectArray("oauth_client").any {
-            it["client_id"] == externalId && isPlaySigningAndroidClient(it)
-        })
+    val production = expectedProjectId == cloudProductionFirebaseProjectId
+    val firebaseWebClient = if (production) webClients.single() else webClients.first()
+    val firebaseWebId = firebaseWebClient["client_id"] as String
+    val directAndroidClients = oauthClients.filter(::isPlaySigningAndroidClient)
+    val googleWebId = if (playSigningSha1 != null && directAndroidClients.isEmpty()) {
+        require(production)
+        val androidId = requireNotNull(externalAndroidOAuthClientId)
+        val webId = requireNotNull(externalWebOAuthClientId)
+        val referenceConfig = JsonSlurper().parseText(requireNotNull(developmentReference).invoke()) as Map<*, *>
+        requireSameProjectOAuth(referenceConfig, androidId, webId)
+        val referenceClients = androidClientFor(referenceConfig, cloudTestFirebaseProjectId).objectArray("oauth_client")
+        require(referenceClients.any { it["client_id"] == androidId && isPlaySigningAndroidClient(it) })
+        require(referenceClients.any { it["client_id"] == webId && (it["client_type"] as? Number)?.toInt() == 3 })
+        webId
+    } else {
+        if (production && playSigningSha1 != null) {
+            requireSameProjectOAuth(config, directAndroidClients.single()["client_id"] as String, firebaseWebId)
+        }
+        firebaseWebId
     }
     val values = listOf(
         client.objectField("client_info")["mobilesdk_app_id"],
         client.objectArray("api_key").first()["current_key"],
         expectedProjectId,
-        webClient["client_id"],
+        googleWebId,
     ).map { it as String }
     require(values.all { it.matches(Regex("[a-zA-Z0-9_.:-]+")) })
     require(values.last().endsWith(".apps.googleusercontent.com"))
@@ -127,13 +145,14 @@ val playCloudFirebaseConfig = if (playCloudPilot) {
             signingSha1,
             releaseFirebaseProjectId,
             providers.gradleProperty("gallipickPlayExternalAndroidOAuthClientId").orNull,
+            providers.gradleProperty("gallipickPlayExternalWebOAuthClientId").orNull,
         ) {
             val reference = File(providers.gradleProperty("gallipickPlayAndroidOAuthReferenceFile").get())
             require(reference.isAbsolute && reference.isFile)
             reference.readText()
         }
     } catch (_: Exception) {
-        throw GradleException("Invalid Play cloud Firebase configuration for $cloudEnvironment. Check the project, package, and Play signing OAuth client.")
+        throw GradleException("Invalid Play cloud Firebase configuration for $cloudEnvironment. Check the Firebase project, Play signing certificate, and Android and web OAuth clients.")
     }
 } else emptyMap()
 
