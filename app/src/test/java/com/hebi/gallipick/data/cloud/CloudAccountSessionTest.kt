@@ -53,6 +53,24 @@ class CloudAccountSessionTest {
     }
 
     @Test
+    fun googleCredentialAndFirebaseFailuresRemainDistinctWithoutChangingTheAccount() = runTest {
+        val backend = TestBackend(first)
+        val session = CloudAccountSession(backend)
+
+        session.chooseAccount { throw CloudAccountFailure(CloudAccountNotice.GOOGLE_CREDENTIAL_FAILED) }
+        assertEquals(CloudAccountNotice.GOOGLE_CREDENTIAL_FAILED, session.status.value.notice)
+
+        backend.signInFailure = firebaseGoogleSignInFailure("ERROR_APP_NOT_AUTHORIZED")
+        session.chooseAccount { "second-test-credential" }
+        assertEquals(CloudAccountNotice.FIREBASE_GOOGLE_CONFIGURATION, session.status.value.notice)
+
+        backend.signInFailure = firebaseGoogleSignInFailure("ERROR_INVALID_CREDENTIAL")
+        session.chooseAccount { "second-test-credential" }
+        assertEquals(CloudAccountNotice.FIREBASE_SIGN_IN_FAILED, session.status.value.notice)
+        assertEquals(first, session.account.value)
+    }
+
+    @Test
     fun signOutRemovesTheSessionEvenIfThePickerCannotClearItsState() = runTest {
         val backend = TestBackend(first).apply { failClear = true }
         val session = CloudAccountSession(backend)

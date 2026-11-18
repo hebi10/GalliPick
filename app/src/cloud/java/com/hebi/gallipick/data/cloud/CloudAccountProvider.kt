@@ -8,15 +8,18 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.GetCredentialProviderConfigurationException
 import androidx.credentials.exceptions.GetCredentialUnsupportedException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.hebi.gallipick.R
@@ -103,11 +106,17 @@ private suspend fun googleIdToken(manager: CredentialManager, activity: Activity
         throw CloudAccountFailure(CloudAccountNotice.GOOGLE_UNAVAILABLE)
     } catch (_: GetCredentialUnsupportedException) {
         throw CloudAccountFailure(CloudAccountNotice.GOOGLE_UNAVAILABLE)
+    } catch (_: GetCredentialException) {
+        throw CloudAccountFailure(CloudAccountNotice.GOOGLE_CREDENTIAL_FAILED)
     }
     if (credential !is CustomCredential || credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-        throw CloudAccountFailure(CloudAccountNotice.SIGN_IN_FAILED)
+        throw CloudAccountFailure(CloudAccountNotice.GOOGLE_CREDENTIAL_FAILED)
     }
-    return GoogleIdTokenCredential.createFrom(credential.data).idToken
+    return try {
+        GoogleIdTokenCredential.createFrom(credential.data).idToken
+    } catch (_: GoogleIdTokenParsingException) {
+        throw CloudAccountFailure(CloudAccountNotice.GOOGLE_CREDENTIAL_FAILED)
+    }
 }
 
 private class FirebaseCloudAccountBackend(
@@ -129,8 +138,11 @@ private class FirebaseCloudAccountBackend(
                     currentAccount.value = auth.currentUser?.identity()
                     continuation.resume(Unit)
                 } else {
-                    val notice = if (result.exception is FirebaseNetworkException) CloudAccountNotice.NETWORK_ERROR
-                    else CloudAccountNotice.SIGN_IN_FAILED
+                    val notice = when (val error = result.exception) {
+                        is FirebaseNetworkException -> CloudAccountNotice.NETWORK_ERROR
+                        is FirebaseAuthException -> firebaseGoogleSignInFailure(error.errorCode)
+                        else -> CloudAccountNotice.FIREBASE_SIGN_IN_FAILED
+                    }
                     continuation.resumeWithException(CloudAccountFailure(notice))
                 }
             }
