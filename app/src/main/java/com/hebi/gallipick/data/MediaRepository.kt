@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.hebi.gallipick.domain.DuplicateGroup
 import com.hebi.gallipick.domain.SimilarPhotoGroup
+import com.hebi.gallipick.domain.SimilarPhoto
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.ScanPhase
 import com.hebi.gallipick.domain.ScanState
@@ -354,19 +355,16 @@ class MediaRepository(context: Context) {
             // Check that every selected item still has the specific cached photo signature that formed this group.
             for (photo in group.photos.filter { it.item.uri in selectedUris }) {
                 val item = dao.media(photo.item.uri) ?: return@withContext null
-                val saved = dao.allPhotoHashes().firstOrNull {
-                    it.uri == photo.item.uri && it.fingerprint == photo.item.fingerprint &&
-                        it.volumeVersion == photo.item.volumeVersion && it.phash == photo.phash
-                } ?: return@withContext null
-                if (saved.phash == null || item.fingerprint != photo.item.fingerprint ||
+                val saved = dao.photoHash(photo.item.uri, photo.item.fingerprint)
+                if (!cachedSimilarProofMatches(photo, saved) ||
+                    item.fingerprint != photo.item.fingerprint ||
                     dao.volumeVersion(item.volume) != photo.item.volumeVersion) return@withContext null
             }
-            val hashes = dao.allPhotoHashes().associateBy { Triple(it.uri, it.fingerprint, it.volumeVersion) }
             for (photo in group.photos.filterNot { it.item.uri in selectedUris }) {
                 val item = photo.item
                 if (item.volumeVersion.isBlank()) continue
-                val proof = hashes[Triple(item.uri, item.fingerprint, item.volumeVersion)] ?: continue
-                if (proof.phash != photo.phash) continue
+                val proof = dao.photoHash(item.uri, item.fingerprint)
+                if (!cachedSimilarProofMatches(photo, proof)) continue
                 val current = freshUnchanged(listOf(item)).firstOrNull { !it.isTrashed }
                 if (current != null) return@withContext current
             }
