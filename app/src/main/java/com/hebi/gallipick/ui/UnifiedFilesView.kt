@@ -182,7 +182,7 @@ private fun CloudOnlyTile(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            CloudThumbnail(original, Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)), backup, accountUid, autoLoadThumbnails, open)
+            CloudThumbnail(original, Modifier.size(76.dp), backup, accountUid, autoLoadThumbnails, open)
             Column(
                 Modifier.weight(1f).plainClick(action = open),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -195,8 +195,7 @@ private fun CloudOnlyTile(
         }
     } else {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            CloudThumbnail(original, Modifier.fillMaxWidth().aspectRatio(1f)
-                .clip(RoundedCornerShape(10.dp)), backup, accountUid, autoLoadThumbnails, open)
+            CloudThumbnail(original, Modifier.fillMaxWidth().aspectRatio(1f), backup, accountUid, autoLoadThumbnails, open)
             Text(original.displayName, style = if (tabletGrid) MaterialTheme.typography.bodySmall
                 else MaterialTheme.typography.labelSmall, maxLines = if (tabletGrid) 2 else 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().plainClick(action = open))
