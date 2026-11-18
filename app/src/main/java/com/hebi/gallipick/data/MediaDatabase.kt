@@ -303,7 +303,7 @@ internal abstract class MediaDao {
         delta.removedUris.chunked(400).forEach { uris -> deleteMediaByUris(uris) }
         delta.changed.chunked(400).forEach { rows -> insertMedia(rows) }
 
-        if (!delta.isEmpty || invalidatedVolumes.isNotEmpty()) {
+        if (!delta.isEmpty || previousVersions != versions) {
             pruneHashes()
             prunePhotoHashes()
             pruneOcrIndex()
