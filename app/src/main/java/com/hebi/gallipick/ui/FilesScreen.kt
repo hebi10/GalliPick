@@ -579,7 +579,7 @@ internal fun MediaTile(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(Modifier.size(76.dp).clip(RoundedCornerShape(10.dp)).plainClick(action = detail)) {
+            Box(Modifier.size(76.dp).plainClick(action = detail)) {
                 MediaThumbnail(item, Modifier.fillMaxSize())
             }
             Column(Modifier.weight(1f).plainClick(action = detail), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -609,10 +609,8 @@ internal fun MediaTile(
         ), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Box(
                 Modifier.fillMaxWidth().aspectRatio(1f)
-                    .clip(RoundedCornerShape(10.dp))
                     .border(if (selected) 2.dp else 0.dp,
-                        if (selected) Primary else androidx.compose.ui.graphics.Color.Transparent,
-                        RoundedCornerShape(10.dp))
+                        if (selected) Primary else androidx.compose.ui.graphics.Color.Transparent)
                     .plainClick(action = detail),
             ) {
                 MediaThumbnail(item, Modifier.fillMaxSize())
