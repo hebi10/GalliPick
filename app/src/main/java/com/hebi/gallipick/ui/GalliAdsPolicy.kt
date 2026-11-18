@@ -3,6 +3,7 @@ package com.hebi.gallipick.ui
 import com.hebi.gallipick.data.cloud.CloudBillingNotice
 import com.hebi.gallipick.data.cloud.CloudBillingPlan
 import com.hebi.gallipick.data.cloud.CloudBillingSession
+import com.hebi.gallipick.data.cloud.GALLIPICK_STANDALONE_AD_FREE
 
 internal enum class AdRemovalStatus {
     NOT_PURCHASED,
@@ -12,10 +13,18 @@ internal enum class AdRemovalStatus {
 
 internal fun cloudAdRemovalStatus(plan: CloudBillingPlan?, nowMillis: Long): AdRemovalStatus {
     if (plan == null) return AdRemovalStatus.VERIFYING
-    if (!plan.enabled || plan.activeProductId == null) return AdRemovalStatus.NOT_PURCHASED
-    val expiresAtMillis = plan.expiresAtMs ?: return AdRemovalStatus.VERIFYING
-    if (plan.products.none { it.productId == plan.activeProductId }) return AdRemovalStatus.VERIFYING
-    return if (expiresAtMillis > nowMillis) AdRemovalStatus.VERIFIED_AD_FREE else AdRemovalStatus.NOT_PURCHASED
+    if (!plan.enabled) return AdRemovalStatus.NOT_PURCHASED
+    if (plan.activeProductId != null) {
+        val expiresAtMillis = plan.expiresAtMs ?: return AdRemovalStatus.VERIFYING
+        if (plan.products.none { it.productId == plan.activeProductId }) return AdRemovalStatus.VERIFYING
+        if (expiresAtMillis > nowMillis) return AdRemovalStatus.VERIFIED_AD_FREE
+    }
+    if (plan.adFreeProductId != null) {
+        if (plan.adFreeProductId != GALLIPICK_STANDALONE_AD_FREE) return AdRemovalStatus.VERIFYING
+        val expiresAtMillis = plan.adFreeExpiresAtMs ?: return AdRemovalStatus.VERIFYING
+        if (expiresAtMillis > nowMillis) return AdRemovalStatus.VERIFIED_AD_FREE
+    }
+    return AdRemovalStatus.NOT_PURCHASED
 }
 
 internal data class CloudAdPlanObservation(val uid: String, val plan: CloudBillingPlan) {
@@ -23,7 +32,8 @@ internal data class CloudAdPlanObservation(val uid: String, val plan: CloudBilli
         if (uid != currentUid) return null
         val status = cloudAdRemovalStatus(plan, nowMillis)
         // An expired observation does not tell us whether Play has renewed the subscription.
-        return if (plan.activeProductId != null && status == AdRemovalStatus.NOT_PURCHASED) {
+        return if ((plan.activeProductId != null || plan.adFreeProductId != null) &&
+            status == AdRemovalStatus.NOT_PURCHASED) {
             AdRemovalStatus.VERIFYING
         } else {
             status
@@ -71,6 +81,6 @@ internal fun canDisplayGalliAd(
     (access.previewOnly || (access.configured && access.consentGranted && access.sdkReady)) &&
     access.removal == AdRemovalStatus.NOT_PURCHASED
 
-internal const val GALLIPICK_AD_FREE_PRODUCT = "gallipick_ad_free"
+internal const val GALLIPICK_AD_FREE_PRODUCT = GALLIPICK_STANDALONE_AD_FREE
 internal const val GALLIPICK_AD_FREE_MONTHLY = "monthly"
 internal const val GALLIPICK_AD_FREE_ANNUAL = "annual"
