@@ -76,6 +76,34 @@ class GalliAdsPolicyTest {
         assertTrue(canDisplayGalliAd(GalliAdPlacement.HOME_BANNER, eligible.copy(removal = expired)))
     }
 
+    @Test fun standaloneRecurringAdFreeRemovesAdsWithoutGrantingCloudStorage() {
+        val standAlone = CloudBillingPlan(
+            enabled = true,
+            adFreeProductId = "gallipick_ad_free",
+            adFreeExpiresAtMs = 3_000L,
+            quotaBytes = 0L,
+            uploadAllowed = false,
+        )
+        assertEquals(0L, standAlone.quotaBytes)
+        assertFalse(standAlone.uploadAllowed)
+        assertEquals(AdRemovalStatus.VERIFIED_AD_FREE, cloudAdRemovalStatus(standAlone, 2_999L))
+        assertEquals(AdRemovalStatus.NOT_PURCHASED, cloudAdRemovalStatus(standAlone, 3_000L))
+        val observation = CloudAdPlanObservation("owner", standAlone)
+        assertEquals(AdRemovalStatus.VERIFYING, observation.removalFor("owner", 3_000L))
+        assertNull(observation.removalFor("other", 2_999L))
+    }
+
+    @Test fun twoActiveEntitlementsGrantAdFreeUntilTheLaterExpiry() {
+        val cloud = activePlan.copy(
+            adFreeProductId = "gallipick_ad_free",
+            adFreeExpiresAtMs = 4_000L,
+        )
+        assertEquals(AdRemovalStatus.VERIFIED_AD_FREE, cloudAdRemovalStatus(cloud, 3_000L))
+        assertEquals(AdRemovalStatus.NOT_PURCHASED, cloudAdRemovalStatus(cloud, 4_000L))
+        assertEquals(AdRemovalStatus.VERIFYING, cloudAdRemovalStatus(
+            CloudBillingPlan(enabled = true, adFreeProductId = "unknown", adFreeExpiresAtMs = 4_000L), 2_000L))
+    }
+
     @Test fun unconfirmedPlansKeepAdsHiddenDuringVerification() {
         val incomplete = CloudBillingPlan(enabled = true, activeProductId = "gallipick_cloud_pilot")
         assertEquals(AdRemovalStatus.VERIFYING, cloudAdRemovalStatus(null, nowMillis = 1_000L))
