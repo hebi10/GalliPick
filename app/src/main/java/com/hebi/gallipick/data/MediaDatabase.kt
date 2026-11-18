@@ -227,6 +227,8 @@ internal abstract class MediaDao {
     abstract fun observePhotoHashes(): Flow<List<CachedPhotoHash>>
     @Query("SELECT * FROM photo_perceptual_hash")
     abstract suspend fun allPhotoHashes(): List<CachedPhotoHash>
+    @Query("SELECT * FROM photo_perceptual_hash WHERE uri = :uri AND fingerprint = :fingerprint LIMIT 1")
+    abstract suspend fun photoHash(uri: String, fingerprint: String): CachedPhotoHash?
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun putPhotoHash(hash: CachedPhotoHash)
     @Query("DELETE FROM photo_perceptual_hash")

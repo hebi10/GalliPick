@@ -49,6 +49,45 @@ class MediaSnapshotDatabaseTest {
         assertEquals(2, dao.photoAnalysisSession()?.completed)
     }
 
+    @Test fun indexedPhotoHashLookupUsesTheExactUriAndFingerprint() = runBlocking {
+        val current = media("current", "primary")
+        val unrelated = media("unrelated", "primary")
+        dao.replaceAccessible(listOf(current, unrelated), mapOf("primary" to "epoch-1"))
+        val accepted = CachedPhotoHash(current.uri, current.fingerprint, "epoch-1", "0123456789abcdef")
+        val outdated = CachedPhotoHash(current.uri, "outdated-fingerprint", "epoch-1", "fedcba9876543210")
+        val another = CachedPhotoHash(unrelated.uri, unrelated.fingerprint, "epoch-1", "aaaaaaaaaaaaaaaa")
+        dao.putPhotoHash(accepted)
+        dao.putPhotoHash(outdated)
+        dao.putPhotoHash(another)
+
+        assertEquals(accepted, dao.photoHash(current.uri, current.fingerprint))
+        assertEquals(outdated, dao.photoHash(current.uri, "outdated-fingerprint"))
+        assertEquals(another, dao.photoHash(unrelated.uri, unrelated.fingerprint))
+        assertNull(dao.photoHash(current.uri, "missing-fingerprint"))
+        assertNull(dao.photoHash("missing-uri", current.fingerprint))
+
+        dao.replaceAccessible(listOf(current, unrelated), mapOf("primary" to "epoch-2"))
+        assertNull(dao.photoHash(current.uri, current.fingerprint))
+        assertNull(dao.photoHash(unrelated.uri, unrelated.fingerprint))
+    }
+
+    @Test fun targetedLookupPreservesNullHashFailuresAsUnusableEvidence() = runBlocking {
+        val item = media("failed-hash", "primary")
+        dao.replaceAccessible(listOf(item), mapOf("primary" to "epoch-1"))
+        val failed = CachedPhotoHash(item.uri, item.fingerprint, "epoch-1", null)
+        dao.putPhotoHash(failed)
+        assertEquals(failed, dao.photoHash(item.uri, item.fingerprint))
+        assertFalse(cachedSimilarProofMatches(similarPhoto(item, "0123456789abcdef"), failed))
+        dao.replaceAccessible(emptyList(), mapOf("primary" to "epoch-1"))
+        assertNull(dao.photoHash(item.uri, item.fingerprint))
+    }
+
+    private fun similarPhoto(item: CachedMedia, phash: String) =
+        com.hebi.gallipick.domain.SimilarPhoto(
+            item = item.item().copy(volumeVersion = "epoch-1"),
+            phash = phash,
+        )
+
     @Test fun ocrIndexInvalidatesChangedVolumeAndClearPreservesMediaAndProtection() = runBlocking {
         val rows = listOf(media("a", "primary"), media("b", "sd"))
         dao.replaceAccessible(rows, mapOf("primary" to "one", "sd" to "one"))
