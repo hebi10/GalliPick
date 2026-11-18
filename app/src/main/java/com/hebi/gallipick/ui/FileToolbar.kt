@@ -251,47 +251,44 @@ internal fun FileToolbar(
                         }
                     }
                 }
-                Box {
-                    ToolbarChoice(
-                        if (conditionCount == 0) "필터" else "필터 $conditionCount",
-                        "파일 조건 선택", filterSummary(filter).ifBlank { "조건 없음" }, conditionCount > 0,
-                    ) { advanced() }
-                    DropdownMenu(expanded = menu == "conditions", onDismissRequest = { menu = null },
-                        modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 420.dp)) {
-                        DropdownMenuItem(text = { Text("상세 필터") }, onClick = { menu = null; advanced() },
-                            leadingIcon = { GalliIcon(Icons.Outlined.Tune, null) })
-                        if (conditionCount > 0) Text("적용 중: ${filterSummary(filter)}",
-                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodySmall, color = Muted)
-                        HorizontalDivider()
-                        Text("빠른 조건", Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            style = MaterialTheme.typography.labelMedium, color = Muted)
-                        quickFilters.forEach { (label, preset) ->
-                            DropdownMenuItem(text = { Text(label) }, onClick = { change(preset); menu = null })
-                        }
-                        HorizontalDivider()
-                        DropdownMenuItem(text = { Text("즐겨찾기만") },
-                            onClick = { change(filter.copy(favoritesOnly = !filter.favoritesOnly)); menu = null },
-                            trailingIcon = { if (filter.favoritesOnly) GalliIcon(Icons.Outlined.Check, null) })
-                        DropdownMenuItem(text = { Text("보호 파일만") },
-                            onClick = { change(filter.copy(protectedOnly = !filter.protectedOnly)); menu = null },
-                            trailingIcon = { if (filter.protectedOnly) GalliIcon(Icons.Outlined.Check, null) })
-                        HorizontalDivider()
-                        Text("저장한 조건", Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            style = MaterialTheme.typography.labelMedium, color = Muted)
-                        if (presets.isEmpty()) Text("저장한 조건이 없습니다.",
-                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodySmall, color = Muted)
-                        presets.forEach { preset ->
-                            DropdownMenuItem(text = { Text(preset.name) }, onClick = {
-                                change(MediaFilterActions.sort(preset.filter, preset.filter.sortField, preset.filter.sortDirection))
-                                menu = null
-                            }, trailingIcon = {
-                                IconAction("${preset.name} 필터 삭제", Icons.Outlined.Close, Modifier.size(44.dp)) {
-                                    deletePreset(preset.id)
-                                }
-                            })
-                        }
+            }
+            Box {
+                IconAction("파일 조건 선택", Icons.Outlined.Tune) { advanced() }
+                DropdownMenu(expanded = menu == "conditions", onDismissRequest = { menu = null },
+                    modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 420.dp)) {
+                    DropdownMenuItem(text = { Text("상세 필터") }, onClick = { menu = null; advanced() },
+                        leadingIcon = { GalliIcon(Icons.Outlined.Tune, null) })
+                    if (conditionCount > 0) Text("적용 중: ${filterSummary(filter)}",
+                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall, color = Muted)
+                    HorizontalDivider()
+                    Text("빠른 조건", Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.labelMedium, color = Muted)
+                    quickFilters.forEach { (label, preset) ->
+                        DropdownMenuItem(text = { Text(label) }, onClick = { change(preset); menu = null })
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text("즐겨찾기만") },
+                        onClick = { change(filter.copy(favoritesOnly = !filter.favoritesOnly)); menu = null },
+                        trailingIcon = { if (filter.favoritesOnly) GalliIcon(Icons.Outlined.Check, null) })
+                    DropdownMenuItem(text = { Text("보호 파일만") },
+                        onClick = { change(filter.copy(protectedOnly = !filter.protectedOnly)); menu = null },
+                        trailingIcon = { if (filter.protectedOnly) GalliIcon(Icons.Outlined.Check, null) })
+                    HorizontalDivider()
+                    Text("저장한 조건", Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.labelMedium, color = Muted)
+                    if (presets.isEmpty()) Text("저장한 조건이 없습니다.",
+                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall, color = Muted)
+                    presets.forEach { preset ->
+                        DropdownMenuItem(text = { Text(preset.name) }, onClick = {
+                            change(MediaFilterActions.sort(preset.filter, preset.filter.sortField, preset.filter.sortDirection))
+                            menu = null
+                        }, trailingIcon = {
+                            IconAction("${preset.name} 필터 삭제", Icons.Outlined.Close, Modifier.size(44.dp)) {
+                                deletePreset(preset.id)
+                            }
+                        })
                     }
                 }
             }

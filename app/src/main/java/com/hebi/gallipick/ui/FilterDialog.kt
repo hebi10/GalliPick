@@ -117,7 +117,7 @@ internal fun FilterDialog(
 ) {
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(
             Modifier.fillMaxSize()

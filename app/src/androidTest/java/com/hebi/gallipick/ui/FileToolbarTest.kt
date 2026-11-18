@@ -47,8 +47,8 @@ class FileToolbarTest {
         listOf("files-kind-all", "files-kind-photo", "files-kind-video")
             .forEach { compose.onNodeWithTag(it).assertExists() }
         compose.onNodeWithTag("files-kind-all").performClick()
-        listOf("파일 조건 선택", "정렬 기준 선택")
-            .forEach { compose.onNodeWithContentDescription(it).assertExists() }
+        compose.onNodeWithContentDescription("파일 조건 선택").assertIsDisplayed()
+        compose.onNodeWithContentDescription("정렬 기준 선택").assertExists()
         compose.onNodeWithContentDescription("목록 보기").assertIsDisplayed()
         // The constrained header can scroll away when the 280dp viewport's body moves.
         // Verify that the control remains in the tree. The sort workflow is checked

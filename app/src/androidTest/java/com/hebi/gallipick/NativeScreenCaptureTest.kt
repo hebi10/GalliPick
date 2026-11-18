@@ -204,6 +204,9 @@ class NativeScreenCaptureTest {
                 compose.onNodeWithText("날짜 범위").assertIsDisplayed()
             }
             captureDetail("08b-filter-with-keyboard") {
+                if (compose.onAllNodesWithText("고급 조건 열기").fetchSemanticsNodes().isNotEmpty()) {
+                    compose.onNodeWithText("고급 조건 열기").performScrollTo().performClick()
+                }
                 compose.onNodeWithText("파일 이름 검색").performScrollTo().performClick().performTextInput("EXAMPLE")
                 compose.onNodeWithText("필터 적용").assertIsDisplayed()
             }

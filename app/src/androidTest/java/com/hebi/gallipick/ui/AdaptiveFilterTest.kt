@@ -167,6 +167,7 @@ class AdaptiveFilterTest {
     @Test fun shortLargeTextChromeKeepsTheFocusedQueryAndEveryActionReachable() {
         val height = mutableStateOf(480)
         showFilter(width = 900, height = 480, fontScale = 1.6f, windowHeight = height)
+        compose.onNodeWithText("고급 조건 열기").performScrollTo().performClick()
         val query = compose.onNodeWithText("파일 이름 검색")
         query.performScrollTo().performClick().assertIsFocused()
 
