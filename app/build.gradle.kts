@@ -60,31 +60,45 @@ fun readCloudFirebaseConfig(
     json: String,
     playSigningSha1: String? = null,
     expectedProjectId: String = cloudTestFirebaseProjectId,
+    externalAndroidOAuthClientId: String? = null,
+    developmentReference: (() -> String)? = null,
 ): Map<String, String> {
     fun Map<*, *>.objectField(name: String): Map<*, *> = this[name] as? Map<*, *> ?: emptyMap<Any, Any>()
     fun Map<*, *>.objectArray(name: String): List<Map<*, *>> =
         (this[name] as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
 
-    val config = JsonSlurper().parseText(json) as Map<*, *>
-    val projectId = config.objectField("project_info")["project_id"]
-    require(projectId == expectedProjectId)
-    val client = config.objectArray("client").single {
-        it.objectField("client_info").objectField("android_client_info")["package_name"] == galliPickApplicationId
+    fun androidClientFor(source: String, projectId: String): Map<*, *> {
+        val config = JsonSlurper().parseText(source) as Map<*, *>
+        require(config.objectField("project_info")["project_id"] == projectId)
+        return config.objectArray("client").single {
+            it.objectField("client_info").objectField("android_client_info")["package_name"] == galliPickApplicationId
+        }
     }
+
+    fun isPlaySigningAndroidClient(oauth: Map<*, *>): Boolean {
+        val android = oauth.objectField("android_info")
+        return (oauth["client_type"] as? Number)?.toInt() == 1 &&
+            android["package_name"] == galliPickApplicationId &&
+            normalizedSha1(android["certificate_hash"] as? String) == playSigningSha1
+    }
+
+    val client = androidClientFor(json, expectedProjectId)
     val oauthClients = client.objectArray("oauth_client")
-    val webClient = oauthClients.first { (it["client_type"] as? Number)?.toInt() == 3 }
-    if (playSigningSha1 != null) {
-        require(oauthClients.any {
-            val androidClient = it.objectField("android_info")
-            (it["client_type"] as? Number)?.toInt() == 1 &&
-                androidClient["package_name"] == galliPickApplicationId &&
-                normalizedSha1(androidClient["certificate_hash"] as? String) == playSigningSha1
+    val webClients = oauthClients.filter { (it["client_type"] as? Number)?.toInt() == 3 }
+    val webClient = if (expectedProjectId == cloudProductionFirebaseProjectId) webClients.single() else webClients.first()
+    if (playSigningSha1 != null && oauthClients.none(::isPlaySigningAndroidClient)) {
+        require(expectedProjectId == cloudProductionFirebaseProjectId)
+        val externalId = requireNotNull(externalAndroidOAuthClientId)
+        require(externalId.matches(Regex("[a-zA-Z0-9_-]+\\.apps\\.googleusercontent\\.com")))
+        val reference = androidClientFor(requireNotNull(developmentReference).invoke(), cloudTestFirebaseProjectId)
+        require(reference.objectArray("oauth_client").any {
+            it["client_id"] == externalId && isPlaySigningAndroidClient(it)
         })
     }
     val values = listOf(
         client.objectField("client_info")["mobilesdk_app_id"],
         client.objectArray("api_key").first()["current_key"],
-        projectId,
+        expectedProjectId,
         webClient["client_id"],
     ).map { it as String }
     require(values.all { it.matches(Regex("[a-zA-Z0-9_.:-]+")) })
@@ -108,7 +122,16 @@ val playCloudFirebaseConfig = if (playCloudPilot) {
     val signingSha1 = normalizedSha1(providers.gradleProperty("gallipickPlayAppSigningSha1").orNull)
         ?: throw GradleException("The Play cloud pilot requires a valid gallipickPlayAppSigningSha1.")
     try {
-        readCloudFirebaseConfig(json, signingSha1, releaseFirebaseProjectId)
+        readCloudFirebaseConfig(
+            json,
+            signingSha1,
+            releaseFirebaseProjectId,
+            providers.gradleProperty("gallipickPlayExternalAndroidOAuthClientId").orNull,
+        ) {
+            val reference = File(providers.gradleProperty("gallipickPlayAndroidOAuthReferenceFile").get())
+            require(reference.isAbsolute && reference.isFile)
+            reference.readText()
+        }
     } catch (_: Exception) {
         throw GradleException("Invalid Play cloud Firebase configuration for $cloudEnvironment. Check the project, package, and Play signing OAuth client.")
     }
