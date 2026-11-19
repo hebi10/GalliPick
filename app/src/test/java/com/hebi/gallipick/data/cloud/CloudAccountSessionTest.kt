@@ -22,6 +22,30 @@ class CloudAccountSessionTest {
     }
 
     @Test
+    fun onlyCompletedSignInsEmitTheBillingNavigationRevision() = runTest {
+        val backend = TestBackend(null)
+        val session = CloudAccountSession(backend)
+
+        assertEquals(0L, session.successfulSignInRevision.value)
+        session.chooseAccount { throw CloudAccountFailure(CloudAccountNotice.CANCELLED) }
+        assertEquals(0L, session.successfulSignInRevision.value)
+
+        backend.signInFailure = CloudAccountNotice.FIREBASE_SIGN_IN_FAILED
+        session.chooseAccount { "test-credential" }
+        assertEquals(0L, session.successfulSignInRevision.value)
+
+        backend.signInFailure = null
+        session.chooseAccount { "test-credential" }
+        assertEquals(second, session.account.value)
+        assertEquals(1L, session.successfulSignInRevision.value)
+
+        session.signOut()
+        assertEquals(1L, session.successfulSignInRevision.value)
+        session.chooseAccount { "test-credential" }
+        assertEquals(2L, session.successfulSignInRevision.value)
+    }
+
+    @Test
     fun cancelledSwitchKeepsTheExistingAccountAndCanBeRetried() = runTest {
         val backend = TestBackend(first)
         val session = CloudAccountSession(backend)
