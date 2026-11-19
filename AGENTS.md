@@ -7,8 +7,9 @@
 - 기존 기술 스택·코드 구조·디자인 시스템·데이터·인증 및 서명 정책을 보존한다. 요청 외 리팩터링·UI 변경·신규 의존성 도입을 피한다.
 - 기능 단위 브랜치·PR·검증을 분리한다. 최신 HEAD의 필수 검사 또는 QA가 실패·진행 중·미확인이라면 안전 병합하지 않는다.
 ### 2. GitHub Actions 대기·보고
-- PR의 기본 자동 검증은 Android verification(단위 테스트·Lint·디버그 빌드), 해당 보안·OPS 정책 검사이다. 긴 Android 전체 에뮬레이터 테스트는 PR마다 자동 실행하지 않고 main push 후 실행한다.
+- PR의 기본 자동 검증은 Android verification(단위 테스트·Lint·디버그 빌드), 해당 보안·OPS 정책 검사이다. 긴 Android 전체 에뮬레이터 테스트는 PR 및 개발 배치 중간의 main push에서 자동 실행하지 않는다.
 - 원본 삭제·복원, 권한, 구독처럼 위험도가 높은 변경은 PR에서 관련 회귀 테스트를 작성하고 필요 시 별도로 기기 테스트를 수동 실행하여 병합 전 확인한다. PR의 필수 검사 실패·미확인 상태에서는 병합하지 않는다.
+- 개발 배치의 필수 검사를 통과한 PR을 순차 병합하고 모든 변경을 동결한 최신 main SHA에서 `Android device tests`를 수동 `workflow_dispatch`로 전체 1회 실행한다. `workflow_call`은 기존 명시적 호출자의 호환성을 유지한다. 단순 문구·문서·중간 병합마다 전체 계측을 반복하지 않는다.
 - main의 Android verification 및 Android device tests가 모두 최신 정확한 main SHA에서 성공하지 않으면 서명 AAB 생성/Google Play 배포를 진행하지 않는다. main의 계측 실패 시 신규 배포를 중단하고 수정 또는 롤백한다. 기존 OPS-03 fail-closed 승인 게이트를 보존한다.
 - CI는 PR/main 변경 시 자동 검사·디버그 빌드가 가능하나 Play 변경은 금지한다.
 - 새 Actions의 실제 실행 URL이 확인되면 링크·커밋·검증 상태를 안내하고, 반복 조회나 긴 대기 없이 다음 독립 작업을 제시한다.
