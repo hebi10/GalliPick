@@ -3,6 +3,7 @@ package com.hebi.gallipick.ui
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -16,6 +17,7 @@ import com.hebi.gallipick.data.cloud.CloudAccountSession
 import com.hebi.gallipick.data.cloud.CloudBilling
 import com.hebi.gallipick.data.cloud.CloudBillingSession
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -35,6 +37,51 @@ class CloudScreenNavigationTest {
         compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
         compose.onNodeWithContentDescription("뒤로").performClick()
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+    }
+
+    @Test
+    fun newAccountSignInOpensBillingThenBackReturnsToOverview() {
+        val backend = FakeAccountBackend("new-account")
+        backend.active.value = null
+        val connection = showCloud(backend)
+        compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+
+        runBlocking { connection.session.chooseAccount { "test-credential" } }
+        compose.waitUntil(timeoutMillis = 5_000L) {
+            compose.onAllNodesWithText("screen-BILLING").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
+        compose.onNodeWithContentDescription("뒤로").performClick()
+        compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+        compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
+    }
+
+    @Test
+    fun unsuccessfulNewAccountSignInCannotOpenBilling() {
+        val backend = FakeAccountBackend("new-account")
+        backend.active.value = null
+        val connection = showCloud(backend)
+
+        runBlocking {
+            connection.session.chooseAccount {
+                throw com.hebi.gallipick.data.cloud.CloudAccountFailure(
+                    com.hebi.gallipick.data.cloud.CloudAccountNotice.CANCELLED,
+                )
+            }
+        }
+        compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+        compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
+    }
+
+    @Test
+    fun newAccountWithoutBillingAccessStaysOnOverview() {
+        val backend = FakeAccountBackend("new-account")
+        backend.active.value = null
+        val connection = showCloud(backend, billingAvailable = false)
+
+        runBlocking { connection.session.chooseAccount { "test-credential" } }
+        compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+        compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
     }
 
     @Test
@@ -129,7 +176,7 @@ class CloudScreenNavigationTest {
         onBackFromAdRemoval: (() -> Unit)? = null,
         onBillingScreenVisible: (Boolean) -> Unit = {},
         showSecretCloud: () -> Boolean = { false },
-    ) {
+    ): CloudAccountConnection {
         val billing = if (billingAvailable) object : CloudBilling {
             override fun open(uid: String): CloudBillingSession = error("The route test cannot start purchases")
         } else null
@@ -145,12 +192,15 @@ class CloudScreenNavigationTest {
                 }
             }
         }
+        return connection
     }
 
-    private class FakeAccountBackend(uid: String) : CloudAccountBackend {
+    private class FakeAccountBackend(private val uid: String) : CloudAccountBackend {
         val active = MutableStateFlow<CloudAccountIdentity?>(CloudAccountIdentity(uid, null, null))
         override val account: StateFlow<CloudAccountIdentity?> = active
-        override suspend fun signIn(googleIdToken: String) = Unit
+        override suspend fun signIn(googleIdToken: String) {
+            active.value = CloudAccountIdentity(uid, null, null)
+        }
         override fun signOut() { active.value = null }
         override suspend fun clearGoogleState() = Unit
     }
