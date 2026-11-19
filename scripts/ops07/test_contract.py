@@ -221,7 +221,7 @@ class AppContracts(unittest.TestCase):
                 "    print(json.dumps({'object': {'sha': sha}}))\n"
                 "elif '/actions/runs?' in endpoint:\n"
                 "    runs = [{'name': name, 'head_sha': sha, 'head_branch': 'main',"
-                " 'event': 'push', 'status': 'completed', 'conclusion': 'success',"
+                " 'event': 'workflow_dispatch' if name == 'Android device tests' else 'push'," " 'status': 'completed', 'conclusion': 'success',"
                 " 'run_number': 1, 'run_attempt': 1, 'id': idx}"
                 " for idx, name in enumerate(('Android verification', 'Android device tests'), 1)]\n"
                 "    mode = os.environ.get('GH_FIXTURE_MODE', 'success')\n"
@@ -234,6 +234,10 @@ class AppContracts(unittest.TestCase):
                 "        runs[0]['conclusion'] = None\n"
                 "    elif mode == 'partial':\n"
                 "        runs = runs[:1]\n"
+                "    elif mode == 'stale_device':\n"
+                "        runs[1]['head_sha'] = 'b' * 40\n"
+                "    elif mode == 'failed_device':\n"
+                "        runs[1]['conclusion'] = 'failure'\n"
                 "    print(json.dumps({'workflow_runs': runs}))\n"
                 "else:\n"
                 "    sys.exit(3)\n",
@@ -261,6 +265,8 @@ class AppContracts(unittest.TestCase):
                 ("failed", "Required CI not successful: Android verification"),
                 ("running", "Required CI not successful: Android verification"),
                 ("partial", "Missing exact-main CI: Android device tests"),
+                ("stale_device", "Missing exact-main CI: Android device tests"),
+                ("failed_device", "Required CI not successful: Android device tests"),
             ):
                 with self.subTest(required_ci=mode):
                     rejected = subprocess.run(
