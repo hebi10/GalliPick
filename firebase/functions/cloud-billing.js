@@ -6,6 +6,7 @@ import { productionMonetizationCatalog, productionNewSaleCatalog,
 import { cloudAccountAccess } from './cloud-retention-policy.js';
 import { ADMIN_MANUAL_GRANTS_COLLECTION, manualGrantDocumentId,
     trustedManualGrant } from './admin-manual-policy.js';
+import { tokenEscrowDocumentPath } from './play-token-escrow.js';
 
 export const PILOT_ACCOUNT_QUOTA_BYTES = 1024 ** 3;
 export const PLAY_BILLING_PACKAGE = 'com.hebi.gallipick';
@@ -48,7 +49,7 @@ export function billingSettings(project, env) {
 export function productionBillingSettings(project, env) {
     if (project !== PRODUCTION_PROJECT || env.GALLIPICK_PRODUCTION_AD_FREE_ENABLED !== 'true') {
         return { enabled: false, products: [], mode: 'disabled', users: new Set(), emails: new Set(),
-            cloudEnabled: false, retentionEnabled: false, manualGrantsEnabled: false,
+            cloudEnabled: false, retentionEnabled: false, manualGrantsEnabled: false, tokenEscrowEnabled: false,
             maxOriginalBytes: null, backupNamespace: null };
     }
     const mode = env.GALLIPICK_PRODUCTION_BILLING_MODE;
@@ -80,6 +81,7 @@ export function productionBillingSettings(project, env) {
         verificationProducts, mode, users, emails, cloudEnabled,
         retentionEnabled: cloudEnabled && env.GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED === 'true',
         manualGrantsEnabled,
+        tokenEscrowEnabled: env.GALLIPICK_PRODUCTION_PLAY_TOKEN_ESCROW_ENABLED === 'true',
         maxOriginalBytes: cloudEnabled ? fileLimit : null, backupNamespace,
         replacementCheckoutEnabled: cloudEnabled && env.GALLIPICK_PRODUCTION_CLOUD_UPLOADS_PAUSED === 'false' };
 }
@@ -197,12 +199,13 @@ function currentPlan(record, products, now) {
     }).sort((left, right) => right.quotaBytes - left.quotaBytes || right.expiresAtMs - left.expiresAtMs)[0] ?? null;
 }
 
-export function createBillingService({ db, play, settings, pilotUsers, now = Date.now }) {
+export function createBillingService({ db, play, settings, pilotUsers, tokenEscrow = null, now = Date.now }) {
     const production = settings.mode !== undefined;
     const scope = settings.mode === 'live' ? 'gallipickProductionBilling' : production
         ? 'gallipickProductionLicenseBilling' : 'gallipickCloudBilling';
     const ownerRef = owner => db.doc(`${scope}Accounts/${owner}`);
     const tokenRef = tokenHash => db.doc(`${scope}Tokens/${tokenHash}`);
+    const escrowRef = tokenHash => db.doc(tokenEscrowDocumentPath(settings.mode, tokenHash));
     const backupOwnerPath = owner => `${production ? settings.backupNamespace : 'gallipickBackup'}Accounts/${owner}`;
     const usageRef = owner => db.doc(backupOwnerPath(owner));
     const manualGrantRef = owner => db.doc(`${ADMIN_MANUAL_GRANTS_COLLECTION}/${manualGrantDocumentId(owner, settings.mode)}`);
@@ -360,7 +363,7 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
         });
     }
 
-    function persist(owner, tokenHash, revision, purchase, licenseEmailHash) {
+    function persist(owner, tokenHash, revision, purchase, licenseEmailHash, protectedEscrow = null) {
         return db.runTransaction(async transaction => {
             const account = ownerRef(owner);
             const token = tokenRef(tokenHash);
@@ -379,6 +382,12 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             if (!purchase && !binding) throw new BackupError('not-found', 'The Play subscription is no longer available.');
             const prior = purchase?.linkedHash ? tokenRef(purchase.linkedHash) : null;
             const oldBinding = prior ? (await transaction.get(prior)).data() : null;
+            const escrowDoc = protectedEscrow && production ? escrowRef(tokenHash) : null;
+            const previousEscrow = escrowDoc ? (await transaction.get(escrowDoc)).data() : null;
+            if (previousEscrow && (previousEscrow.owner !== owner ||
+                previousEscrow.tokenHash !== tokenHash || previousEscrow.mode !== settings.mode)) {
+                throw new BackupError('permission-denied', 'Purchase token escrow ownership does not match.');
+            }
             if (oldBinding && (oldBinding.owner !== owner || (oldBinding.retiredBy && oldBinding.retiredBy !== tokenHash))) {
                 throw new BackupError('permission-denied', 'The previous subscription belongs to another purchase.');
             }
@@ -415,6 +424,12 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             const audience = licenseEmailHash === null ? { owner } : { owner, licenseEmailHash };
             transaction.set(token, purchase ? audience : { ...audience, invalidated: true });
             if (prior) transaction.set(prior, { owner, retiredBy: tokenHash });
+            if (escrowDoc && protectedEscrow?.owner === owner &&
+                protectedEscrow?.tokenHash === tokenHash &&
+                protectedEscrow?.mode === settings.mode && purchase?.cloudEvidence) {
+                // An encrypted, owner-scoped copy: no raw token in Firestore.
+                transaction.set(escrowDoc, { ...protectedEscrow, checkedAtMs: time });
+            }
             return purchase?.acknowledge === true && Object.hasOwn(entitlements, tokenHash);
         });
     }
@@ -432,7 +447,17 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
         }
         const purchase = inspectPurchase(result, owner, settings, now());
         if (purchase.linkedHash === tokenHash) throw new BackupError('data-loss', 'The Play subscription replacement is invalid.');
-        if (await persist(owner, tokenHash, revision, purchase, licenseEmailHash)) {
+        let protectedEscrow = null;
+        if (production && settings.tokenEscrowEnabled && purchase.cloudEvidence && tokenEscrow) {
+            try {
+                protectedEscrow = await tokenEscrow.encrypt({ purchaseToken, owner, tokenHash });
+            } catch {
+                // Never block a paid user's entitlement when KMS is unavailable.
+                // Missing ciphertext MUST block future automatic deletion instead.
+                protectedEscrow = null;
+            }
+        }
+        if (await persist(owner, tokenHash, revision, purchase, licenseEmailHash, protectedEscrow)) {
             try {
                 await play.acknowledge(purchaseToken, purchase.purchasedProductId);
             } catch {
