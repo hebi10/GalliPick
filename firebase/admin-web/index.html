@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>GalliPick Admin</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <main class="layout">
+    <header class="header">
+      <div>
+        <p class="eyebrow">관리자 전용 · Firebase Hosting</p>
+        <h1>GalliPick Admin</h1>
+        <p class="sub">회원·구독·삭제 처리 현황</p>
+      </div>
+      <button id="signout" class="button" type="button" hidden>로그아웃</button>
+    </header>
+
+    <section class="panel" aria-labelledby="access-title">
+      <h2 id="access-title">관리자 인증</h2>
+      <p id="auth-status" role="status" aria-live="polite">인증 환경을 확인하는 중입니다.</p>
+      <button id="signin" class="button button-primary" type="button" hidden>Google 계정으로 로그인</button>
+      <p class="hint">관리자 계정에는 서버에 등록된 UID와 Firebase 관리자 권한이 모두 필요합니다.</p>
+    </section>
+
+    <section id="overview" class="overview" aria-labelledby="overview-title" hidden>
+      <div class="section-heading">
+        <div>
+          <h2 id="overview-title">운영 현황</h2>
+          <p id="checked-at" class="hint"></p>
+        </div>
+        <button id="refresh" class="button" type="button">새로고침</button>
+      </div>
+      <p id="overview-status" role="status" aria-live="polite"></p>
+      <div class="stats">
+        <section class="panel">
+          <h3>실결제 계정 기록</h3>
+          <strong id="live-billing">—</strong>
+        </section>
+        <section class="panel">
+          <h3>라이선스 시험 계정 기록</h3>
+          <strong id="license-billing">—</strong>
+        </section>
+        <section class="panel">
+          <h3>삭제 처리 대기·진행</h3>
+          <strong id="pending-deletion">—</strong>
+        </section>
+        <section class="panel">
+          <h3>삭제 오류·관리자 확인</h3>
+          <strong id="manual-review">—</strong>
+        </section>
+        <section class="panel">
+          <h3>Play 재검증 필요</h3>
+          <strong id="purge-review">—</strong>
+        </section>
+      </div>
+      <p class="hint">구독 기록 수는 활성 유료 구독자 수와 다릅니다. 표시된 숫자는 서버가 확인한 Firestore 집계이며, 사진·동영상 내용은 관리자 화면에 제공하지 않습니다.</p>
+    </section>
+    <footer class="footer">GalliPick · 읽기 전용 관리자 화면 · 이 페이지에서는 결제 변경이나 데이터 삭제를 실행할 수 없습니다.</footer>
+  </main>
+</body>
+</html>
