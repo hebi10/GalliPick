@@ -94,15 +94,22 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
             productionAccess = backupAccess,
         )
     } else null
-    return CloudAccountConnection(session, backup, billing = billing, productionBackupAccess = backupAccess, secretVault = vault) { activity ->
+    val accountExit = if (runtime.backupUsesServerPlan) FirebaseCloudAccountExit(
+        currentUid = { auth.currentUser?.uid },
+        idTokenFor = { uid, force -> backupIdToken(auth, uid, force) },
+        reauthenticate = { activity, uid -> reauthenticateGoogle(auth, credentials, webClientId, activity, uid) },
+        transport = transport,
+    ) else null
+    return CloudAccountConnection(session, backup, billing = billing, productionBackupAccess = backupAccess,
+        secretVault = vault, accountExit = accountExit) { activity ->
         googleIdToken(credentials, activity, webClientId)
     }
 }
 
-private suspend fun backupIdToken(auth: FirebaseAuth, uid: String): String {
+private suspend fun backupIdToken(auth: FirebaseAuth, uid: String, forceRefresh: Boolean = false): String {
     val user = auth.currentUser?.takeIf { it.uid == uid } ?: failBackup(CloudBackupResult.ACCOUNT_CHANGED)
     return suspendCancellableCoroutine { continuation ->
-        user.getIdToken(false).addOnCompleteListener { task ->
+        user.getIdToken(forceRefresh).addOnCompleteListener { task ->
             if (!continuation.isActive) return@addOnCompleteListener
             val token = if (task.isSuccessful) task.result?.token else null
             when {
@@ -110,6 +117,25 @@ private suspend fun backupIdToken(auth: FirebaseAuth, uid: String): String {
                 !token.isNullOrBlank() -> continuation.resume(token)
                 task.exception is FirebaseNetworkException -> continuation.resumeWithException(CloudBackupException(CloudBackupResult.NETWORK_ERROR))
                 else -> continuation.resumeWithException(CloudBackupException(CloudBackupResult.TEST_ACCESS_REQUIRED))
+            }
+        }
+    }
+}
+
+private suspend fun reauthenticateGoogle(
+    auth: FirebaseAuth, manager: CredentialManager, webClientId: String, activity: Activity, uid: String,
+) {
+    val user = auth.currentUser?.takeIf { it.uid == uid } ?: failBackup(CloudBackupResult.ACCOUNT_CHANGED)
+    val idToken = googleIdToken(manager, activity, webClientId)
+    if (auth.currentUser?.uid != uid) failBackup(CloudBackupResult.ACCOUNT_CHANGED)
+    suspendCancellableCoroutine<Unit> { continuation ->
+        user.reauthenticate(GoogleAuthProvider.getCredential(idToken, null)).addOnCompleteListener { task ->
+            if (!continuation.isActive) return@addOnCompleteListener
+            when {
+                auth.currentUser?.uid != uid ->
+                    continuation.resumeWithException(CloudBackupException(CloudBackupResult.ACCOUNT_CHANGED))
+                task.isSuccessful -> continuation.resume(Unit)
+                else -> continuation.resumeWithException(CloudAccountFailure(CloudAccountNotice.FIREBASE_SIGN_IN_FAILED))
             }
         }
     }
