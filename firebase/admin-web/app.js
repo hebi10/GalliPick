@@ -1,12 +1,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
 import {
   getAuth, GoogleAuthProvider, browserSessionPersistence, setPersistence,
-  signInWithPopup, signOut, onAuthStateChanged,
+  signInWithPopup, reauthenticateWithPopup, signOut, onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 import {
   getFunctions, httpsCallable,
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-functions.js";
 import { firebaseConfig } from "./config.js";
+import { createManualGrantControl } from "./manual-grants.js";
 
 const $ = id => document.getElementById(id);
 const authStatus = $("auth-status");
@@ -25,6 +26,7 @@ let authorizedUser = null;
 let auth = null;
 let getOverview = null;
 let getMembers = null;
+let manualGrantCalls = null;
 let memberTokens = [null];
 let currentMemberPage = 0;
 let memberRequestId = 0;
@@ -137,6 +139,7 @@ function renderMember(member) {
   const plans = element("div", "", "member-plans");
   for (const plan of member.plans) appendPlan(plans, plan);
   item.append(plans);
+  if (manualGrantCalls) item.append(createManualGrantControl(member, manualGrantCalls));
   return item;
 }
 function validMemberResponse(data) {
@@ -234,6 +237,27 @@ if (!validateConfig(firebaseConfig)) {
   auth = getAuth(firebaseApp);
   getOverview = httpsCallable(getFunctions(firebaseApp, "asia-northeast3"), "getAdminOverview");
   getMembers = httpsCallable(getFunctions(firebaseApp, "asia-northeast3"), "getAdminMembers");
+  const cloudFunctions = getFunctions(firebaseApp, "asia-northeast3");
+  const readGrant = httpsCallable(cloudFunctions, "getAdminManualGrant");
+  const issueGrant = httpsCallable(cloudFunctions, "issueAdminManualGrant");
+  const revokeGrant = httpsCallable(cloudFunctions, "revokeAdminManualGrant");
+  manualGrantCalls = {
+    currentUser: () => authorizedUser && auth.currentUser?.uid === authorizedUser.uid,
+    read: data => readGrant(data),
+    issue: data => issueGrant(data),
+    revoke: data => revokeGrant(data),
+    async reauthenticate() {
+      const user = auth.currentUser;
+      if (!user || user.uid !== authorizedUser?.uid) throw new Error("Admin identity changed");
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      await reauthenticateWithPopup(user, provider);
+      if (auth.currentUser?.uid !== user.uid || authorizedUser !== user) {
+        throw new Error("Admin identity changed during reauthentication");
+      }
+      await user.getIdToken(true);
+    },
+  };
   signin.hidden = false;
 
   signin.addEventListener("click", async () => {
