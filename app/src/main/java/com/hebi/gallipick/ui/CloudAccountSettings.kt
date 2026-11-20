@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -138,6 +140,8 @@ internal fun CloudScreen(
         ) {
             CloudHeader(route, onBack)
             when {
+                access == CloudAccessState.CHOOSING_ACCOUNT || access == CloudAccessState.SIGNING_OUT ->
+                    CloudAccountLoading(access)
                 access == CloudAccessState.UNAVAILABLE ->
                     CloudStatusMessage("이 빌드에서 클라우드 로그인 설정을 확인할 수 없습니다.")
                 route == CloudRoute.BILLING_SIGN_IN -> content(route)
@@ -165,7 +169,12 @@ internal fun CloudScreen(
                         )
                     }
                     if (access == CloudAccessState.SIGNED_IN || access == CloudAccessState.SIGNED_OUT) {
-                        key(account?.uid) { CloudAccountCard { CloudAccountExitGuidance(context) } }
+                        key(account?.uid) {
+                            CloudAccountCard {
+                                CloudAccountExitGuidance(context)
+                                if (access == CloudAccessState.SIGNED_IN) CloudAccountDeletionButton(connection)
+                            }
+                        }
                     }
                 }
             }
@@ -178,6 +187,23 @@ private fun CloudBillingOverviewNotice(message: String) {
     CloudAccountCard {
         Text(CloudRoute.BILLING.title, style = MaterialTheme.typography.titleSmall)
         CloudStatusMessage(message)
+    }
+}
+
+@Composable
+private fun CloudAccountLoading(access: CloudAccessState) {
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 28.dp).testTag("cloud-account-loading"),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CircularProgressIndicator(color = Primary)
+        Text(
+            if (access == CloudAccessState.CHOOSING_ACCOUNT) "Google 계정으로 로그인하는 중입니다."
+            else "클라우드 계정에서 로그아웃하는 중입니다.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Muted,
+        )
     }
 }
 
@@ -303,16 +329,13 @@ private fun CloudAccountExitGuidance(context: Context) {
     ActionButton("클라우드 데이터 삭제 요청", {
         actionUnavailable = !requestCloudExitByEmail(context, "클라우드 데이터 삭제")
     }, Modifier.fillMaxWidth())
-    ActionButton("회원 탈퇴 요청", {
-        actionUnavailable = !requestCloudExitByEmail(activity, "회원 탈퇴 및 연관 데이터 삭제")
-    }, Modifier.fillMaxWidth())
     CloudStatusMessage("메일 앱에서 요청 내용을 보내야 접수됩니다. 삭제 요청은 처리 완료가 아니며, 구독 취소도 별도로 진행해야 합니다.")
     if (actionUnavailable) {
         CloudStatusMessage("외부 앱을 열 수 없습니다. asdlkj0104@gmail.com으로 요청하거나 개인정보처리방침을 확인해 주세요.")
     }
 }
 
-private fun requestCloudExitByEmail(context: Context, request: String): Boolean {
+internal fun requestCloudExitByEmail(context: Context, request: String): Boolean {
     val subject = Uri.encode("GalliPick $request 요청")
     val body = Uri.encode("요청 내용:\n로그인한 Google 계정 이메일:\n삭제 범위:\n\n원본 파일이나 결제 토큰은 첨부하지 마세요.")
     val uri = Uri.parse("mailto:asdlkj0104@gmail.com?subject=$subject&body=$body")
