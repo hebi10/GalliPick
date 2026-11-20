@@ -308,7 +308,13 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             const legacyOwned = ownedCloud && !settings.products.some(product =>
                 product.productId === ownedCloud.productId && product.basePlanId === ownedCloud.basePlanId);
             const products = legacyOwned ? [...settings.products, ownedCloud] : settings.products;
-            return { ...pausedProductionPlan, enabled: true, products, obfuscatedAccountId: owner,
+            const legacyRecoveryProducts = (settings.verificationProducts ?? [])
+                .filter(product => product.kind === 'CLOUD' && product.basePlanId === 'annual' &&
+                    !products.some(active => active.productId === product.productId &&
+                        active.basePlanId === product.basePlanId));
+            // Recovery products are NOT eligible for new-sale offers.
+            return { ...pausedProductionPlan, enabled: true, products,
+                legacyRecoveryProducts, obfuscatedAccountId: owner,
                 activeProductId: verified.cloudProductId, activeBasePlanId: verified.cloudBasePlanId,
                 expiresAtMs: verified.cloudExpiresAtMs, adFreeProductId: verified.adFreeProductId,
                 adFreeBasePlanId: verified.adFreeBasePlanId, adFreeExpiresAtMs: verified.adFreeExpiresAtMs,
