@@ -40,20 +40,19 @@ class CloudScreenNavigationTest {
     }
 
     @Test
-    fun newAccountSignInOpensBillingThenBackReturnsToOverview() {
+    fun newAccountSignInStaysOnCloudOverviewUntilBillingIsTapped() {
         val backend = FakeAccountBackend("new-account")
         backend.active.value = null
         val connection = showCloud(backend)
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
 
         runBlocking { connection.session.chooseAccount { "test-credential" } }
-        compose.waitUntil(timeoutMillis = 5_000L) {
-            compose.onAllNodesWithText("screen-BILLING").fetchSemanticsNodes().isNotEmpty()
-        }
+        compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+        compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-route-BILLING").performClick()
         compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
         compose.onNodeWithContentDescription("뒤로").performClick()
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
-        compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
     }
 
     @Test
