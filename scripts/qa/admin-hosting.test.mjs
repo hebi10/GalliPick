@@ -45,3 +45,23 @@ test('member section is paginated and server-only, with no direct Firestore or H
   assert.doesNotMatch(app, /(?:deleteDoc|updateDoc|addDoc|setDoc|getDocs|collection\()/);
   assert.doesNotMatch(app, /requestAccountExit|resumeCloudAfterDeletion|processAccountExits/);
 });
+
+test('manual access UI cannot edit Play records or directly delete cloud files', () => {
+  const script = read('firebase/admin-web/manual-grants.js');
+  const app = read('firebase/admin-web/app.js');
+  const html = read('firebase/admin-web/index.html');
+  assert.match(script, /createManualGrantControl/);
+  assert.match(script, /ISSUE_MANUAL_ACCESS/);
+  assert.match(script, /REVOKE_MANUAL_ACCESS/);
+  assert.match(script, /expectedRevision/);
+  assert.match(script, /window\.confirm/);
+  assert.match(script, /document\.createElement/);
+  assert.doesNotMatch(script, /\.innerHTML\s*=/);
+  assert.doesNotMatch(script, /(?:deleteDoc|updateDoc|addDoc|setDoc|collection\()/);
+  assert.doesNotMatch(script, /requestAccountExit|processAccountExits|deleteUser/);
+  assert.match(app, /reauthenticateWithPopup/);
+  assert.match(app, /getAdminManualGrant/);
+  assert.match(app, /issueAdminManualGrant/);
+  assert.match(app, /revokeAdminManualGrant/);
+  assert.match(html, /Google Play 구매 기록/);
+});
