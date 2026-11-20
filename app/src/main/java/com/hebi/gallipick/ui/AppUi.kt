@@ -499,6 +499,7 @@ internal fun GalliPickApp(
                                             adRemoval = adRemoval,
                                             photoListView = state.fileListView,
                                             onPhotoListViewChange = vm::setFileListView,
+                                            cloudConnection = cloudConnection,
                                         )
                                     }
                                 }
