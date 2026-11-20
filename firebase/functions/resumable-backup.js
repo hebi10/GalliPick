@@ -56,7 +56,7 @@ function withoutReservation(usage, sizeBytes) {
 
 export function createResumableBackupService({ db, getBucket, authorizeOwner, allocationCollection, catalogCollection,
     objectPrefix, privateVault = false, uploadQuota, ownerLimit, maxOwnerFiles, catalogDocumentId, uploadsPaused = false,
-    globalAllocation, enqueueVerification, now = Date.now }) {
+    globalAllocation, enqueueVerification, checkQuotaOnPublish = false, now = Date.now }) {
     if (!Number.isSafeInteger(ownerLimit) || ownerLimit <= 0 || ownerLimit > PRODUCTION_CLOUD_MAX_BYTES
         || !Number.isSafeInteger(maxOwnerFiles) || maxOwnerFiles <= 0 || !catalogDocumentId
         || typeof authorizeOwner !== 'function' || typeof uploadQuota !== 'function'
@@ -290,7 +290,8 @@ export function createResumableBackupService({ db, getBucket, authorizeOwner, al
                 return;
             }
             await updateWorker(job, record, { state: 'VERIFIED', verifiedAt: new Date(now()), generation: result.generation,
-                composing: false, hashState: null, generations: [], cleaned: false }, now());
+                composing: false, hashState: null, generations: [], cleaned: false }, now(),
+                { checkQuota: checkQuotaOnPublish });
         } catch (error) {
             if (error instanceof BackupError && error.code === 'data-loss' && !isComposing) {
                 await updateWorker(job, record, { state: 'FAILED', hashState: null, generations: [] }, now());

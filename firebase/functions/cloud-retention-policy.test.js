@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { cloudRetentionState, CLOUD_RECOVERY_WINDOW_MS, CLOUD_PURGE_WINDOW_MS } from './cloud-retention-policy.js';
+import { cloudRetentionState, cloudAccountAccess, CLOUD_RECOVERY_WINDOW_MS, CLOUD_PURGE_WINDOW_MS } from './cloud-retention-policy.js';
 
 const day = 24 * 60 * 60 * 1000;
 const lastExpiry = 1_800_000_000_000;
@@ -71,4 +71,49 @@ test('unknown purchases do not make up deadlines or enable cloud access', () => 
         { nowMs: lastExpiry, deletionRequestedAtMs: lastExpiry + 1 },
         { nowMs: Number.MAX_SAFE_INTEGER, lastVerifiedCloudExpiryMs: lastExpiry },
     ]) assert.throws(() => cloudRetentionState(input), RangeError);
+});
+
+test('an historical paid-through date never grants current paid service before expiry', () => {
+    const access = cloudAccountAccess({ nowMs: lastExpiry - day, lastVerifiedCloudExpiryMs: lastExpiry });
+    assert.equal(access.state, 'CLOUD_ACCESS_SUSPENDED');
+    assert.equal(access.mayUpload, false);
+    assert.equal(access.mayDownload, false);
+    const active = cloudAccountAccess({ nowMs: lastExpiry - day, activeCloudExpiryMs: lastExpiry });
+    assert.equal(active.state, 'PAID');
+    assert.equal(active.mayUpload, true);
+});
+
+test('a durable verified Cloud expiry grants read-only recovery during the first seven days', () => {
+    const access = cloudAccountAccess({
+        nowMs: lastExpiry + 3 * day, lastVerifiedCloudExpiryMs: lastExpiry,
+    });
+    assert.equal(access.state, 'READ_ONLY_RECOVERY');
+    assert.equal(access.mayBrowse, true);
+    assert.equal(access.mayDownload, true);
+    assert.equal(access.mayUpload, false);
+    assert.equal(access.deletionDueAtMs, lastExpiry + CLOUD_PURGE_WINDOW_MS);
+});
+
+test('billing hold or revoke suspends historical access instead of promising recovery', () => {
+    const held = cloudAccountAccess({
+        nowMs: lastExpiry + day, lastVerifiedCloudExpiryMs: lastExpiry, recoveryAllowed: false,
+    });
+    assert.equal(held.state, 'CLOUD_ACCESS_SUSPENDED');
+    assert.equal(held.mayDownload, false);
+    assert.equal(held.deletionDueAtMs, null);
+});
+
+test('server verified renewal supersedes old recovery deadline', () => {
+    const refreshed = cloudAccountAccess({
+        nowMs: lastExpiry + day, lastVerifiedCloudExpiryMs: lastExpiry,
+        activeCloudExpiryMs: lastExpiry + 30 * day,
+    });
+    assert.equal(refreshed.state, 'PAID');
+    assert.equal(refreshed.deletionDueAtMs, null);
+    const exit = cloudAccountAccess({
+        nowMs: lastExpiry + day, activeCloudExpiryMs: lastExpiry + 30 * day,
+        deletionRequestedAtMs: lastExpiry + day,
+    });
+    assert.equal(exit.state, 'ACCOUNT_DELETION_REQUESTED');
+    assert.equal(exit.mayDownload, false);
 });
