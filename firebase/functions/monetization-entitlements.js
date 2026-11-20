@@ -48,7 +48,14 @@ export function productionMonetizationCatalog(cloudEnabled) {
     }));
     const cloud = cloudEnabled ? PRODUCTION_CLOUD_TIERS.flatMap(([productId, quotaBytes]) =>
         AD_FREE_BASE_PLANS.map(basePlanId => ({ productId, basePlanId, kind: 'CLOUD', quotaBytes }))) : [];
+    // Includes legacy annual Cloud receipts: do not use directly as a new-sale catalogue.
     return validateMonetizationCatalog([...adFree, ...cloud], cloudEnabled ? PRODUCTION_CLOUD_MAX_BYTES : 0);
+}
+
+export function productionNewSaleCatalog(cloudEnabled) {
+    const historical = productionMonetizationCatalog(cloudEnabled);
+    // Ad removal keeps monthly AND annual; new Cloud sales are monthly only.
+    return Object.freeze(historical.filter(plan => plan.kind === 'AD_FREE' || plan.basePlanId === 'monthly'));
 }
 
 /**
