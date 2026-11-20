@@ -10,6 +10,7 @@ private val PRODUCTION_CLOUD_QUOTAS = mapOf(
     "gallipick_cloud_50gb" to 50_000_000_000L,
     "gallipick_cloud_100gb" to 100_000_000_000L,
 )
+internal val productionCloudQuotaBytes = PRODUCTION_CLOUD_QUOTAS.values.sorted()
 internal fun isKnownGalliPickSubscription(productId: String): Boolean =
     productId == GALLIPICK_STANDALONE_AD_FREE || productId in PRODUCTION_CLOUD_QUOTAS ||
         productId == GALLIPICK_RETIRED_CLOUD_PILOT

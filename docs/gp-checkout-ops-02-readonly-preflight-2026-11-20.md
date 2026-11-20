@@ -11,8 +11,8 @@
 1. Google Play Developer API `monetization.subscriptions.get`을 사용하여 **GET 요청으로만** 아래 4개 정기결제 상품을 조회합니다.
    - `gallipick_ad_free`: monthly 월 ₩1,000 / annual 연 ₩9,900
    - `gallipick_cloud_10gb`: monthly 월 ₩1,900
-   - `gallipick_cloud_50gb`: monthly 월 ₩5,900
-   - `gallipick_cloud_100gb`: monthly 월 ₩10,900
+   - `gallipick_cloud_50gb`: monthly 월 ₩8,900
+   - `gallipick_cloud_100gb`: monthly 월 ₩15,900
 2. 각 판매 기본 요금제가 `ACTIVE`, 자동 갱신 `P1M` 또는 `P1Y`, 한국 `KR` 신규 가입 가능, 원화 `KRW` 승인 금액과 일치하는지 확인합니다.
 3. Cloud 3개 상품의 annual 기본 요금제는 DRAFT/INACTIVE 또는 모든 지역에서 신규 가입 비허용이어야 합니다. Cloud annual이 어디서든 신규 판매 가능한 ACTIVE 상태라면 **FAIL**입니다. 이미 가입한 Cloud 연간 구독자 권리는 앱/서버에서 별도로 유지합니다.
 4. Cloud Functions v2 `getCloudPlan`, `verifyCloudSubscription`은 `projects/gallipick-production/locations/asia-northeast3`의 정확한 대상만 읽습니다.

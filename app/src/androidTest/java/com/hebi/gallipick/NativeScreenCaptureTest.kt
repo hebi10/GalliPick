@@ -369,8 +369,8 @@ class NativeScreenCaptureTest {
 
     private fun billingCaptureOffers(): List<CloudBillingOffer> = listOf(
         Triple("gallipick_cloud_10gb", 1_900, null),
-        Triple("gallipick_cloud_50gb", 5_900, null),
-        Triple("gallipick_cloud_100gb", 10_900, null),
+        Triple("gallipick_cloud_50gb", 8_900, null),
+        Triple("gallipick_cloud_100gb", 15_900, null),
         Triple(GALLIPICK_STANDALONE_AD_FREE, 1_000, 9_900),
     ).flatMap { (productId, monthly, annual) ->
         listOfNotNull("monthly" to monthly, annual?.let { "annual" to it }).map { (basePlanId, price) ->

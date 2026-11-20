@@ -13,8 +13,8 @@ const MAX_ORIGINAL = 268_435_456;
 export const PRODUCT_PRICE_POLICY = Object.freeze({
   gallipick_ad_free: { monthly: 1000, annual: 9900 },
   gallipick_cloud_10gb: { monthly: 1900 },
-  gallipick_cloud_50gb: { monthly: 5900 },
-  gallipick_cloud_100gb: { monthly: 10900 },
+  gallipick_cloud_50gb: { monthly: 8900 },
+  gallipick_cloud_100gb: { monthly: 15900 },
 });
 export const REQUIRED_FUNCTIONS = Object.freeze(['getCloudPlan', 'verifyCloudSubscription']);
 

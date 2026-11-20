@@ -283,7 +283,7 @@ class CloudCheckoutUiTest {
     }
 
     @Test
-    fun noOfficialPlayOfferShowsPlannedPriceWithoutCheckout() {
+    fun missingPlayOffersKeepPlansVisibleWithoutShowingPricesOrAllowingCheckout() {
         val billing = FakeBillingSession(hasOffers = false, cloudCheckoutAllowed = false)
         showJourney(billing, signedIn = true)
         openCloudBilling()
@@ -292,11 +292,14 @@ class CloudCheckoutUiTest {
         billingPeriod("연간").assertIsNotSelected()
         plans.forEach { label ->
             planChoice(label).performScrollTo().assertIsDisplayed().assertIsNotEnabled().assertIsNotSelected()
+                .assert(hasText("신청 불가"))
         }
-        planChoice("10 GB").performScrollTo().assert(hasText("₩1,900/월"))
+        listOf("₩1,900/월", "₩8,900/월", "₩15,900/월", "₩5,900/월", "₩10,900/월").forEach { price ->
+            compose.onNodeWithText(price).assertDoesNotExist()
+        }
         billingCta().assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText("현재 클라우드 신규 구독을 신청할 수 없습니다.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("한국 출시 예정가", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("가격은 Google Play에서 조회될 때 표시됩니다.").performScrollTo().assertIsDisplayed()
         capture("09-billing-unavailable-monthly")
 
         billingPeriod("연간").performScrollTo().performClick().assertIsSelected()
@@ -440,12 +443,12 @@ class CloudCheckoutUiTest {
         )
         private val fifty = CloudBillingOffer(
             CloudBillingProduct("gallipick_cloud_50gb", "monthly", 50_000_000_000L),
-            "GalliPick Cloud 50 GB", "₩5,900", 5_900_000_000L, "KRW",
+            "GalliPick Cloud 50 GB", "₩8,900", 8_900_000_000L, "KRW",
         )
         private val extraOffers = if (includeExtraPlans) listOf(
             fifty,
             CloudBillingOffer(CloudBillingProduct("gallipick_cloud_100gb", "monthly", 100_000_000_000L),
-                "GalliPick Cloud 100 GB", "₩10,900", 10_900_000_000L, "KRW"),
+                "GalliPick Cloud 100 GB", "₩15,900", 15_900_000_000L, "KRW"),
             CloudBillingOffer(CloudBillingProduct("gallipick_ad_free", "monthly", 0),
                 "광고 제거", "₩1,000", 1_000_000_000L, "KRW"),
         ) else emptyList()
