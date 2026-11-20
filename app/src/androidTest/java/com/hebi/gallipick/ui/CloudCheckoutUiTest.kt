@@ -213,6 +213,31 @@ class CloudCheckoutUiTest {
     }
 
     @Test
+    fun newSignedInCloudAccountOpensCheckoutOnlyAfterChoosingTheBillingRoute() {
+        val billing = FakeBillingSession(includeAnnualPlan = true, includeExtraPlans = true)
+        showJourney(billing, signedIn = true)
+        val tab = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
+        compose.onNode(tab and hasText("클라우드")).performClick()
+        compose.onNodeWithText("요금제·결제").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle {
+            assertEquals(0, billing.checkoutCount)
+            assertEquals(0, billing.replacementCount)
+        }
+
+        compose.onNodeWithText("요금제·결제").performClick()
+        planChoice("10 GB").performScrollTo().assertIsDisplayed()
+        planChoice("50 GB").performScrollTo().assertIsDisplayed()
+        planChoice("100 GB").performScrollTo().assertIsDisplayed()
+        billingCta().assertIsDisplayed().assertIsNotEnabled()
+
+        planChoice("10 GB").performScrollTo().performClick()
+        billingCta().assertIsEnabled().assert(hasText("10 GB 구독하기 · 월 ₩1,900")).performClick()
+        compose.onNodeWithText("GalliPick Cloud 10 GB · 매월 ₩1,900").assertIsDisplayed()
+        compose.onNodeWithText("Google Play 결제창 열기").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, billing.checkoutCount) }
+    }
+
+    @Test
     fun globalBillingPeriodKeepsAvailableSelectionAndOnlyAnchoredActionOpensTheQuote() {
         val billing = FakeBillingSession(includeAnnualPlan = true, includeExtraPlans = true)
         showJourney(billing, signedIn = true)
