@@ -28,3 +28,20 @@ test('admin UI is view-only and never embeds credentials or direct Firestore que
   assert.match(cfg, /appId:\s*""/);
   assert.match(cfg, /gallipick-production/);
 });
+
+test('member section is paginated and server-only, with no direct Firestore or HTML injection', () => {
+  const html = read('firebase/admin-web/index.html');
+  const app = read('firebase/admin-web/app.js');
+  assert.match(html, /id="member-list"/);
+  assert.match(html, /id="members-prev"/);
+  assert.match(html, /id="members-next"/);
+  assert.match(html, /id="members-refresh"/);
+  assert.match(app, /getAdminMembers/);
+  assert.match(app, /httpsCallable/);
+  assert.match(app, /emailMasked/);
+  assert.match(app, /document\.createElement/);
+  assert.match(app, /replaceChildren/);
+  assert.doesNotMatch(app, /\.innerHTML\s*=/);
+  assert.doesNotMatch(app, /(?:deleteDoc|updateDoc|addDoc|setDoc|getDocs|collection\()/);
+  assert.doesNotMatch(app, /requestAccountExit|resumeCloudAfterDeletion|processAccountExits/);
+});
