@@ -244,9 +244,12 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     async function getPlanForOwner(owner, checkedSource) {
         if (production) {
             if (!settings.enabled) return pausedProductionPlan;
-            const [account, usage] = await Promise.all([ownerRef(owner).get(),
-                settings.cloudEnabled ? usageRef(owner).get() : null]);
+            const [account, usage, exit] = await Promise.all([ownerRef(owner).get(),
+                settings.cloudEnabled ? usageRef(owner).get() : null,
+                db.doc(`gallipickAccountExitRequests/${owner}`).get()]);
             const current = account.data();
+            const exitState = exit.data();
+            const mayUpload = !exitState || (exitState.scope === 'CLOUD' && exitState.status === 'RESUMED');
             const evaluatedAt = now();
             const verified = productionBenefits(current, evaluatedAt);
             const lifecycle = settings.retentionEnabled ? lifecycleForAccount(current, evaluatedAt) : null;
@@ -279,7 +282,9 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
                 expiresAtMs: verified.cloudExpiresAtMs, adFreeProductId: verified.adFreeProductId,
                 adFreeBasePlanId: verified.adFreeBasePlanId, adFreeExpiresAtMs: verified.adFreeExpiresAtMs,
                 backupAvailable: settings.cloudEnabled, quotaBytes, usedBytes,
-                uploadAllowed: usedBytes < quotaBytes && (!lifecycle || lifecycle.mayUpload),
+                uploadAllowed: mayUpload && usedBytes < quotaBytes && (!lifecycle || lifecycle.mayUpload),
+                ...(exitState?.scope === 'CLOUD' && exitState.status === 'COMPLETED'
+                    ? { cloudUploadReactivationRequired: true } : {}),
                 scheduledReplacement, replacementSourceAllowed: replacementSourcePrice !== null, replacementSourcePrice,
                 ...(lifecycle ? { cloudLifecycleState: lifecycle.state,
                     cloudRecoveryEndsAtMs: lifecycle.recoveryEndsAtMs,
