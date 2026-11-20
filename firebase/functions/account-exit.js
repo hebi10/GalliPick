@@ -11,7 +11,7 @@ const SIGN_IN_MAX_AGE_MS = 10 * 60 * 1000;
 const WORKER_LEASE_MS = 5 * 60 * 1000;
 const RETRY_MS = 2 * 60 * 1000;
 const MAX_RETRIES = 10;
-const OBJECT_PAGE_SIZE = 100;
+const OBJECT_PAGE_SIZE = 40;
 const DOC_PAGE_SIZE = 100;
 const sha = value => createHash('sha256').update(value).digest('hex');
 const validOwner = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -281,14 +281,20 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
             if (current?.requestId !== record.requestId || current?.lease?.id !== record.lease?.id) {
                 throw new BackupError('aborted', 'The deletion job lease was replaced.');
             }
-            tx.set(ref, { ...current, ...changes,
+            const terminal = changes.status === 'COMPLETED';
+            tx.set(ref, terminal ? {
+                ...changes, nextAttemptAtMs: Number.MAX_SAFE_INTEGER, lease: null,
+            } : {
+                ...current, ...changes,
                 status: changes.status ?? 'IN_PROGRESS',
-                nextAttemptAtMs: changes.status === 'COMPLETED' ? Number.MAX_SAFE_INTEGER : timestamp + RETRY_MS,
-                lease: null });
+                nextAttemptAtMs: changes.status === 'MANUAL_REVIEW' ? Number.MAX_SAFE_INTEGER
+                    : changes.nextAttemptAtMs ?? timestamp + RETRY_MS,
+                lease: null,
+            });
         });
     }
 
-    async function processOne(ref, { steps = 12 } = {}) {
+    async function processOne(ref, { steps = 4 } = {}) {
         const timestamp = now();
         const claimed = await claim(ref, timestamp);
         if (!claimed) return { claimed: false };
