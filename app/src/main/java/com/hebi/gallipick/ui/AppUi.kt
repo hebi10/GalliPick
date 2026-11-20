@@ -129,7 +129,10 @@ internal fun GalliPickApp(
         if (adRemovalOrigin == Destination.FILES && destinationValue != Destination.FILES) {
             resumeFileDetailVersion = null
         }
-        if (showSimilarResults || showSoftFocusResults || showReviewInbox || similarCompareId != null) vm.clearSelection()
+        if ((destination == Destination.FILES && destinationValue != Destination.FILES) ||
+            showSimilarResults || showSoftFocusResults || showReviewInbox || similarCompareId != null) {
+            vm.clearSelection()
+        }
         showReviewInbox = false
         compareFromInbox = false
         showTrash = false

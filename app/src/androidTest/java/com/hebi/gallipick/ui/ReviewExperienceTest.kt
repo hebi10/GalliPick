@@ -11,9 +11,11 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -22,6 +24,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hebi.gallipick.AppUiState
@@ -63,7 +66,8 @@ class ReviewExperienceTest {
             }
         }
         compose.onNodeWithText("휴지통으로").assertDoesNotExist()
-        compose.onNodeWithContentDescription("${longVideo.displayName} 선택").performClick()
+        compose.onNode(hasText(longVideo.displayName) and hasClickAction())
+            .performTouchInput { longClick(durationMillis = 2_100) }
         compose.onNodeWithText("1개 선택").assertIsDisplayed()
         saveScreenshot("review-files-populated")
         compose.onNodeWithContentDescription("파일 추가 작업").performClick()

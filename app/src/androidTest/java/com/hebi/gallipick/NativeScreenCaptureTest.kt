@@ -34,9 +34,11 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -48,6 +50,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -193,6 +196,23 @@ class NativeScreenCaptureTest {
             // Save the primary screens first, so detail-step failures cannot erase the evidence.
             navigate("파일")
             compose.onNodeWithContentDescription("파일 조건 선택").assertIsDisplayed()
+            if (profile == "file-selection") {
+                compose.waitUntil(10_000) {
+                    compose.onAllNodesWithTag("media-thumbnail-ready", useUnmergedTree = true)
+                        .fetchSemanticsNodes().size >= 9 &&
+                        compose.onAllNodesWithContentDescription("미리보기 불러오는 중", useUnmergedTree = true)
+                            .fetchSemanticsNodes().isEmpty()
+                }
+                saveViewport("files-browsing")
+                compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and
+                    hasText("EXAMPLE_", substring = true)).onFirst()
+                    .performTouchInput { longClick(durationMillis = 2_100) }
+                compose.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off) and
+                    hasText("EXAMPLE_", substring = true)).onFirst().performClick()
+                compose.onNodeWithText("2개 선택").assertIsDisplayed()
+                saveViewport("files-selection")
+                return
+            }
             saveViewport("02-files")
             captureDetail("02b-files-list") {
                 compose.onNodeWithContentDescription("파일 추가 작업").performClick()
