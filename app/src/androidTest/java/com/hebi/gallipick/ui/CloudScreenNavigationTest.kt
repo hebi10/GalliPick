@@ -3,6 +3,7 @@ package com.hebi.gallipick.ui
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -48,6 +49,8 @@ class CloudScreenNavigationTest {
         runBlocking { connection.session.chooseAccount { "test-credential" } }
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
         compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
+        compose.onNodeWithText("회원 탈퇴 요청").assertExists()
+        compose.onNodeWithText("클라우드 데이터 삭제 요청").assertExists()
         compose.onNodeWithTag("cloud-route-BILLING").performClick()
         compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
         compose.onNodeWithContentDescription("뒤로").performClick()
