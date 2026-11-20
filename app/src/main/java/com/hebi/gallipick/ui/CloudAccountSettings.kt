@@ -92,18 +92,6 @@ internal fun CloudScreen(
     val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == account?.uid }
     val namespace = observation?.access?.namespace
     var requestedRoute by rememberSaveable(account?.uid) { mutableStateOf(CloudRoute.OVERVIEW) }
-    val signInRevision by connection.session.successfulSignInRevision.collectAsStateWithLifecycle()
-    var handledSignInRevision by remember(connection.session) {
-        mutableStateOf(connection.session.successfulSignInRevision.value)
-    }
-    LaunchedEffect(signInRevision, account?.uid, status.operation) {
-        if (signInRevision > handledSignInRevision && access == CloudAccessState.SIGNED_IN) {
-            handledSignInRevision = signInRevision
-            if (connection.billing != null && onBackFromAdRemoval == null) {
-                requestedRoute = CloudRoute.BILLING
-            }
-        }
-    }
     val requested = if (onBackFromAdRemoval != null && connection.billing != null &&
         access != CloudAccessState.UNAVAILABLE
     ) {
