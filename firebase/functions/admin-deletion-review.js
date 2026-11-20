@@ -182,7 +182,9 @@ export function createAdminDeletionReviewService({
             const previous = auditSnap.data();
             if (previous) {
                 if (previous.ownerId !== input.ownerId || previous.originalRequestId !== input.originalRequestId ||
-                    previous.actorOwnerId !== actor || previous.action !== 'RETRY') {
+                    previous.actorOwnerId !== actor || previous.action !== 'RETRY' ||
+                    previous.scope !== input.scope || previous.stage !== input.expectedStage ||
+                    previous.reason !== input.reason) {
                     throw new BackupError('permission-denied', 'The administrator action ID was previously used.');
                 }
                 return { scheduled: true, repeated: true, status: record?.status ?? 'UNKNOWN' };
