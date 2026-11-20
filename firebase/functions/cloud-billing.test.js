@@ -849,3 +849,18 @@ test('manual grants are completely inert until explicitly enabled by the product
     assert.equal(plan.manualGrantKind, undefined);
     assert.equal(plan.uploadAllowed, false);
 });
+
+test('manual Cloud entitlement rollout requires retention enforcement to avoid unbounded recovery access', () => {
+    const env = { ...cloudEnv('live'), GALLIPICK_PRODUCTION_MANUAL_GRANTS_ENABLED: 'true' };
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, env), isCode('failed-precondition'));
+    const safe = productionBillingSettings(PRODUCTION_PROJECT, {
+        ...env, GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED: 'true',
+    });
+    assert.equal(safe.manualGrantsEnabled, true);
+    assert.equal(safe.retentionEnabled, true);
+    const adOnly = productionBillingSettings(PRODUCTION_PROJECT, {
+        ...productionEnv('live'), GALLIPICK_PRODUCTION_MANUAL_GRANTS_ENABLED: 'true',
+    });
+    assert.equal(adOnly.cloudEnabled, false);
+    assert.equal(adOnly.manualGrantsEnabled, true);
+});
