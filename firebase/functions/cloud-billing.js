@@ -459,6 +459,10 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             const licenseEmailAllowed = settings.mode === 'license-test' && allowedEmailHashes.has(licenseEmailHash);
             if (typeof owner !== 'string' || !HASH.test(owner)
                 || (settings.mode !== 'live' && !allowedOwners.has(owner) && !licenseEmailAllowed)) return false;
+            if (production) {
+                const exit = (await db.doc(`gallipickAccountExitRequests/${owner}`).get()).data();
+                if (exit && (exit.status !== 'COMPLETED' || exit.scope === 'ACCOUNT')) return false;
+            }
             // Re-fetch after reserving the revision. The notification is only a refresh signal.
             await reconcile(owner, token, licenseEmailAllowed ? licenseEmailHash : null);
             return true;
@@ -467,6 +471,10 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
         // Read this in the same transaction as new reservations and before any writes.
         async uploadQuota(transaction, owner, ownerLimit) {
             if (production && !settings.cloudEnabled) return 0;
+            if (production) {
+                const exit = (await transaction.get(db.doc(`gallipickAccountExitRequests/${owner}`))).data();
+                if (exit && (exit.status !== 'COMPLETED' || exit.scope === 'ACCOUNT')) return 0;
+            }
             if (!Number.isSafeInteger(ownerLimit) || ownerLimit < 0) {
                 throw new BackupError('failed-precondition', 'The backup allocation limit is invalid.');
             }
