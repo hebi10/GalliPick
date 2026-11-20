@@ -1,6 +1,9 @@
 package com.hebi.gallipick.ui
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -278,6 +281,46 @@ internal fun CloudAccountSettings(
         }
     }
     statusText?.let { CloudStatusMessage(it) }
+    if (!forAdRemoval) CloudAccountExitGuidance(activity)
+}
+
+@Composable
+private fun CloudAccountExitGuidance(activity: Activity) {
+    var actionUnavailable by remember { mutableStateOf(false) }
+    HorizontalDivider(color = Line)
+    Text("구독 취소·계정 및 데이터 삭제", style = MaterialTheme.typography.titleSmall)
+    CloudStatusMessage("구독 취소는 Google Play에서 진행합니다. 로그아웃·앱 삭제·회원 탈퇴만으로 자동 결제가 취소되지 않습니다.")
+    ActionButton("Google Play 구독 취소·관리", {
+        actionUnavailable = !startCloudExitAction(activity,
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/account/subscriptions")))
+    }, Modifier.fillMaxWidth())
+    CloudStatusMessage("클라우드 데이터만 삭제하거나 GalliPick 계정 전체를 탈퇴하려면 별도 요청이 필요합니다. 본인 확인 후 처리하며, 기기에 저장된 원본은 삭제하지 않습니다.")
+    ActionButton("클라우드 데이터 삭제 요청", {
+        actionUnavailable = !requestCloudExitByEmail(activity, "클라우드 데이터 삭제")
+    }, Modifier.fillMaxWidth())
+    ActionButton("회원 탈퇴 요청", {
+        actionUnavailable = !requestCloudExitByEmail(activity, "회원 탈퇴 및 연관 데이터 삭제")
+    }, Modifier.fillMaxWidth())
+    CloudStatusMessage("메일 앱에서 요청 내용을 보내야 접수됩니다. 삭제 요청은 처리 완료가 아니며, 구독 취소도 별도로 진행해야 합니다.")
+    if (actionUnavailable) {
+        CloudStatusMessage("외부 앱을 열 수 없습니다. asdlkj0104@gmail.com으로 요청하거나 개인정보처리방침을 확인해 주세요.")
+    }
+}
+
+private fun requestCloudExitByEmail(activity: Activity, request: String): Boolean {
+    val subject = Uri.encode("GalliPick $request 요청")
+    val body = Uri.encode("요청 내용:\n로그인한 Google 계정 이메일:\n삭제 범위:\n\n원본 파일이나 결제 토큰은 첨부하지 마세요.")
+    val uri = Uri.parse("mailto:asdlkj0104@gmail.com?subject=$subject&body=$body")
+    return startCloudExitAction(activity, Intent(Intent.ACTION_SENDTO, uri))
+}
+
+private fun startCloudExitAction(activity: Activity, intent: Intent): Boolean = try {
+    activity.startActivity(intent)
+    true
+} catch (_: ActivityNotFoundException) {
+    false
+} catch (_: SecurityException) {
+    false
 }
 
 @Composable
