@@ -17,6 +17,7 @@ import { createSecretCloud } from './secret-cloud.js';
 import { createResumableBackupService } from './resumable-backup.js';
 import { cloudOperationAccess } from './cloud-api-access.js';
 import { createAccountExitService } from './account-exit.js';
+import { createAdminOverviewService } from './admin-overview.js';
 
 const app = initializeApp();
 const project = app.options.projectId ?? process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
@@ -245,6 +246,21 @@ export const processAccountExits = onSchedule({
             processed: result.processed,
             failures: result.outcomes.filter(item => item.status === 'RETRY' || item.status === 'MANUAL_REVIEW').length,
         });
+    }
+});
+
+// Read-only admin access. A Firebase custom claim alone is insufficient:
+// the signed-in Google UID must also match a server-side hashed allowlist.
+export const getAdminOverview = onCall({ ...options, maxInstances: 2, concurrency: 4 }, async request => {
+    try {
+        const service = createAdminOverviewService({
+            db: getFirestore(app), project,
+            allowedUidHashes: process.env.GALLIPICK_ADMIN_ALLOWED_UID_HASHES,
+        });
+        return await service.overview(request.auth);
+    } catch (error) {
+        if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
+        throw new HttpsError('unavailable', 'GalliPick admin overview is temporarily unavailable.');
     }
 });
 
