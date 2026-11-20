@@ -2,7 +2,8 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
+from urllib.error import HTTPError
 
 from internal_release_pipeline import CONFIG, MANUAL_NAME, Orchestrator, initial_settings
 
@@ -80,6 +81,38 @@ class InternalReleaseSafetyTests(unittest.TestCase):
                 pipe.api = lambda path, payload=None: {}
                 with self.assertRaisesRegex(RuntimeError, "no exact run ID"):
                     pipe.dispatch("emulator-smoke.yml", {"expected_main_sha": SHA})
+
+    def test_new_child_run_can_take_time_to_be_visible_by_its_exact_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = settings(GITHUB_STEP_SUMMARY=str(Path(tmp) / "summary"))
+            with patch.dict(os.environ, env):
+                pipe = Orchestrator(env)
+                workflow = "emulator-smoke.yml"
+                path = "/repos/hebi10/quickcut/actions/runs/10"
+                run = {
+                    "id": 10, "head_sha": SHA, "head_branch": "main",
+                    "event": "workflow_dispatch", "status": "completed", "conclusion": "success",
+                    "repository": {"full_name": pipe.repo}, "path": f".github/workflows/{workflow}",
+                }
+                with patch.object(pipe, "api", side_effect=[None, run]) as api, \
+                        patch.object(pipe, "current_main") as current_main, \
+                        patch("internal_release_pipeline.time.sleep") as sleep:
+                    self.assertEqual(pipe.wait(workflow, 10), run)
+                    self.assertEqual(api.call_args_list, [call(path, allow_not_found=True)] * 2)
+                    sleep.assert_called_once_with(5)
+                    current_main.assert_called_once_with()
+
+                with patch.object(pipe, "api", return_value=None) as api, \
+                        patch("internal_release_pipeline.time.sleep"):
+                    with self.assertRaisesRegex(RuntimeError, "Dispatched workflow is not visible"):
+                        pipe.wait(workflow, 10)
+                    self.assertEqual(api.call_args_list, [call(path, allow_not_found=True)] * 7)
+
+                with patch("internal_release_pipeline.urllib.request.urlopen",
+                           side_effect=HTTPError(path, 404, "Not Found", None, None)):
+                    self.assertIsNone(pipe.api(path, allow_not_found=True))
+                    with self.assertRaisesRegex(RuntimeError, "HTTP 404"):
+                        pipe.api(path)
 
     def test_only_successful_qa_and_signed_aab_allow_publisher_dispatch(self):
         with tempfile.TemporaryDirectory() as tmp:

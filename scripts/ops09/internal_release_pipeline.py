@@ -108,7 +108,7 @@ class Orchestrator:
             if "url" in changes:
                 summary.write(f"\nActions run: {changes['url']}\n")
 
-    def api(self, path, payload=None):
+    def api(self, path, payload=None, *, allow_not_found=False):
         require(path.startswith(f"/repos/{self.repo}/"), "Cross-repository API access forbidden")
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         request = urllib.request.Request(
@@ -127,6 +127,8 @@ class Orchestrator:
                 require(response.status == 200, "Expected JSON API response; refusing uncertain mutation")
                 return json.load(response)
         except urllib.error.HTTPError as exc:
+            if allow_not_found and payload is None and exc.code == 404:
+                return None
             raise RuntimeError(f"GitHub API rejected {path.split('?')[0]} (HTTP {exc.code})") from None
 
     def current_main(self):
@@ -165,8 +167,17 @@ class Orchestrator:
     def wait(self, workflow, run_id):
         url = f"https://github.com/{self.repo}/actions/runs/{run_id}"
         self.write(stage="running_" + workflow, url=url)
+        path = f"/repos/{self.repo}/actions/runs/{run_id}"
+        # GitHub can return the dispatch ID before the run is visible to the read API.
+        run = self.api(path, allow_not_found=True)
+        for _ in range(6):
+            if run is not None or time.monotonic() + 5 >= self.deadline:
+                break
+            time.sleep(5)
+            run = self.api(path, allow_not_found=True)
+        require(run is not None, "Dispatched workflow is not visible: " + url)
+
         while time.monotonic() < self.deadline:
-            run = self.api(f"/repos/{self.repo}/actions/runs/{run_id}")
             expected_path = ".github/workflows/" + workflow
             require(run.get("id") == run_id and run.get("head_sha") == self.sha
                     and run.get("head_branch") == "main"
@@ -179,6 +190,9 @@ class Orchestrator:
                 self.current_main()
                 return run
             time.sleep(25)
+            if time.monotonic() >= self.deadline:
+                break
+            run = self.api(path)
         raise RuntimeError("Timed out waiting for child workflow: " + url)
 
     def jobs(self, run_id):
