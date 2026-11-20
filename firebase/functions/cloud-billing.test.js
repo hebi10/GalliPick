@@ -596,3 +596,102 @@ test('license RTDN refresh uses only a verified existing email binding and respe
     assert.equal(await afterRemoval.reconcileNotification(renewalEvent(token(2))), false);
     await assert.rejects(afterRemoval.getPlan(auth), isCode('permission-denied'));
 });
+
+const guardedLiveCloud = { ...liveCloud, retentionEnabled: true };
+const guardedLicenseCloud = { ...licenseCloud, retentionEnabled: true };
+
+test('production Cloud retention must be explicitly enabled and never opens dev or ad-free access', async () => {
+    assert.equal(liveCloud.retentionEnabled, false);
+    assert.equal(licenseCloud.retentionEnabled, false);
+    assert.equal(productionBillingSettings(PRODUCTION_PROJECT, {
+        ...cloudEnv('live'), GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED: 'true',
+    }).retentionEnabled, true);
+    assert.equal(productionBillingSettings('gallipick-dev', {
+        ...cloudEnv('live'), GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED: 'true',
+    }).enabled, false);
+    const { service, purchases, records } = createHarness({ settings: guardedLiveCloud });
+    const auth = user('owner-a');
+    await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+    await assert.rejects(service.requireCloudAccess(auth, 'write'), isCode('permission-denied'));
+    purchases.set(token(1), subscription({ product: monthly, testPurchase: null }));
+    await verify(service, 'owner-a', token(1));
+    await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+    assert.equal(records.get(`gallipickProductionBillingAccounts/${accountId('owner-a')}`).cloudLifecycle, undefined);
+    await assert.rejects(service.requireCloudAccess(user('owner-b'), 'root'), isCode('invalid-argument'));
+    const disabled = createHarness({ settings: liveCloud }).service;
+    assert.equal(await disabled.requireCloudAccess(auth, 'read'), undefined);
+});
+
+test('Play-verified Cloud purchase keeps durable expiry and enforces seven-day read-only recovery', async () => {
+    const { service, purchases, records, setTime } = createHarness({ settings: guardedLiveCloud });
+    const auth = user('owner-a');
+    const expiry = now + 20_000;
+    purchases.set(token(1), subscription({ product: cloudOffer(10), testPurchase: null, expires: expiry }));
+    let plan = await verify(service, 'owner-a', token(1));
+    assert.equal(plan.cloudLifecycleState, 'PAID');
+    assert.equal(plan.cloudReadAllowed, true);
+    assert.equal(plan.cloudRecoveryEndsAtMs, null);
+    const record = records.get(`gallipickProductionBillingAccounts/${accountId('owner-a')}`);
+    assert.deepEqual(Object.keys(record.cloudLifecycle).sort(),
+        ['basePlanId', 'checkedAtMs', 'expiresAtMs', 'productId', 'recoveryAllowed', 'tokenHash'].sort());
+    assert.equal(record.cloudLifecycle.expiresAtMs, expiry);
+    assert.equal(record.cloudLifecycle.recoveryAllowed, true);
+    assert.equal(JSON.stringify([...records]).includes(token(1)), false);
+    assert.equal((await service.requireCloudAccess(auth, 'write')).state, 'PAID');
+
+    setTime(expiry);
+    plan = await service.getPlan(auth);
+    assert.equal(plan.activeProductId, null);
+    assert.equal(plan.cloudLifecycleState, 'READ_ONLY_RECOVERY');
+    assert.equal(plan.cloudReadAllowed, true);
+    assert.equal(plan.cloudRecoveryEndsAtMs, expiry + 7 * 86_400_000);
+    assert.equal(plan.cloudDeletionDueAtMs, expiry + 14 * 86_400_000);
+    assert.equal((await service.requireCloudAccess(auth, 'read')).state, 'READ_ONLY_RECOVERY');
+    await assert.rejects(service.requireCloudAccess(auth, 'write'), isCode('permission-denied'));
+
+    setTime(expiry + 7 * 86_400_000);
+    assert.equal((await service.getPlan(auth)).cloudLifecycleState, 'LOCKED_AWAITING_PURGE');
+    await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+    setTime(expiry + 14 * 86_400_000);
+    assert.equal((await service.getPlan(auth)).cloudLifecycleState, 'PURGE_DUE');
+    // This state is not a deletion worker and must not mutate any originals.
+    assert.equal(record.cloudLifecycle.expiresAtMs, expiry);
+});
+
+test('Play RTDN renewal moves expiry forward and hold/revocation removes access without deleting data', async () => {
+    const { service, purchases, setTime, records } = createHarness({ settings: guardedLicenseCloud });
+    const auth = user('owner-a');
+    const oldExpiry = now + 30_000;
+    const renewal = now + 80 * 86_400_000;
+    purchases.set(token(1), subscription({ product: cloudOffer(50), expires: oldExpiry }));
+    await verify(service, 'owner-a', token(1));
+    setTime(oldExpiry + 1000);
+    assert.equal((await service.getPlan(auth)).cloudLifecycleState, 'READ_ONLY_RECOVERY');
+    purchases.set(token(1), subscription({ product: cloudOffer(50), expires: renewal }));
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), true);
+    assert.equal((await service.getPlan(auth)).cloudLifecycleState, 'PAID');
+    const accountPath = `gallipickProductionLicenseBillingAccounts/${accountId('owner-a')}`;
+    assert.equal(records.get(accountPath).cloudLifecycle.expiresAtMs, renewal);
+    assert.equal((await service.requireCloudAccess(auth, 'write')).state, 'PAID');
+
+    purchases.set(token(1), subscription({ product: cloudOffer(50), expires: renewal, state: 'ON_HOLD' }));
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), true);
+    assert.equal((await service.getPlan(auth)).cloudLifecycleState, 'CLOUD_ACCESS_SUSPENDED');
+    await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+
+    purchases.set(token(1), () => { throw new BackupError('not-found', 'The purchase has been revoked.'); });
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), true);
+    assert.equal(records.get(accountPath).cloudLifecycle.recoveryAllowed, false);
+    await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+});
+
+test('license-test and live Cloud access remain isolated, even for the same Firebase UID', async () => {
+    const { service, purchases, serviceFor } = createHarness({ settings: guardedLicenseCloud });
+    const paid = serviceFor(guardedLiveCloud);
+    const auth = user('owner-a');
+    purchases.set(token(1), subscription({ product: cloudOffer(10) }));
+    assert.equal((await verify(service, 'owner-a', token(1))).cloudLifecycleState, 'PAID');
+    assert.equal((await service.requireCloudAccess(auth, 'read')).state, 'PAID');
+    await assert.rejects(paid.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+    await assert.rejects(service.requireCloudAccess(user('owner-b'), 'read'), isCode('permission-denied'));
+});
