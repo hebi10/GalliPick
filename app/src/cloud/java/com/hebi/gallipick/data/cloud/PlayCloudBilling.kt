@@ -273,6 +273,17 @@ internal class PlayCloudBilling(
             }
             val production = backupAccess?.development == false
             if (!isValidCloudBillingCatalog(products, production = production)) unavailable()
+            val recoveryItems = response.optJSONArray("legacyRecoveryProducts")
+            if (recoveryItems != null && (!production || recoveryItems.length() > 3)) unavailable()
+            val legacyRecoveryProducts = (0 until (recoveryItems?.length() ?: 0)).map { index ->
+                val item = recoveryItems?.optJSONObject(index) ?: unavailable()
+                val quota = item.opt("quotaBytes") as? Number ?: unavailable()
+                val quotaBytes = quota.toLong()
+                if (quota.toDouble() != quotaBytes.toDouble()) unavailable()
+                CloudBillingProduct(item.optString("productId"), item.optString("basePlanId"), quotaBytes)
+            }
+            if (legacyRecoveryProducts.any { it.isStandaloneAdFree || it.basePlanId != "annual" } ||
+                !isValidCloudBillingCatalog(products + legacyRecoveryProducts, production = production)) unavailable()
             val activeProductId = response.opt("activeProductId") as? String
             val activeBasePlanId = response.opt("activeBasePlanId") as? String
             val activeExpiry = response.optLong("expiresAtMs").takeIf { it > 0 }
@@ -358,6 +369,7 @@ internal class PlayCloudBilling(
                 verifiedMediaCount = verifiedMediaCount,
                 supportsResumableTransfers = response.opt("supportsResumableTransfers") == true,
                 resumableUploadAllowed = response.opt("resumableUploadAllowed") == true,
+                legacyRecoveryProducts = legacyRecoveryProducts,
             )
             if (production && backupAvailable &&
                 (isTestOnly == null || plan.productionBackupAccess() == null)) unavailable()
@@ -441,7 +453,8 @@ internal class PlayCloudBilling(
                     }
             }
             val matching = appSubscriptions.filter {
-                cloudBillingPurchaseMatches(plan.obfuscatedAccountId, plan.products,
+                cloudBillingPurchaseMatches(plan.obfuscatedAccountId,
+                    plan.products + plan.legacyRecoveryProducts,
                     it.accountIdentifiers?.obfuscatedAccountId, it.products)
             }
             val purchased = matching.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
