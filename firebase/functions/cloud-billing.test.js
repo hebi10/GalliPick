@@ -741,8 +741,15 @@ test('completed Cloud-only deletion may resume paid usage, but completed account
     await verify(service, uid, token(1));
     const exitPath = `gallipickAccountExitRequests/${owner}`;
     records.set(exitPath, { scope: 'CLOUD', status: 'COMPLETED' });
-    assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)), 10_000_000_000);
+    assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)), 0);
     await service.requireCloudAccess(auth, 'read');
+    await assert.rejects(service.requireCloudAccess(auth, 'write'), isCode('permission-denied'));
+    assert.equal((await service.getPlan(auth)).uploadAllowed, false);
+    assert.equal((await service.getPlan(auth)).cloudUploadReactivationRequired, true);
+    records.set(exitPath, { scope: 'CLOUD', status: 'RESUMED' });
+    assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)), 10_000_000_000);
+    await service.requireCloudAccess(auth, 'write');
+    assert.equal((await service.getPlan(auth)).cloudUploadReactivationRequired, undefined);
     records.set(exitPath, { scope: 'ACCOUNT', status: 'COMPLETED' });
     assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)), 0);
     await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
