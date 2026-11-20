@@ -1,0 +1,109 @@
+name: GP-CHECKOUT-OPS-02 production read-only checkout audit
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/qa/gallipick_checkout_readiness*'
+      - '.github/workflows/gp-checkout-readonly-audit.yml'
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: 'Exact, verified main SHA (40 lowercase hexadecimal characters)'
+        type: string
+        required: true
+      confirm_read_only_audit:
+        description: 'Query Play subscription metadata and Firebase Function metadata using GET only'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  offline-policy-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Static read-only policy and fixture verification
+        run: |
+          node --check scripts/qa/gallipick_checkout_readiness.mjs
+          node --test scripts/qa/gallipick_checkout_readiness.test.mjs
+
+  read-only-live-audit:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'hebi10/GalliPick' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.confirm_read_only_audit == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+      CHECKOUT_READONLY_APPROVED: 'true'
+      CHECKOUT_AUDIT_REPORT: checkout-readiness/report.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Enforce exact frozen main commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$GITHUB_SHA" == "$EXPECTED_MAIN_SHA" ]] || exit 1
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_MAIN_SHA" ]] || exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Authenticate existing Play read-only metadata service identity
+        id: playAuth
+        if: >-
+          vars.PLAY_WORKLOAD_IDENTITY_PROVIDER != '' &&
+          vars.PLAY_SERVICE_ACCOUNT != ''
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.PLAY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+          export_environment_variables: false
+          cleanup_credentials: true
+      - name: Authenticate separate Firebase metadata viewer identity
+        id: cloudAuth
+        if: >-
+          vars.FIREBASE_READONLY_WORKLOAD_IDENTITY_PROVIDER != '' &&
+          vars.FIREBASE_READONLY_SERVICE_ACCOUNT != ''
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.FIREBASE_READONLY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.FIREBASE_READONLY_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/cloud-platform
+          create_credentials_file: false
+          export_environment_variables: false
+          cleanup_credentials: true
+      - name: Fetch sanitized subscription and Cloud Function metadata with GET only
+        env:
+          PLAY_READONLY_ACCESS_TOKEN: ${{ steps.playAuth.outputs.access_token }}
+          CLOUD_READONLY_ACCESS_TOKEN: ${{ steps.cloudAuth.outputs.access_token }}
+        run: node scripts/qa/gallipick_checkout_readiness.mjs
+      - name: Save sanitized product and runtime readiness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gp-checkout-readonly-audit-${{ github.run_id }}
+          path: checkout-readiness/report.json
+          if-no-files-found: warn
+          retention-days: 14
