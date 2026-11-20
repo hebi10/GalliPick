@@ -285,6 +285,26 @@ internal class PlayCloudBilling(
             if (standalone != null && standalone != GALLIPICK_STANDALONE_AD_FREE) unavailable()
             val standaloneExpiry = response.optLong("adFreeExpiresAtMs").takeIf { it > 0 }
             if (standalone != null && standaloneExpiry == null) unavailable()
+            val manualKind = response.opt("manualGrantKind") as? String
+            val manualExpires = response.optLong("manualGrantExpiresAtMs").takeIf { it > 0L }
+            val manualQuotaNumber = response.opt("manualGrantQuotaBytes") as? Number
+            val manualQuota = manualQuotaNumber?.toLong() ?: 0L
+            val manualAdFreeExpiry = response.optLong("manualAdFreeExpiresAtMs").takeIf { it > 0L }
+            if (manualKind != null) {
+                val expectedQuota = when (manualKind) {
+                    "CLOUD_10GB" -> 10_000_000_000L
+                    "CLOUD_50GB" -> 50_000_000_000L
+                    "CLOUD_100GB" -> 100_000_000_000L
+                    "AD_FREE" -> 0L
+                    else -> unavailable()
+                }
+                if (manualExpires == null || manualAdFreeExpiry != manualExpires ||
+                    manualQuota != expectedQuota ||
+                    manualQuotaNumber?.toDouble() != manualQuota.toDouble() ||
+                    !production) unavailable()
+            } else if (manualExpires != null || manualAdFreeExpiry != null || manualQuotaNumber != null) {
+                unavailable()
+            }
             val backupAvailable = response.opt("backupAvailable") == true
             val isTestOnly = response.opt("testPurchasesOnly") as? Boolean
             val maxOriginalBytes = (response.opt("maxOriginalBytes") as? Number)
@@ -320,6 +340,10 @@ internal class PlayCloudBilling(
                 obfuscatedAccountId = obfuscatedId,
                 adFreeProductId = standalone,
                 adFreeExpiresAtMs = standaloneExpiry,
+                manualGrantKind = manualKind,
+                manualGrantExpiresAtMs = manualExpires,
+                manualGrantQuotaBytes = manualQuota,
+                manualAdFreeExpiresAtMs = manualAdFreeExpiry,
                 // Older production servers only know the test rollout. A missing mode cannot imply live.
                 testPurchasesOnly = testPurchasesOnly || isTestOnly != false,
                 backupAvailable = backupAvailable,

@@ -36,6 +36,8 @@ const resumableJobCollections = backupScopes.flatMap(scope => [
 ]);
 const billingDocumentRoots = billingScopes.flatMap(scope => [`${scope}Accounts`, `${scope}RequestLimits`]);
 const billingTokenCollections = billingScopes.map(scope => `${scope}Tokens`);
+const manualGrantPaths = owner => ['live', 'license-test'].map(mode =>
+    `gallipickAdminManualGrants/${mode}-${owner}`);
 
 export const accountExitPaths = Object.freeze({
     objectRoots: Object.freeze([...objectRoots]),
@@ -169,9 +171,16 @@ async function nextDeletionStep({ db, bucket, authAdmin }, ref, record) {
     }
     if (record.stage === 'BILLING_DOCS') {
         const name = billingDocumentRoots[record.stageIndex];
-        if (!name) return advance(record, 'VERIFY');
+        if (!name) return advance(record, 'MANUAL_GRANTS');
         await db.recursiveDelete(db.doc(`${name}/${owner}`));
         return advance(record, 'BILLING_DOCS', record.stageIndex + 1);
+    }
+    if (record.stage === 'MANUAL_GRANTS') {
+        const path = manualGrantPaths(owner)[record.stageIndex];
+        if (!path) return advance(record, 'VERIFY');
+        // Remove a departed member's free access and nested audit entries.
+        await db.recursiveDelete(db.doc(path));
+        return advance(record, 'MANUAL_GRANTS', record.stageIndex + 1);
     }
     if (record.stage === 'VERIFY') {
         for (const root of objectRoots) {
@@ -197,6 +206,11 @@ async function nextDeletionStep({ db, bucket, authAdmin }, ref, record) {
                 const target = db.doc(`${name}/${owner}`);
                 const [document, children] = await Promise.all([target.get(), target.listCollections()]);
                 if (document.exists || children.length) return advance(record, 'BILLING_DOCS');
+            }
+            for (const path of manualGrantPaths(owner)) {
+                const target = db.doc(path);
+                const [document, children] = await Promise.all([target.get(), target.listCollections()]);
+                if (document.exists || children.length) return advance(record, 'MANUAL_GRANTS');
             }
         }
         return advance(record, record.scope === 'ACCOUNT' ? 'AUTH' : 'COMPLETE');

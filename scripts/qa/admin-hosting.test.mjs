@@ -12,14 +12,14 @@ test('admin hosting has an explicitly named target and cannot deploy another sit
   assert.equal(config.functions.source, 'firebase/functions');
 });
 
-test('admin UI is view-only and never embeds credentials or direct Firestore queries', () => {
+test('admin UI avoids direct Firestore, Play edits and embedded secrets', () => {
   const html = read('firebase/admin-web/index.html');
   const app = read('firebase/admin-web/app.js');
   const cfg = read('firebase/admin-web/config.js');
   assert.match(html, /lang="ko"/);
   assert.match(html, /<main\b/);
   assert.match(html, /로그아웃/);
-  assert.match(html, /읽기 전용 관리자 화면/);
+  assert.match(html, /Google Play 결제 원장/);
   assert.match(app, /getAdminOverview/);
   assert.match(app, /gallipickAdmin/);
   assert.match(app, /httpsCallable/);
@@ -44,4 +44,24 @@ test('member section is paginated and server-only, with no direct Firestore or H
   assert.doesNotMatch(app, /\.innerHTML\s*=/);
   assert.doesNotMatch(app, /(?:deleteDoc|updateDoc|addDoc|setDoc|getDocs|collection\()/);
   assert.doesNotMatch(app, /requestAccountExit|resumeCloudAfterDeletion|processAccountExits/);
+});
+
+test('manual access UI cannot edit Play records or directly delete cloud files', () => {
+  const script = read('firebase/admin-web/manual-grants.js');
+  const app = read('firebase/admin-web/app.js');
+  const html = read('firebase/admin-web/index.html');
+  assert.match(script, /createManualGrantControl/);
+  assert.match(script, /ISSUE_MANUAL_ACCESS/);
+  assert.match(script, /REVOKE_MANUAL_ACCESS/);
+  assert.match(script, /expectedRevision/);
+  assert.match(script, /window\.confirm/);
+  assert.match(script, /document\.createElement/);
+  assert.doesNotMatch(script, /\.innerHTML\s*=/);
+  assert.doesNotMatch(script, /(?:deleteDoc|updateDoc|addDoc|setDoc|collection\()/);
+  assert.doesNotMatch(script, /requestAccountExit|processAccountExits|deleteUser/);
+  assert.match(app, /reauthenticateWithPopup/);
+  assert.match(app, /getAdminManualGrant/);
+  assert.match(app, /issueAdminManualGrant/);
+  assert.match(app, /revokeAdminManualGrant/);
+  assert.match(html, /Google Play 결제 원장/);
 });

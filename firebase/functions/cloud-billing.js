@@ -3,6 +3,8 @@ import { authorize, BackupError, createRequestLimiter, PILOT_MAX_OWNER_FILES, PR
     PRODUCTION_MAX_FILE_BYTES, PRODUCTION_MAX_OWNER_FILES } from './backup.js';
 import { productionMonetizationCatalog, verifiedMonetizationBenefits } from './monetization-entitlements.js';
 import { cloudAccountAccess } from './cloud-retention-policy.js';
+import { ADMIN_MANUAL_GRANTS_COLLECTION, manualGrantDocumentId,
+    trustedManualGrant } from './admin-manual-policy.js';
 
 export const PILOT_ACCOUNT_QUOTA_BYTES = 1024 ** 3;
 export const PLAY_BILLING_PACKAGE = 'com.hebi.gallipick';
@@ -43,7 +45,8 @@ export function billingSettings(project, env) {
 export function productionBillingSettings(project, env) {
     if (project !== PRODUCTION_PROJECT || env.GALLIPICK_PRODUCTION_AD_FREE_ENABLED !== 'true') {
         return { enabled: false, products: [], mode: 'disabled', users: new Set(), emails: new Set(),
-            cloudEnabled: false, retentionEnabled: false, maxOriginalBytes: null, backupNamespace: null };
+            cloudEnabled: false, retentionEnabled: false, manualGrantsEnabled: false,
+            maxOriginalBytes: null, backupNamespace: null };
     }
     const mode = env.GALLIPICK_PRODUCTION_BILLING_MODE;
     const users = new Set((env.GALLIPICK_PRODUCTION_BILLING_TEST_UIDS ?? '').split(',')
@@ -62,11 +65,18 @@ export function productionBillingSettings(project, env) {
     const cloudEnabled = env.GALLIPICK_PRODUCTION_CLOUD_ENABLED === 'true'
         && (mode === 'license-test' || env.GALLIPICK_PRODUCTION_CLOUD_LIVE_ENABLED === 'true')
         && fileLimit > 0 && fileLimit <= PRODUCTION_MAX_FILE_BYTES;
+    const manualGrantsEnabled = env.GALLIPICK_PRODUCTION_MANUAL_GRANTS_ENABLED === 'true';
+    if (manualGrantsEnabled && cloudEnabled &&
+        env.GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED !== 'true') {
+        throw new BackupError('failed-precondition',
+            'Manual Cloud benefits require the verified seven-day retention policy.');
+    }
     const backupNamespace = mode === 'live' ? 'gallipickProductionBackup' : 'gallipickProductionLicenseBackup';
     const verificationProducts = productionMonetizationCatalog(true);
     return { enabled: true, products: cloudEnabled ? verificationProducts : productionMonetizationCatalog(false),
         verificationProducts, mode, users, emails, cloudEnabled,
         retentionEnabled: cloudEnabled && env.GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED === 'true',
+        manualGrantsEnabled,
         maxOriginalBytes: cloudEnabled ? fileLimit : null, backupNamespace,
         replacementCheckoutEnabled: cloudEnabled && env.GALLIPICK_PRODUCTION_CLOUD_UPLOADS_PAUSED === 'false' };
 }
@@ -187,6 +197,10 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     const tokenRef = tokenHash => db.doc(`${scope}Tokens/${tokenHash}`);
     const backupOwnerPath = owner => `${production ? settings.backupNamespace : 'gallipickBackup'}Accounts/${owner}`;
     const usageRef = owner => db.doc(backupOwnerPath(owner));
+    const manualGrantRef = owner => db.doc(`${ADMIN_MANUAL_GRANTS_COLLECTION}/${manualGrantDocumentId(owner, settings.mode)}`);
+    const manualBenefit = (record, owner, time = now()) =>
+        production && settings.manualGrantsEnabled
+            ? trustedManualGrant(record, time, owner, settings.mode) : null;
     const users = production ? settings.users : pilotUsers;
     const emails = settings.emails ?? new Set();
     const allowedOwners = new Set([...(users ?? [])].map(hash));
@@ -244,14 +258,19 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     async function getPlanForOwner(owner, checkedSource) {
         if (production) {
             if (!settings.enabled) return pausedProductionPlan;
-            const [account, usage, exit] = await Promise.all([ownerRef(owner).get(),
+            const [account, usage, exit, manual] = await Promise.all([ownerRef(owner).get(),
                 settings.cloudEnabled ? usageRef(owner).get() : null,
-                db.doc(`gallipickAccountExitRequests/${owner}`).get()]);
+                db.doc(`gallipickAccountExitRequests/${owner}`).get(),
+                settings.manualGrantsEnabled ? manualGrantRef(owner).get() : null]);
             const current = account.data();
             const exitState = exit.data();
             const mayUpload = !exitState || (exitState.scope === 'CLOUD' && exitState.status === 'RESUMED');
             const evaluatedAt = now();
             const verified = productionBenefits(current, evaluatedAt);
+            const manualAccess = manualBenefit(manual?.data(), owner, evaluatedAt);
+            const manualCloudBytes = settings.cloudEnabled ? manualAccess?.quotaBytes ?? 0 : 0;
+            const manualCanUpload = manualAccess?.mayUploadCloud === true && settings.cloudEnabled;
+            const manualCanRead = manualAccess?.mayReadCloud === true && settings.cloudEnabled;
             const lifecycle = settings.retentionEnabled ? lifecycleForAccount(current, evaluatedAt) : null;
             const active = Object.entries(current?.entitlements ?? {}).filter(([key, entitlement]) =>
                 HASH.test(key) && Number.isSafeInteger(entitlement?.expiresAtMs) && entitlement.expiresAtMs > evaluatedAt);
@@ -270,7 +289,7 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             if (!Number.isSafeInteger(usedBytes) || usedBytes < 0) {
                 throw new BackupError('failed-precondition', 'The backup allocation needs reconciliation.');
             }
-            const quotaBytes = settings.cloudEnabled ? verified.quotaBytes : 0;
+            const quotaBytes = settings.cloudEnabled ? Math.max(verified.quotaBytes, manualCloudBytes) : 0;
             // An already-paid Cloud subscriber keeps ad removal and is blocked from buying it twice.
             const ownedCloud = !settings.cloudEnabled && verified.cloudProductId
                 ? trustedProducts.find(product => product.productId === verified.cloudProductId
@@ -282,14 +301,21 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
                 expiresAtMs: verified.cloudExpiresAtMs, adFreeProductId: verified.adFreeProductId,
                 adFreeBasePlanId: verified.adFreeBasePlanId, adFreeExpiresAtMs: verified.adFreeExpiresAtMs,
                 backupAvailable: settings.cloudEnabled, quotaBytes, usedBytes,
-                uploadAllowed: mayUpload && usedBytes < quotaBytes && (!lifecycle || lifecycle.mayUpload),
+                uploadAllowed: mayUpload && usedBytes < quotaBytes &&
+                    (!lifecycle || lifecycle.mayUpload || manualCanUpload),
+                ...(manualAccess?.active ? {
+                    manualGrantKind: manualAccess.kind,
+                    manualGrantExpiresAtMs: manualAccess.expiresAtMs,
+                    manualGrantQuotaBytes: manualCloudBytes,
+                    manualAdFreeExpiresAtMs: manualAccess.expiresAtMs,
+                } : {}),
                 ...(exitState?.scope === 'CLOUD' && exitState.status === 'COMPLETED'
                     ? { cloudUploadReactivationRequired: true } : {}),
                 scheduledReplacement, replacementSourceAllowed: replacementSourcePrice !== null, replacementSourcePrice,
                 ...(lifecycle ? { cloudLifecycleState: lifecycle.state,
                     cloudRecoveryEndsAtMs: lifecycle.recoveryEndsAtMs,
                     cloudDeletionDueAtMs: lifecycle.deletionDueAtMs,
-                    cloudReadAllowed: lifecycle.mayBrowse } : {}) };
+                    cloudReadAllowed: lifecycle.mayBrowse || manualCanRead } : {}) };
         }
         const [account, usage] = await Promise.all([ownerRef(owner).get(), usageRef(owner).get()]);
         const plan = settings.enabled ? currentPlan(account.data(), settings.products, now()) : null;
@@ -409,10 +435,16 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             if (operation !== 'read' && operation !== 'write') {
                 throw new BackupError('invalid-argument', 'Unknown Cloud access operation.');
             }
-            const account = (await ownerRef(owner).get()).data();
-            const state = lifecycleForAccount(account);
-            if ((operation === 'read' && state.mayBrowse && state.mayDownload)
-                || (operation === 'write' && state.mayUpload)) return state;
+            const [account, manual] = await Promise.all([
+                ownerRef(owner).get(),
+                settings.manualGrantsEnabled ? manualGrantRef(owner).get() : null,
+            ]);
+            const state = lifecycleForAccount(account.data());
+            const grant = manualBenefit(manual?.data(), owner);
+            if ((operation === 'read' && (state.mayBrowse && state.mayDownload ||
+                    settings.cloudEnabled && grant?.mayReadCloud === true))
+                || (operation === 'write' && (state.mayUpload ||
+                    settings.cloudEnabled && grant?.mayUploadCloud === true))) return state;
             throw new BackupError('permission-denied', 'Cloud access is not allowed for the verified subscription state.');
         },
 
@@ -495,7 +527,14 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             }
             if (!settings.enabled) return ownerLimit;
             const account = (await transaction.get(ownerRef(owner))).data();
-            if (production) return Math.min(productionBenefits(account).quotaBytes, ownerLimit);
+            if (production) {
+                const manual = settings.manualGrantsEnabled
+                    ? (await transaction.get(manualGrantRef(owner))).data() : null;
+                const grant = manualBenefit(manual, owner);
+                const entitlementQuota = productionBenefits(account).quotaBytes;
+                const manualQuota = settings.cloudEnabled ? grant?.quotaBytes ?? 0 : 0;
+                return Math.min(Math.max(entitlementQuota, manualQuota), ownerLimit);
+            }
             const plan = currentPlan(account, settings.products, now());
             return plan ? Math.min(plan.quotaBytes, ownerLimit) : 0;
         },

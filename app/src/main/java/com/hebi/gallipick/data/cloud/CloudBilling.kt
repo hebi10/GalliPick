@@ -81,6 +81,10 @@ internal data class CloudBillingPlan(
     val obfuscatedAccountId: String = "",
     val adFreeProductId: String? = null,
     val adFreeExpiresAtMs: Long? = null,
+    val manualGrantKind: String? = null,
+    val manualGrantExpiresAtMs: Long? = null,
+    val manualGrantQuotaBytes: Long = 0L,
+    val manualAdFreeExpiresAtMs: Long? = null,
     val testPurchasesOnly: Boolean = true,
     val backupAvailable: Boolean = false,
     val maxOriginalBytes: Long = 0,
@@ -100,20 +104,36 @@ internal fun CloudBillingPlan.productionBackupAccess(): CloudBackupAccess? {
     if (!backupAvailable || maxOriginalBytes !in 1..CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES) return null
     val namespace = if (testPurchasesOnly) CloudBackupNamespace.LICENSE_TEST else CloudBackupNamespace.PRODUCTION
     if (backupObjectPrefix != namespace.objectPrefix) return null
-    val quota = PRODUCTION_CLOUD_QUOTAS[activeProductId]
-    val activeVerified = activeProductId != null &&
-        products.any { it.productId == activeProductId && it.quotaBytes == quota }
-    val uploadExpiryMillis = expiresAtMs.takeIf {
-        enabled && activeVerified && uploadAllowed && quotaBytes == quota && usedBytes in 0L until quotaBytes
+    val paidQuota = PRODUCTION_CLOUD_QUOTAS[activeProductId]
+    val paidVerified = activeProductId != null && paidQuota != null &&
+        products.any { it.productId == activeProductId && it.quotaBytes == paidQuota }
+    val manualQuota = when (manualGrantKind) {
+        "CLOUD_10GB" -> 10_000_000_000L
+        "CLOUD_50GB" -> 50_000_000_000L
+        "CLOUD_100GB" -> 100_000_000_000L
+        else -> 0L
     }
-    val canResume = supportsResumableTransfers && enabled && activeVerified && quotaBytes == quota &&
-        usedBytes in 0L..quotaBytes && resumableUploadAllowed
+    val manualVerified = manualQuota > 0L && manualGrantQuotaBytes == manualQuota &&
+        manualGrantExpiresAtMs?.let { it > System.currentTimeMillis() } == true &&
+        manualAdFreeExpiresAtMs == manualGrantExpiresAtMs
+    val availablePaidQuota = paidQuota.takeIf { paidVerified } ?: 0L
+    val effectiveQuota = maxOf(availablePaidQuota, manualQuota.takeIf { manualVerified } ?: 0L)
+    val verifiedExpiry = listOfNotNull(
+        expiresAtMs.takeIf { paidVerified && paidQuota == effectiveQuota },
+        manualGrantExpiresAtMs.takeIf { manualVerified && manualQuota == effectiveQuota },
+    ).maxOrNull()
+    val eligible = enabled && effectiveQuota > 0L && quotaBytes == effectiveQuota &&
+        usedBytes in 0L..quotaBytes
+    val uploadExpiryMillis = verifiedExpiry.takeIf {
+        eligible && uploadAllowed && usedBytes < quotaBytes
+    }
+    val canResume = supportsResumableTransfers && eligible && resumableUploadAllowed
     return CloudBackupAccess(
         namespace,
         maxOriginalBytes,
         uploadExpiryMillis,
         supportsResumableTransfers,
-        expiresAtMs.takeIf { canResume },
+        verifiedExpiry.takeIf { canResume },
         quotaBytes.takeIf { canResume } ?: 0L,
     )
 }

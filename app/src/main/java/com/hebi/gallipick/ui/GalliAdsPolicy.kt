@@ -17,7 +17,12 @@ internal enum class AdRemovalStatus {
 internal fun cloudAdRemovalStatus(plan: CloudBillingPlan?, nowMillis: Long): AdRemovalStatus {
     if (plan == null) return AdRemovalStatus.VERIFYING
     if (!plan.enabled) return AdRemovalStatus.NOT_PURCHASED
-    if (plan.activeSubscriptionProductId(nowMillis) != null) return AdRemovalStatus.VERIFIED_AD_FREE
+    val manualActive = plan.manualGrantKind in setOf("CLOUD_10GB", "CLOUD_50GB", "CLOUD_100GB", "AD_FREE") &&
+        plan.manualAdFreeExpiresAtMs?.let { it > nowMillis } == true &&
+        plan.manualGrantExpiresAtMs == plan.manualAdFreeExpiresAtMs
+    if (manualActive || plan.activeSubscriptionProductId(nowMillis) != null) {
+        return AdRemovalStatus.VERIFIED_AD_FREE
+    }
     if (plan.activeProductId != null && (plan.expiresAtMs == null ||
             plan.products.none { it.productId == plan.activeProductId && !it.isStandaloneAdFree })) {
         return AdRemovalStatus.VERIFYING
@@ -32,6 +37,10 @@ internal fun cloudAdRemovalStatus(plan: CloudBillingPlan?, nowMillis: Long): AdR
 internal fun CloudBillingPlan.verifiedAdRemovalExpiry(nowMillis: Long): Long? = listOfNotNull(
     expiresAtMs.takeIf { activeCloudProductId(nowMillis) != null },
     adFreeExpiresAtMs.takeIf { activeStandaloneAdFreeProductId(nowMillis) != null },
+    manualAdFreeExpiresAtMs.takeIf {
+        enabled && manualGrantExpiresAtMs == it && it != null && it > nowMillis &&
+            manualGrantKind in setOf("CLOUD_10GB", "CLOUD_50GB", "CLOUD_100GB", "AD_FREE")
+    },
 ).maxOrNull()
 
 internal data class CloudAdPlanObservation(val uid: String, val plan: CloudBillingPlan) {

@@ -754,3 +754,113 @@ test('completed Cloud-only deletion may resume paid usage, but completed account
     assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)), 0);
     await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
 });
+
+test('opt-in manual Cloud grant works without a Play purchase and expires without changing billing tokens', async () => {
+    const manualSettings = { ...liveCloud, manualGrantsEnabled: true, retentionEnabled: true };
+    const { service, records, db, setTime } = createHarness({ settings: manualSettings });
+    const owner = accountId('owner-a');
+    const grantPath = `gallipickAdminManualGrants/live-${owner}`;
+    const time = now;
+    records.set(grantPath, {
+        source: 'ADMIN_MANUAL', ownerId: owner, mode: 'live', status: 'ACTIVE',
+        kind: 'CLOUD_10GB', issuedAtMs: time, expiresAtMs: time + 2 * 86_400_000, revision: 1,
+    });
+    const auth = user('owner-a');
+    const plan = await service.getPlan(auth);
+    assert.equal(plan.activeProductId, null);
+    assert.equal(plan.adFreeProductId, null);
+    assert.equal(plan.manualGrantKind, 'CLOUD_10GB');
+    assert.equal(plan.manualGrantQuotaBytes, 10_000_000_000);
+    assert.equal(plan.quotaBytes, 10_000_000_000);
+    assert.equal(plan.uploadAllowed, true);
+    assert.equal(plan.manualAdFreeExpiresAtMs, time + 2 * 86_400_000);
+    assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)),
+        10_000_000_000);
+    await service.requireCloudAccess(auth, 'write');
+    await service.requireCloudAccess(auth, 'read');
+    assert.equal(records.has(`gallipickProductionBillingAccounts/${owner}`), false);
+    assert.equal(JSON.stringify([...records]).includes('purchase-token'), false);
+
+    setTime(time + 2 * 86_400_000);
+    const expired = await service.getPlan(auth);
+    assert.equal(expired.manualGrantKind, undefined);
+    assert.equal(expired.quotaBytes, 0);
+    assert.equal(expired.uploadAllowed, false);
+    await service.requireCloudAccess(auth, 'read');
+    await assert.rejects(service.requireCloudAccess(auth, 'write'), isCode('permission-denied'));
+    setTime(time + 9 * 86_400_000);
+    await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+
+    records.get(grantPath).status = 'REVOKED';
+    setTime(time + 86_400_000);
+    assert.equal((await service.getPlan(auth)).quotaBytes, 0);
+    await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+});
+
+test('manual benefit and a genuine Play plan remain separate and never stack quotas', async () => {
+    const { service, purchases, records, db } = createHarness({
+        settings: { ...licenseCloud, manualGrantsEnabled: true, retentionEnabled: true },
+    });
+    const owner = accountId('owner-a');
+    const grant = `gallipickAdminManualGrants/license-test-${owner}`;
+    records.set(grant, {
+        source: 'ADMIN_MANUAL', ownerId: owner, mode: 'license-test', status: 'ACTIVE',
+        kind: 'CLOUD_10GB', issuedAtMs: now, expiresAtMs: now + 5 * 86_400_000, revision: 1,
+    });
+    purchases.set(token(1), subscription({ product: cloudOffer(50), expires: now + 20 * 86_400_000 }));
+    const plan = await verify(service, 'owner-a', token(1));
+    assert.equal(plan.quotaBytes, 50_000_000_000);
+    assert.equal(plan.activeProductId, 'gallipick_cloud_50gb');
+    assert.equal(plan.manualGrantKind, 'CLOUD_10GB');
+    assert.equal(plan.manualGrantQuotaBytes, 10_000_000_000);
+    assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)),
+        50_000_000_000);
+    assert.equal((await service.getPlan(user('owner-a'))).activeProductId, 'gallipick_cloud_50gb');
+    await assert.rejects(service.getPlan(user('owner-b')), isCode('permission-denied'));
+});
+
+test('standalone manual ad removal is not misrepresented as a Play subscription or Cloud quota', async () => {
+    const { service, records, db } = createHarness({ settings: { ...liveCloud, manualGrantsEnabled: true } });
+    const owner = accountId('owner-a');
+    records.set(`gallipickAdminManualGrants/live-${owner}`, {
+        source: 'ADMIN_MANUAL', ownerId: owner, mode: 'live', status: 'ACTIVE',
+        kind: 'AD_FREE', issuedAtMs: now, expiresAtMs: now + 3 * 86_400_000, revision: 1,
+    });
+    const plan = await service.getPlan(user('owner-a'));
+    assert.equal(plan.manualGrantKind, 'AD_FREE');
+    assert.equal(plan.manualGrantQuotaBytes, 0);
+    assert.equal(plan.manualAdFreeExpiresAtMs, now + 3 * 86_400_000);
+    assert.equal(plan.activeProductId, null);
+    assert.equal(plan.adFreeProductId, null);
+    assert.equal(plan.quotaBytes, 0);
+    assert.equal(plan.uploadAllowed, false);
+    assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)), 0);
+});
+
+test('manual grants are completely inert until explicitly enabled by the production rollout', async () => {
+    const { service, records } = createHarness({ settings: liveCloud });
+    const owner = accountId('owner-a');
+    records.set(`gallipickAdminManualGrants/live-${owner}`, {
+        source: 'ADMIN_MANUAL', ownerId: owner, mode: 'live', status: 'ACTIVE',
+        kind: 'CLOUD_100GB', issuedAtMs: now, expiresAtMs: now + 5 * 86_400_000, revision: 1,
+    });
+    const plan = await service.getPlan(user('owner-a'));
+    assert.equal(plan.quotaBytes, 0);
+    assert.equal(plan.manualGrantKind, undefined);
+    assert.equal(plan.uploadAllowed, false);
+});
+
+test('manual Cloud entitlement rollout requires retention enforcement to avoid unbounded recovery access', () => {
+    const env = { ...cloudEnv('live'), GALLIPICK_PRODUCTION_MANUAL_GRANTS_ENABLED: 'true' };
+    assert.throws(() => productionBillingSettings(PRODUCTION_PROJECT, env), isCode('failed-precondition'));
+    const safe = productionBillingSettings(PRODUCTION_PROJECT, {
+        ...env, GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED: 'true',
+    });
+    assert.equal(safe.manualGrantsEnabled, true);
+    assert.equal(safe.retentionEnabled, true);
+    const adOnly = productionBillingSettings(PRODUCTION_PROJECT, {
+        ...productionEnv('live'), GALLIPICK_PRODUCTION_MANUAL_GRANTS_ENABLED: 'true',
+    });
+    assert.equal(adOnly.cloudEnabled, false);
+    assert.equal(adOnly.manualGrantsEnabled, true);
+});

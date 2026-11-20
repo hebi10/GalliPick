@@ -185,6 +185,33 @@ class CloudBillingPolicyTest {
             .allowsResumableUpload(0))
     }
 
+    @Test fun manualCloudGrantCanEnableBackupWithoutAPlaySubscription() {
+        val expiry = System.currentTimeMillis() + 86_400_000L
+        val plan = CloudBillingPlan(
+            enabled = true,
+            products = listOf(CloudBillingProduct("gallipick_cloud_10gb", "monthly", 10_000_000_000L)),
+            manualGrantKind = "CLOUD_10GB",
+            manualGrantExpiresAtMs = expiry,
+            manualAdFreeExpiresAtMs = expiry,
+            manualGrantQuotaBytes = 10_000_000_000L,
+            quotaBytes = 10_000_000_000L,
+            uploadAllowed = true,
+            backupAvailable = true,
+            maxOriginalBytes = CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES,
+            backupObjectPrefix = CloudBackupNamespace.LICENSE_TEST.objectPrefix,
+        )
+        assertNull(plan.activeSubscriptionProductId(System.currentTimeMillis()))
+        val access = checkNotNull(plan.productionBackupAccess())
+        assertTrue(access.allowsUpload(System.currentTimeMillis()))
+        assertFalse(access.allowsUpload(expiry))
+        assertFalse(checkNotNull(plan.copy(manualGrantKind = "AD_FREE").productionBackupAccess())
+            .allowsUpload(System.currentTimeMillis()))
+        assertFalse(checkNotNull(plan.copy(manualGrantQuotaBytes = 50_000_000_000L).productionBackupAccess())
+            .allowsUpload(System.currentTimeMillis()))
+        assertFalse(checkNotNull(plan.copy(uploadAllowed = false).productionBackupAccess())
+            .allowsUpload(System.currentTimeMillis()))
+    }
+
     @Test fun replacementRequiresFreshUnambiguousSourceAndNoScheduledChange() {
         val current = CloudBillingProduct("gallipick_cloud_10gb", "annual", 10_000_000_000L)
         val target = CloudBillingProduct("gallipick_cloud_50gb", "annual", 50_000_000_000L)
