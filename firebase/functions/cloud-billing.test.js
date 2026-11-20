@@ -15,7 +15,7 @@ const token = n => `synthetic-test-purchase-token-${n}`;
 const isCode = code => error => error.code === code;
 const now = 1_800_000_000_000;
 
-function createHarness({ enabled = true, acknowledge, settings = { enabled, products } } = {}) {
+function createHarness({ enabled = true, acknowledge, tokenEscrow = null, settings = { enabled, products } } = {}) {
     const records = new Map();
     const purchases = new Map();
     const acknowledged = [];
@@ -58,7 +58,7 @@ function createHarness({ enabled = true, acknowledge, settings = { enabled, prod
             purchases.get(value).acknowledgementState = 'ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED';
         },
     };
-    const serviceFor = settings => createBillingService({ db, play, settings,
+    const serviceFor = settings => createBillingService({ db, play, settings, tokenEscrow,
         pilotUsers: new Set(['owner-a', 'owner-b']), now: () => time });
     return { records, purchases, acknowledged, catalogQueries, service: serviceFor(settings), serviceFor, db,
         setTime: value => { time = value; } };
@@ -1026,4 +1026,105 @@ test('annual Cloud cutoff is fail-closed without a Play startTime for an unbound
         testPurchase: null, startTime: null }));
     await assert.rejects(service.verify(user('owner-a'),
         { purchaseToken: token(33), cloudProtocolVersion: 1 }), isCode('failed-precondition'));
+});
+
+test('GP-LIFECYCLE-PLAY-01: opt-in production escrow saves only KMS ciphertext with verified paid Cloud rights', async () => {
+    const encryptedCalls = [];
+    const escrow = {
+        mode: 'live',
+        async encrypt({ purchaseToken, tokenHash, owner }) {
+            encryptedCalls.push({ tokenHash, owner });
+            assert.equal(tokenHash, accountId(purchaseToken));
+            return { formatVersion: 1, owner, mode: 'live', tokenHash,
+                keyResource: 'projects/gallipick-production/locations/asia-northeast3/keyRings/gallipick-billing/cryptoKeys/subscription-token',
+                ciphertext: Buffer.from('simulated-unreadable-kms-ciphertext-v1').toString('base64') };
+        },
+    };
+    const { purchases, records, service } = createHarness({
+        settings: { ...liveCloud, tokenEscrowEnabled: true }, tokenEscrow: escrow,
+    });
+    const uid = 'new-customer-using-kms';
+    const owner = accountId(uid);
+    const receipt = token(101);
+    purchases.set(receipt, subscription({ uid, product: cloudOffer(50), testPurchase: null }));
+    const verified = await verify(service, uid, receipt);
+    assert.equal(verified.quotaBytes, 50_000_000_000);
+    assert.equal(verified.activeProductId, 'gallipick_cloud_50gb');
+    const escrowHash = accountId(receipt);
+    const stored = records.get(`gallipickProductionBillingTokenEscrows/${escrowHash}`);
+    assert.equal(stored.owner, owner);
+    assert.equal(stored.tokenHash, escrowHash);
+    assert.equal(stored.mode, 'live');
+    assert.equal(stored.formatVersion, 1);
+    assert.equal(stored.checkedAtMs, now);
+    assert.equal(encryptedCalls.length, 1);
+    assert.equal(JSON.stringify([...records]).includes(receipt), false);
+    assert.equal((await service.getPlan(user(uid))).quotaBytes, 50_000_000_000);
+});
+
+test('GP-LIFECYCLE-PLAY-01: KMS outages cannot revoke paid rights or authorize destruction', async () => {
+    const { purchases, records, service } = createHarness({
+        settings: { ...liveCloud, tokenEscrowEnabled: true },
+        tokenEscrow: {
+            async encrypt() { throw new Error('KMS outage with potential sensitive request info'); },
+        },
+    });
+    const uid = 'paid-user-with-kms-outage';
+    const receipt = token(102);
+    purchases.set(receipt, subscription({ uid, product: cloudOffer(10), testPurchase: null }));
+    const verified = await verify(service, uid, receipt);
+    assert.equal(verified.quotaBytes, 10_000_000_000);
+    assert.equal(records.has(`gallipickProductionBillingTokenEscrows/${accountId(receipt)}`), false);
+    assert.equal((await service.getPlan(user(uid))).quotaBytes, 10_000_000_000);
+    assert.equal(JSON.stringify([...records]).includes(receipt), false);
+});
+
+test('GP-LIFECYCLE-PLAY-01: default-off and development plans never store purchase token ciphertext', async () => {
+    const calls = [];
+    const tokenEscrow = { async encrypt() { calls.push(1); throw new Error('must not encrypt'); } };
+    const liveHarness = createHarness({ settings: liveCloud, tokenEscrow });
+    const liveReceipt = token(103);
+    liveHarness.purchases.set(liveReceipt, subscription({ product: cloudOffer(10), testPurchase: null }));
+    assert.equal((await verify(liveHarness.service, 'owner-a', liveReceipt)).quotaBytes, 10_000_000_000);
+    assert.equal(calls.length, 0);
+    assert.equal([...liveHarness.records.keys()].some(path => path.includes('TokenEscrows/')), false);
+
+    const devHarness = createHarness({ settings: { enabled: true, products, tokenEscrowEnabled: true }, tokenEscrow });
+    const devReceipt = token(104);
+    devHarness.purchases.set(devReceipt, subscription());
+    assert.equal((await verify(devHarness.service, 'owner-a', devReceipt)).quotaBytes, 100);
+    assert.equal(calls.length, 0);
+    assert.equal([...devHarness.records.keys()].some(path => path.includes('TokenEscrows/')), false);
+});
+
+test('GP-LIFECYCLE-PLAY-01: license-test escrow cannot overlap production live token scope', async () => {
+    const encryptedModes = [];
+    const vault = {
+        async encrypt({ tokenHash, owner }) {
+            encryptedModes.push('license-test');
+            return { formatVersion: 1, mode: 'license-test', owner, tokenHash,
+                keyResource: 'projects/gallipick-production/locations/asia-northeast3/keyRings/gallipick-billing/cryptoKeys/subscription-token',
+                ciphertext: Buffer.from('synthetic-license-escrow-data-only').toString('base64') };
+        },
+    };
+    const { purchases, records, service } = createHarness({
+        settings: { ...licenseCloud, tokenEscrowEnabled: true }, tokenEscrow: vault,
+    });
+    const receipt = token(105);
+    purchases.set(receipt, subscription({ uid: 'owner-a', product: cloudOffer(50), testPurchase: {} }));
+    const verified = await verify(service, 'owner-a', receipt);
+    assert.equal(verified.quotaBytes, 50_000_000_000);
+    assert.equal(records.has(`gallipickProductionLicenseBillingTokenEscrows/${accountId(receipt)}`), true);
+    assert.equal(records.has(`gallipickProductionBillingTokenEscrows/${accountId(receipt)}`), false);
+    assert.deepEqual(encryptedModes, ['license-test']);
+});
+
+test('GP-LIFECYCLE-PLAY-01: production escrow flag is OFF by default and only affects approved project', () => {
+    assert.equal(liveCloud.tokenEscrowEnabled, false);
+    assert.equal(productionBillingSettings('gallipick-dev', {
+        ...cloudEnv('live'), GALLIPICK_PRODUCTION_PLAY_TOKEN_ESCROW_ENABLED: 'true',
+    }).enabled, false);
+    assert.equal(productionBillingSettings(PRODUCTION_PROJECT, {
+        ...cloudEnv('live'), GALLIPICK_PRODUCTION_PLAY_TOKEN_ESCROW_ENABLED: 'true',
+    }).tokenEscrowEnabled, true);
 });
