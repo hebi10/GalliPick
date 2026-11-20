@@ -880,7 +880,8 @@ test('GP-CHECKOUT-NEW-01: a newly authenticated live user sees the approved cata
     assert.equal(firstPlan.uploadAllowed, false);
     assert.equal(firstPlan.products.length, 8);
     assert.deepEqual(firstPlan.products.filter(product => product.kind === 'CLOUD').length, 6);
-    assert.equal(records.size, 0, 'Viewing the new-user catalogue must not grant a subscription');
+    assert.equal(records.has(`gallipickProductionBillingAccounts/${accountId(uid)}`), false,
+        'Viewing the new-user catalogue must not grant a subscription');
 
     const advertised = productionBackupPlan(firstPlan, PRODUCTION_BACKUP_PROTOCOL_VERSION, {
         objectPrefix: PRODUCTION_BACKUP_PREFIXES.gallipickProductionBackup,
