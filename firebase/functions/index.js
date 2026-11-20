@@ -138,11 +138,11 @@ function endpoint(operation, billingRequest = false) {
     return onCall(callOptions, async request => {
         try {
             if (!request.auth) throw new BackupError('unauthenticated', 'Sign in to start a backup.');
-            if (production) await accountExitService().assertActive(request.auth);
             const configured = services();
             const { backup, billing, resumable } = configured;
             const protocolVersion = request.data?.cloudProtocolVersion;
             if (billingRequest) {
+                if (production) await accountExitService().assertActive(request.auth, 'read');
                 if (!production) await backup.countBillingRequest(request.auth);
                 return await billingPlan(await billing[operation](request.auth, request.data), request.data, configured, request.auth);
             }
@@ -154,6 +154,7 @@ function endpoint(operation, billingRequest = false) {
             if (production) {
                 const access = cloudOperationAccess(operation);
                 if (!access) throw new BackupError('invalid-argument', 'The Cloud operation is unsupported.');
+                await accountExitService().assertActive(request.auth, access);
                 await billing.requireCloudAccess(request.auth, access);
             }
             return await protocol[operation](request.auth, request.data);
@@ -177,7 +178,6 @@ export const verifyCloudSubscription = endpoint('verify', true);
 export const secretCloud = onCall({ ...options, timeoutSeconds: 540 }, async request => {
     try {
         if (!request.auth) throw new BackupError('unauthenticated', 'Sign in to use secret cloud.');
-        if (production) await accountExitService().assertActive(request.auth);
         const version = request.data?.cloudProtocolVersion;
         if (production && version !== PRODUCTION_BACKUP_PROTOCOL_VERSION && version !== RESUMABLE_PROTOCOL_VERSION) {
             throw new BackupError('failed-precondition', 'Secret cloud is unavailable.');
@@ -209,6 +209,18 @@ export const requestAccountExit = onCall(options, async request => {
     } catch (error) {
         if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
         throw new HttpsError('unavailable', 'Unable to request account deletion.');
+    }
+});
+
+export const resumeCloudAfterDeletion = onCall(options, async request => {
+    try {
+        if (!production || process.env.GALLIPICK_ACCOUNT_EXIT_ENABLED !== 'true') {
+            throw new BackupError('failed-precondition', 'Cloud backup reactivation is unavailable.');
+        }
+        return await accountExitService().resumeCloudBackup(request.auth, request.data);
+    } catch (error) {
+        if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
+        throw new HttpsError('unavailable', 'Unable to reactivate Cloud backups.');
     }
 });
 
