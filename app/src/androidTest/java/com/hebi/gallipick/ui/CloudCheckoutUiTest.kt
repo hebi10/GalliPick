@@ -283,7 +283,7 @@ class CloudCheckoutUiTest {
     }
 
     @Test
-    fun noOfficialPlayOfferShowsPlannedPriceWithoutCheckout() {
+    fun missingPlayOffersKeepPlansVisibleWithoutShowingPricesOrAllowingCheckout() {
         val billing = FakeBillingSession(hasOffers = false, cloudCheckoutAllowed = false)
         showJourney(billing, signedIn = true)
         openCloudBilling()
@@ -292,11 +292,14 @@ class CloudCheckoutUiTest {
         billingPeriod("연간").assertIsNotSelected()
         plans.forEach { label ->
             planChoice(label).performScrollTo().assertIsDisplayed().assertIsNotEnabled().assertIsNotSelected()
+                .assert(hasText("신청 불가"))
         }
-        planChoice("10 GB").performScrollTo().assert(hasText("₩1,900/월"))
+        listOf("₩1,900/월", "₩5,900/월", "₩10,900/월").forEach { price ->
+            compose.onNodeWithText(price).assertDoesNotExist()
+        }
         billingCta().assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText("현재 클라우드 신규 구독을 신청할 수 없습니다.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("한국 출시 예정가", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("가격은 Google Play에서 조회될 때 표시됩니다.").performScrollTo().assertIsDisplayed()
         capture("09-billing-unavailable-monthly")
 
         billingPeriod("연간").performScrollTo().performClick().assertIsSelected()

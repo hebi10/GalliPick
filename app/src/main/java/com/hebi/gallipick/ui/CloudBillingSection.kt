@@ -83,6 +83,7 @@ import com.hebi.gallipick.data.cloud.activeCloudProductId
 import com.hebi.gallipick.data.cloud.activeStandaloneAdFreeProductId
 import com.hebi.gallipick.data.cloud.confirmedReplacement
 import com.hebi.gallipick.data.cloud.hasServerSubscription
+import com.hebi.gallipick.data.cloud.productionCloudQuotaBytes
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -482,11 +483,11 @@ private fun BillingPlanPicker(
 ) {
     val offersByProduct = offers.groupBy { it.product.productId }.values.sortedBy { it.first().product.quotaBytes }
     val (adFree, cloud) = offersByProduct.partition { it.first().product.isStandaloneAdFree }
-    val launchRates = cloudLaunchRates.filterNot { rate ->
-        cloud.any { it.first().product.quotaBytes == rate.quotaBytes }
+    val unavailableQuotas = productionCloudQuotaBytes.filterNot { quota ->
+        cloud.any { it.first().product.quotaBytes == quota }
     }
     val cloudRows = (cloud.map { it.first().product.quotaBytes to it } +
-        launchRates.map { it.quotaBytes to emptyList<CloudBillingOffer>() }).sortedBy { it.first }
+        unavailableQuotas.map { it to emptyList<CloudBillingOffer>() }).sortedBy { it.first }
     val toggleShape = RoundedCornerShape(14.dp)
     Column(Modifier.fillMaxWidth().selectableGroup()) {
         Row(
@@ -520,11 +521,9 @@ private fun BillingPlanPicker(
             cloudRows.forEachIndexed { index, (quota, terms) ->
                 if (index > 0) BillingPlanDivider()
                 val offer = terms.firstOrNull { it.product.period == period }
-                val rate = launchRates.firstOrNull { it.quotaBytes == quota }
                 BillingPlanRow(
                     billingQuotaLabel(quota), offer,
                     selected = offer != null && offer.product.productId == selectedId,
-                    referencePrice = rate?.priceLabel(period),
                     onSelect = { offer?.let { onSelect(it.product.productId) } },
                 )
             }
@@ -537,10 +536,10 @@ private fun BillingPlanPicker(
                     selected = product.productId == selectedId, onSelect = { onSelect(product.productId) })
             }
         }
-        if (launchRates.isNotEmpty()) {
+        if (unavailableQuotas.isNotEmpty()) {
             Column(Modifier.padding(start = 4.dp, top = 12.dp, end = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (cloud.isEmpty()) CloudStatusMessage(unavailableMessage)
-                CloudStatusMessage("비활성 요금제에 표시된 가격은 한국 출시 예정가입니다.")
+                CloudStatusMessage("가격은 Google Play에서 조회될 때 표시됩니다.")
             }
         }
     }
@@ -552,7 +551,6 @@ private fun BillingPlanRow(
     offer: CloudBillingOffer?,
     selected: Boolean,
     onSelect: () -> Unit,
-    referencePrice: String? = null,
 ) {
     val enabled = offer != null
     Row(
@@ -572,7 +570,7 @@ private fun BillingPlanRow(
         Text(label, Modifier.weight(1f), color = if (enabled) Ink else Muted,
             style = MaterialTheme.typography.titleMedium)
         Text(
-            offer?.let { "${it.formattedPrice}/${it.product.period.rateUnit}" } ?: referencePrice ?: "신청 불가",
+            offer?.let { "${it.formattedPrice}/${it.product.period.rateUnit}" } ?: "신청 불가",
             modifier = Modifier.weight(1f),
             color = if (enabled) Ink else Muted,
             style = MaterialTheme.typography.titleSmall.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
@@ -626,15 +624,13 @@ private fun CloudReleaseCatalog(plan: CloudBillingPlan?, notice: CloudBillingNot
         BillingHeading("신청할 수 없는 클라우드 요금제")
         CloudStatusMessage(cloudCatalogUnavailableMessage(plan, notice))
         CloudStatusMessage("Cloud 신규 결제는 월간만 제공합니다. 실제 판매 금액은 Google Play에서 확인할 수 있습니다.")
-        cloudLaunchRates.forEachIndexed { index, rate ->
+        productionCloudQuotaBytes.forEachIndexed { index, quota ->
             if (index > 0) HorizontalDivider(color = Line)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text(billingQuotaLabel(rate.quotaBytes), Modifier.weight(1f), color = Ink,
+                Text(billingQuotaLabel(quota), Modifier.weight(1f), color = Ink,
                     style = MaterialTheme.typography.titleSmall)
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("월 ${rate.monthly}", color = Ink, style = MaterialTheme.typography.bodyMedium)
-                }
+                Text("가격 확인 필요", color = Muted, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -647,17 +643,6 @@ private fun cloudCatalogUnavailableMessage(plan: CloudBillingPlan?, notice: Clou
         "Google Play 상품을 확인하지 못했습니다. 구독 정보를 새로고침해 주세요."
     else -> "Google Play에서 현재 제공하는 클라우드 요금제가 없습니다."
 }
-
-private data class CloudLaunchRate(val quotaBytes: Long, val monthly: String) {
-    fun priceLabel(period: BillingPeriod): String? =
-        if (period == BillingPeriod.MONTHLY) "${monthly}/월" else null
-}
-
-private val cloudLaunchRates = listOf(
-    CloudLaunchRate(10_000_000_000L, "₩1,900"),
-    CloudLaunchRate(50_000_000_000L, "₩5,900"),
-    CloudLaunchRate(100_000_000_000L, "₩10,900"),
-)
 
 private fun CloudBillingReplacementTiming.displayText(): String = when (this) {
     CloudBillingReplacementTiming.IMMEDIATE_PRORATED -> "Google Play에서 계산한 차액으로 즉시 변경됩니다."
