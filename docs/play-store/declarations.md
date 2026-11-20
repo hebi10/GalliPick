@@ -2,6 +2,16 @@
 
 이 문서는 현재 소스에 근거한 선언과 확인된 콘솔 저장 상태를 기록합니다. 내부 테스트 출시·심사 제출·공개 완료는 각각 주 작업에서 확인 후 기록합니다.
 
+## 2026-11-20 GalliPick AdMob 앱 검토 준비
+
+- Play Console에서 내부 테스트 `0.2.21`, 비공개 테스트 `0.2.20` 제공과 프로덕션 비활성 상태를 확인했습니다. Play 상세 페이지에 `광고 포함`이 표시됩니다. [한국어 상세 설명](ko-KR-listing.md)에서 기기 내 정리 기능은 유지하고 광고 SDK·계정·서버 기능을 사용하지 않는다는 문장을 삭제했습니다.
+- AdMob의 기존 GalliPick Android 항목은 `검토 필요`이고 스토어 미연결로 광고 게재가 제한되어 있습니다. `com.hebi.gallipick`을 검색했을 때 연결 가능한 Play 항목이 표시되지 않았습니다. 11월 17일 AdMob 계정 신청 거절 사유는 확인되지 않았습니다.
+- [app-ads.txt 소스](../app-ads.txt)에 AdMob 콘솔에서 제공한 공식 판매자 항목을 저장했습니다. Play 등록정보의 **개발자 웹사이트**에 사용할 호스트에서 `https://<호스트>/app-ads.txt`로 파일을 제공하고 로그인 없이 올바른 내용이 반환되는지 확인합니다. 이미 파일이 있으면 기존 판매자 항목을 보존하고 Google 행을 중복 없이 추가합니다.
+- 현재 GitHub Pages의 프로젝트 경로 아래에 파일을 게시하면 주소는 `https://hebi10.github.io/GalliPick/app-ads.txt`입니다. AdMob이 확인하는 첫 주소는 `https://hebi10.github.io/app-ads.txt`이며 점검 당시 404였습니다. 이 호스트를 계속 사용하려면 루트 주소에서 파일을 제공해야 합니다. 다른 소유 호스트를 사용할 경우 해당 호스트의 루트에 파일을 게시하고 Play 개발자 웹사이트에 그 호스트를 등록합니다.
+- 승인된 공개 버전을 설치할 수 있게 되면 AdMob에서 기존 GalliPick 항목에 Play 스토어를 연결하고 `app-ads.txt` 인증과 앱 준비 상태 검토를 확인합니다. 실제 광고 요청 활성화에는 AdMob 계정 승인, 앱 검토, GalliPick 전용 앱 ID·광고 단위 ID와 릴리스 설정이 필요합니다.
+
+공식 안내 [app-ads.txt 설정](https://support.google.com/admob/answer/9363762?hl=ko) · [앱 스토어 연결](https://support.google.com/admob/answer/10037806?hl=ko)
+
 ## 2026-11-16 광고 추가 준비 — 콘솔 미반영
 
 - GalliPick 전용 GP-ADS-01 PR에서 Google Mobile Ads Next-Gen SDK와 UMP 동의 관리·홈 단일 배너를 준비했습니다. 개발 광고는 Google의 **공식 테스트 ID**만 사용합니다.
