@@ -16,6 +16,11 @@ import com.hebi.gallipick.data.cloud.CloudAccountIdentity
 import com.hebi.gallipick.data.cloud.CloudAccountSession
 import com.hebi.gallipick.data.cloud.CloudBilling
 import com.hebi.gallipick.data.cloud.CloudBillingSession
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.StateFlow
@@ -49,12 +54,44 @@ class CloudScreenNavigationTest {
         runBlocking { connection.session.chooseAccount { "test-credential" } }
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
         compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
-        compose.onNodeWithText("회원 탈퇴 요청").assertExists()
+        compose.onNodeWithText("회원 탈퇴").assertExists().performClick()
+        compose.onNodeWithText("GalliPick 회원 탈퇴").assertIsDisplayed()
+        compose.onNodeWithText("탈퇴 요청 메일 작성").assertExists()
+        compose.onNodeWithText("돌아가기").performClick()
         compose.onNodeWithText("클라우드 데이터 삭제 요청").assertExists()
         compose.onNodeWithTag("cloud-route-BILLING").performClick()
         compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
         compose.onNodeWithContentDescription("뒤로").performClick()
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+    }
+
+    @Test
+    fun cloudShowsGoogleSignInProgressAndReturnsToOverviewWhenReady() {
+        val backend = FakeAccountBackend("new-account")
+        backend.active.value = null
+        val connection = showCloud(backend)
+        val entered = CompletableDeferred<Unit>()
+        val credential = CompletableDeferred<String>()
+        val scope = CoroutineScope(Dispatchers.Default)
+        try {
+            val login = scope.launch {
+                connection.session.chooseAccount {
+                    entered.complete(Unit)
+                    credential.await()
+                }
+            }
+            runBlocking { entered.await() }
+            compose.onNodeWithTag("cloud-account-loading").assertIsDisplayed()
+            compose.onNodeWithText("Google 계정으로 로그인하는 중입니다.").assertIsDisplayed()
+
+            credential.complete("test-credential")
+            runBlocking { login.join() }
+            compose.onNodeWithTag("cloud-account-loading").assertDoesNotExist()
+            compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+            compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
+        } finally {
+            scope.cancel()
+        }
     }
 
     @Test
