@@ -1,0 +1,33 @@
+name: GP-ADMIN-01 read-only Hosting checks
+
+on:
+  pull_request:
+    paths:
+      - 'firebase/admin-web/**'
+      - 'firebase/functions/admin-overview*'
+      - 'firebase.json'
+      - 'scripts/qa/admin-hosting.test.mjs'
+      - '.github/workflows/gp-admin-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate JavaScript syntax
+        run: |
+          node --check firebase/admin-web/app.js
+          node --check firebase/admin-web/config.js
+          node --check firebase/functions/admin-overview.js
+      - name: Verify isolated Hosting and read-only controls
+        run: node --test scripts/qa/admin-hosting.test.mjs
