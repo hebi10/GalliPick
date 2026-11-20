@@ -76,3 +76,20 @@ p { line-height: 1.65; }
 .manual-history { margin: 0; padding: 12px 16px 12px 30px; background: #f7f7f7; }
 .manual-history-item { font-size: .82rem; line-height: 1.6; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .manual-form { grid-template-columns: 1fr; } }
+
+.deletion-admin { margin-top: 32px; }
+.deletion-admin h3 { margin: 18px 0 9px; font-size: .97rem; font-weight: 600; }
+.deletion-review-list { list-style: none; padding: 0; margin: 12px 0 18px; display: grid; gap: 8px; }
+.deletion-review-item { border: 1px solid #d5d5d5; background: #fff; padding: 14px; overflow-wrap: anywhere; }
+.deletion-review-item strong { display: block; font-size: .9rem; font-weight: 600; }
+.deletion-review-item p { font-size: .85rem; color: #555; margin: 6px 0 0; }
+.deletion-review-retry { margin-top: 12px; border: 1px solid #ddd; padding: 10px; }
+.deletion-review-retry summary { font-size: .87rem; font-weight: 600; cursor: pointer; }
+.deletion-review-retry textarea { display: block; width: 100%; min-height: 72px; padding: 8px; margin: 12px 0;
+  border: 1px solid #777; background: #fff; color: #222; font: inherit; }
+.deletion-review-retry .button { margin: 8px 0; }
+.deletion-review-retry :focus-visible { outline: 2px solid #222; outline-offset: 3px; }
+@media (max-width: 640px) {
+  .deletion-admin .section-heading { flex-wrap: wrap; }
+  .deletion-admin .section-heading .button { width: 100%; }
+}
