@@ -123,14 +123,15 @@ class CloudScreenNavigationTest {
     }
 
     @Test
-    fun signedOutShowsBillingInformationButDoesNotOpenPayment() {
+    fun signedOutCanOpenBillingAndReturnToCloudOverview() {
         val backend = FakeAccountBackend("test-user-1")
         backend.active.value = null
         showCloud(backend)
 
-        compose.onNodeWithText("요금제·결제").assertExists()
-        compose.onNodeWithText("Google 로그인 후 요금제와 구독 상태를 확인할 수 있습니다.").assertExists()
-        compose.onNodeWithTag("cloud-route-BILLING").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-route-BILLING").performScrollTo().performClick()
+        compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
+        compose.onNodeWithContentDescription("뒤로").performClick()
+        compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
     }
 
     @Test
