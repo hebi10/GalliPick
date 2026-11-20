@@ -22,6 +22,9 @@ import { createAdminMembersService } from './admin-members.js';
 import { createAdminManualGrantService } from './admin-manual-grants.js';
 import { createAdminDeletionReviewService } from './admin-deletion-review.js';
 import { createCloudPurgeReviewService } from './cloud-expiry-purge-review.js';
+import { createCloudPlayExpiryRecheckService } from './cloud-play-expiry-recheck.js';
+import { productionPlayRecheckAllowed, PLAY_RECHECK_SCHEDULE,
+    PLAY_RECHECK_MAX_PER_MODE } from './cloud-play-recheck-runner.js';
 
 const app = initializeApp();
 const project = app.options.projectId ?? process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
@@ -256,6 +259,30 @@ export const reviewCloudExpiryPurges = onSchedule({
             count: result.needsPlayRecheck,
         });
     }
+});
+
+// This rechecks subscription expiry against Google Play and outputs COUNTS only.
+// It creates no deletion request, does not modify Firestore and never touches
+// Storage. KMS and Play calls are disabled until all opt-in gates are set.
+export const recheckCloudExpiryWithPlay = onSchedule({
+    ...options, schedule: PLAY_RECHECK_SCHEDULE,
+    maxInstances: 1, concurrency: 1, timeoutSeconds: 120,
+}, async () => {
+    if (!productionPlayRecheckAllowed(project, process.env)) return;
+    const keyResource = process.env.GALLIPICK_PRODUCTION_PLAY_TOKEN_KMS_KEY;
+    const vaults = {
+        live: createKmsPurchaseTokenEscrow({ project, mode: 'live', keyResource }),
+        'license-test': createKmsPurchaseTokenEscrow({ project, mode: 'license-test', keyResource }),
+    };
+    const service = createCloudPlayExpiryRecheckService({
+        db: getFirestore(app), project, vaults,
+        play: createPlaySubscriptions(),
+    });
+    const result = await service.review({ maximumPerMode: PLAY_RECHECK_MAX_PER_MODE });
+    // No raw provider response, ciphertext, UID, email, or purchase token.
+    if (result.scanned) console.info('Play subscription expiry reviewed without deleting originals.', {
+        scanned: result.scanned, statusCounts: result.statuses, deletionExecuted: false,
+    });
 });
 
 export const processAccountExits = onSchedule({
