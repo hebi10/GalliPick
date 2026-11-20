@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { authorize, BackupError, createRequestLimiter, PILOT_MAX_OWNER_FILES, PRODUCTION_BACKUP_PROTOCOL_VERSION,
     PRODUCTION_MAX_FILE_BYTES, PRODUCTION_MAX_OWNER_FILES } from './backup.js';
 import { productionMonetizationCatalog, verifiedMonetizationBenefits } from './monetization-entitlements.js';
+import { cloudAccountAccess } from './cloud-retention-policy.js';
 
 export const PILOT_ACCOUNT_QUOTA_BYTES = 1024 ** 3;
 export const PLAY_BILLING_PACKAGE = 'com.hebi.gallipick';
@@ -42,7 +43,7 @@ export function billingSettings(project, env) {
 export function productionBillingSettings(project, env) {
     if (project !== PRODUCTION_PROJECT || env.GALLIPICK_PRODUCTION_AD_FREE_ENABLED !== 'true') {
         return { enabled: false, products: [], mode: 'disabled', users: new Set(), emails: new Set(),
-            cloudEnabled: false, maxOriginalBytes: null, backupNamespace: null };
+            cloudEnabled: false, retentionEnabled: false, maxOriginalBytes: null, backupNamespace: null };
     }
     const mode = env.GALLIPICK_PRODUCTION_BILLING_MODE;
     const users = new Set((env.GALLIPICK_PRODUCTION_BILLING_TEST_UIDS ?? '').split(',')
@@ -65,6 +66,7 @@ export function productionBillingSettings(project, env) {
     const verificationProducts = productionMonetizationCatalog(true);
     return { enabled: true, products: cloudEnabled ? verificationProducts : productionMonetizationCatalog(false),
         verificationProducts, mode, users, emails, cloudEnabled,
+        retentionEnabled: cloudEnabled && env.GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED === 'true',
         maxOriginalBytes: cloudEnabled ? fileLimit : null, backupNamespace,
         replacementCheckoutEnabled: cloudEnabled && env.GALLIPICK_PRODUCTION_CLOUD_UPLOADS_PAUSED === 'false' };
 }
@@ -157,6 +159,11 @@ function inspectPurchase(purchase, owner, settings, now) {
         acknowledge: eligible && acknowledgement === ACK_PENDING,
         linkedHash: !uncompleted && typeof linked === 'string' ? hash(linked) : null,
         replacementSourcePrice: canReplace ? playRecurringPrice(item.autoRenewingPlan.recurringPrice) : null,
+        cloudEvidence: production && plan.kind === 'CLOUD' && Number.isSafeInteger(expiresAtMs)
+            && expiresAtMs >= 0 && !uncompleted ? {
+                expiresAtMs, productId: plan.productId, basePlanId: plan.basePlanId,
+                recoveryAllowed: active || purchase.subscriptionState === 'SUBSCRIPTION_STATE_EXPIRED',
+            } : null,
     };
 }
 
@@ -201,6 +208,26 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     const productionBenefits = (account, time = now()) =>
         verifiedMonetizationBenefits(Object.values(account?.entitlements ?? {}), trustedProducts, time);
 
+    function lifecycleForAccount(account, evaluatedAt = now()) {
+        const paid = productionBenefits(account, evaluatedAt);
+        const history = account?.cloudLifecycle;
+        const lastExpiry = Number.isSafeInteger(history?.expiresAtMs) && history.expiresAtMs >= 0
+            ? history.expiresAtMs : null;
+        const requestedAt = Number.isSafeInteger(history?.deletionRequestedAtMs)
+            && history.deletionRequestedAtMs >= 0 ? history.deletionRequestedAtMs : null;
+        try {
+            return cloudAccountAccess({
+                nowMs: evaluatedAt,
+                activeCloudExpiryMs: paid.cloudExpiresAtMs ?? null,
+                lastVerifiedCloudExpiryMs: lastExpiry,
+                recoveryAllowed: history?.recoveryAllowed === true,
+                deletionRequestedAtMs: requestedAt,
+            });
+        } catch {
+            throw new BackupError('failed-precondition', 'The Cloud retention record needs reconciliation.');
+        }
+    }
+
     async function countVerifiedMedia(owner) {
         const maximum = production ? PRODUCTION_MAX_OWNER_FILES : PILOT_MAX_OWNER_FILES;
         try {
@@ -222,6 +249,7 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             const current = account.data();
             const evaluatedAt = now();
             const verified = productionBenefits(current, evaluatedAt);
+            const lifecycle = settings.retentionEnabled ? lifecycleForAccount(current, evaluatedAt) : null;
             const active = Object.entries(current?.entitlements ?? {}).filter(([key, entitlement]) =>
                 HASH.test(key) && Number.isSafeInteger(entitlement?.expiresAtMs) && entitlement.expiresAtMs > evaluatedAt);
             const [activeTokenHash, activeEntitlement] = active.length === 1 && verified.adsRemoved ? active[0] : [];
@@ -251,7 +279,11 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
                 expiresAtMs: verified.cloudExpiresAtMs, adFreeProductId: verified.adFreeProductId,
                 adFreeBasePlanId: verified.adFreeBasePlanId, adFreeExpiresAtMs: verified.adFreeExpiresAtMs,
                 backupAvailable: settings.cloudEnabled, quotaBytes, usedBytes, uploadAllowed: usedBytes < quotaBytes,
-                scheduledReplacement, replacementSourceAllowed: replacementSourcePrice !== null, replacementSourcePrice };
+                scheduledReplacement, replacementSourceAllowed: replacementSourcePrice !== null, replacementSourcePrice,
+                ...(lifecycle ? { cloudLifecycleState: lifecycle.state,
+                    cloudRecoveryEndsAtMs: lifecycle.recoveryEndsAtMs,
+                    cloudDeletionDueAtMs: lifecycle.deletionDueAtMs,
+                    cloudReadAllowed: lifecycle.mayBrowse } : {}) };
         }
         const [account, usage] = await Promise.all([ownerRef(owner).get(), usageRef(owner).get()]);
         const plan = settings.enabled ? currentPlan(account.data(), settings.products, now()) : null;
@@ -306,7 +338,23 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             if (Object.keys(entitlements).length > MAX_CURRENT_TOKENS) {
                 throw new BackupError('resource-exhausted', 'Too many subscriptions are active.');
             }
-            transaction.set(account, { revision, entitlements });
+            let cloudLifecycle = current.cloudLifecycle;
+            if (production && purchase?.cloudEvidence) {
+                const evidence = purchase.cloudEvidence;
+                const sameToken = cloudLifecycle?.tokenHash === tokenHash;
+                const replacedToken = cloudLifecycle?.tokenHash === purchase.linkedHash;
+                if (!cloudLifecycle || sameToken || replacedToken || !Number.isSafeInteger(cloudLifecycle.expiresAtMs)
+                    || evidence.expiresAtMs >= cloudLifecycle.expiresAtMs) {
+                    cloudLifecycle = { tokenHash, productId: evidence.productId, basePlanId: evidence.basePlanId,
+                        expiresAtMs: evidence.expiresAtMs, recoveryAllowed: evidence.recoveryAllowed,
+                        checkedAtMs: time };
+                }
+            } else if (production && !purchase && cloudLifecycle?.tokenHash === tokenHash) {
+                // Play revoked or cannot find its previously bound Cloud purchase.
+                cloudLifecycle = { ...cloudLifecycle, recoveryAllowed: false, checkedAtMs: time };
+            }
+            transaction.set(account, { revision, entitlements,
+                ...(cloudLifecycle ? { cloudLifecycle } : {}) });
             const audience = licenseEmailHash === null ? { owner } : { owner, licenseEmailHash };
             transaction.set(token, purchase ? audience : { ...audience, invalidated: true });
             if (prior) transaction.set(prior, { owner, retiredBy: tokenHash });
@@ -338,6 +386,22 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     }
 
     return {
+        async requireCloudAccess(auth, operation) {
+            const { owner } = authorizeAccount(auth);
+            if (production && !settings.cloudEnabled) {
+                throw new BackupError('failed-precondition', 'Production Cloud backup is unavailable.');
+            }
+            if (!production || !settings.retentionEnabled) return;
+            if (operation !== 'read' && operation !== 'write') {
+                throw new BackupError('invalid-argument', 'Unknown Cloud access operation.');
+            }
+            const account = (await ownerRef(owner).get()).data();
+            const state = lifecycleForAccount(account);
+            if ((operation === 'read' && state.mayBrowse && state.mayDownload)
+                || (operation === 'write' && state.mayUpload)) return state;
+            throw new BackupError('permission-denied', 'Cloud access is not allowed for the verified subscription state.');
+        },
+
         authorizeBackup(auth) {
             const { owner } = authorizeAccount(auth);
             if (production && !settings.cloudEnabled) {
