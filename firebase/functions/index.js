@@ -18,6 +18,7 @@ import { createResumableBackupService } from './resumable-backup.js';
 import { cloudOperationAccess } from './cloud-api-access.js';
 import { createAccountExitService } from './account-exit.js';
 import { createAdminOverviewService } from './admin-overview.js';
+import { createAdminMembersService } from './admin-members.js';
 import { createCloudPurgeReviewService } from './cloud-expiry-purge-review.js';
 
 const app = initializeApp();
@@ -281,6 +282,21 @@ export const getAdminOverview = onCall({ ...options, maxInstances: 2, concurrenc
     } catch (error) {
         if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
         throw new HttpsError('unavailable', 'GalliPick admin overview is temporarily unavailable.');
+    }
+});
+
+// Membership and verified benefits are read from Firebase Auth / server-side
+// billing only, never from client-selected Firestore document paths.
+export const getAdminMembers = onCall({ ...options, maxInstances: 2, concurrency: 4 }, async request => {
+    try {
+        const service = createAdminMembersService({
+            db: getFirestore(app), authAdmin: getAuth(app), project,
+            allowedUidHashes: process.env.GALLIPICK_ADMIN_ALLOWED_UID_HASHES,
+        });
+        return await service.list(request.auth, request.data);
+    } catch (error) {
+        if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
+        throw new HttpsError('unavailable', 'GalliPick member records are temporarily unavailable.');
     }
 });
 
