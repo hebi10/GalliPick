@@ -488,7 +488,7 @@ class AdaptiveMediaReviewTest {
         } }
         compose.onNodeWithText("파일 열기").performScrollTo().assertIsDisplayed()
         val open = compose.onNodeWithText("파일 열기").fetchSemanticsNode().boundsInRoot
-        val protect = compose.onNodeWithText("보호").fetchSemanticsNode().boundsInRoot
+        val protect = compose.onNodeWithText("정리에서 보호").fetchSemanticsNode().boundsInRoot
         assertTrue("Portrait detail should show related actions on one row", kotlin.math.abs(open.top - protect.top) <= 2f)
         compose.onNodeWithText("미리보기").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("파일 형식").performScrollTo().assertIsDisplayed()
@@ -505,10 +505,22 @@ class AdaptiveMediaReviewTest {
         } }
         compose.onNodeWithText("파일 열기").performScrollTo().assertIsDisplayed()
         val open = compose.onNodeWithText("파일 열기").fetchSemanticsNode().boundsInRoot
-        compose.onNodeWithText("보호").performScrollTo().assertIsDisplayed()
-        val protect = compose.onNodeWithText("보호").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("정리에서 보호").performScrollTo().assertIsDisplayed()
+        val protect = compose.onNodeWithText("정리에서 보호").fetchSemanticsNode().boundsInRoot
         assertTrue("Large text should keep file actions vertically reachable", protect.top > open.top)
         compose.onNodeWithText("폴더").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun signedOutFileDetailOffersGoogleSignInWithoutStartingAnUpload() {
+        val item = media(93, "detail-example.jpg").copy(kind = MediaKind.PHOTO, mimeType = "image/jpeg")
+        var signInRequests = 0
+        compose.setContent { GalliPickTheme {
+            MediaDetail(item, {}, {}, onRequestCloud = { signInRequests++ },
+                cloudDetailAccess = DetailCloudAccess.SIGN_IN)
+        } }
+        compose.onNodeWithText("로그인하여 보관").performScrollTo().assertIsEnabled().performClick()
+        compose.onNodeWithText("보관 시작").assertDoesNotExist()
+        assertEquals(1, signInRequests)
     }
 
     @Test fun shortWideFileDetailsKeepThePreviewActionBesideMetadata() {
@@ -618,7 +630,9 @@ class AdaptiveMediaReviewTest {
     private class TestOwner : LifecycleOwner { val registry = LifecycleRegistry(this).apply { currentState = Lifecycle.State.RESUMED }; override val lifecycle get() = registry }
     private fun videoViews(view: View): List<VideoView> = when (view) { is VideoView -> listOf(view); is ViewGroup -> (0 until view.childCount).flatMap { videoViews(view.getChildAt(it)) }; else -> emptyList() }
     private fun scrollComparisonControlIntoView(description: String): SemanticsNodeInteraction {
-        return compose.onNodeWithContentDescription(description).performScrollTo().assertIsDisplayed()
+        val control = compose.onNodeWithContentDescription(description)
+        if (runCatching { control.assertIsDisplayed() }.isSuccess) return control
+        return control.performScrollTo().assertIsDisplayed()
     }
 
     private fun saveScreenshot(name: String, node: SemanticsNodeInteraction? = null) {

@@ -7,6 +7,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hebi.gallipick.domain.*
 import com.hebi.gallipick.data.CachedPhotoHash
+import com.hebi.gallipick.data.MediaCachePolicy
+import com.hebi.gallipick.data.VerifiedCatalog
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -44,6 +46,7 @@ data class AppUiState(
     val fileGridColumns: Int? = null,
     val fileListView: Boolean = false,
     val secretCloudVisible: Boolean = false,
+    val catalogReady: Boolean = false,
 )
 
 private data class PhotoReviewSnapshot(
@@ -75,25 +78,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
-            repository.catalogReady.collect { ready -> if (!ready) hideCatalog() }
+            // Individual streams can emit an empty list while a shared refresh is underway.
+            // Publish only coherent snapshots so a transient empty never prunes a selection.
+            combine(repository.catalogReady, repository.media, repository.trashed, repository.duplicates) {
+                    ready, _, _, _ -> ready
+            }.collectLatest { ready ->
+                if (!ready || !repository.catalogReady.value) {
+                    if (_ui.value.catalogReady) hideCatalog()
+                    return@collectLatest
+                }
+                if (!catalogVerified || _ui.value.loading) return@collectLatest
+                val generation = refreshGeneration
+                try {
+                    val snapshot = repository.verifiedCatalog()
+                    if (generation == refreshGeneration && repository.catalogReady.value) publishCatalog(snapshot)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    if (generation == refreshGeneration) reportCatalogError()
+                }
+            }
         }
         viewModelScope.launch {
             repository.catalogError.collect { error -> _ui.update { it.copy(catalogError = error) } }
         }
-        viewModelScope.launch {
-            repository.media.collect { items ->
-                if (catalogVerified && repository.catalogReady.value) publishMedia(items)
-            }
-        }
-        viewModelScope.launch { repository.trashed.collect { items ->
-            if (catalogVerified && repository.catalogReady.value) _ui.update { it.copy(trashed = items) }
-        } }
         viewModelScope.launch { repository.protectedFolders.collect { paths ->
             _ui.update { it.copy(protectedFolders = paths) }
             rebuildSimilarGroups()
-        } }
-        viewModelScope.launch { repository.duplicates.collect { groups ->
-            if (catalogVerified && repository.catalogReady.value) _ui.update { it.copy(duplicates = groups) }
         } }
         viewModelScope.launch { repository.scan.collect { scan -> _ui.update { it.copy(scan = scan) } } }
         viewModelScope.launch { repository.reviewEntries.collect { entries ->
@@ -121,18 +132,40 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         filterJob?.cancel()
         similarGroupsJob?.cancel()
         selectedSimilarGroups.clear()
-        _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(), duplicates = emptyList(), similarGroups = emptyList(), burstGroups = emptyList(), softFocusCandidates = emptyList(), sharpnessPending = 0, selected = emptySet()) }
+        _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(),
+            duplicates = emptyList(), similarGroups = emptyList(), burstGroups = emptyList(),
+            softFocusCandidates = emptyList(), sharpnessPending = 0, selected = emptySet(),
+            catalogReady = false) }
     }
 
-    private fun publishMedia(items: List<MediaItem>) {
-        val retained = SelectionPolicy.retain(selectedVersions.values, items)
-        val dropped = selectedVersions.size - retained.size
-        selectedVersions.clear()
-        retained.forEach { selectedVersions[it.uri] = it }
-        _ui.update { it.copy(items = items, selected = selectedVersions.keys.toSet(),
-            message = if (dropped > 0) "변경되었거나 접근할 수 없는 선택 ${dropped}개를 해제했습니다." else it.message) }
-        updateFiltered()
-        rebuildSimilarGroups()
+    private fun publishCatalog(catalog: VerifiedCatalog, storage: StatFs? = null) {
+        val current = _ui.value
+        val itemsChanged = !current.catalogReady || current.items != catalog.items
+        val previousSelectionSize = selectedVersions.size
+        if (itemsChanged) {
+            val retained = SelectionPolicy.retain(selectedVersions.values, catalog.items)
+            selectedVersions.clear()
+            retained.forEach { selectedVersions[it.uri] = it }
+        }
+        val dropped = previousSelectionSize - selectedVersions.size
+        _ui.update { it.copy(
+            items = if (itemsChanged) catalog.items else it.items,
+            selected = selectedVersions.keys.toSet(), trashed = catalog.trashed, duplicates = catalog.duplicates,
+            totalStorageBytes = storage?.totalBytes ?: it.totalStorageBytes,
+            freeStorageBytes = storage?.availableBytes ?: it.freeStorageBytes,
+            catalogReady = true, catalogError = null,
+            message = if (dropped > 0) "변경되었거나 접근할 수 없는 선택 ${dropped}개를 해제했습니다." else it.message,
+        ) }
+        if (itemsChanged) {
+            updateFiltered()
+            rebuildSimilarGroups()
+        }
+    }
+
+    private fun reportCatalogError() {
+        hideCatalog()
+        val message = "파일 조회를 완료하지 못했습니다. 접근 권한과 저장소를 확인한 뒤 새로고침해 주세요."
+        _ui.update { it.copy(catalogError = message, message = message) }
     }
 
     private fun rebuildSimilarGroups() {
@@ -190,14 +223,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 repository.refresh()
                 val stat = withContext(Dispatchers.IO) { StatFs(Environment.getDataDirectory().path) }
                 val snapshot = repository.verifiedCatalog()
+                if (generation != refreshGeneration) return@launch
                 catalogVerified = true
-                _ui.update { it.copy(trashed = snapshot.trashed, duplicates = snapshot.duplicates,
-                    totalStorageBytes = stat.totalBytes, freeStorageBytes = stat.availableBytes, catalogError = null) }
-                publishMedia(snapshot.items)
+                if (repository.catalogReady.value) publishCatalog(snapshot, stat)
             } catch (e: CancellationException) { throw e
             } catch (_: Exception) {
-                val message = "파일 조회를 완료하지 못했습니다. 접근 권한과 저장소를 확인한 뒤 새로고침해 주세요."
-                _ui.update { it.copy(catalogError = message, message = message) }
+                if (generation == refreshGeneration) reportCatalogError()
             } finally { if (generation == refreshGeneration) _ui.update { it.copy(loading = false) } }
         }
     }
@@ -260,7 +291,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         val item = _ui.value.items.find { it.uri == uri } ?: return
-        if (item.isProtected || item.isFavorite) {
+        if (item.isProtected || item.isFavorite || item.isTrashed) {
             showMessage("즐겨찾기·보호 파일은 휴지통 선택에서 제외됩니다.")
             return
         }
@@ -280,18 +311,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _ui.update { it.copy(selected = emptySet()) }
     }
 
-    private fun replaceSelection(items: List<MediaItem>) {
-        clearSelection()
-        val candidates = SelectionPolicy.candidates(items)
+    fun selectVisibleFiles(visible: List<MediaItem>) {
+        val current = _ui.value
+        if (!current.catalogReady || current.loading || current.catalogError != null ||
+            current.access == MediaAccess.NONE || !repository.catalogReady.value) return
+        val currentByUri = current.items.associateBy { it.uri }
+        val candidates = SelectionPolicy.candidates(visible.mapNotNull { shown ->
+            currentByUri[shown.uri]?.takeIf { MediaCachePolicy.sameVersion(shown, it) }
+        })
+        selectedVersions.clear()
+        selectedDuplicateGroups.clear()
+        selectedSimilarGroups.clear()
         candidates.forEach { selectedVersions[it.uri] = it }
         rememberSafety(candidates)
         _ui.update { it.copy(selected = selectedVersions.keys.toSet()) }
-        if (items.count { !it.isProtected && !it.isFavorite } > SelectionPolicy.MAX_SELECTION_SIZE) {
-            showMessage("한 번에 최대 500개까지 처리합니다. 앞의 500개를 선택했습니다.")
-        }
     }
-
-    fun selectAllFiltered() = replaceSelection(_ui.value.filtered)
 
     private fun rememberSafety(items: List<MediaItem>) {
         val uris = items.mapTo(hashSetOf()) { it.uri }

@@ -24,19 +24,22 @@ import org.junit.runner.RunWith
 class PhotoOcrFilesScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun userControlsSearchScopeAndResultsNeverSelectTrashCandidates() {
+    @Test fun bulkSelectionUsesOnlyEligibleOcrResultsAndClearsOnSearchChanges() {
         val photo = item("travel", "trip.jpg")
         val unrelated = item("receipt", "receipt.jpg")
+        val protected = item("passport", "passport.jpg").copy(isProtected = true)
         val current = mutableStateOf(AppUiState(
-            access = MediaAccess.FULL, items = listOf(photo, unrelated),
-            filtered = listOf(photo, unrelated),
+            access = MediaAccess.FULL, items = listOf(photo, unrelated, protected),
+            filtered = listOf(photo, unrelated, protected),
             ocrEntries = listOf(
                 PhotoOcrEntry(photo.uri, photo.fingerprint, photo.volumeVersion,
                     "서울 여행 숙소 예약", OcrResultStatus.SUCCESS),
                 PhotoOcrEntry(unrelated.uri, unrelated.fingerprint, unrelated.volumeVersion,
                     "커피 결제", OcrResultStatus.SUCCESS),
+                PhotoOcrEntry(protected.uri, protected.fingerprint, protected.volumeVersion,
+                    "서울 여권 증명", OcrResultStatus.SUCCESS),
             ),
-            ocrScan = OcrScanState(OcrPhase.COMPLETE, completed = 2, total = 2),
+            ocrScan = OcrScanState(OcrPhase.COMPLETE, completed = 3, total = 3),
         ))
         var trashRequests = 0
         compose.setContent {
@@ -51,7 +54,11 @@ class PhotoOcrFilesScreenTest {
                                     current.value = current.value.copy(filter = filter,
                                         filtered = MediaQuery.apply(current.value.items, filter))
                                 },
-                                selectAll = {}, toggleSelection = {}, clearSelection = {},
+                                selectAll = { results ->
+                                    current.value = current.value.copy(selected = results.mapTo(hashSetOf()) { it.uri })
+                                },
+                                toggleSelection = {},
+                                clearSelection = { current.value = current.value.copy(selected = emptySet()) },
                                 savePreset = {}, deletePreset = {}, setProtected = { _, _ -> },
                                 refresh = {},
                             ),
@@ -63,14 +70,23 @@ class PhotoOcrFilesScreenTest {
         }
         compose.onNodeWithText("사진 속 글자").performClick()
         compose.onNodeWithContentDescription("사진 속 글자 검색").performTextInput("서울")
-        compose.onNodeWithText("trip.jpg").assertExists()
+        compose.onNode(hasText("trip.jpg") and hasText("인식된 글자: 서울 여행 숙소 예약")).assertExists()
+        compose.onNode(hasText("passport.jpg") and hasText("인식된 글자: 서울 여권 증명")).assertExists()
         compose.onNodeWithText("receipt.jpg").assertDoesNotExist()
-        compose.onNodeWithText("인식된 글자:", substring = true).assertExists()
         compose.runOnIdle {
             assertTrue(current.value.selected.isEmpty())
             assertEquals(0, trashRequests)
         }
+        compose.onNodeWithText("현재 결과 1개 선택").performClick()
+        compose.runOnIdle {
+            assertEquals(setOf(photo.uri), current.value.selected)
+            assertEquals(0, trashRequests)
+        }
+        compose.onNodeWithContentDescription("사진 속 글자 검색").performTextInput(" 여행")
+        compose.runOnIdle { assertTrue(current.value.selected.isEmpty()) }
+        compose.onNodeWithText("현재 결과 1개 선택").performClick()
         compose.onNodeWithText("파일명·폴더").performClick()
+        compose.runOnIdle { assertTrue(current.value.selected.isEmpty()) }
         compose.onNodeWithText("receipt.jpg").assertExists()
     }
 

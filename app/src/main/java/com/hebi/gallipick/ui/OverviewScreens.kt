@@ -24,6 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ClipEntry
@@ -69,6 +71,7 @@ internal fun HomeScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            if (state.access == MediaAccess.NONE) HomePermissionNotice(requestAccess)
             val reviewGroups = state.similarGroups + state.burstGroups
             if (resumeReview != null && state.access != MediaAccess.NONE &&
                 PhotoReviewInboxPolicy.pending(reviewGroups, state.reviewEntries, state.protectedFolders)) {
@@ -94,7 +97,6 @@ internal fun HomeScreen(
                         if (openAdRemoval != null) {
                             CloudActionGroup(CloudRoute.BILLING_SIGN_IN) { openAdRemoval() }
                         }
-                        if (state.access == MediaAccess.NONE) HomePermissionNotice(requestAccess)
                         HomeStorageSummary(state, showBreakdown = true)
                     }
                     HomeQuickActions(
@@ -107,7 +109,6 @@ internal fun HomeScreen(
                 if (openAdRemoval != null) {
                     CloudActionGroup(CloudRoute.BILLING_SIGN_IN) { openAdRemoval() }
                 }
-                if (state.access == MediaAccess.NONE) HomePermissionNotice(requestAccess)
                 if (wide) {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -154,13 +155,13 @@ private fun HomeWelcome(cleanup: () -> Unit) {
                 ) {
                     GalliIllustration(GalliScene.ORGANIZE, Modifier.size(72.dp))
                     Text(
-                        "사진과 영상을\n더 가볍고,\n더 깔끔하게!",
+                        "사진과 영상을\n깔끔하게 정리",
                         style = MaterialTheme.typography.headlineSmall,
                         color = Ink,
                         modifier = Modifier.weight(1f).semantics { heading() },
                     )
                 }
-                Text("필요한 파일만 직접 확인하세요", style = MaterialTheme.typography.bodySmall, color = Muted)
+                Text("정리 도구에서 남길 파일을 직접 고르세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
                 ActionButton(
                     "정리 시작하기", cleanup, Modifier.fillMaxWidth(),
                     filled = true, icon = Icons.Outlined.ArrowForward,
@@ -172,18 +173,18 @@ private fun HomeWelcome(cleanup: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                GalliIllustration(GalliScene.ORGANIZE, Modifier.size(116.dp))
+                GalliIllustration(GalliScene.ORGANIZE, Modifier.size(92.dp))
                 Column(
                     Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing),
                 ) {
                     Text(
-                        "사진과 영상을\n더 가볍고,\n더 깔끔하게!",
+                        "사진과 영상을\n깔끔하게 정리",
                         style = MaterialTheme.typography.headlineSmall,
                         color = Ink,
                         modifier = Modifier.semantics { heading() },
                     )
-                    Text("필요한 파일만 직접 확인하세요", style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Text("정리 도구에서 남길 파일을 직접 고르세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
                     ActionButton(
                         "정리 시작하기", cleanup, Modifier.widthIn(max = 260.dp).fillMaxWidth(),
                         filled = true, icon = Icons.Outlined.ArrowForward,
@@ -259,9 +260,11 @@ private fun HomeStorageSummary(
     }
 }
 
+private const val DUPLICATE_MEDIA_SEARCH_TITLE = "사진·동영상 중복 찾기"
+
 private data class HomeShortcut(
     val title: String,
-    val iconRes: Int,
+    val icon: Painter,
     val onClick: () -> Unit,
 )
 
@@ -275,12 +278,12 @@ private fun HomeQuickActions(
 ) {
     val oneYearAgo = System.currentTimeMillis() - 365L * 24 * 60 * 60 * 1000
     val shortcuts = listOf(
-        HomeShortcut("사진·영상 정리", iconRes = R.drawable.gp_home_photo, onClick = { browse(MediaFilter()) }),
-        HomeShortcut("중복 파일 찾기", iconRes = R.drawable.gp_home_duplicates, onClick = duplicates),
-        HomeShortcut("용량 큰 파일", iconRes = R.drawable.gp_home_large_file, onClick = {
+        HomeShortcut("파일 둘러보기", painterResource(R.drawable.gp_home_photo), onClick = { browse(MediaFilter()) }),
+        HomeShortcut(DUPLICATE_MEDIA_SEARCH_TITLE, rememberVectorPainter(Icons.Outlined.CopyAll), onClick = duplicates),
+        HomeShortcut("용량 큰 파일", painterResource(R.drawable.gp_home_large_file), onClick = {
             browse(MediaFilter(minSizeBytes = 100L * 1024 * 1024, sortField = SortField.SIZE))
         }),
-        HomeShortcut("오래된 파일", iconRes = R.drawable.gp_home_old_files, onClick = {
+        HomeShortcut("오래된 파일", painterResource(R.drawable.gp_home_old_files), onClick = {
             browse(MediaFilter(
                 fromDateMs = 1L, toDateMs = oneYearAgo,
                 sortField = SortField.CAPTURED, sortDirection = SortDirection.ASCENDING,
@@ -339,7 +342,7 @@ private fun HomeShortcutCard(shortcut: HomeShortcut, modifier: Modifier = Modifi
 @Composable
 private fun HomeShortcutIcon(shortcut: HomeShortcut, modifier: Modifier = Modifier) {
     Icon(
-        painter = painterResource(shortcut.iconRes),
+        painter = shortcut.icon,
         contentDescription = null,
         tint = Ink,
         modifier = modifier,
@@ -382,6 +385,7 @@ internal fun CleanupScreen(
     onOpenPhotoAnalysis: (() -> Unit)? = null,
     onOpenHistory: (() -> Unit)? = null,
     onOpenReviewInbox: (() -> Unit)? = null,
+    onOpenTrash: (() -> Unit)? = null,
     browse: (MediaFilter) -> Unit,
 ) {
     val suggestions = remember(state.items) { cleanupSuggestions(state.items) }
@@ -405,21 +409,27 @@ internal fun CleanupScreen(
             }
             if (onOpenDuplicates != null) {
                 Text(
-                    "사진 비교", style = MaterialTheme.typography.titleMedium,
+                    "중복 파일", style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.semantics { heading() },
                 )
                 CleanupNavigationRow(
-                    title = "완전히 같은 파일 찾기",
-                    subtitle = "내용이 100% 같은 사진·동영상을 검사하고 비교",
+                    title = DUPLICATE_MEDIA_SEARCH_TITLE,
+                    subtitle = "파일 내용이 완전히 같은 사진과 동영상을 묶어요.",
                     icon = Icons.Outlined.CopyAll,
-                    description = "중복 파일 검사 열기",
+                    description = "사진·동영상 중복 검사 열기",
                     open = onOpenDuplicates,
+                )
+            }
+            if (onOpenPhotoAnalysis != null || onOpenReviewInbox != null) {
+                Text(
+                    "사진 분석", style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { heading() },
                 )
             }
             if (onOpenPhotoAnalysis != null) {
                 CleanupNavigationRow(
                     title = "비슷한 사진 찾기",
-                    subtitle = "사진의 시각적 특징을 기기 안에서 분석",
+                    subtitle = "구도나 장면이 비슷한 사진을 후보로 보여줘요.",
                     icon = Icons.Outlined.Collections,
                     description = "유사 사진 분석 열기",
                     open = onOpenPhotoAnalysis,
@@ -428,7 +438,7 @@ internal fun CleanupScreen(
             if (onOpenReviewInbox != null) {
                 CleanupNavigationRow(
                     title = "사진 검토함",
-                    subtitle = "사진별 남김·정리 후보·보류 기록과 진행률, 이어보기",
+                    subtitle = "검토하던 사진을 이어서 확인해요.",
                     icon = Icons.Outlined.FactCheck,
                     description = "스마트 사진 검토함 열기",
                     open = onOpenReviewInbox,
@@ -459,6 +469,15 @@ internal fun CleanupScreen(
                     icon = Icons.Outlined.History,
                     description = "정리 기록 열기",
                     open = onOpenHistory,
+                )
+            }
+            if (onOpenTrash != null) {
+                CleanupNavigationRow(
+                    title = "휴지통에서 확인·복원",
+                    subtitle = "Android 휴지통에 보관된 원본을 확인해요.",
+                    icon = Icons.Outlined.RestoreFromTrash,
+                    description = "휴지통 확인 및 복원 열기",
+                    open = onOpenTrash,
                 )
             }
             if (populated.isEmpty()) {
@@ -579,6 +598,7 @@ private fun CleanupCategoryIcon(suggestion: CleanupSuggestion, modifier: Modifie
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SettingsScreen(
     state: AppUiState,
@@ -605,6 +625,7 @@ internal fun SettingsScreen(
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
         val compact = maxWidth < 440.dp * fontScale
+        val gridWidth = (maxWidth - 24.dp).coerceAtLeast(0.dp)
         Column(
             Modifier.fillMaxHeight().widthIn(max = 660.dp).fillMaxWidth()
                 .verticalScroll(rememberScrollState())
@@ -627,10 +648,11 @@ internal fun SettingsScreen(
                     )
                 }
             }
+            SettingsGroupTitle("화면")
             SettingsSection("파일 보기") {
                 Text("사진 보기 방식", style = MaterialTheme.typography.bodyMedium)
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).selectableGroup(),
+                FlowRow(
+                    Modifier.fillMaxWidth().selectableGroup(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     FilterChip(
@@ -645,9 +667,10 @@ internal fun SettingsScreen(
                     )
                 }
                 Text("한 줄에 표시할 사진 수", style = MaterialTheme.typography.bodyMedium)
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                FlowRow(
+                    Modifier.fillMaxWidth().selectableGroup(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     listOf<Int?>(null, 3, 4, 5, 6).forEach { columns ->
                         FilterChip(
@@ -658,9 +681,17 @@ internal fun SettingsScreen(
                     }
                 }
                 Text(
-                    "격자 보기에서 사진 크기가 선택한 개수에 맞춰 변경됩니다. 작은 화면에서는 터치하기 안전한 개수로 조정됩니다.",
+                    "작은 화면에서는 표시 개수를 줄여 터치 영역을 확보합니다.",
                     color = Muted, style = MaterialTheme.typography.bodySmall,
                 )
+                val requested = state.fileGridColumns
+                if (!photoListView && requested != null) {
+                    val applied = resolvedFileGridColumns(requested, gridWidth, fontScale, tablet = gridWidth >= 720.dp)
+                    if (applied < requested) {
+                        Text("현재 화면에서는 한 줄에 ${applied}개가 표시됩니다.",
+                            color = Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
             SettingsSection("화면 테마") {
                 Text("기기 설정을 따르거나 모드를 직접 선택하세요.", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -686,6 +717,7 @@ internal fun SettingsScreen(
                     }
                 }
             }
+            SettingsGroupTitle("파일 관리")
             SettingsSection("미디어 접근") {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -773,6 +805,17 @@ internal fun SettingsScreen(
                     )
                 }
             }
+            if (cloudConnection != null) {
+                val cloudAccount by cloudConnection.session.account.collectAsStateWithLifecycle()
+                if (cloudAccount != null) {
+                    SettingsSection("계정 관리") {
+                        Text("GalliPick 클라우드 계정 및 연관 데이터 탈퇴를 요청할 수 있습니다.",
+                            color = Muted, style = MaterialTheme.typography.bodySmall)
+                        CloudAccountDeletionButton(cloudConnection)
+                    }
+                }
+            }
+            SettingsGroupTitle("지원")
             SettingsSection("개인정보") {
                 Text("기기 파일 정리·검색·중복 분석은 기기에서 처리합니다. 클라우드 백업을 선택하면 해당 사진·동영상 원본과 파일 정보가 서버에 전송됩니다.", style = MaterialTheme.typography.bodyMedium)
                 if (adsPrivacyOptionsRequired) {
@@ -787,16 +830,6 @@ internal fun SettingsScreen(
                 GalliMascot(Modifier.size(38.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("GalliPick · 기기 내 미디어 정리", style = MaterialTheme.typography.bodySmall, color = Muted)
-                }
-            }
-            if (cloudConnection != null) {
-                val cloudAccount by cloudConnection.session.account.collectAsStateWithLifecycle()
-                if (cloudAccount != null) {
-                    SettingsSection("계정 관리") {
-                        Text("GalliPick 클라우드 계정 및 연관 데이터 탈퇴를 요청할 수 있습니다.",
-                            color = Muted, style = MaterialTheme.typography.bodySmall)
-                        CloudAccountDeletionButton(cloudConnection)
-                    }
                 }
             }
         }
@@ -870,9 +903,16 @@ internal fun ClearAnalysisCacheDialog(onConfirm: () -> Unit, onDismiss: () -> Un
 }
 
 @Composable
+private fun SettingsGroupTitle(title: String) {
+    Text(title, Modifier.padding(top = 4.dp).semantics { heading() },
+        style = MaterialTheme.typography.titleSmall, color = Ink)
+}
+
+@Composable
 private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
     val icon = when (title) {
         "화면 테마" -> Icons.Outlined.DarkMode
+        "파일 보기" -> Icons.Outlined.GridView
         "미디어 접근" -> Icons.Outlined.PhotoLibrary
         "휴지통" -> Icons.Outlined.RestoreFromTrash
         "보호 폴더" -> Icons.Outlined.Folder

@@ -129,7 +129,7 @@ class ReviewExperienceTest {
         val protectedCopy = media(3, "protected-copy.jpg").copy(isProtected = true)
         val group = DuplicateGroup("fixture-digest", listOf(defaultKeeper, chosenKeeper, protectedCopy))
         val state = mutableStateOf(AppUiState(
-            access = MediaAccess.FULL, items = group.items, duplicates = listOf(group),
+            access = MediaAccess.FULL, catalogReady = true, items = group.items, duplicates = listOf(group),
             duplicateKeepers = mapOf(group.hash to defaultKeeper.uri),
             scan = ScanState(phase = ScanPhase.RUNNING, completed = 3, skipped = 1, total = 8),
         ))
@@ -151,7 +151,9 @@ class ReviewExperienceTest {
         compose.onNodeWithContentDescription("중복 파일 가로 비교 목록")
             .performScrollToNode(hasContentDescription("${chosenKeeper.displayName} 비교 대상"))
         compose.onNodeWithContentDescription("${chosenKeeper.displayName} 비교 대상").performClick()
-        compose.onNodeWithContentDescription("선택 파일 남길 파일로 지정").performScrollTo().performClick()
+        val chooseKeeper = compose.onNodeWithContentDescription("선택 파일 남길 파일로 지정")
+        if (runCatching { chooseKeeper.assertIsDisplayed() }.isFailure) chooseKeeper.performScrollTo()
+        chooseKeeper.performClick()
         compose.onNodeWithContentDescription("비교 닫기").performClick()
         compose.onNodeWithContentDescription("${chosenKeeper.displayName}, ${chosenKeeper.relativePath} 정리 후보 선택").assertDoesNotExist()
         compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("남길 파일 · 직접 지정"))
@@ -172,15 +174,15 @@ class ReviewExperienceTest {
         }
         compose.onNodeWithText("접근 허용").assertIsDisplayed().performClick()
         compose.runOnIdle { assertTrue(permissionRequested) }
-        compose.onNodeWithText("검사 시작").assertIsNotEnabled()
+        compose.onNodeWithText("검사 시작").assertDoesNotExist()
     }
 
     @Test fun trashCapsSelectionBeforeRestoreAndRevalidatesTheCatalog() {
         val all = (0..500).map { media(it.toLong(), "trash-%03d.jpg".format(it)).copy(isTrashed = true) }
-        val catalog = mutableStateOf(all)
+        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, trashed = all, catalogReady = true))
         var requested = emptyList<MediaItem>()
         compose.setContent {
-            GalliPickTheme { TrashScreen(catalog.value, { requested = it }, {}) }
+            GalliPickTheme { TrashScreen(state.value, { requested = it }, {}, {}, {}) }
         }
         compose.onNodeWithContentDescription("휴지통 전체 선택").performClick()
         compose.onNodeWithText("500개 선택 · ${bytesLabel(500L * 1024L)}").assertIsDisplayed()
@@ -188,8 +190,13 @@ class ReviewExperienceTest {
         compose.runOnIdle {
             assertEquals(500, requested.size)
             assertFalse(requested.any { it.uri == all.last().uri })
+            state.value = state.value.copy(loading = true, catalogReady = false, trashed = emptyList())
         }
-        // Requesting approval alone does not clear a selection; the user may cancel Android's dialog.
+        compose.onNodeWithText("휴지통을 불러오고 있습니다").assertIsDisplayed()
+        compose.onNodeWithText("휴지통이 비어 있습니다").assertDoesNotExist()
+        compose.onNodeWithText("선택한 500개 복원").assertDoesNotExist()
+        compose.runOnIdle { state.value = state.value.copy(loading = false, trashed = all, catalogReady = true) }
+        // The same file versions stay selected when Android confirmation is cancelled and the catalog reloads.
         compose.onNodeWithText("500개 선택 · ${bytesLabel(500L * 1024L)}").assertIsDisplayed()
         compose.onNodeWithContentDescription("휴지통 파일 목록").performScrollToIndex(500)
         compose.onNodeWithContentDescription("${all.last().displayName} 복원 선택").performClick()
@@ -197,10 +204,10 @@ class ReviewExperienceTest {
         compose.onNodeWithText("500개 선택 · ${bytesLabel(500L * 1024L)}").assertIsDisplayed()
         saveScreenshot("review-trash-selection-limit")
         // A changed fingerprint is no longer the version that the user selected.
-        compose.runOnIdle { catalog.value = all.mapIndexed { index, item -> if (index == 0) item.copy(generationModified = 1) else item } }
+        compose.runOnIdle { state.value = state.value.copy(trashed = all.mapIndexed { index, item -> if (index == 0) item.copy(generationModified = 1) else item }) }
         compose.onNodeWithText("499개 선택 · ${bytesLabel(499L * 1024L)}").assertIsDisplayed()
         // A volume reset can reuse a URI and fingerprint for a different physical file.
-        compose.runOnIdle { catalog.value = catalog.value.mapIndexed { index, item -> if (index == 1) item.copy(volumeVersion = "reset-epoch") else item } }
+        compose.runOnIdle { state.value = state.value.copy(trashed = state.value.trashed.mapIndexed { index, item -> if (index == 1) item.copy(volumeVersion = "reset-epoch") else item }) }
         compose.onNodeWithText("498개 선택 · ${bytesLabel(498L * 1024L)}").assertIsDisplayed()
         compose.onNodeWithText("선택한 ${if (requested.isEmpty()) 500 else 498}개 복원").performClick()
         compose.runOnIdle {
@@ -208,7 +215,7 @@ class ReviewExperienceTest {
             assertFalse(requested.any { it.uri == all[0].uri || it.uri == all[1].uri })
         }
         // Successful restored rows leave the trash catalog and disappear from the selection.
-        compose.runOnIdle { catalog.value = listOf(all.last()) }
+        compose.runOnIdle { state.value = state.value.copy(trashed = listOf(all.last())) }
         compose.onNodeWithText("0개 선택 · ${bytesLabel(0L * 1024L)}").assertIsDisplayed()
         compose.onNodeWithText("선택한 0개 복원").assertIsNotEnabled()
     }

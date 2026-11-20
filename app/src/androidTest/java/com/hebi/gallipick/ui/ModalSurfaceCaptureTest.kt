@@ -22,6 +22,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hebi.gallipick.AppThemeMode
+import com.hebi.gallipick.AppUiState
+import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.DuplicateGroup
 import com.hebi.gallipick.domain.MediaFilter
 import com.hebi.gallipick.domain.MediaItem
@@ -76,7 +78,7 @@ class ModalSurfaceCaptureTest {
                             Screen.COMPARE -> DuplicateCompareDialog(group, photoA.uri, emptySet(), emptySet(), {}, {}, { _, _ -> }, {}, { _, _ -> })
                             Screen.REVIEW -> TrashReviewDialog(listOf(photoB), listOf(photoA), false, 0, {}, {})
                             Screen.RESTORE -> TrashReviewDialog(listOf(photoB), emptyList(), true, 0, {}, {})
-                            Screen.TRASH -> TrashScreen(trashItems, {}, {})
+                            Screen.TRASH -> TrashScreen(AppUiState(access = MediaAccess.FULL, trashed = trashItems, catalogReady = true), {}, {}, {}, {})
                             Screen.PRESET -> SavePresetDialog({}, {})
                             Screen.CACHE -> ClearAnalysisCacheDialog({}, {})
                             Screen.RESULT_SUCCESS -> CleanupResultDialog(CleanupOperationResult.verified(TrashOutcome(1, 0, 0, photoB.sizeBytes), false, 1, photoB.sizeBytes), {}, {}, {})

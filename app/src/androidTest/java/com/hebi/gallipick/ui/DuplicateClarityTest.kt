@@ -41,7 +41,7 @@ class DuplicateClarityTest {
             CompositionLocalProvider(LocalDensity provides Density(1f)) {
                 Box(Modifier.requiredSize(360.dp, 720.dp)) {
                     DuplicatesScreenContent(
-                        AppUiState(access = MediaAccess.FULL, items = items, duplicates = groups),
+                        AppUiState(access = MediaAccess.FULL, catalogReady = true, items = items, duplicates = groups),
                         { trashRequested = true }, {}, {}, actions(),
                     )
                 }
@@ -63,7 +63,7 @@ class DuplicateClarityTest {
             CompositionLocalProvider(LocalDensity provides Density(1f)) {
                 Box(Modifier.requiredSize(360.dp, 760.dp)) {
                     DuplicatesScreenContent(
-                        AppUiState(access = MediaAccess.FULL, items = items, duplicates = listOf(group),
+                        AppUiState(access = MediaAccess.FULL, catalogReady = true, items = items, duplicates = listOf(group),
                             duplicateKeepers = mapOf(group.hash to items[2].uri)),
                         { moved = true }, {}, {}, actions(),
                     )
@@ -110,7 +110,7 @@ class DuplicateClarityTest {
         val favorite = media(3, "favorite.mp4").copy(isFavorite = true)
         val candidate = media(4, "candidate.mp4")
         val group = DuplicateGroup("same-content", listOf(keeper, protected, favorite, candidate))
-        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, items = group.items, duplicates = listOf(group), duplicateKeepers = mapOf(group.hash to keeper.uri)))
+        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, catalogReady = true, items = group.items, duplicates = listOf(group), duplicateKeepers = mapOf(group.hash to keeper.uri)))
         var requested = emptyList<MediaItem>()
         compose.setContent { GalliPickTheme {
             DuplicatesScreenContent(state.value, { requested = it }, {}, {}, actions(
@@ -154,7 +154,7 @@ class DuplicateClarityTest {
         var selected = false
         var moved = false
         compose.setContent { GalliPickTheme {
-            DuplicatesScreenContent(AppUiState(access = MediaAccess.FULL, items = all, duplicates = listOf(group), duplicateKeepers = mapOf(group.hash to all.first().uri)),
+            DuplicatesScreenContent(AppUiState(access = MediaAccess.FULL, catalogReady = true, items = all, duplicates = listOf(group), duplicateKeepers = mapOf(group.hash to all.first().uri)),
                 { moved = true }, {}, {}, actions(recommended = { selected = true }))
         } }
         compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasText("정리 후보 500개 선택"))
@@ -172,7 +172,7 @@ class DuplicateClarityTest {
         compose.setContent { GalliPickTheme {
             CompositionLocalProvider(LocalDensity provides Density(1f)) {
                 Box(Modifier.requiredSize(360.dp, 640.dp)) {
-                    DuplicatesScreenContent(AppUiState(access = MediaAccess.FULL, items = group.items, duplicates = listOf(group),
+                    DuplicatesScreenContent(AppUiState(access = MediaAccess.FULL, catalogReady = true, items = group.items, duplicates = listOf(group),
                         duplicateKeepers = mapOf(group.hash to keeper.uri), scan = ScanState(ScanPhase.COMPLETE, 2, 2, message = "검사를 마쳤습니다")),
                         {}, {}, {}, actions().copy(startScan = { rescanned = true }))
                 }
@@ -195,7 +195,7 @@ class DuplicateClarityTest {
         compose.setContent { GalliPickTheme {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1.6f)) {
                 Box(Modifier.requiredSize(320.dp, 480.dp)) {
-                    DuplicatesScreenContent(AppUiState(access = MediaAccess.FULL, items = groups.flatMap { it.items }, duplicates = groups),
+                    DuplicatesScreenContent(AppUiState(access = MediaAccess.FULL, catalogReady = true, items = groups.flatMap { it.items }, duplicates = groups),
                         { moved = true }, {}, {}, actions(recommended = { selectedAll = true }).copy(selectGroupCandidates = { selectedGroup = it.hash }))
                 }
             }
@@ -217,7 +217,7 @@ class DuplicateClarityTest {
         val first = media(1, "first.mp4")
         val second = media(2, "copy.mp4")
         val group = DuplicateGroup("scan-status", listOf(first, second))
-        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, items = group.items,
+        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, catalogReady = true, items = group.items,
             duplicates = listOf(group), scan = ScanState(ScanPhase.PAUSED, 1, 2)))
         var resumed = false
         var restarted = false
@@ -237,18 +237,58 @@ class DuplicateClarityTest {
         compose.runOnIdle { assertTrue(restarted) }
     }
 
-    @Test fun completedScanKeepsRescanDisabledWithoutAccessibleMedia() {
+    @Test fun completedScanShowsOnlyHistoryWithoutAccessibleMedia() {
+        val state = mutableStateOf(AppUiState(access = MediaAccess.NONE, scan = ScanState(ScanPhase.COMPLETE, 2, 2)))
         compose.setContent { GalliPickTheme {
-            DuplicatesScreenContent(AppUiState(access = MediaAccess.NONE, scan = ScanState(ScanPhase.COMPLETE, 2, 2)),
-                {}, {}, {}, actions())
+            DuplicatesScreenContent(state.value, {}, {}, {}, actions())
         } }
-        compose.onNodeWithText("다시 검사").assertIsNotEnabled()
+        compose.onNodeWithText("미디어 접근이 필요합니다").assertIsDisplayed()
+        compose.onNodeWithText("이전 검사 기록", substring = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("검사 완료 · 2개 확인").assertDoesNotExist()
+        compose.onNodeWithText("다시 검사").assertDoesNotExist()
         compose.onNodeWithContentDescription("중복 검사 진행률").assertDoesNotExist()
+    }
+
+    @Test fun duplicateResultsKeepThePartialPermissionScopeAndDoNotUseAStaleCatalog() {
+        val group = DuplicateGroup("partial-catalog", listOf(media(1, "one.mp4"), media(2, "two.mp4")))
+        val state = mutableStateOf(AppUiState(access = MediaAccess.PARTIAL, items = group.items,
+            duplicates = listOf(group), catalogReady = true, scan = ScanState(ScanPhase.COMPLETE, 2, 2)))
+        var changedAccess = false
+        compose.setContent { GalliPickTheme {
+            DuplicatesScreenContent(state.value, {}, {}, { changedAccess = true }, actions())
+        } }
+        compose.onNodeWithText("접근 범위 변경").assertIsDisplayed().performClick()
+        compose.onNodeWithText("접근을 허용한 사진·동영상만", substring = true).assertIsDisplayed()
+        compose.runOnIdle {
+            assertTrue(changedAccess)
+            state.value = state.value.copy(catalogReady = false)
+        }
+        compose.onNodeWithText("미디어를 불러오고 있습니다").assertIsDisplayed()
+        compose.onNodeWithContentDescription("중복 파일 목록").assertDoesNotExist()
+    }
+
+    @Test fun singleFileComparisonPrioritizesTheKeeperAndFoldsHashDetails() {
+        val keeper = media(1, "same.mp4").copy(relativePath = "DCIM/Camera/")
+        val copy = media(2, "same.mp4")
+        val group = DuplicateGroup("fixture-sha256-should-be-collapsed", listOf(keeper, copy))
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.9f)) {
+                Box(Modifier.requiredSize(360.dp, 760.dp)) {
+                    DuplicateCompareContent(group, keeper.uri, emptySet(), emptySet(), {}, {},
+                        { _, _ -> }, {}, { _, _ -> }, initialItemUri = copy.uri)
+                }
+            }
+        } }
+        compose.onNodeWithContentDescription("선택 파일 남길 파일로 지정").assertIsDisplayed()
+        compose.onNodeWithText("남길 파일").assertIsDisplayed()
+        compose.onNodeWithText(group.hash).assertDoesNotExist()
+        compose.onNodeWithText("고급 검사 정보").performScrollTo().performClick()
+        compose.onNodeWithText(group.hash).assertExists()
     }
 
     @Test fun deepGroupPositionSurvivesCatalogRevalidation() {
         val groups = (0 until 40).map { index -> DuplicateGroup("group-$index", listOf(media(index * 2L, "keep-$index.mp4"), media(index * 2L + 1, "copy-$index.mp4"))) }
-        val populated = AppUiState(access = MediaAccess.FULL, items = groups.flatMap { it.items }, duplicates = groups)
+        val populated = AppUiState(access = MediaAccess.FULL, catalogReady = true, items = groups.flatMap { it.items }, duplicates = groups)
         val state = mutableStateOf(populated)
         compose.setContent { GalliPickTheme { DuplicatesScreenContent(state.value, {}, {}, {}, actions()) } }
         val group35Description = "중복 묶음 36 파일 가로 목록"
@@ -271,7 +311,7 @@ class DuplicateClarityTest {
         val keeper = media(1, "first.mp4")
         val copy = media(2, "second.mp4")
         val group = DuplicateGroup("same", listOf(keeper, copy))
-        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, items = group.items, duplicates = listOf(group), duplicateKeepers = mapOf(group.hash to keeper.uri)))
+        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, catalogReady = true, items = group.items, duplicates = listOf(group), duplicateKeepers = mapOf(group.hash to keeper.uri)))
         compose.setContent { GalliPickTheme { DuplicatesScreenContent(state.value, {}, {}, {}, actions(protect = { item, protected ->
             state.value = state.value.copy(duplicates = emptyList(), items = state.value.items.map { if (it.uri == item.uri) it.copy(isProtected = protected) else it })
         })) } }
@@ -292,7 +332,7 @@ class DuplicateClarityTest {
 
     @Test fun changedFileIdentityClosesAnUnverifiedComparison() {
         val group = DuplicateGroup("old-version", listOf(media(1, "first.mp4"), media(2, "second.mp4")))
-        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, items = group.items, duplicates = listOf(group)))
+        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, catalogReady = true, items = group.items, duplicates = listOf(group)))
         compose.setContent { GalliPickTheme { DuplicatesScreenContent(state.value, {}, {}, {}, actions()) } }
         compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(hasContentDescription("중복 묶음 1 비교"))
         compose.onNodeWithContentDescription("중복 묶음 1 비교").performClick()
@@ -303,7 +343,7 @@ class DuplicateClarityTest {
 
     @Test fun closingComparisonDuringProtectionRevalidationKeepsTheDeepGroupPosition() {
         val groups = (0 until 40).map { index -> DuplicateGroup("position-$index", listOf(media(index * 2L, "keep-$index.mp4"), media(index * 2L + 1, "copy-$index.mp4"))) }
-        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, items = groups.flatMap { it.items }, duplicates = groups))
+        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, catalogReady = true, items = groups.flatMap { it.items }, duplicates = groups))
         compose.setContent { GalliPickTheme { DuplicatesScreenContent(state.value, {}, {}, {}, actions(protect = { item, protected ->
             state.value = state.value.copy(duplicates = emptyList(), items = state.value.items.map { if (it.uri == item.uri) it.copy(isProtected = protected) else it })
         })) } }

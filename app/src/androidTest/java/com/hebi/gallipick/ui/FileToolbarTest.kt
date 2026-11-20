@@ -43,6 +43,11 @@ class FileToolbarTest {
         compose.onNodeWithContentDescription("파일 검색").assertDoesNotExist()
         val input = compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색")
         input.assertDoesNotExist()
+        compose.onNodeWithText("파일명·폴더").assertIsDisplayed()
+        compose.onNodeWithTag("files-search-scope").performClick()
+        compose.onNodeWithTag("files-search-scope-files").assertIsSelected()
+        compose.onNodeWithTag("files-search-scope-ocr").assertIsNotSelected()
+        compose.onNodeWithTag("files-search-scope-files").performClick()
         compose.onNodeWithText("유형: 전체").assertIsDisplayed()
         compose.onNodeWithTag("files-kind-filter").performClick()
         listOf("files-kind-all", "files-kind-photo", "files-kind-video")
@@ -60,6 +65,25 @@ class FileToolbarTest {
         assertTrue("The expanded search must leave usable media space", grid.height >= 60f)
         input.performTouchInput { swipeUp() }
         compose.onNodeWithTag("files-kind-filter").assertIsDisplayed()
+    }
+
+    @Test fun compactSearchScopeShowsCurrentModeAndSelectedMenuItem() {
+        val mode = mutableStateOf(FileSearchMode.FILES)
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.7f, fontScale = 2f)) {
+                Box(Modifier.requiredSize(320.dp, 420.dp)) {
+                    FileToolbar(MediaFilter(), emptyList(), {}, {}, {}, {},
+                        searchMode = mode.value, onSearchModeChange = { mode.value = it },
+                        showSearch = false)
+                }
+            }
+        } }
+        compose.onNodeWithTag("files-search-scope").performClick()
+        compose.onNodeWithTag("files-search-scope-ocr").performClick()
+        compose.onNodeWithText("사진 속 글자").assertIsDisplayed()
+        compose.onNodeWithTag("files-search-scope").performClick()
+        compose.onNodeWithTag("files-search-scope-ocr").assertIsSelected()
+        compose.onNodeWithTag("files-search-scope-files").assertIsNotSelected()
     }
 
     @Test fun mediaTypeDropdownPreservesFolderAndSizeConditions() {

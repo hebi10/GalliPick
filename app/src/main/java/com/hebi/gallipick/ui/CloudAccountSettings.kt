@@ -29,16 +29,17 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudAccountNotice
@@ -84,12 +86,15 @@ internal fun RefreshProductionCloudBackupAccess(connection: CloudAccountConnecti
     }
 }
 
+internal val LocalCheckoutAccountChange = staticCompositionLocalOf<(suspend (Activity) -> Unit)?> { null }
+
 @Composable
 internal fun CloudScreen(
     connection: CloudAccountConnection,
     onBackFromAdRemoval: (() -> Unit)? = null,
     onBillingScreenVisible: (Boolean) -> Unit = {},
     showSecretCloud: Boolean = false,
+    onOverviewVisible: (Boolean) -> Unit = {},
     content: @Composable (CloudRoute) -> Unit,
 ) {
     val account by connection.session.account.collectAsStateWithLifecycle()
@@ -101,18 +106,25 @@ internal fun CloudScreen(
     val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == account?.uid }
     val namespace = observation?.access?.namespace
     var requestedRoute by rememberSaveable(account?.uid) { mutableStateOf(CloudRoute.OVERVIEW) }
+    var checkoutUid by rememberSaveable { mutableStateOf<String?>(null) }
     var checkoutSignInPending by rememberSaveable { mutableStateOf(false) }
+    var switchingCheckoutAccount by remember { mutableStateOf(false) }
     val canOpenBilling = connection.billing != null && access != CloudAccessState.UNAVAILABLE
-    LaunchedEffect(checkoutSignInPending, access) {
-        if (checkoutSignInPending && access == CloudAccessState.SIGNED_IN) {
-            requestedRoute = CloudRoute.BILLING
+    val accountUid = account?.uid
+    LaunchedEffect(accountUid, access, checkoutSignInPending, switchingCheckoutAccount) {
+        if (!switchingCheckoutAccount && checkoutSignInPending && access == CloudAccessState.SIGNED_IN) {
+            checkoutUid = accountUid
             checkoutSignInPending = false
+        } else if (!switchingCheckoutAccount && accountUid == connection.session.account.value?.uid && checkoutUid != accountUid) {
+            checkoutUid = null
         }
     }
     val requested = when {
         canOpenBilling && onBackFromAdRemoval != null ->
-            if (access == CloudAccessState.SIGNED_IN) CloudRoute.BILLING else CloudRoute.BILLING_SIGN_IN
-        canOpenBilling && checkoutSignInPending -> CloudRoute.BILLING
+            if (account != null) CloudRoute.BILLING else CloudRoute.BILLING_SIGN_IN
+        canOpenBilling && (checkoutSignInPending || switchingCheckoutAccount ||
+            (checkoutUid != null && checkoutUid == accountUid && access != CloudAccessState.SIGNING_OUT)) ->
+            CloudRoute.BILLING
         else -> cloudVisibleRoute(requestedRoute, access)
     }
     val route = when (requested) {
@@ -122,10 +134,17 @@ internal fun CloudScreen(
         else -> requested
     }
     val onBack = onBackFromAdRemoval ?: {
+        checkoutUid = null
         checkoutSignInPending = false
+        switchingCheckoutAccount = false
         requestedRoute = CloudRoute.OVERVIEW
     }
     BackHandler(enabled = route != CloudRoute.OVERVIEW, onBack = onBack)
+    val reportOverviewVisibility by rememberUpdatedState(onOverviewVisible)
+    DisposableEffect(route) {
+        reportOverviewVisibility(route == CloudRoute.OVERVIEW)
+        onDispose { reportOverviewVisibility(true) }
+    }
     val reportBillingVisibility by rememberUpdatedState(onBillingScreenVisible)
     if (route == CloudRoute.BILLING) {
         DisposableEffect(Unit) {
@@ -135,7 +154,17 @@ internal fun CloudScreen(
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             Column(Modifier.widthIn(max = 660.dp).fillMaxSize()) {
                 Box(Modifier.padding(horizontal = 8.dp)) { CloudHeader(route, onBack) }
-                Box(Modifier.weight(1f).fillMaxWidth()) { content(route) }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    CompositionLocalProvider(LocalCheckoutAccountChange provides { activity ->
+                        switchingCheckoutAccount = true
+                        try {
+                            connection.chooseAccount(activity)
+                            if (switchingCheckoutAccount) checkoutUid = connection.session.account.value?.uid
+                        } finally {
+                            switchingCheckoutAccount = false
+                        }
+                    }) { content(route) }
+                }
             }
         }
         return
@@ -156,28 +185,29 @@ internal fun CloudScreen(
                 route == CloudRoute.BILLING_SIGN_IN -> content(route)
                 route != CloudRoute.OVERVIEW -> key(namespace) { content(route) }
                 else -> {
-                    content(CloudRoute.OVERVIEW)
                     val onNavigate: (CloudRoute) -> Unit = {
-                        if (it == CloudRoute.BILLING && access == CloudAccessState.SIGNED_OUT) {
-                            checkoutSignInPending = true
-                        } else {
-                            requestedRoute = it
-                        }
+                        checkoutUid = if (it == CloudRoute.BILLING) accountUid else null
+                        checkoutSignInPending = it == CloudRoute.BILLING && access == CloudAccessState.SIGNED_OUT
+                        requestedRoute = if (it == CloudRoute.BILLING) CloudRoute.OVERVIEW else it
                     }
                     val billingAvailable = connection.billing != null
                     if (access == CloudAccessState.SIGNED_IN) {
-                        account?.uid?.let { uid -> CloudOverviewStorageCard(connection, uid) }
+                        account?.uid?.let { uid ->
+                            CloudOverviewStorageCard(connection, uid, showLibraryStatus = configuredBackup != null && backup == null)
+                        }
+                        if (backup != null) CloudActionGroup(CloudRoute.LIBRARY, onNavigate = onNavigate)
                         if (billingAvailable) {
                             CloudActionGroup(CloudRoute.BILLING, onNavigate = onNavigate)
                         } else {
                             CloudBillingOverviewNotice("이 빌드에서는 결제 기능을 사용할 수 없습니다.")
                         }
                         if (backup != null) {
-                            CloudActionGroup(CloudRoute.LIBRARY, CloudRoute.BACKUP, onNavigate = onNavigate)
-                            CloudActionGroup(CloudRoute.AUTO_BACKUP, CloudRoute.SPACE, onNavigate = onNavigate)
+                            CloudActionGroup(CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, CloudRoute.SPACE, onNavigate = onNavigate)
                         }
                         if (showSecretCloud) CloudActionGroup(CloudRoute.SECRET, onNavigate = onNavigate)
+                        content(CloudRoute.OVERVIEW)
                     } else if (access == CloudAccessState.SIGNED_OUT) {
+                        content(CloudRoute.OVERVIEW)
                         if (billingAvailable) CloudActionGroup(CloudRoute.BILLING, onNavigate = onNavigate)
                         else CloudBillingOverviewNotice("이 빌드에서는 결제 기능을 사용할 수 없습니다.")
                     }
@@ -234,10 +264,11 @@ internal fun CloudAccountSettings(
 
     val account by session.account.collectAsStateWithLifecycle()
     val accountStatus by session.status.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
+    // The account card leaves composition while the account operation is in progress.
+    val accountScope = LocalLifecycleOwner.current.lifecycleScope
     val signedIn = account
     val actionsEnabled = accountStatus.operation == null
-    val chooseAccount: () -> Unit = { scope.launch { connection.chooseAccount(activity) } }
+    val chooseAccount: () -> Unit = { accountScope.launch { connection.chooseAccount(activity) } }
     if (forAdRemoval) {
         Row(
             Modifier.fillMaxWidth(),
@@ -247,7 +278,7 @@ internal fun CloudAccountSettings(
             CloudFeatureIcon(Icons.Outlined.Cloud, size = 56.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    "홈 배너 광고 제거",
+                    "광고 없이 이용하기",
                     modifier = Modifier.semantics { heading() },
                     style = MaterialTheme.typography.titleMedium,
                 )
@@ -267,19 +298,22 @@ internal fun CloudAccountSettings(
         )
         CloudPrimaryAction("Google로 로그인", chooseAccount, enabled = actionsEnabled)
     } else if (signedIn == null) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CloudFeatureIcon(Icons.Outlined.Cloud)
+            Text(
+                "클라우드에 원본 보관",
+                modifier = Modifier.semantics { heading() },
+                style = MaterialTheme.typography.titleMedium,
+            )
+        }
         Text(
-            "Google 계정 연결",
-            modifier = Modifier.semantics { heading() },
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Text(
-            if (connection.usesProductionBackupPlan) {
-                "Google 계정으로 로그인하면 구독과 백업 이용 상태를 확인할 수 있습니다. 기기 사진·동영상 정리는 로그인 없이 이용할 수 있습니다."
-            } else {
-                "클라우드에 원본을 보관하려면 로그인해 주세요. 기기에서 사진·동영상을 정리하는 기능은 로그인 없이 이용할 수 있습니다."
-            },
+            "사진·동영상 원본을 백업하고 내 보관함에서 열어 볼 수 있습니다.",
             color = Muted,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
         )
         CloudPrimaryAction("Google로 로그인", chooseAccount, enabled = actionsEnabled)
     } else {
@@ -302,7 +336,7 @@ internal fun CloudAccountSettings(
                 signedIn.email?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
             }
         }
-        CloudAccountActions(chooseAccount, { scope.launch { session.signOut() } }, actionsEnabled)
+        CloudAccountActions(chooseAccount, { accountScope.launch { session.signOut() } }, actionsEnabled)
     }
     accountStatus.displayText(signedIn != null)?.let { CloudStatusMessage(it) }
 }
@@ -334,14 +368,17 @@ internal fun CloudAccountStatus.displayText(signedIn: Boolean): String? =
 private fun CloudAccountExitGuidance(connection: CloudAccountConnection, context: Context) {
     val account by connection.session.account.collectAsStateWithLifecycle()
     var actionUnavailable by remember { mutableStateOf(false) }
-    HorizontalDivider(color = Line)
-    Text("구독 취소·계정 및 데이터 삭제", style = MaterialTheme.typography.titleSmall)
-    CloudStatusMessage("구독 취소는 Google Play에서 진행합니다. 로그아웃·앱 삭제·회원 탈퇴만으로 자동 결제가 취소되지 않습니다.")
+    var detailsExpanded by rememberSaveable { mutableStateOf(false) }
+    Text("구독 취소·계정 및 데이터 삭제", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
+    Text(
+        "Google Play 구독 취소와 데이터 삭제는 별도로 진행합니다.",
+        color = Muted,
+        style = MaterialTheme.typography.bodyMedium,
+    )
     ActionButton("Google Play 구독 취소·관리", {
         actionUnavailable = !startCloudExitAction(context,
             Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/account/subscriptions")))
     }, Modifier.fillMaxWidth())
-    CloudStatusMessage("클라우드 데이터만 삭제하거나 GalliPick 계정 전체를 탈퇴하려면 별도 요청이 필요합니다. 본인 확인 후 처리하며, 기기에 저장된 원본은 삭제하지 않습니다.")
     if (account?.uid != null) {
         CloudOnlyDeletionButton(connection)
     } else {
@@ -349,11 +386,16 @@ private fun CloudAccountExitGuidance(connection: CloudAccountConnection, context
             actionUnavailable = !requestCloudExitByEmail(context, "클라우드 데이터 삭제")
         }, Modifier.fillMaxWidth())
     }
-    CloudStatusMessage(
-        if (connection.accountExit == null || account?.uid == null)
-            "메일 앱에서 요청 내용을 보내야 접수됩니다. 삭제 요청은 처리 완료가 아니며, 구독 취소도 별도로 진행해야 합니다."
-        else "삭제 요청 시 Google 재인증과 확인이 필요합니다. 서버 접수와 실제 삭제 완료는 구분되며, Google Play 구독 취소는 별도입니다.",
-    )
+    TextAction(if (detailsExpanded) "삭제·취소 안내 접기" else "삭제·취소 안내 보기", { detailsExpanded = !detailsExpanded })
+    if (detailsExpanded) {
+        CloudStatusMessage("로그아웃·앱 삭제·회원 탈퇴만으로 Google Play 자동 결제가 취소되지 않습니다.")
+        CloudStatusMessage("클라우드 데이터만 삭제하거나 GalliPick 계정 전체를 탈퇴할 수 있습니다. 기기에 저장된 원본은 삭제하지 않습니다.")
+        CloudStatusMessage(
+            if (connection.accountExit == null || account?.uid == null)
+                "메일 앱에서 요청 내용을 보내야 접수됩니다. 접수 후 본인 확인을 거쳐 삭제를 진행합니다."
+            else "삭제 요청 시 Google 재인증과 확인이 필요합니다. 서버 접수와 실제 삭제 완료는 구분됩니다.",
+        )
+    }
     if (actionUnavailable) {
         CloudStatusMessage("외부 앱을 열 수 없습니다. asdlkj0104@gmail.com으로 요청하거나 개인정보처리방침을 확인해 주세요.")
     }

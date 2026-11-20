@@ -34,7 +34,9 @@ import com.hebi.gallipick.domain.*
 import com.hebi.gallipick.data.cloud.GallerySourceFilter
 import java.util.Calendar
 
-internal enum class FileSearchMode { FILES, OCR }
+internal enum class FileSearchMode(val label: String) {
+    FILES("파일명·폴더"), OCR("사진 속 글자"),
+}
 
 @Composable
 internal fun FileToolbar(
@@ -183,37 +185,38 @@ internal fun FileToolbar(
         }
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             when {
-                compactSearchScope -> {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                compactSearchScope || maxWidth < 344.dp * fontScale -> {
+                    Row(Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Box {
-                            IconAction("검색 범위 변경", Icons.Outlined.FindInPage) { menu = "search-scope" }
+                        Box(Modifier.weight(1f)) {
+                            ToolbarChoice(
+                                searchMode.label, "검색 범위 변경", searchMode.label,
+                                searchMode == FileSearchMode.OCR, Modifier.testTag("files-search-scope"),
+                            ) { menu = "search-scope" }
                             DropdownMenu(expanded = menu == "search-scope", onDismissRequest = { menu = null }) {
-                                DropdownMenuItem(text = { Text("파일명·폴더") }, onClick = {
-                                    onSearchModeChange(FileSearchMode.FILES)
-                                    menu = null
-                                })
-                                DropdownMenuItem(text = { Text("사진 속 글자") }, onClick = {
-                                    onSearchModeChange(FileSearchMode.OCR)
-                                    menu = null
-                                })
+                                FileSearchMode.entries.forEach { mode ->
+                                    DropdownMenuItem(
+                                        text = { Text(mode.label) },
+                                        onClick = {
+                                            onSearchModeChange(mode)
+                                            menu = null
+                                        },
+                                        modifier = Modifier.testTag("files-search-scope-${mode.name.lowercase()}")
+                                            .semantics { selected = searchMode == mode },
+                                        trailingIcon = {
+                                            if (searchMode == mode) GalliIcon(Icons.Outlined.Check, null)
+                                        },
+                                    )
+                                }
                             }
                         }
                         fileActions()
                     }
                 }
-                maxWidth >= 344.dp * fontScale -> {
+                else -> {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         FileSearchScopeChips(searchMode, onSearchModeChange, Modifier.weight(1f))
                         fileActions()
-                    }
-                }
-                else -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        FileSearchScopeChips(searchMode, onSearchModeChange)
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            fileActions()
-                        }
                     }
                 }
             }
@@ -338,12 +341,12 @@ private fun FileSearchScopeChips(
         FilterChip(
             selected = searchMode == FileSearchMode.FILES,
             onClick = { onSearchModeChange(FileSearchMode.FILES) },
-            label = { Text("파일명·폴더", maxLines = 1) },
+            label = { Text(FileSearchMode.FILES.label, maxLines = 1) },
         )
         FilterChip(
             selected = searchMode == FileSearchMode.OCR,
             onClick = { onSearchModeChange(FileSearchMode.OCR) },
-            label = { Text("사진 속 글자", maxLines = 1) },
+            label = { Text(FileSearchMode.OCR.label, maxLines = 1) },
         )
     }
 }

@@ -28,7 +28,7 @@ class ShortDuplicateResultsTest {
         val keeper = media(1, "keep.mp4")
         val candidate = media(2, "copy.mp4")
         val group = DuplicateGroup("short-results", listOf(keeper, candidate))
-        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, items = group.items, duplicates = listOf(group),
+        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, catalogReady = true, items = group.items, duplicates = listOf(group),
             duplicateKeepers = mapOf(group.hash to keeper.uri), scan = ScanState(ScanPhase.COMPLETE, 2, 2)))
         var toggledUri: String? = null
         var selectedGroup: String? = null

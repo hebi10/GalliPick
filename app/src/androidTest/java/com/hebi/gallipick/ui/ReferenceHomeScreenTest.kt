@@ -35,8 +35,8 @@ class ReferenceHomeScreenTest {
             }
         }
 
-        compose.onNode(hasText("사진·영상 정리") and hasClickAction()).performScrollTo().performClick()
-        compose.onNode(hasText("중복 파일 찾기") and hasClickAction()).performScrollTo().performClick()
+        compose.onNode(hasText("파일 둘러보기") and hasClickAction()).performScrollTo().performClick()
+        compose.onNode(hasText("사진·동영상 중복 찾기") and hasClickAction()).performScrollTo().performClick()
         compose.onNode(hasText("용량 큰 파일") and hasClickAction()).performScrollTo().performClick()
         compose.onNode(hasText("오래된 파일") and hasClickAction()).performScrollTo().performClick()
         compose.onNodeWithText("정리 시작하기").performScrollTo().performClick()

@@ -32,10 +32,13 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -43,6 +46,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -60,6 +64,7 @@ import com.hebi.gallipick.data.cloud.CloudBillingUpdate
 import com.hebi.gallipick.data.cloud.GALLIPICK_STANDALONE_AD_FREE
 import com.hebi.gallipick.data.cloud.productionBillingProduct
 import com.hebi.gallipick.domain.MediaKind
+import com.hebi.gallipick.domain.ScanPhase
 import com.hebi.gallipick.ui.AppBackground
 import com.hebi.gallipick.ui.CloudBillingSection
 import com.hebi.gallipick.ui.CloudRoute
@@ -129,6 +134,23 @@ class NativeScreenCaptureTest {
     }
 
     @Test fun captureRealActivityWithExampleMedia() {
+        val playStoreProfile = profile == "play-store"
+        if (playStoreProfile) {
+            check(!app.resources.getBoolean(R.bool.gallipick_ads_enabled) &&
+                !app.resources.getBoolean(R.bool.gallipick_ads_preview)) {
+                "Play Store captures require a build with ads and ad previews disabled."
+            }
+            check(app.cloudAccount?.session?.available == true && app.cloudAccount?.session?.account?.value == null) {
+                "Play Store captures require a configured, signed-out cloud session."
+            }
+            grantMediaAccess()
+            runBlocking {
+                app.repository.refresh()
+                check(app.repository.catalogReady.value && app.repository.media.first().isEmpty()) {
+                    "Play Store captures require an empty media catalog on a dedicated emulator."
+                }
+            }
+        }
         val prefs = app.getSharedPreferences("filters", Context.MODE_PRIVATE)
         val originalFilter = prefs.getString("default_filter", null)
         val originalTheme = prefs.getString("theme_mode", null)
@@ -140,7 +162,7 @@ class NativeScreenCaptureTest {
             outputDirectory
             // createEmptyComposeRule does not launch an activity before permissions/fixtures exist.
             recordStage("grant-media-access")
-            grantMediaAccess()
+            if (!playStoreProfile) grantMediaAccess()
             prefs.edit().remove("default_filter").putString("theme_mode", captureTheme.name)
                 .putBoolean("file_list_view", false).commit()
             recordStage("seed-example-media")
@@ -161,6 +183,10 @@ class NativeScreenCaptureTest {
             scenario = ActivityScenario.launch(MainActivity::class.java)
             recordStage("await-initial-catalog")
             awaitCatalog()
+            if (playStoreProfile) {
+                capturePlayStoreScreens()
+                return
+            }
             compose.onNodeWithText("GalliPick").assertIsDisplayed()
             saveViewport("01-home")
 
@@ -185,31 +211,31 @@ class NativeScreenCaptureTest {
             dismissDialogIfPresent("닫기", contentDescription = true)
             dismissDialogIfPresent("파일 상세 닫기", contentDescription = true)
             navigate("정리")
-            compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
+            compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").performScrollTo().performClick()
             compose.onNodeWithContentDescription("정리로 돌아가기").assertIsDisplayed()
             compose.onNodeWithText("중복 정리").assertIsDisplayed()
             saveViewport("03-duplicates-before-scan")
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
-            compose.onNodeWithText("사진 비교").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("중복 파일").performScrollTo().assertIsDisplayed()
             saveViewport("04-cleanup")
             recordStage("stage9g-real-history")
             compose.onNodeWithContentDescription("정리 기록 열기").performScrollTo().performClick()
             compose.onNodeWithText("정리 기록이 없습니다").performScrollTo().assertIsDisplayed()
             saveStage9GMainViewport("01-cleanup-history-empty")
             compose.onNodeWithContentDescription("정리로 돌아가기").performClick()
-            compose.onNodeWithText("사진 비교").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("중복 파일").performScrollTo().assertIsDisplayed()
             recordStage("stage9g-real-photo-analysis")
             compose.onNodeWithContentDescription("유사 사진 분석 열기").performScrollTo().performClick()
             compose.onNodeWithText("사진 분석 시작").performScrollTo().assertIsDisplayed()
             saveStage9GMainViewport("02-photo-analysis-idle")
             compose.onNodeWithContentDescription("사진 분석 닫기").performScrollTo().performClick()
-            compose.onNodeWithText("사진 비교").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("중복 파일").performScrollTo().assertIsDisplayed()
             recordStage("stage9a-open-folder-storage")
             compose.onNodeWithContentDescription("폴더별 용량 분석 열기").performScrollTo().performClick()
             compose.onNodeWithText("폴더별 용량 분석").assertIsDisplayed()
             saveStage9AFolderViewport()
             compose.onNodeWithContentDescription("폴더별 용량 분석 닫기").performClick()
-            compose.onNodeWithText("사진 비교").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("중복 파일").performScrollTo().assertIsDisplayed()
             navigate("설정")
             compose.onNodeWithText("다크 모드").performScrollTo().performClick().assertIsSelected()
             saveViewport("05-settings-dark")
@@ -251,7 +277,7 @@ class NativeScreenCaptureTest {
 
             captureDetail("09-duplicates-scanned") {
                 navigate("정리")
-                compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
+                compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").performScrollTo().performClick()
                 compose.onNodeWithText("검사 시작").performScrollTo().performClick()
                 val groups = runBlocking {
                     withTimeout(90_000) {
@@ -316,6 +342,122 @@ class NativeScreenCaptureTest {
         }
     }
 
+    private fun capturePlayStoreScreens() {
+        val sampleUris = created.mapTo(hashSetOf()) { it.toString() }
+        runBlocking {
+            check(app.repository.media.first().all { it.uri in sampleUris }) {
+                "Play Store captures may only show media inserted by the test."
+            }
+        }
+
+        compose.onNodeWithText("GalliPick").assertIsDisplayed()
+        saveViewport("01-home")
+
+        navigate("파일")
+        compose.onNodeWithContentDescription("파일 조건 선택").assertIsDisplayed()
+        compose.waitUntil(timeoutMillis = 25_000) {
+            compose.onAllNodesWithTag("media-thumbnail-ready", useUnmergedTree = true)
+                .fetchSemanticsNodes().size >= 6 &&
+                compose.onAllNodesWithContentDescription("미리보기 불러오는 중", useUnmergedTree = true)
+                    .fetchSemanticsNodes().isEmpty()
+        }
+        saveViewport("02-files")
+
+        navigate("정리")
+        compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").performScrollTo().performClick()
+        compose.onNodeWithText("검사 시작").performScrollTo().performClick()
+        val videoGroupIndex = runBlocking {
+            withTimeout(90_000) {
+                val groups = app.repository.duplicates.first { groups ->
+                    groups.size >= Stage7aFixtureMedia.MIN_DUPLICATE_GROUPS &&
+                        groups.any { group -> group.items.all { it.kind == MediaKind.VIDEO && it.uri in sampleUris } }
+                }
+                app.repository.scan.first { it.phase == ScanPhase.COMPLETE }
+                groups.indexOfFirst { group -> group.items.all { it.kind == MediaKind.VIDEO && it.uri in sampleUris } } + 1
+            }
+        }
+        val compareVideo = hasContentDescription("중복 묶음 $videoGroupIndex 비교")
+        compose.onNodeWithContentDescription("중복 파일 목록").performScrollToNode(compareVideo)
+        compose.onNode(compareVideo).assertIsDisplayed()
+        saveViewport("03-duplicates")
+        compose.onNode(compareVideo).performClick()
+        compose.onNodeWithText("중복 파일 비교").assertIsDisplayed()
+        compose.onNodeWithContentDescription("선택 파일 파일 비교 패널").assertIsDisplayed()
+        val playVideo = "선택 파일 영상 재생"
+        compose.waitUntil(timeoutMillis = 30_000) {
+            compose.onAllNodesWithContentDescription(playVideo).fetchSemanticsNodes()
+                .any { !it.config.contains(SemanticsProperties.Disabled) }
+        }
+        compose.onNodeWithContentDescription(playVideo).performClick()
+        compose.waitUntil(timeoutMillis = 12_000) {
+            listOf("0:01 /", "0:02 /", "0:03 /").any { elapsed ->
+                compose.onAllNodesWithText(elapsed, substring = true).fetchSemanticsNodes().isNotEmpty()
+            }
+        }
+        saveViewport("04-comparison")
+        compose.onNodeWithContentDescription("비교 닫기").performClick()
+        compose.onNodeWithContentDescription("정리로 돌아가기").performClick()
+        compose.onNodeWithText("중복 파일").assertIsDisplayed()
+        saveViewport("05-cleanup")
+
+        navigate("설정")
+        compose.onNodeWithText("사진 보기 방식").assertIsDisplayed()
+        compose.onNodeWithText("화면 테마").assertIsDisplayed()
+        saveViewport("06-settings")
+
+        navigate("파일")
+        val mediaList = hasContentDescription("미디어 파일 목록") or hasContentDescription("기기와 클라우드 미디어 파일 목록")
+        val examplePhoto = "EXAMPLE_scene_20.jpg"
+        compose.onNode(mediaList).performScrollToNode(hasText(examplePhoto))
+        compose.onNodeWithText(examplePhoto).performClick()
+        compose.onNodeWithText("미리보기").assertIsDisplayed()
+        saveViewport("07-file-detail")
+        dismissDialogIfPresent("닫기", contentDescription = true)
+        dismissDialogIfPresent("파일 상세 닫기", contentDescription = true)
+
+        navigate("클라우드")
+        compose.onNodeWithText("클라우드에 원본 보관").assertIsDisplayed()
+        check(app.cloudAccount?.session?.account?.value == null) { "Cloud screenshots require a signed-out session." }
+        saveViewport("08-cloud")
+        assertTrue("All eight Play Store screenshots must be saved", captures.length() == 8)
+    }
+
+    @Test fun captureDuplicateAccessRequired() {
+        assumeTrue(profile == "duplicate-access")
+        ActivityScenario.launch(MainActivity::class.java).use {
+            navigate("정리")
+            compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").performScrollTo().performClick()
+            compose.onNodeWithText("미디어 접근이 필요합니다").assertIsDisplayed()
+            compose.onNodeWithText("접근 허용").assertIsDisplayed()
+            compose.onNodeWithText("검사 완료", substring = true).assertDoesNotExist()
+            saveViewport("duplicate-access-required")
+        }
+    }
+
+    @Test fun captureRefinedSettingsWithLargeText() {
+        assumeTrue(profile == "refined-settings")
+        val prefs = app.getSharedPreferences("filters", Context.MODE_PRIVATE)
+        val previousTheme = prefs.getString("theme_mode", null)
+        check(app.resources.configuration.fontScale >= 1.9f) { "Large-text capture requires Android font scale 200%." }
+        prefs.edit().putString("theme_mode", AppThemeMode.DARK.name).commit()
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                navigate("설정")
+                compose.onNodeWithText("파일 보기").assertIsDisplayed()
+                compose.onNodeWithText("6개").performScrollTo().assertIsDisplayed()
+                val labelLayout = mutableListOf<TextLayoutResult>()
+                compose.onNodeWithText("클라우드", useUnmergedTree = true)
+                    .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(labelLayout) }
+                assertTrue("Cloud tab label must fit on one line", labelLayout.single().lineCount == 1)
+                saveViewport("settings-dark-200-percent")
+            }
+        } finally {
+            prefs.edit().apply {
+                if (previousTheme == null) remove("theme_mode") else putString("theme_mode", previousTheme)
+            }.commit()
+        }
+    }
+
     @Test fun captureBillingPlanSelection() {
         assumeTrue(
             "The subscription fixture is enabled only by captureBillingSelection",
@@ -340,18 +482,16 @@ class NativeScreenCaptureTest {
                 }
             }
             compose.onNodeWithText("요금제·결제").assertIsDisplayed()
-            for (row in listOf("10 GB", "50 GB", "100 GB", "광고 제거만")) {
-                compose.onNodeWithText(row).assertIsDisplayed()
+            for (row in listOf("클라우드 월간", "10 GB", "50 GB", "100 GB", "광고 제거")) {
+                compose.onNodeWithText(row).performScrollTo().assertIsDisplayed()
             }
-            compose.onNodeWithText("월간").performClick()
             compose.onNodeWithText("10 GB").performClick()
             compose.onNodeWithText("10 GB 구독하기 · 월 ₩1,900").assertIsDisplayed()
             saveViewport("billing-monthly-10gb")
 
-            compose.onNodeWithText("연간").performClick()
-            compose.onNodeWithText("10 GB").performClick()
-            compose.onNodeWithText("10 GB 구독하기 · 연 ₩19,900").assertIsDisplayed()
-            saveViewport("billing-annual-10gb")
+            compose.onNodeWithText("연간").performScrollTo().performClick()
+            compose.onNodeWithText("광고 제거만 구독하기 · 연 ₩9,900").assertIsDisplayed()
+            saveViewport("billing-annual-ad-free")
         }
         File(outputDirectory, "$capturePrefix-billing-manifest.json").writeText(JSONObject()
             .put("screen", "CloudScreen/CloudBillingSection")

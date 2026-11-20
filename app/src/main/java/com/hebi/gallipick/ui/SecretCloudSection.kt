@@ -61,14 +61,16 @@ internal fun SecretCloudSection(
     state: AppUiState,
     requestAccess: () -> Unit,
 ) {
-    val account by connection.session.account.collectAsStateWithLifecycle()
-    val uid = account?.uid
+    val observedAccount by connection.session.account.collectAsStateWithLifecycle()
+    val account = observedAccount
     val vault = connection.secretVault
     when {
-        uid == null -> CloudAccountCard { CloudStatusMessage("Google 계정으로 로그인해 주세요.") }
+        account == null -> CloudAccountCard { CloudStatusMessage("Google 계정으로 로그인해 주세요.") }
         vault == null -> CloudAccountCard { CloudStatusMessage("현재 시크릿 클라우드 서버를 이용할 수 없습니다.") }
-        else -> key(connection, uid, vault) {
-            if (SecureVaultWindow()) SecretVaultAccess(connection, vault, uid, state, requestAccess)
+        else -> key(connection, account.uid, vault) {
+            if (SecureVaultWindow()) {
+                SecretVaultAccess(connection, vault, account.uid, account.transferAccountLabel, state, requestAccess)
+            }
             else CloudAccountCard { CloudStatusMessage("이 화면에서 시크릿 클라우드를 안전하게 열 수 없습니다.") }
         }
     }
@@ -100,6 +102,7 @@ private fun SecretVaultAccess(
     connection: CloudAccountConnection,
     vault: CloudSecretVault,
     uid: String,
+    accountLabel: String,
     state: AppUiState,
     requestAccess: () -> Unit,
 ) {
@@ -194,7 +197,7 @@ private fun SecretVaultAccess(
         if (opened === session) lock()
     }
     if (session != null && foreground) {
-        key(session) { SecretVaultGallery(session, uid, state, requestAccess, onLock = ::lock) }
+        key(session) { SecretVaultGallery(session, uid, accountLabel, state, requestAccess, onLock = ::lock) }
         return
     }
 
@@ -272,6 +275,7 @@ private fun VaultPasswordField(
 private fun SecretVaultGallery(
     session: CloudSecretSession,
     uid: String,
+    accountLabel: String,
     state: AppUiState,
     requestAccess: () -> Unit,
     onLock: () -> Unit,
@@ -362,7 +366,7 @@ private fun SecretVaultGallery(
             if (!loading && listError == null) TextAction("목록 새로고침", { refresh++ })
         }
         if (access != null && access.allowsManualUpload(System.currentTimeMillis())) {
-            CloudBackupControls(backup, uid, access, state, requestAccess, privateVault = true)
+            CloudBackupControls(backup, uid, access, state, requestAccess, accountLabel, privateVault = true)
         } else {
             CloudAccountCard { CloudStatusMessage("현재 이용권으로 새 시크릿 원본을 업로드할 수 없습니다.") }
         }

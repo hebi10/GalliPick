@@ -21,9 +21,10 @@ class FileSectionsTest {
     private val earlier = media(2, "Pictures/", 1_730_000_000_000L, 700L * 1024 * 1024)
 
     @Test fun manualGridCountShowsItsSafeResolvedColumnCount() {
-        assertEquals(6, resolvedFileGridColumns(6, 600.dp, 1f, false))
-        assertEquals(3, resolvedFileGridColumns(6, 200.dp, 1f, false))
-        assertEquals(2, resolvedFileGridColumns(6, 180.dp, 1.6f, false))
+        assertEquals(6, resolvedFileGridColumns(6, 612.dp, 1f, false))
+        assertEquals(3, resolvedFileGridColumns(6, 336.dp, 1f, false))
+        assertEquals(2, resolvedFileGridColumns(6, 200.dp, 1f, false))
+        assertEquals(2, resolvedFileGridColumns(6, 336.dp, 2f, false))
         assertEquals(3, resolvedFileGridColumns(3, 600.dp, 1f, false))
     }
 

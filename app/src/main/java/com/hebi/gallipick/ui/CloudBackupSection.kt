@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
+import com.hebi.gallipick.data.cloud.CloudAccountIdentity
 import com.hebi.gallipick.data.cloud.CloudBackup
 import com.hebi.gallipick.data.cloud.CloudBackupAccess
 import com.hebi.gallipick.data.cloud.CloudBackupPhase
@@ -49,6 +50,30 @@ internal fun cloudOriginalLimitLabel(bytes: Long): String {
     return if (bytes % mebibyte == 0L) "${bytes / mebibyte} MiB" else bytesLabel(bytes)
 }
 
+internal val CloudAccountIdentity.transferAccountLabel: String
+    get() = email?.takeIf { it.isNotBlank() }
+        ?: displayName?.takeIf { it.isNotBlank() }
+        ?: "현재 로그인한 Google 계정"
+
+@Composable
+internal fun CloudOriginalTransferNotice(
+    accountLabel: String,
+    originalSize: String,
+    privateVault: Boolean = false,
+) {
+    val destination = if (privateVault) "시크릿 클라우드" else "클라우드 보관함"
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("보관 위치 · $destination", style = MaterialTheme.typography.bodyMedium)
+        Text("대상 계정 · $accountLabel", style = MaterialTheme.typography.bodyMedium)
+        Text("원본 크기 · $originalSize", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "원본에 포함된 촬영 위치 등의 정보도 함께 보관되며, 클라우드 저장공간을 사용합니다.",
+            color = Muted,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
 @Composable
 internal fun CloudBackupSection(
     connection: CloudAccountConnection,
@@ -56,11 +81,14 @@ internal fun CloudBackupSection(
     requestAccess: () -> Unit,
 ) {
     val backup = connection.backup ?: return
-    val account by connection.session.account.collectAsStateWithLifecycle()
-    val uid = account?.uid ?: return
+    val observedAccount by connection.session.account.collectAsStateWithLifecycle()
+    val account = observedAccount ?: return
+    val uid = account.uid
     val access = backup.accessFor(uid) ?: return
     key(uid) {
-        if (access.allowsManualUpload(System.currentTimeMillis())) CloudBackupControls(backup, uid, access, state, requestAccess)
+        if (access.allowsManualUpload(System.currentTimeMillis())) {
+            CloudBackupControls(backup, uid, access, state, requestAccess, account.transferAccountLabel)
+        }
         else CloudAccountCard {
             CloudStatusMessage("새 백업을 추가할 수 없습니다. 요금제·결제에서 구독 상태와 남은 공간을 확인해 주세요.")
         }
@@ -74,6 +102,7 @@ internal fun CloudBackupControls(
     access: CloudBackupAccess,
     state: AppUiState,
     requestAccess: () -> Unit,
+    accountLabel: String,
     privateVault: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
@@ -123,12 +152,6 @@ internal fun CloudBackupControls(
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
             )
-            Text(
-                "원본에 포함된 촬영 위치 등의 정보도 함께 보관됩니다.",
-                color = Muted,
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-            )
         }
         if (state.access == MediaAccess.NONE) {
             CloudPrimaryAction("사진·동영상 접근 허용", requestAccess)
@@ -148,7 +171,7 @@ internal fun CloudBackupControls(
         }
         if (currentSelection != null) {
             Text(currentSelection.displayName, style = MaterialTheme.typography.bodyMedium)
-            Text(bytesLabel(currentSelection.sizeBytes), color = Muted, style = MaterialTheme.typography.bodySmall)
+            CloudOriginalTransferNotice(accountLabel, bytesLabel(currentSelection.sizeBytes), privateVault)
             ActionButton(
                 when (result) {
                     null -> if (paused) "이어서 올리기" else "선택한 원본 백업"

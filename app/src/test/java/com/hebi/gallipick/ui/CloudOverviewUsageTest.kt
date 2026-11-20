@@ -31,6 +31,49 @@ class CloudOverviewUsageTest {
     }
 
     @Test
+    fun reportsStorageQuotaForAnActiveAdministratorGrantWithoutAPlaySubscription() {
+        val granted = CloudBillingPlan(
+            enabled = true,
+            backupAvailable = true,
+            usedBytes = 5_000_000_000L,
+            quotaBytes = 50_000_000_000L,
+            manualGrantKind = "CLOUD_50GB",
+            manualGrantQuotaBytes = 50_000_000_000L,
+            manualGrantExpiresAtMs = now + 60_000,
+            manualAdFreeExpiresAtMs = now + 60_000,
+        )
+
+        val usage = checkNotNull(cloudOverviewUsage(granted, production = true, nowMillis = now))
+
+        assertEquals(50_000_000_000L, usage.quotaBytes)
+        assertEquals(0.1, checkNotNull(usage.usedFraction), 0.0001)
+    }
+
+    @Test
+    fun usesTheLargerVerifiedQuotaWhenAPlaySubscriberHasAnActiveGrant() {
+        val granted = paid.copy(
+            quotaBytes = 50_000_000_000L,
+            manualGrantKind = "CLOUD_50GB",
+            manualGrantQuotaBytes = 50_000_000_000L,
+            manualGrantExpiresAtMs = now + 60_000,
+            manualAdFreeExpiresAtMs = now + 60_000,
+        )
+
+        assertEquals(50_000_000_000L, cloudOverviewUsage(granted, production = true, nowMillis = now)?.quotaBytes)
+        assertNull(cloudOverviewUsage(granted.copy(manualAdFreeExpiresAtMs = now), production = true, nowMillis = now))
+    }
+
+    @Test
+    fun recognizesTheActiveAnnualPlanInTheLegacyRecoveryCatalog() {
+        val annual = paid.copy(
+            activeBasePlanId = "annual",
+            legacyRecoveryProducts = listOf(product.copy(basePlanId = "annual")),
+        )
+
+        assertEquals(10_000_000_000L, cloudOverviewUsage(annual, production = true, nowMillis = now)?.quotaBytes)
+    }
+
+    @Test
     fun expiredAndLegacyPlansRetainUsageWithoutDisplayingAStorageQuota() {
         val expired = cloudOverviewUsage(paid.copy(expiresAtMs = now), production = true, nowMillis = now)
         val legacy = cloudOverviewUsage(paid.copy(activeProductId = GALLIPICK_RETIRED_CLOUD_PILOT,
