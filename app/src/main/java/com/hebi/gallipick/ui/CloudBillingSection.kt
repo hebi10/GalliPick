@@ -261,7 +261,7 @@ private fun CloudBillingControls(
     val waitingForPurchase = pendingReplacement != null || notice.awaitingPurchaseConfirmation()
     val accountMismatch = notice == CloudBillingNotice.PURCHASE_LINKED_TO_ANOTHER_ACCOUNT ||
         notice == CloudBillingNotice.ACCOUNT_CHANGED
-    val showPlanPicker = !waitingForPurchase && !accountMismatch &&
+    val showPlanPicker = !checkingPayment && !waitingForPurchase && !accountMismatch &&
         plan?.hasServerSubscription != true && verifiedProductId == null
     val visibleOffers = if (showPlanPicker && !busy && plan?.enabled == true) {
         snapshot?.offers.orEmpty().filter {

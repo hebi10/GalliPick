@@ -158,9 +158,12 @@ class CloudScreenNavigationTest {
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
         compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
 
+        compose.onNodeWithTag("cloud-route-BILLING").performScrollTo().performClick()
+        compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
         compose.runOnIdle { backend.active.value = null }
-        compose.onNodeWithTag("cloud-route-BILLING").assertDoesNotExist()
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+        compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-route-BILLING").assertExists()
     }
 
     @Test
