@@ -54,6 +54,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudAccountNotice
 import com.hebi.gallipick.data.cloud.CloudAccountOperation
+import com.hebi.gallipick.data.cloud.CloudAccountStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -100,12 +101,13 @@ internal fun CloudScreen(
     val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == account?.uid }
     val namespace = observation?.access?.namespace
     var requestedRoute by rememberSaveable(account?.uid) { mutableStateOf(CloudRoute.OVERVIEW) }
-    val requested = if (onBackFromAdRemoval != null && connection.billing != null &&
-        access != CloudAccessState.UNAVAILABLE
-    ) {
-        if (access == CloudAccessState.SIGNED_IN) CloudRoute.BILLING else CloudRoute.BILLING_SIGN_IN
-    } else {
-        cloudVisibleRoute(requestedRoute, access)
+    var checkoutRequested by rememberSaveable { mutableStateOf(false) }
+    val canOpenBilling = connection.billing != null && access != CloudAccessState.UNAVAILABLE
+    val requested = when {
+        canOpenBilling && onBackFromAdRemoval != null ->
+            if (access == CloudAccessState.SIGNED_IN) CloudRoute.BILLING else CloudRoute.BILLING_SIGN_IN
+        canOpenBilling && checkoutRequested -> CloudRoute.BILLING
+        else -> cloudVisibleRoute(requestedRoute, access)
     }
     val route = when (requested) {
         CloudRoute.LIBRARY, CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, CloudRoute.SPACE ->
@@ -114,6 +116,7 @@ internal fun CloudScreen(
         else -> requested
     }
     val onBack = onBackFromAdRemoval ?: {
+        checkoutRequested = false
         requestedRoute = CloudRoute.OVERVIEW
     }
     BackHandler(enabled = route != CloudRoute.OVERVIEW, onBack = onBack)
@@ -148,7 +151,9 @@ internal fun CloudScreen(
                 route != CloudRoute.OVERVIEW -> key(namespace) { content(route) }
                 else -> {
                     content(CloudRoute.OVERVIEW)
-                    val onNavigate: (CloudRoute) -> Unit = { requestedRoute = it }
+                    val onNavigate: (CloudRoute) -> Unit = {
+                        if (it == CloudRoute.BILLING) checkoutRequested = true else requestedRoute = it
+                    }
                     val billingAvailable = connection.billing != null
                     if (access == CloudAccessState.SIGNED_IN) {
                         account?.uid?.let { uid -> CloudOverviewStorageCard(connection, uid) }
@@ -163,10 +168,8 @@ internal fun CloudScreen(
                         }
                         if (showSecretCloud) CloudActionGroup(CloudRoute.SECRET, onNavigate = onNavigate)
                     } else if (access == CloudAccessState.SIGNED_OUT) {
-                        CloudBillingOverviewNotice(
-                            if (billingAvailable) "Google 로그인 후 요금제와 구독 상태를 확인할 수 있습니다."
-                            else "이 빌드에서는 결제 기능을 사용할 수 없습니다.",
-                        )
+                        if (billingAvailable) CloudActionGroup(CloudRoute.BILLING, onNavigate = onNavigate)
+                        else CloudBillingOverviewNotice("이 빌드에서는 결제 기능을 사용할 수 없습니다.")
                     }
                     if (access == CloudAccessState.SIGNED_IN || access == CloudAccessState.SIGNED_OUT) {
                         key(account?.uid) {
@@ -291,10 +294,14 @@ internal fun CloudAccountSettings(
         }
         CloudAccountActions(chooseAccount, { scope.launch { session.signOut() } }, actionsEnabled)
     }
-    val statusText = when (accountStatus.operation) {
+    accountStatus.displayText(signedIn != null)?.let { CloudStatusMessage(it) }
+}
+
+internal fun CloudAccountStatus.displayText(signedIn: Boolean): String? =
+    when (operation) {
         CloudAccountOperation.CHOOSING_ACCOUNT -> "Google 계정을 확인하는 중입니다."
         CloudAccountOperation.SIGNING_OUT -> "로그아웃하는 중입니다."
-        null -> when (accountStatus.notice) {
+        null -> when (notice) {
             CloudAccountNotice.CANCELLED -> "Google 계정 선택을 취소했습니다."
             CloudAccountNotice.NO_GOOGLE_ACCOUNT -> "선택할 Google 계정을 찾지 못했습니다. 기기의 계정 설정을 확인해 주세요."
             CloudAccountNotice.GOOGLE_UNAVAILABLE -> "Google 계정 선택을 열 수 없습니다. Google Play 서비스를 확인해 주세요."
@@ -304,16 +311,14 @@ internal fun CloudAccountSettings(
             CloudAccountNotice.FIREBASE_SIGN_IN_FAILED -> "Google 계정으로 클라우드에 로그인하지 못했습니다. 다시 시도해 주세요. (G-03)"
             CloudAccountNotice.SIGN_IN_FAILED -> "Google 로그인에 실패했습니다. 다시 시도해 주세요."
             CloudAccountNotice.SIGN_OUT_FAILED -> "로그아웃에 실패했습니다. 다시 시도해 주세요."
-            CloudAccountNotice.CREDENTIAL_CLEAR_FAILED -> if (signedIn == null) {
-                "로그아웃했습니다. 다음에 로그인할 때 이전 Google 계정이 제안될 수 있습니다."
-            } else {
+            CloudAccountNotice.CREDENTIAL_CLEAR_FAILED -> if (signedIn) {
                 "Google 계정 선택 상태를 초기화하지 못했습니다. 다시 시도해 주세요."
+            } else {
+                "로그아웃했습니다. 다음에 로그인할 때 이전 Google 계정이 제안될 수 있습니다."
             }
             null -> null
         }
     }
-    statusText?.let { CloudStatusMessage(it) }
-}
 
 @Composable
 private fun CloudAccountExitGuidance(connection: CloudAccountConnection, context: Context) {

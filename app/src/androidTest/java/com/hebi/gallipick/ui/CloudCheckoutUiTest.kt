@@ -33,6 +33,8 @@ import com.hebi.gallipick.data.cloud.CloudAccountBackend
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudAccountIdentity
 import com.hebi.gallipick.data.cloud.CloudAccountSession
+import com.hebi.gallipick.data.cloud.CloudBackupException
+import com.hebi.gallipick.data.cloud.CloudBackupResult
 import com.hebi.gallipick.data.cloud.CloudBilling
 import com.hebi.gallipick.data.cloud.CloudBillingNotice
 import com.hebi.gallipick.data.cloud.CloudBillingOffer
@@ -210,6 +212,38 @@ class CloudCheckoutUiTest {
             assertEquals(1, billing.replacementCount)
             assertEquals(0, billing.checkoutCount)
         }
+    }
+
+    @Test
+    fun cloudCheckoutKeepsItsPlanPickerWhenSigningInFromTheCheckoutPage() {
+        val billing = showJourney()
+        openCloudBilling()
+        planChoice("10 GB").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        billingCta().assertIsEnabled().assert(hasText("Google로 로그인")).performClick()
+
+        planChoice("10 GB").performScrollTo().assertIsEnabled().assert(hasText("₩1,900/월"))
+        billingCta().assertIsNotEnabled()
+        selectMonthlyTenGbAndOpenQuote()
+        compose.onNodeWithText("Google Play 결제창 열기").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, billing.checkoutCount) }
+    }
+
+    @Test
+    fun restrictedAccountKeepsCheckoutVisibleWithAnAccountSpecificMessageAndDisabledPlans() {
+        val billing = FakeBillingSession(
+            loadFailure = CloudBackupException(CloudBackupResult.TEST_ACCESS_REQUIRED, permissionDenied = true),
+        )
+        showJourney(billing, signedIn = true)
+        openCloudBilling()
+
+        planChoice("50 GB").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        planChoice("100 GB").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithText("현재 계정에는 결제 이용 권한이 없습니다.", substring = true)
+            .performScrollTo().assertIsDisplayed()
+        billingCta().assertIsDisplayed().assertIsNotEnabled()
+        compose.onNodeWithText("구독 정보 새로고침").assertIsDisplayed()
+        compose.onNodeWithText("Google Play 결제창 열기").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, billing.checkoutCount) }
     }
 
     @Test
@@ -432,6 +466,7 @@ class CloudCheckoutUiTest {
         private val hasOffers: Boolean = true,
         private val includeExtraPlans: Boolean = false,
         cloudCheckoutAllowed: Boolean = true,
+        private val loadFailure: CloudBackupException? = null,
     ) : CloudBillingSession {
         private val product = CloudBillingProduct("gallipick_cloud_10gb", "monthly", 10_000_000_000L)
         private val annual = product.copy(basePlanId = "annual")
@@ -485,15 +520,18 @@ class CloudCheckoutUiTest {
 
         override suspend fun loadPlan(): CloudBillingPlan = serverPlan
 
-        override suspend fun load(): CloudBillingSnapshot = CloudBillingSnapshot(
-            serverPlan,
-            if (!hasOffers) emptyList() else listOfNotNull(
-                offer, retiredOffer, annualOffer.takeIf { includeAnnualPlan },
-                annualAdFreeOffer.takeIf { includeAnnualPlan && includeExtraPlans },
-            ) + extraOffers,
-            notice = CloudBillingNotice.PENDING.takeIf { pendingPurchase },
-            replacementOffers = listOf(replacementOffer).filter { hasCurrentCloudPlan },
-        )
+        override suspend fun load(): CloudBillingSnapshot {
+            loadFailure?.let { throw it }
+            return CloudBillingSnapshot(
+                serverPlan,
+                if (!hasOffers) emptyList() else listOfNotNull(
+                    offer, retiredOffer, annualOffer.takeIf { includeAnnualPlan },
+                    annualAdFreeOffer.takeIf { includeAnnualPlan && includeExtraPlans },
+                ) + extraOffers,
+                notice = CloudBillingNotice.PENDING.takeIf { pendingPurchase },
+                replacementOffers = listOf(replacementOffer).filter { hasCurrentCloudPlan },
+            )
+        }
 
         override suspend fun recover(): CloudBillingUpdate {
             recoverCalls++

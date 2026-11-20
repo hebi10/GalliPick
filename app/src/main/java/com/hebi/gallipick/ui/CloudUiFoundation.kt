@@ -47,7 +47,7 @@ internal enum class CloudRoute(val title: String, val description: String) {
     AUTO_BACKUP("자동 백업", "선택 폴더의 자동 백업을 설정합니다."),
     SPACE("공간 확보 검토", "백업이 확인된 기기 파일을 검토합니다."),
     BILLING_SIGN_IN("광고 제거", "클라우드 구독 혜택 보기"),
-    BILLING("요금제·결제", "현재 요금제와 구독 상태를 확인합니다."),
+    BILLING("요금제·결제", "요금제를 선택하고 구독을 신청하거나 관리합니다."),
 }
 
 internal enum class CloudAccessState {
