@@ -368,12 +368,12 @@ class NativeScreenCaptureTest {
     }
 
     private fun billingCaptureOffers(): List<CloudBillingOffer> = listOf(
-        Triple("gallipick_cloud_10gb", 1_900, 19_900),
-        Triple("gallipick_cloud_50gb", 5_900, 59_900),
-        Triple("gallipick_cloud_100gb", 10_900, 109_000),
+        Triple("gallipick_cloud_10gb", 1_900, null),
+        Triple("gallipick_cloud_50gb", 5_900, null),
+        Triple("gallipick_cloud_100gb", 10_900, null),
         Triple(GALLIPICK_STANDALONE_AD_FREE, 1_000, 9_900),
     ).flatMap { (productId, monthly, annual) ->
-        listOf("monthly" to monthly, "annual" to annual).map { (basePlanId, price) ->
+        listOfNotNull("monthly" to monthly, annual?.let { "annual" to it }).map { (basePlanId, price) ->
             val product = checkNotNull(productionBillingProduct(productId, basePlanId))
             val title = if (product.isStandaloneAdFree) "광고 제거만" else "${product.quotaBytes / 1_000_000_000L} GB"
             CloudBillingOffer(product, title, String.format(Locale.KOREA, "₩%,d", price), price * 1_000_000L, "KRW")

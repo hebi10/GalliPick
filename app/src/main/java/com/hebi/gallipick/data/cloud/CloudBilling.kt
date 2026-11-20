@@ -98,6 +98,7 @@ internal data class CloudBillingPlan(
     val verifiedMediaCount: Int? = null,
     val supportsResumableTransfers: Boolean = false,
     val resumableUploadAllowed: Boolean = false,
+    val legacyRecoveryProducts: List<CloudBillingProduct> = emptyList(),
 )
 
 internal fun CloudBillingPlan.productionBackupAccess(): CloudBackupAccess? {

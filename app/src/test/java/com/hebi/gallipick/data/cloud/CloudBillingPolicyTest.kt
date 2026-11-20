@@ -100,6 +100,30 @@ class CloudBillingPolicyTest {
         assertFalse(isKnownGalliPickSubscription("unrelated"))
     }
 
+    @Test fun legacyAnnualCloudCanBeRecoveredWithoutBeingOfferedAsANewPurchase() {
+        val newSales = listOf(
+            checkNotNull(productionBillingProduct("gallipick_ad_free", "monthly")),
+            checkNotNull(productionBillingProduct("gallipick_ad_free", "annual")),
+            checkNotNull(productionBillingProduct("gallipick_cloud_10gb", "monthly")),
+            checkNotNull(productionBillingProduct("gallipick_cloud_50gb", "monthly")),
+            checkNotNull(productionBillingProduct("gallipick_cloud_100gb", "monthly")),
+        )
+        val historical = listOf(
+            checkNotNull(productionBillingProduct("gallipick_cloud_10gb", "annual")),
+            checkNotNull(productionBillingProduct("gallipick_cloud_50gb", "annual")),
+            checkNotNull(productionBillingProduct("gallipick_cloud_100gb", "annual")),
+        )
+        val plan = CloudBillingPlan(enabled = true, products = newSales, legacyRecoveryProducts = historical,
+            obfuscatedAccountId = account)
+        assertTrue(plan.products.none { it.productId == "gallipick_cloud_10gb" && it.basePlanId == "annual" })
+        assertEquals(3, plan.legacyRecoveryProducts.size)
+        assertTrue(cloudBillingPurchaseMatches(account, plan.products + plan.legacyRecoveryProducts,
+            account, listOf("gallipick_cloud_50gb")))
+        assertFalse(cloudBillingPurchaseMatches(account, plan.products + plan.legacyRecoveryProducts,
+            "b".repeat(64), listOf("gallipick_cloud_50gb")))
+        assertTrue(isValidCloudBillingCatalog(plan.products + plan.legacyRecoveryProducts, production = true))
+    }
+
     @Test fun productionOriginalsRemainReadableWhileUploadRequiresActiveVerifiedStorage() {
         val product = CloudBillingProduct("gallipick_cloud_10gb", "monthly", 10_000_000_000L)
         val plan = CloudBillingPlan(

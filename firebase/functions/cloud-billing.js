@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { authorize, BackupError, createRequestLimiter, PILOT_MAX_OWNER_FILES, PRODUCTION_BACKUP_PROTOCOL_VERSION,
     PRODUCTION_MAX_FILE_BYTES, PRODUCTION_MAX_OWNER_FILES } from './backup.js';
-import { productionMonetizationCatalog, verifiedMonetizationBenefits } from './monetization-entitlements.js';
+import { productionMonetizationCatalog, productionNewSaleCatalog,
+    verifiedMonetizationBenefits } from './monetization-entitlements.js';
 import { cloudAccountAccess } from './cloud-retention-policy.js';
 import { ADMIN_MANUAL_GRANTS_COLLECTION, manualGrantDocumentId,
     trustedManualGrant } from './admin-manual-policy.js';
@@ -10,6 +11,8 @@ export const PILOT_ACCOUNT_QUOTA_BYTES = 1024 ** 3;
 export const PLAY_BILLING_PACKAGE = 'com.hebi.gallipick';
 export const PRODUCTION_PROJECT = 'gallipick-production';
 const MAX_CURRENT_TOKENS = 20;
+// Existing Cloud annual contracts remain valid; 2026-11-20 00:00 KST onward is new-sale blocked.
+const CLOUD_ANNUAL_LEGACY_CUTOFF_MS = Date.parse('2026-11-20T00:00:00+09:00');
 const HASH = /^[a-f0-9]{64}$/;
 const PRODUCT_ID = /^[a-z0-9][a-z0-9_.]{0,149}$/;
 const BASE_PLAN_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -73,7 +76,7 @@ export function productionBillingSettings(project, env) {
     }
     const backupNamespace = mode === 'live' ? 'gallipickProductionBackup' : 'gallipickProductionLicenseBackup';
     const verificationProducts = productionMonetizationCatalog(true);
-    return { enabled: true, products: cloudEnabled ? verificationProducts : productionMonetizationCatalog(false),
+    return { enabled: true, products: productionNewSaleCatalog(cloudEnabled),
         verificationProducts, mode, users, emails, cloudEnabled,
         retentionEnabled: cloudEnabled && env.GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED === 'true',
         manualGrantsEnabled,
@@ -169,6 +172,11 @@ function inspectPurchase(purchase, owner, settings, now) {
         acknowledge: eligible && acknowledgement === ACK_PENDING,
         linkedHash: !uncompleted && typeof linked === 'string' ? hash(linked) : null,
         replacementSourcePrice: canReplace ? playRecurringPrice(item.autoRenewingPlan.recurringPrice) : null,
+        hasAnnualCloud: production && purchase.lineItems.some(line =>
+            line?.offerDetails?.basePlanId === 'annual' &&
+            settings.verificationProducts?.some(product => product.kind === 'CLOUD' &&
+                product.productId === line.productId && product.basePlanId === 'annual')),
+        purchaseStartedAtMs: typeof purchase.startTime === 'string' ? Date.parse(purchase.startTime) : NaN,
         cloudEvidence: production && plan.kind === 'CLOUD' && Number.isSafeInteger(expiresAtMs)
             && expiresAtMs >= 0 && !uncompleted ? {
                 expiresAtMs, productId: plan.productId, basePlanId: plan.basePlanId,
@@ -291,12 +299,22 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             }
             const quotaBytes = settings.cloudEnabled ? Math.max(verified.quotaBytes, manualCloudBytes) : 0;
             // An already-paid Cloud subscriber keeps ad removal and is blocked from buying it twice.
-            const ownedCloud = !settings.cloudEnabled && verified.cloudProductId
+            const ownedCloud = verified.cloudProductId
                 ? trustedProducts.find(product => product.productId === verified.cloudProductId
                     && product.basePlanId === verified.cloudBasePlanId)
                 : null;
-            const products = ownedCloud ? [...settings.products, ownedCloud] : settings.products;
-            return { ...pausedProductionPlan, enabled: true, products, obfuscatedAccountId: owner,
+            // The current annual Cloud contract may not be sold to new users, but a
+            // Play-verified legacy subscriber must still be able to inspect it in Android.
+            const legacyOwned = ownedCloud && !settings.products.some(product =>
+                product.productId === ownedCloud.productId && product.basePlanId === ownedCloud.basePlanId);
+            const products = legacyOwned ? [...settings.products, ownedCloud] : settings.products;
+            const legacyRecoveryProducts = (settings.verificationProducts ?? [])
+                .filter(product => product.kind === 'CLOUD' && product.basePlanId === 'annual' &&
+                    !products.some(active => active.productId === product.productId &&
+                        active.basePlanId === product.basePlanId));
+            // Recovery products are NOT eligible for new-sale offers.
+            return { ...pausedProductionPlan, enabled: true, products,
+                legacyRecoveryProducts, obfuscatedAccountId: owner,
                 activeProductId: verified.cloudProductId, activeBasePlanId: verified.cloudBasePlanId,
                 expiresAtMs: verified.cloudExpiresAtMs, adFreeProductId: verified.adFreeProductId,
                 adFreeBasePlanId: verified.adFreeBasePlanId, adFreeExpiresAtMs: verified.adFreeExpiresAtMs,
@@ -351,6 +369,13 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             if (current?.revision !== revision) throw new BackupError('aborted', 'A newer billing check completed. Try again.');
             if (binding && binding.owner !== owner) throw new BackupError('permission-denied', 'The purchase belongs to another account.');
             if (binding?.retiredBy || binding?.invalidated) return false;
+            if (production && purchase?.hasAnnualCloud && !binding &&
+                (!Number.isSafeInteger(purchase.purchaseStartedAtMs) ||
+                    purchase.purchaseStartedAtMs >= CLOUD_ANNUAL_LEGACY_CUTOFF_MS)) {
+                // Older, already bound annual receipts remain valid; Play startTime is
+                // the only accepted proof for an unbound historical purchase.
+                throw new BackupError('failed-precondition', 'New annual Cloud purchases are no longer offered.');
+            }
             if (!purchase && !binding) throw new BackupError('not-found', 'The Play subscription is no longer available.');
             const prior = purchase?.linkedHash ? tokenRef(purchase.linkedHash) : null;
             const oldBinding = prior ? (await transaction.get(prior)).data() : null;

@@ -230,7 +230,8 @@ private fun CloudBillingControls(
     val showOffers = !busy && !waitingForPurchase && !accountMismatch &&
         plan?.enabled == true && !plan.hasServerSubscription && verifiedProductId == null
     val visibleOffers = snapshot?.offers.orEmpty().filter {
-        it.product in plan?.products.orEmpty() && it.product.productId != GALLIPICK_RETIRED_CLOUD_PILOT
+        it.product in plan?.products.orEmpty() && it.product.productId != GALLIPICK_RETIRED_CLOUD_PILOT &&
+            (it.product.isStandaloneAdFree || it.product.basePlanId == "monthly")
     }
     val period = requestedPeriod ?: if (visibleOffers.isNotEmpty() && visibleOffers.all {
         it.product.period == BillingPeriod.ANNUAL
@@ -239,7 +240,9 @@ private fun CloudBillingControls(
     val selectedOffer = periodOffers.firstOrNull { it.product.productId == selectedProductId }
     val replacementOffers = if (!busy && !waitingForPurchase && !accountMismatch &&
         verifiedProductId != null && plan?.scheduledReplacement == null
-    ) snapshot?.replacementOffers.orEmpty() else emptyList()
+    ) snapshot?.replacementOffers.orEmpty().filter {
+        it.target.product.isStandaloneAdFree || it.target.product.basePlanId == "monthly"
+    } else emptyList()
     val selectedReplacement = replacementOffers.firstOrNull {
         it.current == replacementChoice?.current && it.target.product == replacementChoice?.target?.product
     }
@@ -622,7 +625,7 @@ private fun CloudReleaseCatalog(plan: CloudBillingPlan?, notice: CloudBillingNot
     CloudAccountCard {
         BillingHeading("신청할 수 없는 클라우드 요금제")
         CloudStatusMessage(cloudCatalogUnavailableMessage(plan, notice))
-        CloudStatusMessage("한국 출시 예정가 · 실제 결제 금액은 신청할 때 Google Play에서 확인할 수 있습니다.")
+        CloudStatusMessage("Cloud 신규 결제는 월간만 제공합니다. 실제 판매 금액은 Google Play에서 확인할 수 있습니다.")
         cloudLaunchRates.forEachIndexed { index, rate ->
             if (index > 0) HorizontalDivider(color = Line)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -631,7 +634,6 @@ private fun CloudReleaseCatalog(plan: CloudBillingPlan?, notice: CloudBillingNot
                     style = MaterialTheme.typography.titleSmall)
                 Column(horizontalAlignment = Alignment.End) {
                     Text("월 ${rate.monthly}", color = Ink, style = MaterialTheme.typography.bodyMedium)
-                    Text("연 ${rate.annual}", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -646,15 +648,15 @@ private fun cloudCatalogUnavailableMessage(plan: CloudBillingPlan?, notice: Clou
     else -> "Google Play에서 현재 제공하는 클라우드 요금제가 없습니다."
 }
 
-private data class CloudLaunchRate(val quotaBytes: Long, val monthly: String, val annual: String) {
-    fun priceLabel(period: BillingPeriod): String =
-        "${if (period == BillingPeriod.MONTHLY) monthly else annual}/${period.rateUnit}"
+private data class CloudLaunchRate(val quotaBytes: Long, val monthly: String) {
+    fun priceLabel(period: BillingPeriod): String? =
+        if (period == BillingPeriod.MONTHLY) "${monthly}/월" else null
 }
 
 private val cloudLaunchRates = listOf(
-    CloudLaunchRate(10_000_000_000L, "₩1,900", "₩19,900"),
-    CloudLaunchRate(50_000_000_000L, "₩5,900", "₩59,900"),
-    CloudLaunchRate(100_000_000_000L, "₩10,900", "₩109,000"),
+    CloudLaunchRate(10_000_000_000L, "₩1,900"),
+    CloudLaunchRate(50_000_000_000L, "₩5,900"),
+    CloudLaunchRate(100_000_000_000L, "₩10,900"),
 )
 
 private fun CloudBillingReplacementTiming.displayText(): String = when (this) {
