@@ -35,7 +35,11 @@ const resumableJobCollections = backupScopes.flatMap(scope => [
     `${scope}ResumableAccountsJobs`, `${scope}VaultResumableAccountsJobs`,
 ]);
 const billingDocumentRoots = billingScopes.flatMap(scope => [`${scope}Accounts`, `${scope}RequestLimits`]);
-const billingTokenCollections = billingScopes.map(scope => `${scope}Tokens`);
+// Full account exit must also erase encrypted Play-token escrow for both modes.
+// CLOUD-only deletion retains billing, escrow and renewal obligations.
+const billingTokenCollections = billingScopes.flatMap(scope => [
+    `${scope}Tokens`, `${scope}TokenEscrows`,
+]);
 const manualGrantPaths = owner => ['live', 'license-test'].map(mode =>
     `gallipickAdminManualGrants/${mode}-${owner}`);
 
