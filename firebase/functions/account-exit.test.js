@@ -198,6 +198,14 @@ test('Cloud-only deletion removes all owner originals and metadata while retaini
     assert.equal(record.status, 'COMPLETED');
     assert.equal(record.uid, undefined);
     assert.equal(await h.service.assertActive(googleAuth()), owner);
+    await assert.rejects(h.service.assertActive(googleAuth(), 'write'), errorCode('permission-denied'));
+    await assert.rejects(h.service.resumeCloudBackup(googleAuth(), { confirmation: 'RESUME_CLOUD_BACKUP' }),
+        errorCode('failed-precondition'));
+    const resumed = await h.service.resumeCloudBackup(googleAuth('member-one', h.time),
+        { confirmation: 'RESUME_CLOUD_BACKUP' });
+    assert.equal(resumed.status, 'RESUMED');
+    assert.equal(await h.service.assertActive(googleAuth(), 'write'), owner);
+    assert.equal((await h.db.doc(`${ACCOUNT_EXIT_COLLECTION}/${owner}`).get()).data().uid, undefined);
 });
 
 test('account deletion removes both environments, vault, large-part data and auth only after verification', async () => {
@@ -232,6 +240,25 @@ test('transient Storage failure pauses deletion and never erases Firebase auth b
     h.tick(3 * minute);
     await drainJob(h);
     assert.deepEqual(h.deletedUsers, ['member-one']);
+});
+
+test('Cloud-only backup restart requires a new Google authentication and exact consent', async () => {
+    const h = harness();
+    await h.service.request(googleAuth(), confirmation('CLOUD'));
+    await assert.rejects(h.service.resumeCloudBackup(googleAuth(), { confirmation: 'RESUME_CLOUD_BACKUP' }),
+        errorCode('failed-precondition'));
+    h.tick(ACCOUNT_EXIT_GRACE_MS);
+    await drainJob(h);
+    await assert.rejects(h.service.resumeCloudBackup(googleAuth(), { confirmation: 'RESUME_CLOUD_BACKUP' }),
+        errorCode('failed-precondition'));
+    await assert.rejects(h.service.resumeCloudBackup(googleAuth('member-one', h.time),
+        { confirmation: 'RESUME_OTHER_ACCOUNT' }), errorCode('invalid-argument'));
+    const result = await h.service.resumeCloudBackup(googleAuth('member-one', h.time),
+        { confirmation: 'RESUME_CLOUD_BACKUP' });
+    assert.equal(result.status, 'RESUMED');
+    assert.deepEqual(await h.service.resumeCloudBackup(googleAuth('member-one', h.time),
+        { confirmation: 'RESUME_CLOUD_BACKUP' }), result);
+    assert.equal((await h.service.request(googleAuth('member-one', h.time), confirmation('CLOUD'))).status, 'REQUESTED');
 });
 
 test('owner-scoped Storage precondition prevents deletion of another user object', async () => {
