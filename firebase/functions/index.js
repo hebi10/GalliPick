@@ -1,4 +1,5 @@
 import { initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { FieldPath, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
@@ -15,6 +16,7 @@ import { PRODUCTION_CLOUD_MAX_BYTES } from './monetization-entitlements.js';
 import { createSecretCloud } from './secret-cloud.js';
 import { createResumableBackupService } from './resumable-backup.js';
 import { cloudOperationAccess } from './cloud-api-access.js';
+import { createAccountExitService } from './account-exit.js';
 
 const app = initializeApp();
 const project = app.options.projectId ?? process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
@@ -30,6 +32,16 @@ const options = {
 const topic = production ? 'gallipick-play-rtdn-production' : 'gallipick-play-rtdn-test';
 const PRODUCTION_BACKUP_BUCKET = 'gallipick-production.firebasestorage.app';
 const RESUMABLE_PROTOCOL_VERSION = 2;
+
+function accountExitService() {
+    if (!production) throw new BackupError('failed-precondition', 'Account deletion is only supported in production.');
+    return createAccountExitService({
+        db: getFirestore(app),
+        authAdmin: getAuth(app),
+        getBucket: () => checkedBucket(PRODUCTION_BACKUP_BUCKET, true),
+        project,
+    });
+}
 
 async function checkedBucket(bucketName, allowLegacyRegional = false) {
     const bucket = getStorage(app).bucket(bucketName);
@@ -126,6 +138,7 @@ function endpoint(operation, billingRequest = false) {
     return onCall(callOptions, async request => {
         try {
             if (!request.auth) throw new BackupError('unauthenticated', 'Sign in to start a backup.');
+            if (production) await accountExitService().assertActive(request.auth);
             const configured = services();
             const { backup, billing, resumable } = configured;
             const protocolVersion = request.data?.cloudProtocolVersion;
@@ -164,6 +177,7 @@ export const verifyCloudSubscription = endpoint('verify', true);
 export const secretCloud = onCall({ ...options, timeoutSeconds: 540 }, async request => {
     try {
         if (!request.auth) throw new BackupError('unauthenticated', 'Sign in to use secret cloud.');
+        if (production) await accountExitService().assertActive(request.auth);
         const version = request.data?.cloudProtocolVersion;
         if (production && version !== PRODUCTION_BACKUP_PROTOCOL_VERSION && version !== RESUMABLE_PROTOCOL_VERSION) {
             throw new BackupError('failed-precondition', 'Secret cloud is unavailable.');
@@ -179,6 +193,46 @@ export const secretCloud = onCall({ ...options, timeoutSeconds: 540 }, async req
     } catch (error) {
         if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
         throw new HttpsError('unavailable', 'Secret cloud is temporarily unavailable.');
+    }
+});
+
+
+// Deletion requests are blocked unless the recovery worker is explicitly enabled.
+// The worker never starts from a mobile client or an authenticated HTTP endpoint.
+export const requestAccountExit = onCall(options, async request => {
+    try {
+        if (!production || process.env.GALLIPICK_ACCOUNT_EXIT_ENABLED !== 'true' ||
+            process.env.GALLIPICK_ACCOUNT_EXIT_WORKER_ENABLED !== 'true') {
+            throw new BackupError('failed-precondition', 'Account deletion is not ready for processing.');
+        }
+        return await accountExitService().request(request.auth, request.data);
+    } catch (error) {
+        if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
+        throw new HttpsError('unavailable', 'Unable to request account deletion.');
+    }
+});
+
+export const getAccountExitStatus = onCall(options, async request => {
+    try {
+        if (!production) throw new BackupError('failed-precondition', 'Account deletion is unavailable.');
+        return await accountExitService().status(request.auth);
+    } catch (error) {
+        if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
+        throw new HttpsError('unavailable', 'Unable to retrieve account deletion status.');
+    }
+});
+
+export const processAccountExits = onSchedule({
+    ...options, schedule: 'every 15 minutes', timeoutSeconds: 540, memory: '512MiB',
+    maxInstances: 1, concurrency: 1,
+}, async () => {
+    if (!production || process.env.GALLIPICK_ACCOUNT_EXIT_WORKER_ENABLED !== 'true') return;
+    const result = await accountExitService().processDue({ maximumAccounts: 3 });
+    if (result.outcomes.some(item => item.status === 'RETRY' || item.status === 'MANUAL_REVIEW')) {
+        console.warn('An account exit requires retry or manual review.', {
+            processed: result.processed,
+            failures: result.outcomes.filter(item => item.status === 'RETRY' || item.status === 'MANUAL_REVIEW').length,
+        });
     }
 });
 
