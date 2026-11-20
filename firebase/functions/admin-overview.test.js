@@ -86,7 +86,10 @@ test('verified admin sees aggregate counts only, not account identifiers or purc
 
 test('invalid Firestore aggregates fail closed rather than displaying fake zero counts', async () => {
     const service = createAdminOverviewService({
-        db: { collection: () => ({ count: () => ({ get: async () => ({ data: () => ({ count: NaN }) }) }) }) },
+        db: { collection: () => {
+            const aggregate = { count: () => ({ get: async () => ({ data: () => ({ count: NaN }) }) }) };
+            return { ...aggregate, where: () => aggregate };
+        } },
         project: 'gallipick-production', allowedUidHashes: owner, now: () => now,
     });
     await assert.rejects(service.overview(admin()), error => error.code === 'failed-precondition');
