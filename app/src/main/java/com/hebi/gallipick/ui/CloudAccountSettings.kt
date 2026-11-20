@@ -1,6 +1,10 @@
 package com.hebi.gallipick.ui
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,7 +41,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -85,6 +92,7 @@ internal fun CloudScreen(
     content: @Composable (CloudRoute) -> Unit,
 ) {
     val account by connection.session.account.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val status by connection.session.status.collectAsStateWithLifecycle()
     val access = cloudAccessState(connection.session.available, account?.uid, status.operation)
     val configuredBackup = connection.backupAvailability
@@ -92,18 +100,6 @@ internal fun CloudScreen(
     val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == account?.uid }
     val namespace = observation?.access?.namespace
     var requestedRoute by rememberSaveable(account?.uid) { mutableStateOf(CloudRoute.OVERVIEW) }
-    val signInRevision by connection.session.successfulSignInRevision.collectAsStateWithLifecycle()
-    var handledSignInRevision by remember(connection.session) {
-        mutableStateOf(connection.session.successfulSignInRevision.value)
-    }
-    LaunchedEffect(signInRevision, account?.uid, status.operation) {
-        if (signInRevision > handledSignInRevision && access == CloudAccessState.SIGNED_IN) {
-            handledSignInRevision = signInRevision
-            if (connection.billing != null && onBackFromAdRemoval == null) {
-                requestedRoute = CloudRoute.BILLING
-            }
-        }
-    }
     val requested = if (onBackFromAdRemoval != null && connection.billing != null &&
         access != CloudAccessState.UNAVAILABLE
     ) {
@@ -144,6 +140,8 @@ internal fun CloudScreen(
         ) {
             CloudHeader(route, onBack)
             when {
+                access == CloudAccessState.CHOOSING_ACCOUNT || access == CloudAccessState.SIGNING_OUT ->
+                    CloudAccountLoading(access)
                 access == CloudAccessState.UNAVAILABLE ->
                     CloudStatusMessage("이 빌드에서 클라우드 로그인 설정을 확인할 수 없습니다.")
                 route == CloudRoute.BILLING_SIGN_IN -> content(route)
@@ -170,6 +168,14 @@ internal fun CloudScreen(
                             else "이 빌드에서는 결제 기능을 사용할 수 없습니다.",
                         )
                     }
+                    if (access == CloudAccessState.SIGNED_IN || access == CloudAccessState.SIGNED_OUT) {
+                        key(account?.uid) {
+                            CloudAccountCard {
+                                CloudAccountExitGuidance(context)
+                                if (access == CloudAccessState.SIGNED_IN) CloudAccountDeletionButton(connection)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -181,6 +187,23 @@ private fun CloudBillingOverviewNotice(message: String) {
     CloudAccountCard {
         Text(CloudRoute.BILLING.title, style = MaterialTheme.typography.titleSmall)
         CloudStatusMessage(message)
+    }
+}
+
+@Composable
+private fun CloudAccountLoading(access: CloudAccessState) {
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 28.dp).testTag("cloud-account-loading"),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CircularProgressIndicator(color = Primary)
+        Text(
+            if (access == CloudAccessState.CHOOSING_ACCOUNT) "Google 계정으로 로그인하는 중입니다."
+            else "클라우드 계정에서 로그아웃하는 중입니다.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Muted,
+        )
     }
 }
 
@@ -290,6 +313,43 @@ internal fun CloudAccountSettings(
         }
     }
     statusText?.let { CloudStatusMessage(it) }
+}
+
+@Composable
+private fun CloudAccountExitGuidance(context: Context) {
+    var actionUnavailable by remember { mutableStateOf(false) }
+    HorizontalDivider(color = Line)
+    Text("구독 취소·계정 및 데이터 삭제", style = MaterialTheme.typography.titleSmall)
+    CloudStatusMessage("구독 취소는 Google Play에서 진행합니다. 로그아웃·앱 삭제·회원 탈퇴만으로 자동 결제가 취소되지 않습니다.")
+    ActionButton("Google Play 구독 취소·관리", {
+        actionUnavailable = !startCloudExitAction(context,
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/account/subscriptions")))
+    }, Modifier.fillMaxWidth())
+    CloudStatusMessage("클라우드 데이터만 삭제하거나 GalliPick 계정 전체를 탈퇴하려면 별도 요청이 필요합니다. 본인 확인 후 처리하며, 기기에 저장된 원본은 삭제하지 않습니다.")
+    ActionButton("클라우드 데이터 삭제 요청", {
+        actionUnavailable = !requestCloudExitByEmail(context, "클라우드 데이터 삭제")
+    }, Modifier.fillMaxWidth())
+    CloudStatusMessage("메일 앱에서 요청 내용을 보내야 접수됩니다. 삭제 요청은 처리 완료가 아니며, 구독 취소도 별도로 진행해야 합니다.")
+    if (actionUnavailable) {
+        CloudStatusMessage("외부 앱을 열 수 없습니다. asdlkj0104@gmail.com으로 요청하거나 개인정보처리방침을 확인해 주세요.")
+    }
+}
+
+internal fun requestCloudExitByEmail(context: Context, request: String): Boolean {
+    val subject = Uri.encode("GalliPick $request 요청")
+    val body = Uri.encode("요청 내용:\n로그인한 Google 계정 이메일:\n삭제 범위:\n\n원본 파일이나 결제 토큰은 첨부하지 마세요.")
+    val uri = Uri.parse("mailto:asdlkj0104@gmail.com?subject=$subject&body=$body")
+    return startCloudExitAction(context, Intent(Intent.ACTION_SENDTO, uri))
+}
+
+private fun startCloudExitAction(context: Context, intent: Intent): Boolean = try {
+    if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(intent)
+    true
+} catch (_: ActivityNotFoundException) {
+    false
+} catch (_: SecurityException) {
+    false
 }
 
 @Composable

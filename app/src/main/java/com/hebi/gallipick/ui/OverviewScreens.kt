@@ -41,6 +41,8 @@ import com.hebi.gallipick.R
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.AppThemeMode
 import com.hebi.gallipick.AppViewModel
+import com.hebi.gallipick.data.cloud.CloudAccountConnection
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.*
 import kotlinx.coroutines.launch
@@ -590,6 +592,7 @@ internal fun SettingsScreen(
     adRemoval: AdRemovalStatus = AdRemovalStatus.NOT_PURCHASED,
     photoListView: Boolean = false,
     onPhotoListViewChange: (Boolean) -> Unit = {},
+    cloudConnection: CloudAccountConnection? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     var confirmClear by remember { mutableStateOf(false) }
@@ -784,6 +787,16 @@ internal fun SettingsScreen(
                 GalliMascot(Modifier.size(38.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("GalliPick · 기기 내 미디어 정리", style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+            }
+            if (cloudConnection != null) {
+                val cloudAccount by cloudConnection.session.account.collectAsStateWithLifecycle()
+                if (cloudAccount != null) {
+                    SettingsSection("계정 관리") {
+                        Text("GalliPick 클라우드 계정 및 연관 데이터 탈퇴를 요청할 수 있습니다.",
+                            color = Muted, style = MaterialTheme.typography.bodySmall)
+                        CloudAccountDeletionButton(cloudConnection)
+                    }
                 }
             }
         }

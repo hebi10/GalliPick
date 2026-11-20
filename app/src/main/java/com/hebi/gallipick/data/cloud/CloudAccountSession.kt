@@ -44,8 +44,6 @@ internal class CloudAccountSession(private val backend: CloudAccountBackend?) {
     private val operationLock = Mutex()
     private val currentStatus = MutableStateFlow(CloudAccountStatus())
     val status = currentStatus.asStateFlow()
-    private val successfulSignIns = MutableStateFlow(0L)
-    val successfulSignInRevision = successfulSignIns.asStateFlow()
 
     suspend fun chooseAccount(getGoogleIdToken: suspend () -> String) =
         runOperation(CloudAccountOperation.CHOOSING_ACCOUNT, CloudAccountNotice.SIGN_IN_FAILED) { connected ->
@@ -53,7 +51,6 @@ internal class CloudAccountSession(private val backend: CloudAccountBackend?) {
             val googleIdToken = getGoogleIdToken()
             // The Firebase exchange can finish after the account chooser's Activity is recreated.
             withContext(NonCancellable) { connected.signIn(googleIdToken) }
-            if (!connected.account.value?.uid.isNullOrBlank()) successfulSignIns.value += 1L
         }
 
     suspend fun signOut() =
