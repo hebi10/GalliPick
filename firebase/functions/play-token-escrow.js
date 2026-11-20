@@ -20,7 +20,8 @@ export const CLOUD_TOKEN_ESCROW_COLLECTIONS = Object.freeze({
 
 export function tokenEscrowDocumentPath(mode, tokenHash) {
     const collection = CLOUD_TOKEN_ESCROW_COLLECTIONS[mode];
-    if (!collection || !HASH.test(tokenHash ?? '')) {
+    if (!Object.hasOwn(CLOUD_TOKEN_ESCROW_COLLECTIONS, mode) ||
+        !HASH.test(tokenHash ?? '')) {
         throw new BackupError('invalid-argument', 'An approved scoped token hash is required.');
     }
     return `${collection}/${tokenHash}`;
