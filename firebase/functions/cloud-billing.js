@@ -391,8 +391,10 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             const { owner } = authorizeAccount(auth);
             if (production) {
                 const exit = (await db.doc(`gallipickAccountExitRequests/${owner}`).get()).data();
-                if (exit && (exit.status !== 'COMPLETED' || exit.scope === 'ACCOUNT')) {
-                    throw new BackupError('permission-denied', 'Cloud access is blocked during account deletion.');
+                if (exit && (exit.scope === 'ACCOUNT' ||
+                    (exit.status !== 'COMPLETED' && exit.status !== 'RESUMED') ||
+                    (exit.status === 'COMPLETED' && operation === 'write'))) {
+                    throw new BackupError('permission-denied', 'Cloud access requires deletion to finish and fresh backup consent.');
                 }
             }
             if (production && !settings.cloudEnabled) {
@@ -467,7 +469,8 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
                 || (settings.mode !== 'live' && !allowedOwners.has(owner) && !licenseEmailAllowed)) return false;
             if (production) {
                 const exit = (await db.doc(`gallipickAccountExitRequests/${owner}`).get()).data();
-                if (exit && (exit.status !== 'COMPLETED' || exit.scope === 'ACCOUNT')) return false;
+                if (exit && (exit.scope === 'ACCOUNT' || (exit.status !== 'COMPLETED'
+                    && exit.status !== 'RESUMED'))) return false;
             }
             // Re-fetch after reserving the revision. The notification is only a refresh signal.
             await reconcile(owner, token, licenseEmailAllowed ? licenseEmailHash : null);
@@ -479,7 +482,8 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             if (production && !settings.cloudEnabled) return 0;
             if (production) {
                 const exit = (await transaction.get(db.doc(`gallipickAccountExitRequests/${owner}`))).data();
-                if (exit && (exit.status !== 'COMPLETED' || exit.scope === 'ACCOUNT')) return 0;
+                if (exit && (exit.status !== 'RESUMED' ||
+                    exit.scope === 'ACCOUNT')) return 0;
             }
             if (!Number.isSafeInteger(ownerLimit) || ownerLimit < 0) {
                 throw new BackupError('failed-precondition', 'The backup allocation limit is invalid.');
