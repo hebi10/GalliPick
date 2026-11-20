@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-    AD_FREE_PRODUCT_ID, productionMonetizationCatalog, validateMonetizationCatalog, verifiedMonetizationBenefits,
+    AD_FREE_PRODUCT_ID, productionMonetizationCatalog, productionNewSaleCatalog,
+    validateMonetizationCatalog, verifiedMonetizationBenefits,
 } from './monetization-entitlements.js';
 
 const maximum = 500 * 1024 ** 3;
@@ -86,4 +87,22 @@ test('unverified, expired, unknown and malformed records never grant benefits', 
     assert.equal(result.adsRemoved, false);
     assert.equal(result.quotaBytes, 0);
     assert.equal(result.showStandaloneAdFreeUpsell, true);
+});
+
+test('new Cloud sale catalogue excludes all annual tiers while keeping legacy receipt verification', () => {
+    const sales = productionNewSaleCatalog(true);
+    const history = productionMonetizationCatalog(true);
+    assert.equal(sales.length, 5);
+    assert.equal(history.length, 8);
+    assert.deepEqual(sales.filter(item => item.kind === 'AD_FREE').map(item => item.basePlanId),
+        ['monthly', 'annual']);
+    assert.equal(sales.filter(item => item.kind === 'CLOUD').every(item => item.basePlanId === 'monthly'), true);
+    for (const plan of history.filter(item => item.kind === 'CLOUD' && item.basePlanId === 'annual')) {
+        assert.equal(sales.some(item => item.productId === plan.productId && item.basePlanId === 'annual'), false);
+        const benefits = verifiedMonetizationBenefits([proof(plan)], history, now);
+        assert.equal(benefits.cloudBasePlanId, 'annual');
+        assert.equal(benefits.adsRemoved, true);
+        assert.equal(benefits.quotaBytes, plan.quotaBytes);
+    }
+    assert.deepEqual(productionNewSaleCatalog(false), productionMonetizationCatalog(false));
 });
