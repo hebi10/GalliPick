@@ -108,6 +108,19 @@ test('ad-free annual remains on sale while Cloud annual is not', () => {
   assert.equal(evaluatePlaySubscription('gallipick_ad_free', missing).ready, false);
 });
 
+test('50GB and 100GB accept the approved Korean monthly price, not the former price', () => {
+  for (const [productId, currentPrice, formerPrice] of [
+    ['gallipick_cloud_50gb', 8900, 5900],
+    ['gallipick_cloud_100gb', 15900, 10900],
+  ]) {
+    const product = subscription(productId, { basePlans: [validPlan('monthly', currentPrice)] });
+    assert.equal(evaluatePlaySubscription(productId, product).ready, true);
+    product.basePlans = [validPlan('monthly', formerPrice)];
+    assert.equal(evaluatePlaySubscription(productId, product).checks.monthly.detail,
+      'KRW_PRICE_DIFFERS_FROM_APPROVED_PLAN');
+  }
+});
+
 test('functions must be live, approved, uploads-enabled, and have a dedicated service account', () => {
   for (const name of REQUIRED_FUNCTIONS) {
     assert.equal(evaluateCloudFunction(name, runtime(name)).ready, true);
