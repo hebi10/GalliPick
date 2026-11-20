@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -88,9 +87,9 @@ class ReferenceFilesFilterTest {
             }
         }
 
-        val a = compose.onNodeWithContentDescription("sample-1.jpg 선택").fetchSemanticsNode().boundsInRoot
-        val b = compose.onNodeWithContentDescription("sample-2.jpg 선택").fetchSemanticsNode().boundsInRoot
-        val c = compose.onNodeWithContentDescription("sample-3.jpg 선택").fetchSemanticsNode().boundsInRoot
+        val a = compose.onNodeWithText("sample-1.jpg").fetchSemanticsNode().boundsInRoot
+        val b = compose.onNodeWithText("sample-2.jpg").fetchSemanticsNode().boundsInRoot
+        val c = compose.onNodeWithText("sample-3.jpg").fetchSemanticsNode().boundsInRoot
         assertTrue("Reference media grid should show 3 photos per row", a.left < b.left && b.left < c.left)
         assertTrue("First three selections should share a grid row", kotlin.math.abs(a.top - c.top) < 1f)
         compose.onNodeWithContentDescription("파일 목록 요약").assertExists()
@@ -102,7 +101,7 @@ class ReferenceFilesFilterTest {
         compose.onNodeWithText("2 KB · 1970.01.01").assertExists()
         compose.onNodeWithContentDescription("파일 추가 작업").performClick()
         compose.onNodeWithText("격자 보기").performClick()
-        compose.onNodeWithContentDescription("sample-1.jpg 선택").assertExists()
+        compose.onNodeWithText("sample-1.jpg").assertExists()
     }
 
     @Test fun fileSearchStartsClosedAndUsesTheHeaderButton() {
@@ -145,21 +144,22 @@ class ReferenceFilesFilterTest {
         compose.onNode(hasText(title) and tab).performClick()
     }
 
-    @Test fun gridSelectionIndicatorMovesToCornerWhileHitTargetRemainsAccessible() {
+    @Test fun gridLongPressEntersSelectionAndKeepsTheCornerIndicatorAccessible() {
         val item = media(1)
+        val another = media(2)
+        val protected = media(3).copy(isProtected = true)
+        val items = listOf(item, another, protected)
         val selected = mutableStateOf(emptySet<String>())
-        var toggles = 0
         val actions = FilesScreenActions({}, {}, { uri ->
-            toggles++
             selected.value = if (uri in selected.value) selected.value - uri else selected.value + uri
-        }, {}, {}, {}, { _, _ -> }, {})
+        }, { selected.value = emptySet() }, {}, {}, { _, _ -> }, {})
         compose.setContent {
             GalliPickTheme {
                 CompositionLocalProvider(LocalDensity provides Density(.6f)) {
                     Box(Modifier.requiredSize(360.dp, 700.dp)) {
                         FilesScreenContent(
-                            AppUiState(access = MediaAccess.FULL, items = listOf(item),
-                                filtered = listOf(item), selected = selected.value, fileGridColumns = 6),
+                            AppUiState(access = MediaAccess.FULL, items = items,
+                                filtered = items, selected = selected.value, fileGridColumns = 6),
                             false, {}, {}, {}, actions,
                         )
                     }
@@ -167,24 +167,44 @@ class ReferenceFilesFilterTest {
             }
         }
 
+        val firstTile = compose.onNode(hasText(item.displayName) and hasClickAction())
+        val secondTile = compose.onNode(hasText(another.displayName) and hasClickAction())
         val checkbox = compose.onNodeWithContentDescription("sample-1.jpg 선택")
-            .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        checkbox.assertDoesNotExist()
         compose.onNodeWithText("한 줄 3개 표시 · 설정 6개").assertIsDisplayed()
+        firstTile.performTouchInput {
+            down(center)
+            advanceEventTime(1_100)
+            up()
+        }
+        compose.onNodeWithText("파일 상세").assertIsDisplayed()
+        compose.onNodeWithContentDescription("닫기").performClick()
+        checkbox.assertDoesNotExist()
+        compose.onNode(hasText(protected.displayName) and hasClickAction())
+            .assert(SemanticsMatcher.keyNotDefined(androidx.compose.ui.semantics.SemanticsActions.OnLongClick))
+        firstTile.performTouchInput { longClick(durationMillis = 2_100) }
+        checkbox.assertIsOn().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithContentDescription("sample-2.jpg 선택").assertIsOff()
+        compose.onNodeWithContentDescription("sample-3.jpg 선택").assertDoesNotExist()
         val hit = checkbox.fetchSemanticsNode().boundsInRoot
-        val glyph = compose.onNodeWithTag("grid-selection-indicator", useUnmergedTree = true)
+        val glyph = compose.onAllNodesWithTag("grid-selection-indicator", useUnmergedTree = true)[0]
             .fetchSemanticsNode().boundsInRoot
         assertTrue("Selection circle must stay inside the 48dp touch target",
             glyph.left >= hit.left && glyph.top >= hit.top && glyph.right <= hit.right && glyph.bottom <= hit.bottom)
         assertTrue("Visible circle should be within 8dp of the thumbnail top-left",
             glyph.left - hit.left < hit.width / 6f && glyph.top - hit.top < hit.height / 6f)
-        checkbox.performTouchInput { click() }
-        compose.runOnIdle {
-            assertEquals(1, toggles)
-            assertTrue(item.uri in selected.value)
-        }
-        compose.onNodeWithText(item.displayName).performTouchInput { click(Offset(width * .75f, center.y / 3f)) }
+        secondTile.performTouchInput { click() }
+        compose.onNodeWithText("2개 선택").assertIsDisplayed()
+        compose.onNodeWithText("파일 상세").assertDoesNotExist()
+        firstTile.performClick()
+        secondTile.performClick()
+        checkbox.assertDoesNotExist()
+        firstTile.performTouchInput { longClick(durationMillis = 2_100) }
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        checkbox.assertDoesNotExist()
+        firstTile.performTouchInput { click() }
         compose.onNodeWithText("파일 상세").assertIsDisplayed()
-        compose.runOnIdle { assertEquals(1, toggles) }
+        compose.runOnIdle { assertTrue(selected.value.isEmpty()) }
     }
 
     @Test fun quickLastMonthUsesCalendarBoundariesAndBottomApply() {

@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -97,8 +98,10 @@ class Stage6AccessibilityTest {
         val viewport = compose.onNodeWithTag("stage6-files-viewport").fetchSemanticsNode().boundsInRoot
         val label = compose.onNodeWithText(item.displayName).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         assertTrue("Long media titles must remain within the viewport", label.left >= viewport.left && label.right <= viewport.right + 1f)
-        compose.onNodeWithContentDescription(item.displayName + " 선택")
-            .assertIsDisplayed().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp).performClick()
+        compose.onNodeWithContentDescription(item.displayName + " 선택").assertDoesNotExist()
+        compose.onNode(hasText(item.displayName) and hasClickAction())
+            .assertIsDisplayed().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+            .performSemanticsAction(SemanticsActions.OnLongClick)
         compose.runOnIdle { assertEquals(item.uri, selected) }
     }
 

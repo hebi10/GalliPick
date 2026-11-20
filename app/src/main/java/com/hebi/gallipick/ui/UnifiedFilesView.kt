@@ -61,6 +61,7 @@ internal fun UnifiedFilesList(
     availableWidth: Dp,
     gridState: LazyGridState,
     selected: Set<String>,
+    selectionMode: Boolean,
     toggleDevice: (String) -> Unit,
     openDevice: (String) -> Unit,
     openCloud: (CloudOriginal) -> Unit,
@@ -89,13 +90,13 @@ internal fun UnifiedFilesList(
                         FileSectionHeader(group.title, group.items.size, filter.dateField.takeIf { group.isDate })
                     }
                     items(group.items, key = ::galleryItemKey) { item ->
-                        UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid,
+                        UnifiedMediaTile(item, source, selected, selectionMode, toggleDevice, openDevice, openCloud, false, tabletGrid,
                             backup = backup, accountUid = accountUid, autoLoadThumbnails = autoLoadThumbnails)
                     }
                 }
             } else {
                 items(entries, key = ::galleryItemKey) { item ->
-                    UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, false, tabletGrid,
+                    UnifiedMediaTile(item, source, selected, selectionMode, toggleDevice, openDevice, openCloud, false, tabletGrid,
                         backup = backup, accountUid = accountUid, autoLoadThumbnails = autoLoadThumbnails)
                 }
             }
@@ -112,13 +113,13 @@ internal fun UnifiedFilesList(
                         FileSectionHeader(group.title, group.items.size, filter.dateField.takeIf { group.isDate })
                     }
                     listItems(group.items, key = ::galleryItemKey) { item ->
-                        UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField,
+                        UnifiedMediaTile(item, source, selected, selectionMode, toggleDevice, openDevice, openCloud, true, false, filter.dateField,
                             backup, accountUid, autoLoadThumbnails)
                     }
                 }
             } else {
                 listItems(entries, key = ::galleryItemKey) { item ->
-                    UnifiedMediaTile(item, source, selected, toggleDevice, openDevice, openCloud, true, false, filter.dateField,
+                    UnifiedMediaTile(item, source, selected, selectionMode, toggleDevice, openDevice, openCloud, true, false, filter.dateField,
                         backup, accountUid, autoLoadThumbnails)
                 }
             }
@@ -131,6 +132,7 @@ private fun UnifiedMediaTile(
     entry: GalleryEntry,
     sourceFilter: GallerySourceFilter,
     selected: Set<String>,
+    selectionMode: Boolean,
     toggleDevice: (String) -> Unit,
     openDevice: (String) -> Unit,
     openCloud: (CloudOriginal) -> Unit,
@@ -160,6 +162,7 @@ private fun UnifiedMediaTile(
             tabletGrid = tabletGrid,
             hasCloudOriginal = entry.source == GallerySource.BOTH,
             allowSelection = sourceFilter != GallerySourceFilter.CLOUD,
+            selectionMode = selectionMode,
         )
     } else {
         val original = checkNotNull(entry.cloud)

@@ -162,7 +162,6 @@ internal fun SelectBox(
     description: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    indicatorAtTopStart: Boolean = false,
 ) {
     Box(
         modifier.size(48.dp).semantics { contentDescription = description }.toggleable(
@@ -171,18 +170,22 @@ internal fun SelectBox(
             indication = ripple(bounded = false, radius = 24.dp),
             onValueChange = { onClick() },
         ),
-        contentAlignment = if (indicatorAtTopStart) Alignment.TopStart else Alignment.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            Modifier.size(24.dp)
-                .then(if (indicatorAtTopStart) Modifier.offset(x = 4.dp, y = 4.dp).testTag("grid-selection-indicator") else Modifier)
-                .background(if (checked) Ink else MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
-                .border(1.dp, if (enabled) Ink else Line, RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (checked) GalliIcon(Icons.Outlined.Check, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onPrimary)
-            else if (!enabled) GalliIcon(Icons.Outlined.Lock, null, Modifier.size(14.dp), tint = Muted)
-        }
+        SelectionIndicator(checked, enabled)
+    }
+}
+
+@Composable
+internal fun SelectionIndicator(checked: Boolean, enabled: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier.size(24.dp)
+            .background(if (checked) Ink else MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp))
+            .border(1.dp, if (enabled) Ink else Line, RoundedCornerShape(12.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (checked) GalliIcon(Icons.Outlined.Check, null, Modifier.size(19.dp), tint = MaterialTheme.colorScheme.onPrimary)
+        else if (!enabled) GalliIcon(Icons.Outlined.Lock, null, Modifier.size(14.dp), tint = Muted)
     }
 }
 
