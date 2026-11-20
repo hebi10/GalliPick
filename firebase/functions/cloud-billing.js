@@ -65,12 +65,18 @@ export function productionBillingSettings(project, env) {
     const cloudEnabled = env.GALLIPICK_PRODUCTION_CLOUD_ENABLED === 'true'
         && (mode === 'license-test' || env.GALLIPICK_PRODUCTION_CLOUD_LIVE_ENABLED === 'true')
         && fileLimit > 0 && fileLimit <= PRODUCTION_MAX_FILE_BYTES;
+    const manualGrantsEnabled = env.GALLIPICK_PRODUCTION_MANUAL_GRANTS_ENABLED === 'true';
+    if (manualGrantsEnabled && cloudEnabled &&
+        env.GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED !== 'true') {
+        throw new BackupError('failed-precondition',
+            'Manual Cloud benefits require the verified seven-day retention policy.');
+    }
     const backupNamespace = mode === 'live' ? 'gallipickProductionBackup' : 'gallipickProductionLicenseBackup';
     const verificationProducts = productionMonetizationCatalog(true);
     return { enabled: true, products: cloudEnabled ? verificationProducts : productionMonetizationCatalog(false),
         verificationProducts, mode, users, emails, cloudEnabled,
         retentionEnabled: cloudEnabled && env.GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED === 'true',
-        manualGrantsEnabled: env.GALLIPICK_PRODUCTION_MANUAL_GRANTS_ENABLED === 'true',
+        manualGrantsEnabled,
         maxOriginalBytes: cloudEnabled ? fileLimit : null, backupNamespace,
         replacementCheckoutEnabled: cloudEnabled && env.GALLIPICK_PRODUCTION_CLOUD_UPLOADS_PAUSED === 'false' };
 }
