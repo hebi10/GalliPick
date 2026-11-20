@@ -33,7 +33,7 @@ Firebase Hosting 관리자 화면에서 로그인 회원을 선택하고 Google 
 - `revokeAdminManualGrant`: 해당 회원·환경의 현 이용권을 사유와 함께 회수.
 - 모든 읽기/쓰기에서 서버 관리자를 확인합니다. 클라이언트에서 Firebase Firestore에 직접 쓰지 않습니다.
 - `GALLIPICK_ADMIN_MANUAL_GRANTS_ENABLED=true`: 신규 지급/회수 변경을 허용. 기본값 **비활성**.
-- `GALLIPICK_PRODUCTION_MANUAL_GRANTS_ENABLED=true`: 운영 앱의 실제 수동 혜택 적용. 기본값 **비활성**. 단, 운영 Cloud 자체를 허용하지 않는 설정에서는 수동 이용권도 Cloud 업로드를 켜지 못합니다.
+- `GALLIPICK_PRODUCTION_MANUAL_GRANTS_ENABLED=true`: 운영 앱의 실제 수동 혜택 적용. 기본값 **비활성**. **Cloud가 활성인 환경에서는 `GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED=true`도 먼저 검증되어 있어야 하며**, 아니면 Functions 설정을 거부하도록 안전 차단합니다. 운영 Cloud 자체를 허용하지 않는 설정에서는 수동 이용권도 Cloud 업로드를 켜지 못합니다.
 
 ## 앱 권한 연결
 
