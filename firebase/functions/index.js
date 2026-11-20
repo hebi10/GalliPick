@@ -12,6 +12,7 @@ import { pilotSettings, requirePrivateBucket } from './pilot.js';
 import { billingSettings, createBillingService, PILOT_ACCOUNT_QUOTA_BYTES, PRODUCTION_PROJECT,
     productionBillingSettings } from './cloud-billing.js';
 import { createPlaySubscriptions } from './play-subscriptions.js';
+import { createKmsPurchaseTokenEscrow } from './play-token-escrow.js';
 import { PRODUCTION_CLOUD_MAX_BYTES } from './monetization-entitlements.js';
 import { createSecretCloud } from './secret-cloud.js';
 import { createResumableBackupService } from './resumable-backup.js';
@@ -62,7 +63,14 @@ function services(privateVault = false) {
     const db = getFirestore(app);
     if (production) {
         const settings = productionBillingSettings(project, process.env);
-        const billing = createBillingService({ db, settings, play: createPlaySubscriptions() });
+        const tokenEscrow = settings.tokenEscrowEnabled
+            ? createKmsPurchaseTokenEscrow({
+                project, mode: settings.mode,
+                keyResource: process.env.GALLIPICK_PRODUCTION_PLAY_TOKEN_KMS_KEY,
+            }) : null;
+        const billing = createBillingService({
+            db, settings, play: createPlaySubscriptions(), tokenEscrow,
+        });
         if (!settings.cloudEnabled) return { billing };
 
         const uploadsPaused = process.env.GALLIPICK_PRODUCTION_CLOUD_UPLOADS_PAUSED !== 'false';

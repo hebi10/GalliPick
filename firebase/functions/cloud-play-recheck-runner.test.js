@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
     productionPlayRecheckAllowed, PLAY_RECHECK_SCHEDULE, PLAY_RECHECK_MAX_PER_MODE,
@@ -35,4 +36,11 @@ test('the scheduler remains bounded and runs at most twice daily', () => {
     assert.equal(PLAY_RECHECK_SCHEDULE, 'every 12 hours');
     assert.ok(Number.isSafeInteger(PLAY_RECHECK_MAX_PER_MODE));
     assert.ok(PLAY_RECHECK_MAX_PER_MODE >= 1 && PLAY_RECHECK_MAX_PER_MODE <= 5);
+});
+
+test('the Functions entry point keeps billing escrow wired independently of scheduled rechecks', () => {
+    const entryPoint = readFileSync(new URL('./index.js', import.meta.url), 'utf8');
+    assert.match(entryPoint, /import\s*\{\s*createKmsPurchaseTokenEscrow\s*\}\s*from '\.\/play-token-escrow\.js'/);
+    assert.match(entryPoint, /const tokenEscrow = settings\.tokenEscrowEnabled\s*\?\s*createKmsPurchaseTokenEscrow\(/);
+    assert.match(entryPoint, /createBillingService\(\{\s*db, settings, play: createPlaySubscriptions\(\), tokenEscrow,?\s*\}\)/);
 });
