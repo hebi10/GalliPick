@@ -317,6 +317,7 @@ internal fun CloudAccountSettings(
 
 @Composable
 private fun CloudAccountExitGuidance(connection: CloudAccountConnection, context: Context) {
+    val account by connection.session.account.collectAsStateWithLifecycle()
     var actionUnavailable by remember { mutableStateOf(false) }
     HorizontalDivider(color = Line)
     Text("구독 취소·계정 및 데이터 삭제", style = MaterialTheme.typography.titleSmall)
@@ -326,7 +327,7 @@ private fun CloudAccountExitGuidance(connection: CloudAccountConnection, context
             Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/account/subscriptions")))
     }, Modifier.fillMaxWidth())
     CloudStatusMessage("클라우드 데이터만 삭제하거나 GalliPick 계정 전체를 탈퇴하려면 별도 요청이 필요합니다. 본인 확인 후 처리하며, 기기에 저장된 원본은 삭제하지 않습니다.")
-    if (connection.session.account.value?.uid != null) {
+    if (account?.uid != null) {
         CloudOnlyDeletionButton(connection)
     } else {
         ActionButton("클라우드 데이터 삭제 요청", {
@@ -334,7 +335,7 @@ private fun CloudAccountExitGuidance(connection: CloudAccountConnection, context
         }, Modifier.fillMaxWidth())
     }
     CloudStatusMessage(
-        if (connection.accountExit == null || connection.session.account.value?.uid == null)
+        if (connection.accountExit == null || account?.uid == null)
             "메일 앱에서 요청 내용을 보내야 접수됩니다. 삭제 요청은 처리 완료가 아니며, 구독 취소도 별도로 진행해야 합니다."
         else "삭제 요청 시 Google 재인증과 확인이 필요합니다. 서버 접수와 실제 삭제 완료는 구분되며, Google Play 구독 취소는 별도입니다.",
     )
