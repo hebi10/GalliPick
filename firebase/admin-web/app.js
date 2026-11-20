@@ -8,6 +8,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-functions.js";
 import { firebaseConfig } from "./config.js";
 import { createManualGrantControl } from "./manual-grants.js";
+import { createDeletionReviewPanel } from "./deletion-review.js";
 
 const $ = id => document.getElementById(id);
 const authStatus = $("auth-status");
@@ -27,6 +28,7 @@ let auth = null;
 let getOverview = null;
 let getMembers = null;
 let manualGrantCalls = null;
+let deletionReview = null;
 let memberTokens = [null];
 let currentMemberPage = 0;
 let memberRequestId = 0;
@@ -37,6 +39,7 @@ function authMessage(message) {
 function resetDashboard() {
   overview.hidden = true;
   authorizedUser = null;
+  deletionReview?.reset();
   memberRequestId++;
   memberTokens = [null];
   currentMemberPage = 0;
@@ -258,6 +261,13 @@ if (!validateConfig(firebaseConfig)) {
       await user.getIdToken(true);
     },
   };
+  deletionReview = createDeletionReviewPanel({
+    currentUser: () => Boolean(authorizedUser && auth.currentUser?.uid === authorizedUser.uid),
+    list: data => httpsCallable(cloudFunctions, "getAdminDeletionReviews")(data),
+    preview: data => httpsCallable(cloudFunctions, "previewAdminDeletionBatch")(data),
+    retry: data => httpsCallable(cloudFunctions, "retryAdminDeletion")(data),
+    reauthenticate: () => manualGrantCalls.reauthenticate(),
+  });
   signin.hidden = false;
 
   signin.addEventListener("click", async () => {
@@ -279,7 +289,10 @@ if (!validateConfig(firebaseConfig)) {
   });
   refresh.addEventListener("click", async () => {
     await updateOverview();
-    if (authorizedUser) await loadMembers(currentMemberPage);
+    if (authorizedUser) {
+      await loadMembers(currentMemberPage);
+      await deletionReview?.load(0);
+    }
   });
   memberRefresh.addEventListener("click", async () => {
     memberTokens = [null];
@@ -313,6 +326,7 @@ if (!validateConfig(firebaseConfig)) {
       if (authorizedUser === user && overviewStatus.textContent === "서버 집계 확인 완료") {
         authMessage("관리자 접근 승인");
         await loadMembers(0);
+        if (authorizedUser === user) await deletionReview?.load(0);
       }
     } catch {
       resetDashboard();
