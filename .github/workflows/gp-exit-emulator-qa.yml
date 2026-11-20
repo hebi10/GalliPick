@@ -1,0 +1,46 @@
+name: GP-EXIT-06 Firebase Emulator deletion QA
+
+on:
+  pull_request:
+    paths:
+      - 'firebase/functions/account-exit.js'
+      - 'firebase/functions/account-exit.test.js'
+      - 'firebase/functions/account-exit.emulator.test.js'
+      - 'firebase.exit-emulator.json'
+      - '.github/workflows/gp-exit-emulator-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-account-deletion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+      GCLOUD_PROJECT: demo-gallipick-exit-qa
+      GP_EXIT_EMULATOR_QA: 'true'
+      FIREBASE_CLI_DISABLE_TELEMETRY: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: firebase/functions/package-lock.json
+      - name: Install locked Firebase Admin dependencies
+        run: npm ci --prefix firebase/functions --no-audit --no-fund
+      - name: Run isolated Auth, Firestore and Storage deletion checks
+        run: >-
+          npx --yes firebase-tools@15.36.0 emulators:exec
+          --config firebase.exit-emulator.json
+          --project demo-gallipick-exit-qa
+          --only auth,firestore,storage
+          'node --test firebase/functions/account-exit.emulator.test.js'
