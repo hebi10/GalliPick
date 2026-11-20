@@ -885,6 +885,9 @@ test('GP-CHECKOUT-NEW-01: a newly authenticated live user sees the approved cata
     assert.equal(firstPlan.usedBytes, 0);
     assert.equal(firstPlan.uploadAllowed, false);
     assert.equal(firstPlan.products.length, 5);
+    assert.equal(firstPlan.legacyRecoveryProducts.length, 3);
+    assert.equal(firstPlan.legacyRecoveryProducts.every(product =>
+        product.kind === 'CLOUD' && product.basePlanId === 'annual'), true);
     assert.deepEqual(firstPlan.products.filter(product => product.kind === 'CLOUD').length, 3);
     assert.equal(records.has(`gallipickProductionBillingAccounts/${accountId(uid)}`), false,
         'Viewing the new-user catalogue must not grant a subscription');
@@ -997,6 +1000,9 @@ test('unbound new Cloud annual purchase is denied, while Play-proven historical 
     assert.equal(plan.quotaBytes, annualPlan.quotaBytes);
     assert.equal(plan.products.some(p => p.productId === annualPlan.productId && p.basePlanId === 'annual'), true);
     assert.equal(plan.products.filter(p => p.kind === 'CLOUD' && p.basePlanId === 'annual').length, 1);
+    assert.equal(plan.legacyRecoveryProducts.length, 2);
+    assert.equal(plan.legacyRecoveryProducts.some(product =>
+        product.productId === annualPlan.productId && product.basePlanId === 'annual'), false);
     const owner = accountId(uid);
     assert.equal(Object.values(records.get(`gallipickProductionBillingAccounts/${owner}`).entitlements)
         .some(p => p.basePlanId === 'annual'), true);
