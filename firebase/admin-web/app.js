@@ -94,8 +94,17 @@ function appendPlan(container, plan) {
   section.append(element("p", "서버 마지막 확인: " + formatDateTime(plan.lastVerifiedAtMs)));
   section.append(element("p", "저장공간: " + formatBytes(plan.usedBytes)
     + " / 현재 할당량 " + formatBytes(plan.quotaBytes)));
+  const lifecycleLabels = {
+    PAID: "검증된 이용 기간",
+    READ_ONLY_RECOVERY: "복원 가능·업로드 중단",
+    LOCKED_AWAITING_PURGE: "접근 종료·삭제 검토 예정",
+    PURGE_DUE: "삭제 검토 시점 도래",
+    CLOUD_ACCESS_SUSPENDED: "클라우드 접근 제한",
+    ACCOUNT_DELETION_REQUESTED: "회원 탈퇴 요청",
+  };
   if (plan.lifecycleState && plan.lifecycleState !== "NO_VERIFIED_CLOUD_EXPIRY") {
-    section.append(element("p", "클라우드 상태: " + plan.lifecycleState));
+    section.append(element("p", "클라우드 상태: " +
+      (lifecycleLabels[plan.lifecycleState] ?? "확인 필요")));
   }
   if (plan.recoveryEndsAtMs != null) {
     section.append(element("p", "복원 기간 종료: " + formatDateTime(plan.recoveryEndsAtMs)));
@@ -115,7 +124,15 @@ function renderMember(member) {
     " · 최근 로그인: " + formatDateTime(member.lastSignInAtMs) +
     (member.disabled ? " · 계정 비활성화" : ""), "member-meta"));
   if (member.exitStatus !== "NONE") {
-    item.append(element("p", "삭제 요청: " + safeText(member.exitStatus), "member-meta"));
+    const [scope, state] = safeText(member.exitStatus).split(":");
+    const subject = scope === "ACCOUNT" ? "회원 계정" : "클라우드";
+    const stateLabels = {
+      REQUESTED: "접수", IN_PROGRESS: "처리 중", RUNNING: "처리 중",
+      RETRY: "재시도", MANUAL_REVIEW: "운영자 확인 필요",
+      COMPLETED: "삭제 완료", RESUMED: "백업 재활성화",
+    };
+    item.append(element("p", "삭제 요청: " + subject + " · " +
+      (stateLabels[state] ?? "확인 필요"), "member-meta"));
   }
   const plans = element("div", "", "member-plans");
   for (const plan of member.plans) appendPlan(plans, plan);
