@@ -12,14 +12,14 @@ test('admin hosting has an explicitly named target and cannot deploy another sit
   assert.equal(config.functions.source, 'firebase/functions');
 });
 
-test('admin UI is view-only and never embeds credentials or direct Firestore queries', () => {
+test('admin UI avoids direct Firestore, Play edits and embedded secrets', () => {
   const html = read('firebase/admin-web/index.html');
   const app = read('firebase/admin-web/app.js');
   const cfg = read('firebase/admin-web/config.js');
   assert.match(html, /lang="ko"/);
   assert.match(html, /<main\b/);
   assert.match(html, /로그아웃/);
-  assert.match(html, /읽기 전용 관리자 화면/);
+  assert.match(html, /Google Play 결제 원장/);
   assert.match(app, /getAdminOverview/);
   assert.match(app, /gallipickAdmin/);
   assert.match(app, /httpsCallable/);
