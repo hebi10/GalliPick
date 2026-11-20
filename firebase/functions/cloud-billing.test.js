@@ -695,3 +695,20 @@ test('license-test and live Cloud access remain isolated, even for the same Fire
     await assert.rejects(paid.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
     await assert.rejects(service.requireCloudAccess(user('owner-b'), 'read'), isCode('permission-denied'));
 });
+
+test('a server-marked account exit suppresses both normal and resumable upload privileges', async () => {
+    const { service, purchases, records } = createHarness({ settings: guardedLiveCloud });
+    const auth = user('owner-a');
+    purchases.set(token(1), subscription({ product: cloudOffer(10), testPurchase: null }));
+    await verify(service, 'owner-a', token(1));
+    const accountPath = `gallipickProductionBillingAccounts/${accountId('owner-a')}`;
+    const record = records.get(accountPath);
+    record.cloudLifecycle = { ...record.cloudLifecycle, deletionRequestedAtMs: now };
+    records.set(accountPath, record);
+    const plan = await service.getPlan(auth);
+    assert.equal(plan.cloudLifecycleState, 'ACCOUNT_DELETION_REQUESTED');
+    assert.equal(plan.cloudReadAllowed, false);
+    assert.equal(plan.uploadAllowed, false);
+    await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+    await assert.rejects(service.requireCloudAccess(auth, 'write'), isCode('permission-denied'));
+});
