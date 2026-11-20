@@ -2,12 +2,12 @@ package com.hebi.gallipick.ui
 
 import android.app.Activity
 import androidx.activity.ComponentActivity
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -62,7 +62,7 @@ class CloudAccountExitUiTest {
         show(CloudExitScope.ACCOUNT, api)
 
         compose.waitUntil(5_000L) {
-            compose.onNodeWithText("회원 탈퇴").fetchSemanticsNodeOrNull() != null
+            compose.onAllNodesWithText("회원 탈퇴").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText("회원 탈퇴").performClick()
         compose.onNodeWithText("GalliPick 회원 탈퇴").assertIsDisplayed()
@@ -71,7 +71,7 @@ class CloudAccountExitUiTest {
         compose.onNodeWithText("Google 재인증 후 삭제 요청").assertIsNotEnabled()
         compose.onNodeWithTag("cloud-exit-confirm-billing").performClick()
         compose.waitUntil(5_000L) {
-            compose.onNodeWithText("Google 재인증 후 삭제 요청").fetchSemanticsNodeOrNull() != null
+            compose.onAllNodesWithText("Google 재인증 후 삭제 요청").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText("Google 재인증 후 삭제 요청").assertIsEnabled().performClick()
         compose.waitUntil(5_000L) { compose.runOnIdle { api.requests.size == 1 } }
@@ -85,7 +85,7 @@ class CloudAccountExitUiTest {
         val api = FakeExitApi()
         show(CloudExitScope.CLOUD, api)
         compose.waitUntil(5_000L) {
-            compose.onNodeWithText("클라우드 데이터 삭제 요청").fetchSemanticsNodeOrNull() != null
+            compose.onAllNodesWithText("클라우드 데이터 삭제 요청").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText("클라우드 데이터 삭제 요청").performClick()
         compose.onNodeWithText("클라우드 데이터 삭제").assertIsDisplayed()
