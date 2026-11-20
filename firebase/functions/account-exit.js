@@ -252,7 +252,7 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
                 deadlineAtMs: timestamp + ACCOUNT_EXIT_MAX_MS,
                 drainUntilMs: timestamp + ACCOUNT_EXIT_GRACE_MS,
                 nextAttemptAtMs: timestamp + ACCOUNT_EXIT_GRACE_MS,
-                stage: 'OBJECTS', stageIndex: 0, attempts: 0 };
+                stage: 'OBJECTS', stageIndex: 0, consecutiveFailures: 0 };
             tx.set(ref, record);
             return publicStatus(record);
         });
@@ -268,8 +268,7 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
                 throw new BackupError('failed-precondition', 'Account deletion owner mismatch.');
             }
             const updated = { ...current, status: 'RUNNING',
-                lease: { id: randomBytes(16).toString('hex'), untilMs: timestamp + WORKER_LEASE_MS },
-                attempts: (current.attempts ?? 0) + 1 };
+                lease: { id: randomBytes(16).toString('hex'), untilMs: timestamp + WORKER_LEASE_MS } };
             tx.set(ref, updated);
             return updated;
         });
@@ -316,14 +315,16 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
                     return { claimed: true, status: 'COMPLETED' };
                 }
             }
-            await checkpoint(ref, claimed, { stage: record.stage, stageIndex: record.stageIndex }, now());
+            await checkpoint(ref, claimed, { stage: record.stage, stageIndex: record.stageIndex,
+                consecutiveFailures: 0 }, now());
             return { claimed: true, status: 'IN_PROGRESS', stage: record.stage };
         } catch (error) {
             const retryAt = now();
-            const exhausted = claimed.attempts >= MAX_RETRIES;
+            const consecutiveFailures = (claimed.consecutiveFailures ?? 0) + 1;
+            const exhausted = consecutiveFailures >= MAX_RETRIES;
             try {
                 await checkpoint(ref, claimed, { status: exhausted ? 'MANUAL_REVIEW' : 'RETRY',
-                    stage: claimed.stage, stageIndex: claimed.stageIndex }, retryAt);
+                    consecutiveFailures, stage: claimed.stage, stageIndex: claimed.stageIndex }, retryAt);
             } catch {
                 // The other worker's lease wins; do not overwrite its state.
             }
