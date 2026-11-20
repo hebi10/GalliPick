@@ -141,6 +141,12 @@ function seedUserData(h, uid = 'member-one') {
     for (const name of accountExitPaths.billingTokenCollections) {
         h.db.records.set(`${name}/token-${owner}`, { owner });
     }
+    for (const mode of ['live', 'license-test']) {
+        const path = `gallipickAdminManualGrants/${mode}-${owner}`;
+        h.db.records.set(path, { ownerId: owner, mode, source: 'ADMIN_MANUAL',
+            kind: 'CLOUD_10GB', status: 'ACTIVE' });
+        h.db.records.set(`${path}/history/fixture`, { action: 'ISSUE', ownerId: owner });
+    }
     return owner;
 }
 
@@ -194,6 +200,11 @@ test('Cloud-only deletion removes all owner originals and metadata while retaini
     }
     for (const name of accountExitPaths.billingDocumentRoots) assert.ok(h.db.records.has(`${name}/${owner}`));
     for (const name of accountExitPaths.billingTokenCollections) assert.ok(h.db.records.has(`${name}/token-${owner}`));
+    for (const mode of ['live', 'license-test']) {
+        const path = `gallipickAdminManualGrants/${mode}-${owner}`;
+        assert.ok(h.db.records.has(path));
+        assert.ok(h.db.records.has(`${path}/history/fixture`));
+    }
     const record = (await h.db.doc(`${ACCOUNT_EXIT_COLLECTION}/${owner}`).get()).data();
     assert.equal(record.status, 'COMPLETED');
     assert.equal(record.uid, undefined);
@@ -218,6 +229,11 @@ test('account deletion removes both environments, vault, large-part data and aut
     assert.deepEqual(h.deletedUsers, ['member-one']);
     assert.ok([...h.db.records.keys()].every(path =>
         !path.includes(owner) || path === `${ACCOUNT_EXIT_COLLECTION}/${owner}`));
+    for (const mode of ['live', 'license-test']) {
+        const path = `gallipickAdminManualGrants/${mode}-${owner}`;
+        assert.equal(h.db.records.has(path), false);
+        assert.equal(h.db.records.has(`${path}/history/fixture`), false);
+    }
     assert.ok([...h.bucket.objects.values()].every(file => !file.name.includes(`/${owner}/`)));
     assert.ok([...h.db.records.keys()].some(path => path.includes(SHA('member-two'))));
     await assert.rejects(h.service.assertActive(googleAuth()), errorCode('permission-denied'));
