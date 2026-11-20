@@ -6,11 +6,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -22,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -211,6 +216,50 @@ internal fun rememberCloudAdRemovalStatus(
         }
     }
     return (newObservation ?: currentPlan)?.removalFor(uid, System.currentTimeMillis()) ?: AdRemovalStatus.VERIFYING
+}
+
+@Composable
+internal fun GalliBottomAdPreview() {
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        GalliAdPreviewSlot("ad-preview-bottom", 40.dp, Modifier.widthIn(max = 600.dp))
+    }
+}
+
+@Composable
+internal fun GalliOpeningAdPreview(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("광고 미리보기") },
+        text = { GalliAdPreviewSlot("ad-preview-startup", 112.dp) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("계속") } },
+        containerColor = AppSurface,
+    )
+}
+
+@Composable
+internal fun GalliExitConfirmation(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("종료하시겠습니까?") },
+        text = { GalliAdPreviewSlot("ad-preview-exit", 64.dp) },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("취소", color = Muted) } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("종료") } },
+        containerColor = AppSurface,
+    )
+}
+
+@Composable
+private fun GalliAdPreviewSlot(tag: String, minHeight: Dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier.fillMaxWidth().heightIn(min = minHeight).galliCardSurface(Panel, 8.dp)
+            .testTag(tag).padding(horizontal = 12.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("광고 영역", color = Muted, style = MaterialTheme.typography.labelSmall)
+    }
 }
 
 @Composable

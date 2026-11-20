@@ -9,6 +9,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hebi.gallipick.AppThemeMode
@@ -117,8 +118,10 @@ fun GalliPickTheme(themeMode: AppThemeMode = AppThemeMode.SYSTEM, content: @Comp
                 titleMedium = typography.titleMedium.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold, lineHeight = 26.sp),
                 titleSmall = typography.titleSmall.copy(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp),
                 bodyLarge = typography.bodyLarge.copy(fontSize = 16.sp, fontWeight = FontWeight.Medium, lineHeight = 24.sp),
-                bodyMedium = typography.bodyMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Normal, lineHeight = 21.sp),
-                bodySmall = typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Normal, lineHeight = 18.sp),
+                bodyMedium = typography.bodyMedium.copy(fontSize = 14.sp, fontWeight = FontWeight.Normal,
+                    lineHeight = 21.sp, lineBreak = LineBreak.Paragraph),
+                bodySmall = typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Normal,
+                    lineHeight = 18.sp, lineBreak = LineBreak.Paragraph),
                 labelLarge = typography.labelLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp),
                 labelMedium = typography.labelMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium, lineHeight = 18.sp),
                 labelSmall = typography.labelSmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium, lineHeight = 16.sp),

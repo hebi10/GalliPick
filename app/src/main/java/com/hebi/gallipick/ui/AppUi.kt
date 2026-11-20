@@ -1,6 +1,7 @@
 package com.hebi.gallipick.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,6 +40,7 @@ import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -73,16 +75,21 @@ internal fun GalliPickApp(
     adsConfigured: Boolean = false,
     adRemoval: AdRemovalStatus = AdRemovalStatus.NOT_PURCHASED,
     onBillingScreenVisible: (Boolean) -> Unit = {},
+    adPreviewEnabled: Boolean = false,
+    onConfirmExit: () -> Unit = {},
 ) {
     val state by vm.ui.collectAsState()
+    val activity = LocalActivity.current
+    val scope = rememberCoroutineScope()
     val cloudEnabled = cloudContent != null
     val destinations = remember(cloudEnabled) { visibleDestinations(cloudEnabled) }
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.HOME) }
     var filesSearchVisible by rememberSaveable { mutableStateOf(false) }
-    var resumeFileDetailUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var resumeFileDetailVersion by rememberSaveable { mutableStateOf<Triple<String, String, String>?>(null) }
     var adRemovalOrigin by rememberSaveable { mutableStateOf<Destination?>(null) }
     val destination = if (selectedDestination in destinations) selectedDestination else Destination.HOME
     var cloudBillingVisible by remember { mutableStateOf(false) }
+    var cloudOverviewVisible by remember { mutableStateOf(true) }
     val dedicatedBilling = destination == Destination.CLOUD && cloudBillingVisible
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -119,6 +126,9 @@ internal fun GalliPickApp(
         vm.clearSelection()
     }
     fun navigate(destinationValue: Destination) {
+        if (adRemovalOrigin == Destination.FILES && destinationValue != Destination.FILES) {
+            resumeFileDetailVersion = null
+        }
         if (showSimilarResults || showSoftFocusResults || showReviewInbox || similarCompareId != null) vm.clearSelection()
         showReviewInbox = false
         compareFromInbox = false
@@ -136,6 +146,27 @@ internal fun GalliPickApp(
     fun openAdRemoval(origin: Destination) {
         navigate(Destination.CLOUD)
         adRemovalOrigin = origin
+    }
+    fun openTrash(origin: Destination) {
+        if (showTrash) return
+        navigate(origin)
+        showTrash = true
+    }
+    fun requestFileCloudAccess(item: MediaItem) {
+        val connection = cloudConnection ?: return
+        when (cloudFiles.detailAccess) {
+            DetailCloudAccess.SIGN_IN -> if (activity != null) {
+                scope.launch { connection.chooseAccount(activity) }
+            } else {
+                openAdRemoval(Destination.FILES)
+                resumeFileDetailVersion = item.detailVersion()
+            }
+            DetailCloudAccess.CHECK_ACCESS, DetailCloudAccess.PLAN_REQUIRED -> {
+                openAdRemoval(Destination.FILES)
+                resumeFileDetailVersion = item.detailVersion()
+            }
+            else -> Unit
+        }
     }
     fun openReviewInbox() {
         vm.clearSelection()
@@ -207,9 +238,23 @@ internal fun GalliPickApp(
         if (candidates.isEmpty()) vm.showMessage("이동할 사진을 직접 선택해 주세요.")
         else onTrash(candidates)
     }
-    BackHandler(enabled = showTrash || showDuplicates || showFolderStorage ||
+    val secondaryScreenVisible = showTrash || showDuplicates || showFolderStorage ||
         showPhotoAnalysis || showCleanupHistory || showSimilarResults || showSoftFocusResults ||
-        showReviewInbox || similarCompareId != null || destination != Destination.HOME) {
+        showReviewInbox || similarCompareId != null
+    val mainTabVisible = !secondaryScreenVisible && result == null &&
+        (destination != Destination.CLOUD || (cloudOverviewVisible && !dedicatedBilling && adRemovalOrigin == null))
+    val showAdPreviews = adPreviewEnabled && adRemoval == AdRemovalStatus.NOT_PURCHASED
+    var openingAdPending by rememberSaveable { mutableStateOf(true) }
+    var exitConfirmationVisible by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(destination, mainTabVisible, adRemoval, showAdPreviews) {
+        if (destination != Destination.HOME || !mainTabVisible || adRemoval == AdRemovalStatus.VERIFIED_AD_FREE) {
+            openingAdPending = false
+        }
+        if (!showAdPreviews) exitConfirmationVisible = false
+    }
+    val showHomeAdFlow = showAdPreviews && mainTabVisible && destination == Destination.HOME
+
+    BackHandler(enabled = secondaryScreenVisible || destination != Destination.HOME || showHomeAdFlow) {
         when {
             showTrash -> showTrash = false
             showDuplicates -> showDuplicates = false
@@ -223,7 +268,8 @@ internal fun GalliPickApp(
             showSimilarResults || showSoftFocusResults -> closeSimilarReview()
             showPhotoAnalysis -> showPhotoAnalysis = false
             destination == Destination.FILES && filesSearchVisible -> closeFilesSearch()
-            else -> navigate(Destination.HOME)
+            destination != Destination.HOME -> navigate(Destination.HOME)
+            else -> exitConfirmationVisible = true
         }
     }
     val navigateFiles: (com.hebi.gallipick.domain.MediaFilter) -> Unit = {
@@ -233,7 +279,9 @@ internal fun GalliPickApp(
     Surface(Modifier.fillMaxSize(), color = AppBackground) {
         BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             val wide = maxWidth >= 650.dp
-            val compactBottomNavigation = cloudEnabled && maxWidth < 380.dp * LocalDensity.current.fontScale
+            val navigationFontScale = LocalDensity.current.fontScale
+            val compactBottomNavigation = cloudEnabled && maxWidth < 380.dp * navigationFontScale
+            val needsWideCloudLabel = compactBottomNavigation && navigationFontScale >= 1.5f
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -251,12 +299,13 @@ internal fun GalliPickApp(
                     },
                 ) {
                     Column(Modifier.fillMaxSize()) {
-                        if (!dedicatedBilling && state.loading) LinearProgressIndicator(
+                        val screenOwnsCatalogState = showTrash || showDuplicates
+                        if (!dedicatedBilling && !screenOwnsCatalogState && state.loading) LinearProgressIndicator(
                             Modifier.fillMaxWidth().height(3.dp),
                             color = Primary, trackColor = Panel,
                         )
                         val catalogError = state.catalogError
-                        if (!dedicatedBilling && catalogError != null) {
+                        if (!dedicatedBilling && !screenOwnsCatalogState && catalogError != null) {
                             GalliInlineNotice(
                                 message = catalogError,
                                 actionLabel = "다시 시도",
@@ -272,7 +321,7 @@ internal fun GalliPickApp(
                                 icon = Icons.Outlined.Info,
                             )
                         }
-                        if (!dedicatedBilling && state.access == MediaAccess.PARTIAL) {
+                        if (!dedicatedBilling && !screenOwnsCatalogState && state.access == MediaAccess.PARTIAL) {
                             GalliInlineNotice(
                                 message = "허용된 사진·동영상만 표시 중",
                                 actionLabel = "접근 변경",
@@ -286,7 +335,10 @@ internal fun GalliPickApp(
                             }
                             Box(Modifier.weight(1f).fillMaxHeight()) {
                                 when {
-                                    showTrash -> TrashScreen(state.trashed, onRestore, { showTrash = false })
+                                    showTrash -> TrashScreen(
+                                        state = state, onRestore = onRestore, onBack = { showTrash = false },
+                                        onRequestPermission = onRequestPermission, onRetry = vm::refresh,
+                                    )
                                     showDuplicates -> Column(Modifier.fillMaxSize()) {
                                         Row(
                                             Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.touchTarget)
@@ -296,7 +348,8 @@ internal fun GalliPickApp(
                                         ) {
                                             IconAction("정리로 돌아가기", Icons.Outlined.ArrowBack,
                                                 onClick = { showDuplicates = false })
-                                            Text("정리 / 중복 파일", style = MaterialTheme.typography.titleSmall)
+                                            Text("중복 정리", Modifier.semantics { heading() },
+                                                style = MaterialTheme.typography.titleLarge)
                                         }
                                         Box(Modifier.weight(1f).fillMaxWidth()) {
                                             DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission)
@@ -460,18 +513,16 @@ internal fun GalliPickApp(
                                         Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission,
                                              cloudFiles = cloudFiles, openCloud = { navigate(Destination.CLOUD) },
                                              showSearch = filesSearchVisible,
-                                             resumeDetailUri = resumeFileDetailUri,
-                                             onDetailResumed = { resumeFileDetailUri = null },
-                                             onCloudSignInFromDetail = { uri ->
-                                                 resumeFileDetailUri = uri
-                                                 navigate(Destination.CLOUD)
-                                             })
+                                             resumeDetailVersion = resumeFileDetailVersion,
+                                             onDetailResumed = { resumeFileDetailVersion = null },
+                                             onCloudSignInFromDetail = ::requestFileCloudAccess)
                                         Destination.CLEANUP -> CleanupScreen(
                                             state, onOpenDuplicates = ::openDuplicates,
                                             onOpenFolderStorage = ::openFolderStorage,
                                             onOpenPhotoAnalysis = ::openPhotoAnalysis,
                                             onOpenHistory = ::openCleanupHistory,
                                             onOpenReviewInbox = ::openReviewInbox,
+                                            onOpenTrash = { openTrash(Destination.CLEANUP) },
                                             browse = navigateFiles,
                                         )
                                         Destination.CLOUD -> if (cloudContent != null && cloudConnection != null) {
@@ -484,13 +535,14 @@ internal fun GalliPickApp(
                                                     cloudBillingVisible = visible
                                                     onBillingScreenVisible(visible)
                                                 },
+                                                onOverviewVisible = { cloudOverviewVisible = it },
                                                 showSecretCloud = state.secretCloudVisible,
                                             ) { route ->
                                                 cloudContent(route) { navigate(Destination.HOME) }
                                             }
                                         }
                                         Destination.SETTINGS -> SettingsScreen(
-                                            state, vm, onRequestPermission, onOpenSettings, { showTrash = true },
+                                            state, vm, onRequestPermission, onOpenSettings, { openTrash(Destination.SETTINGS) },
                                             adsPrivacyOptionsRequired = adsPrivacyOptionsRequired,
                                             onAdsPrivacyOptions = onAdsPrivacyOptions,
                                             openAdRemoval = if (canOpenAdRemoval) {
@@ -507,11 +559,9 @@ internal fun GalliPickApp(
                         }
                     }
                 }
-                if (destination == Destination.HOME && homeBanner != null &&
-                    !showTrash && !showDuplicates && !showFolderStorage && !showPhotoAnalysis &&
-                    !showCleanupHistory && !showSimilarResults && !showSoftFocusResults &&
-                    !showReviewInbox && similarCompareId == null && result == null) {
-                    homeBanner()
+                if (mainTabVisible) {
+                    if (showAdPreviews) GalliBottomAdPreview()
+                    else if (destination == Destination.HOME) homeBanner?.invoke()
                 }
                 if (!wide && !dedicatedBilling) {
                     Row(
@@ -522,11 +572,25 @@ internal fun GalliPickApp(
                         horizontalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
                         destinations.forEach {
-                            NavItem(it, destination == it, { navigate(it) }, Modifier.weight(1f), compactBottomNavigation)
+                            val weight = if (needsWideCloudLabel && it == Destination.CLOUD) 2f else 1f
+                            NavItem(it, destination == it, { navigate(it) }, Modifier.weight(weight), compactBottomNavigation)
                         }
                     }
                 }
             }
+        }
+    }
+    if (showHomeAdFlow) {
+        if (openingAdPending) {
+            GalliOpeningAdPreview(onDismiss = { openingAdPending = false })
+        } else if (exitConfirmationVisible) {
+            GalliExitConfirmation(
+                onDismiss = { exitConfirmationVisible = false },
+                onConfirm = {
+                    exitConfirmationVisible = false
+                    onConfirmExit()
+                },
+            )
         }
     }
     if (result != null) CleanupResultDialog(
@@ -538,11 +602,14 @@ internal fun GalliPickApp(
         },
         onNext = {
             if (result.restore) {
-                navigate(Destination.SETTINGS)
-                showTrash = true
-            } else {
+                openTrash(if (destination == Destination.SETTINGS) Destination.SETTINGS else Destination.CLEANUP)
+            } else if (destination != Destination.CLEANUP && destination != Destination.FILES) {
                 navigate(Destination.CLEANUP)
             }
+            onDismissResult()
+        },
+        onOpenTrash = {
+            openTrash(Destination.CLEANUP)
             onDismissResult()
         },
     )
@@ -591,7 +658,7 @@ internal fun GalliFilesHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("파일", style = MaterialTheme.typography.titleLarge, color = Ink,
-            modifier = Modifier.weight(1f))
+            modifier = Modifier.weight(1f).semantics { heading() })
         if (loading) Text("불러오는 중", style = MaterialTheme.typography.labelSmall, color = Muted)
         IconAction(
             if (searchVisible) "파일 검색 닫기" else "파일 검색",

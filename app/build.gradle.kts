@@ -21,6 +21,9 @@ val sampleBannerAdUnitId = "ca-app-pub-3940256099942544/9214589741"
 val adsDebugTest = providers.gradleProperty("gallipickAdsTest")
     .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickAdsTest must be true or false") }
     .getOrElse(false)
+val adsDebugPreview = providers.gradleProperty("gallipickAdsPreview")
+    .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickAdsPreview must be true or false") }
+    .getOrElse(false)
 val adsReleaseEnabled = providers.gradleProperty("gallipickAdsEnabled")
     .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickAdsEnabled must be true or false") }
     .getOrElse(false)
@@ -227,6 +230,7 @@ android {
     buildTypes {
         debug {
             resValue("bool", "gallipick_ads_enabled", adsDebugTest.toString())
+            resValue("bool", "gallipick_ads_preview", (adsDebugPreview && !adsDebugTest).toString())
             resValue("string", "gallipick_admob_app_id", sampleAdMobAppId)
             resValue("string", "gallipick_admob_banner_unit_id", sampleBannerAdUnitId)
             if (!testSigning) signingConfig = signingConfigs.getByName("galliPick")

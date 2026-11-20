@@ -3,7 +3,6 @@ package com.hebi.gallipick.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items as horizontalItems
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -13,18 +12,20 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
@@ -56,7 +57,7 @@ internal fun DuplicatesScreen(state: AppUiState, vm: AppViewModel, trash: (List<
         vm::startScan, vm::pauseScan, vm::resumeScan, vm::selectRecommendedDuplicates,
         vm::toggleDuplicateCandidateSelection, vm::clearSelection, vm::chooseDuplicateKeeper,
         { item, protected -> vm.setProtected(item, protected) }, vm::refresh, vm::selectDuplicateGroupCandidates,
-    ))
+    ), showTitle = false)
 }
 
 @Composable
@@ -67,6 +68,7 @@ internal fun DuplicatesScreenContent(
     open: (MediaItem) -> Unit,
     requestAccess: () -> Unit,
     actions: DuplicatesScreenActions,
+    showTitle: Boolean = true,
 ) {
     var compareHash by rememberSaveable { mutableStateOf<String?>(null) }
     var initialCompareUri by rememberSaveable { mutableStateOf<String?>(null) }
@@ -83,7 +85,8 @@ internal fun DuplicatesScreenContent(
                 ?.removePrefix("group:")
         }.collect { hash -> if (hash != null) lastVisibleGroup = hash }
     }
-    val catalogVisible = !state.loading && state.access != MediaAccess.NONE && state.catalogError == null
+    val availability = state.catalogAvailability
+    val catalogVisible = availability == MediaCatalogAvailability.READY
     LaunchedEffect(catalogVisible) {
         if (!catalogVisible) groupToRestore = lastVisibleGroup
     }
@@ -111,12 +114,14 @@ internal fun DuplicatesScreenContent(
             else { closedPendingHash = null; retainedComparison = null }
         }
     }
-    LaunchedEffect(state.access, state.catalogError, state.loading, reviewHash, authoritativeComparison, retainedLive) {
+    LaunchedEffect(availability, state.loading, reviewHash, authoritativeComparison, retainedLive) {
         if (state.loading && compareHash == null) {
             closedPendingHash = null
             retainedComparison = null
         }
-        if (state.access == MediaAccess.NONE || state.catalogError != null || (!state.loading && reviewHash != null && authoritativeComparison == null && retainedLive == null)) {
+        if (availability == MediaCatalogAvailability.PERMISSION_REQUIRED || availability == MediaCatalogAvailability.ERROR ||
+            (catalogVisible && reviewHash != null && authoritativeComparison == null && retainedLive == null)
+        ) {
             compareHash = null
             closedPendingHash = null
             retainedComparison = null
@@ -150,16 +155,24 @@ internal fun DuplicatesScreenContent(
                 ) {
                     if (shortResults) {
                         item("intro", span = { GridItemSpan(maxLineSpan) }) {
-                            CompactDuplicateSummary(state.scan, groups.size, candidates, liveItems.isNotEmpty(), actions)
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (state.access == MediaAccess.PARTIAL) DuplicateScopeNotice(requestAccess)
+                                CompactDuplicateSummary(state.scan, groups.size, candidates, liveItems.isNotEmpty(), actions, showTitle)
+                            }
                         }
                     } else {
-                        item("intro", span = { GridItemSpan(maxLineSpan) }) { DuplicateIntro() }
+                        item("intro", span = { GridItemSpan(maxLineSpan) }) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                DuplicateIntro(showTitle)
+                                if (state.access == MediaAccess.PARTIAL) DuplicateScopeNotice(requestAccess)
+                            }
+                        }
                         item("scan", span = { GridItemSpan(maxLineSpan) }) { DuplicateScanSummary(state.scan, liveItems.isNotEmpty(), actions) }
                     }
                     if (groups.isEmpty()) {
                         item("empty", span = { GridItemSpan(maxLineSpan) }) { EmptyState(
-                            if (state.scan.phase == ScanPhase.COMPLETE) "확인된 중복 파일이 없습니다" else "중복 사본을 찾아보세요",
-                            if (state.scan.phase == ScanPhase.COMPLETE) "접근이 허용된 미디어에서 검사한 결과입니다." else "검사를 시작하면 같은 내용의 파일이 묶여 표시됩니다.", Icons.Outlined.CopyAll,
+                            if (state.scan.phase == ScanPhase.COMPLETE) "현재 확인된 중복 파일이 없습니다" else "중복 사본을 찾아보세요",
+                            if (state.scan.phase == ScanPhase.COMPLETE) "접근 범위나 파일이 바뀌었다면 다시 검사할 수 있습니다." else "검사를 시작하면 같은 내용의 파일이 묶여 표시됩니다.", Icons.Outlined.CopyAll,
                             scene = if (state.scan.phase == ScanPhase.COMPLETE) GalliScene.COMPLETE else GalliScene.SEARCH,
                         ) }
                     } else {
@@ -167,7 +180,7 @@ internal fun DuplicatesScreenContent(
                             Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Column(Modifier.weight(1f).widthIn(min = 130.dp).align(Alignment.CenterVertically)) {
-                                        Text("중복 ${groups.size}묶음 · 후보 ${candidates.size}개", style = MaterialTheme.typography.titleSmall)
+                                        Text("현재 중복 ${groups.size}묶음 · 후보 ${candidates.size}개", style = MaterialTheme.typography.titleSmall)
                                         Text(bytesLabel(duplicateBytes(candidates)), style = MaterialTheme.typography.bodySmall, color = Muted)
                                     }
                                     ActionButton(duplicateSelectionLabel(candidates.size), actions.selectRecommended,
@@ -198,22 +211,37 @@ internal fun DuplicatesScreenContent(
                     }
                 }
             } else {
-                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 12.dp, bottom = 16.dp)) {
-                    item { DuplicateIntro() }
-                    item { DuplicateScanSummary(state.scan, false, actions) }
-                    item {
-                        when {
-                            checkingComparison -> EmptyState("중복 결과를 확인하고 있습니다", "남길 파일과 정리 후보를 다시 확인한 뒤 목록을 표시합니다.", Icons.Outlined.CopyAll)
-                            state.access == MediaAccess.NONE -> EmptyState("미디어 접근이 필요합니다", "접근을 허용한 사진과 동영상에서 중복 사본을 찾습니다.", Icons.Outlined.CopyAll,
-                                action = { ActionButton("접근 허용", requestAccess, filled = true) })
-                            state.catalogError != null -> EmptyState("파일을 불러오지 못했습니다", state.catalogError, Icons.Outlined.Info,
-                                action = { ActionButton("다시 시도", actions.refresh, filled = true) })
-                            else -> EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.", Icons.Outlined.CopyAll)
-                        }
+                Column(
+                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                        .padding(top = 12.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (showTitle) DuplicateIntro(showTitle = true, showDescription = false)
+                    when (availability) {
+                        MediaCatalogAvailability.PERMISSION_REQUIRED -> EmptyState(
+                            "미디어 접근이 필요합니다", "접근을 허용한 사진과 동영상에서 중복 파일을 찾습니다.", Icons.Outlined.CopyAll,
+                            action = { ActionButton("접근 허용", requestAccess, Modifier.fillMaxWidth(), filled = true) },
+                            scene = GalliScene.SEARCH,
+                        )
+                        MediaCatalogAvailability.ERROR -> EmptyState(
+                            "파일을 불러오지 못했습니다", state.catalogError.orEmpty(), Icons.Outlined.Info,
+                            action = { ActionButton("다시 시도", actions.refresh, filled = true) },
+                        )
+                        MediaCatalogAvailability.LOADING -> EmptyState(
+                            "미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.", Icons.Outlined.CopyAll,
+                            action = { CircularProgressIndicator(Modifier.size(28.dp)) }, scene = GalliScene.SEARCH,
+                        )
+                        MediaCatalogAvailability.READY -> EmptyState(
+                            "중복 결과를 확인하고 있습니다", "남길 파일과 정리 후보를 다시 확인한 뒤 목록을 표시합니다.",
+                            Icons.Outlined.CopyAll, scene = GalliScene.SEARCH,
+                        )
+                    }
+                    if (state.scan.phase == ScanPhase.COMPLETE) {
+                        DuplicateCompleteSummary(state.scan, false, actions.startScan, previous = true)
                     }
                 }
             }
-            if (selected.isNotEmpty()) DuplicateSelectionBar(selected, actions.clearSelection, shortResults) { trash(selected) }
+            if (!checkingComparison && selected.isNotEmpty()) DuplicateSelectionBar(selected, actions.clearSelection, shortResults) { trash(selected) }
         }
     }
     if (comparison != null) DuplicateCompareDialog(
@@ -365,15 +393,26 @@ private fun DuplicateHorizontalMediaCard(
 }
 
 @Composable
-private fun DuplicateIntro() {
+private fun DuplicateIntro(showTitle: Boolean, showDescription: Boolean = true) {
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text("중복 정리", style = MaterialTheme.typography.titleLarge)
-        Text("SHA-256 완전 일치 사본입니다. 남길 파일을 확인하고 정리 후보만 선택하세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
+        if (showTitle) Text("중복 정리", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+        if (showDescription) Text(
+            "접근을 허용한 사진과 동영상에서 중복 파일을 찾습니다. 남길 파일을 확인하고 정리 후보만 선택하세요.",
+            style = MaterialTheme.typography.bodySmall, color = Muted,
+        )
     }
 }
 
 @Composable
-private fun CompactDuplicateSummary(scan: ScanState, groupCount: Int, candidates: List<MediaItem>, canScan: Boolean, actions: DuplicatesScreenActions) {
+private fun DuplicateScopeNotice(requestAccess: () -> Unit) {
+    GalliInlineNotice(
+        "접근을 허용한 사진·동영상만 검사하고 결과에 표시합니다.",
+        "접근 범위 변경", requestAccess, Icons.Outlined.PhotoLibrary,
+    )
+}
+
+@Composable
+private fun CompactDuplicateSummary(scan: ScanState, groupCount: Int, candidates: List<MediaItem>, canScan: Boolean, actions: DuplicatesScreenActions, showTitle: Boolean) {
     Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp))) {
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -382,10 +421,10 @@ private fun CompactDuplicateSummary(scan: ScanState, groupCount: Int, candidates
                 liveRegion = LiveRegionMode.Polite
             }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("중복 정리", style = MaterialTheme.typography.titleSmall)
-                    Text("${groupCount}개 묶음 · 정리 후보 ${candidates.size}개", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (showTitle) Text("중복 정리", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
+                    Text("현재 ${groupCount}개 묶음 · 정리 후보 ${candidates.size}개", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                val status = if (scan.phase == ScanPhase.COMPLETE) "검사 완료 · ${scan.completed}개 확인" + if (scan.skipped > 0) " · ${scan.skipped}개 건너뜀" else ""
+                val status = if (scan.phase == ScanPhase.COMPLETE) completedScanLabel(scan)
                     else scanTitle(scan) + if (scan.total > 0) " · ${scan.completed} / ${scan.total}개" else ""
                 Text("${bytesLabel(duplicateBytes(candidates))} · $status", style = MaterialTheme.typography.bodySmall, color = Muted,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -413,12 +452,7 @@ private fun CompactDuplicateSummary(scan: ScanState, groupCount: Int, candidates
 @OptIn(ExperimentalLayoutApi::class)
 private fun DuplicateScanSummary(scan: ScanState, canScan: Boolean, actions: DuplicatesScreenActions) {
     if (scan.phase == ScanPhase.COMPLETE) {
-        FlowRow(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp).semantics { contentDescription = "중복 검사 완료 요약" },
-            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("검사 완료 · ${scan.completed}개 확인" + if (scan.skipped > 0) " · ${scan.skipped}개 건너뜀" else "",
-                Modifier.weight(1f).widthIn(min = 130.dp).align(Alignment.CenterVertically).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodySmall, color = Muted)
-            ActionButton("다시 검사", actions.startScan, Modifier.align(Alignment.CenterVertically), enabled = canScan)
-        }
+        DuplicateCompleteSummary(scan, canScan, actions.startScan)
         return
     }
     Column(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -439,6 +473,28 @@ private fun DuplicateScanSummary(scan: ScanState, canScan: Boolean, actions: Dup
         if (scan.message.isNotBlank()) Text(scan.message, style = MaterialTheme.typography.bodySmall, color = if (scan.phase == ScanPhase.FAILED) MaterialTheme.colorScheme.error else Muted)
     }
 }
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun DuplicateCompleteSummary(scan: ScanState, canScan: Boolean, startScan: () -> Unit, previous: Boolean = false) {
+    FlowRow(
+        Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).padding(12.dp)
+            .semantics { contentDescription = if (previous) "이전 중복 검사 기록" else "중복 검사 완료 요약" },
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            completedScanLabel(scan, previous),
+            Modifier.weight(1f).widthIn(min = 130.dp).align(Alignment.CenterVertically)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+            style = MaterialTheme.typography.bodySmall, color = Muted,
+        )
+        if (!previous) ActionButton("다시 검사", startScan, Modifier.align(Alignment.CenterVertically), enabled = canScan)
+    }
+}
+
+private fun completedScanLabel(scan: ScanState, previous: Boolean = false): String =
+    "${if (previous) "이전" else "최근"} 검사 기록 · ${scan.completed}개 확인" +
+        if (scan.skipped > 0) " · ${scan.skipped}개 건너뜀" else ""
 
 @Composable
 private fun DuplicateScanProgress(scan: ScanState) {

@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -43,10 +45,13 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun CloudAutoBackupSection(connection: CloudAccountConnection, state: AppUiState, requestAccess: () -> Unit) {
     val backup = connection.backup ?: return
-    val account by connection.session.account.collectAsStateWithLifecycle()
-    val uid = account?.uid ?: return
+    val observedAccount by connection.session.account.collectAsStateWithLifecycle()
+    val account = observedAccount ?: return
+    val uid = account.uid
     val access = backup.accessFor(uid) ?: return
-    key(uid) { CloudAutoBackupControls(connection, backup, access, uid, state, requestAccess) }
+    key(uid) {
+        CloudAutoBackupControls(connection, backup, access, uid, account.transferAccountLabel, state, requestAccess)
+    }
 }
 
 @Composable
@@ -55,6 +60,7 @@ private fun CloudAutoBackupControls(
     backup: CloudBackup,
     access: CloudBackupAccess,
     uid: String,
+    accountLabel: String,
     state: AppUiState,
     requestAccess: () -> Unit,
 ) {
@@ -83,7 +89,7 @@ private fun CloudAutoBackupControls(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("자동 백업", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
-        Text("데이터 사용량 제한이 없는 Wi-Fi에 연결되어 충전 중일 때 선택한 폴더를 백업합니다. 원본의 촬영 위치 정보도 포함됩니다.",
+        Text("데이터 사용량 제한이 없는 Wi-Fi에 연결되어 충전 중일 때 선택한 폴더를 백업합니다.",
             color = Muted, style = MaterialTheme.typography.bodySmall)
         active?.let { schedule ->
             Text("예약 폴더 · ${schedule.consent.folder.label()}")
@@ -148,7 +154,15 @@ private fun CloudAutoBackupControls(
         AlertDialog(
             onDismissRequest = { selected = null },
             title = { Text("이 폴더의 자동 백업을 켤까요?") },
-            text = { Text("${folder.label()}에서 ${limitLabel} 이하 원본과 촬영 정보를 현재 Google 계정의 클라우드 보관함으로 보냅니다. 현재 폴더와 나중에 이 폴더에 추가되는 파일이 포함됩니다.") },
+            text = {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("${folder.label()}의 원본과 나중에 이 폴더에 추가되는 파일을 자동으로 백업합니다.")
+                    CloudOriginalTransferNotice(accountLabel, "파일당 $limitLabel 이하")
+                }
+            },
             confirmButton = {
                 TextButton({
                     selected = null

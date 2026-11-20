@@ -83,7 +83,7 @@ class AdaptiveOverviewTest {
             }
         }
         compose.onNodeWithText("정리 시작하기").assertIsDisplayed()
-        compose.onNodeWithText("중복 파일 찾기").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("사진·동영상 중복 찾기").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("용량 큰 파일").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("오래된 파일").performScrollTo().assertIsDisplayed()
     }
@@ -102,7 +102,7 @@ class AdaptiveOverviewTest {
         compose.onNodeWithText("사진과 영상을", substring = true).assertIsDisplayed()
         compose.onNode(hasText("정리 시작하기") and hasClickAction())
             .assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
-        for (title in listOf("사진·영상 정리", "중복 파일 찾기", "용량 큰 파일", "오래된 파일")) {
+        for (title in listOf("파일 둘러보기", "사진·동영상 중복 찾기", "용량 큰 파일", "오래된 파일")) {
             compose.onNode(hasText(title) and hasClickAction())
                 .performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         }
@@ -120,12 +120,12 @@ class AdaptiveOverviewTest {
                 }
             }
         }
-        val wideAction = compose.onNodeWithText("중복 파일 찾기").fetchSemanticsNode().boundsInRoot
+        val wideAction = compose.onNodeWithText("사진·동영상 중복 찾기").fetchSemanticsNode().boundsInRoot
         val wideStorage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
         assertTrue("A wide home should place storage beside the quick grid", wideStorage.right <= wideAction.left)
 
         compose.runOnIdle { width.value = 360.dp }
-        val narrowAction = compose.onNodeWithText("중복 파일 찾기").fetchSemanticsNode().boundsInRoot
+        val narrowAction = compose.onNodeWithText("사진·동영상 중복 찾기").fetchSemanticsNode().boundsInRoot
         val narrowStorage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
         assertTrue("A narrow home should show storage before the shortcut grid", narrowStorage.bottom < narrowAction.top)
     }
@@ -148,7 +148,7 @@ class AdaptiveOverviewTest {
         }
         val welcome = compose.onNodeWithText("사진과 영상을", substring = true).fetchSemanticsNode().boundsInRoot
         val storage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
-        val shortcut = compose.onNode(hasText("사진·영상 정리") and hasClickAction())
+        val shortcut = compose.onNode(hasText("파일 둘러보기") and hasClickAction())
             .fetchSemanticsNode().boundsInRoot
 
         assertTrue("Tablet storage should sit below its welcome panel", storage.top > welcome.bottom)
@@ -157,7 +157,7 @@ class AdaptiveOverviewTest {
         assertTrue("Tablet shortcut cards need roomy touch targets", shortcut.height >= 150 * .6f)
         compose.onNodeWithText("사진 1개").assertIsDisplayed()
         compose.onNodeWithText("동영상 1개").assertIsDisplayed()
-        compose.onNode(hasText("중복 파일 찾기") and hasClickAction()).performClick()
+        compose.onNode(hasText("사진·동영상 중복 찾기") and hasClickAction()).performClick()
         compose.runOnIdle { assertEquals(1, duplicateOpens) }
     }
 
@@ -173,7 +173,7 @@ class AdaptiveOverviewTest {
         }
         val welcome = compose.onNodeWithText("사진과 영상을", substring = true).fetchSemanticsNode().boundsInRoot
         val storage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
-        val shortcut = compose.onNode(hasText("중복 파일 찾기") and hasClickAction())
+        val shortcut = compose.onNode(hasText("사진·동영상 중복 찾기") and hasClickAction())
             .fetchSemanticsNode().boundsInRoot
         assertTrue("Medium screens still show the welcome panel before the content row", welcome.bottom < storage.top)
         assertTrue("Medium screens preserve side-by-side storage and shortcuts", storage.right < shortcut.left)
@@ -198,7 +198,7 @@ class AdaptiveOverviewTest {
         }
         compose.onNodeWithText("정리할 파일을 확인해 보세요").assertDoesNotExist()
         compose.onNodeWithText("직접 선택 가능한 후보", substring = true).assertDoesNotExist()
-        compose.onNodeWithContentDescription("중복 파일 검사 열기")
+        compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기")
             .performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(1, duplicateOpens) }
         compose.onNode(hasText("큰 동영상") and hasClickAction())
@@ -224,10 +224,12 @@ class AdaptiveOverviewTest {
             }
         }
         compose.onNodeWithText("정리").assertExists()
-        compose.onNodeWithText("사진 비교").assertExists()
+        compose.onNodeWithText("중복 파일").assertExists()
+        compose.onNodeWithText("사진·동영상 중복 찾기").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("종류별 정리").assertExists()
+        compose.onNodeWithText("사진 분석").assertDoesNotExist()
         compose.onNodeWithText("비슷한 사진 찾기").assertDoesNotExist()
-        compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").performScrollTo().performClick()
         compose.onNodeWithContentDescription("폴더별 용량 분석 열기").performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals(1, duplicateOpens)

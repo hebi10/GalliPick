@@ -1,14 +1,10 @@
 package com.hebi.gallipick.ui
 
 import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.LruCache
 import android.util.Size
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,13 +27,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.PhotoOcrIndexPolicy
@@ -61,23 +56,58 @@ private object ThumbnailCache {
 }
 
 @Composable
-internal fun MediaThumbnail(item: MediaItem, modifier: Modifier = Modifier, contentScale: ContentScale = ContentScale.Crop) {
+internal fun MediaThumbnail(
+    item: MediaItem,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    contentDescription: String? = item.displayName,
+) {
     val resolver = LocalContext.current.contentResolver
     val key = "${item.uri}:${item.fingerprint}:${item.volumeVersion}"
     var bitmap by remember(key) { mutableStateOf(ThumbnailCache.bitmaps.get(key)) }
+    var loading by remember(key) { mutableStateOf(bitmap == null) }
     LaunchedEffect(key) {
         if (bitmap == null) bitmap = withContext(Dispatchers.IO) {
             ThumbnailCache.permits.withPermit {
-                ThumbnailCache.bitmaps.get(key) ?: try {
-                    resolver.loadThumbnail(Uri.parse(item.uri), Size(384, 384), null).also { ThumbnailCache.bitmaps.put(key, it) }
-                } catch (error: CancellationException) { throw error } catch (_: Exception) { null }
+                ThumbnailCache.bitmaps.get(key) ?: run {
+                    val uri = Uri.parse(item.uri)
+                    val thumbnail = try {
+                        resolver.loadThumbnail(uri, Size(384, 384), null)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        if (item.kind == MediaKind.VIDEO) {
+                            runCatching {
+                                resolver.openFileDescriptor(uri, "r")?.use { input ->
+                                    MediaMetadataRetriever().use { video ->
+                                        video.setDataSource(input.fileDescriptor)
+                                        video.getScaledFrameAtTime(
+                                            -1L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 384, 384,
+                                            MediaMetadataRetriever.BitmapParams(),
+                                        )
+                                    }
+                                }
+                            }.getOrNull()
+                        } else null
+                    }
+                    thumbnail?.also { ThumbnailCache.bitmaps.put(key, it) }
+                }
             }
         }
+        loading = false
     }
     Box(modifier.background(Panel), contentAlignment = Alignment.Center) {
         val loaded = bitmap
-        if (loaded != null) Image(loaded.asImageBitmap(), contentDescription = item.displayName, modifier = Modifier.fillMaxSize(), contentScale = contentScale)
-        else GalliIcon(if (item.kind == MediaKind.VIDEO) Icons.Outlined.Videocam else Icons.Outlined.Image, "미리보기 없음", Modifier.size(30.dp), tint = Muted)
+        when {
+            loaded != null -> Image(
+                loaded.asImageBitmap(), contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize().testTag("media-thumbnail-ready"), contentScale = contentScale,
+            )
+            loading -> CircularProgressIndicator(Modifier.size(20.dp).semantics {
+                this.contentDescription = "미리보기 불러오는 중"
+            }, strokeWidth = 2.dp)
+            else -> GalliIcon(if (item.kind == MediaKind.VIDEO) Icons.Outlined.Videocam else Icons.Outlined.Image, "미리보기 없음", Modifier.size(30.dp), tint = Muted)
+        }
     }
 }
 
@@ -162,30 +192,22 @@ internal fun MediaDetailDialog(item: MediaItem, onDismiss: () -> Unit,
     folderProtected: Boolean = false, ocrText: String? = null, ocrQuery: String = "",
     cloudBackup: CloudBackup? = null, accountUid: String? = null,
     cloudVerified: Boolean = false, onRequestCloud: () -> Unit = {},
+    cloudDetailAccess: DetailCloudAccess = defaultDetailCloudAccess(cloudBackup, accountUid),
+    cloudAccountEmail: String? = null,
+    cloudNotice: String? = null,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-            val entrance = remember { MutableTransitionState(false).apply { targetState = true } }
-            AnimatedVisibility(
-                visibleState = entrance,
-                enter = slideInVertically(animationSpec = tween(durationMillis = 240)) { height -> height },
-                exit = ExitTransition.None,
-            ) {
-                Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 6.dp, end = 4.dp, bottom = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text("파일 상세", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                        IconAction("닫기", Icons.Outlined.Close, onClick = onDismiss)
-                    }
-                    MediaDetail(item, onOpen, onProtect, Modifier.weight(1f),
-                        folderProtected, ocrText = ocrText, ocrQuery = ocrQuery,
-                        cloudBackup = cloudBackup, accountUid = accountUid,
-                        cloudVerified = cloudVerified, onRequestCloud = onRequestCloud)
-                }
+    MediaViewerDialog(onDismiss) { contentModifier ->
+        Column(contentModifier) {
+            Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 6.dp, end = 4.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("파일 상세", Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+                IconAction("닫기", Icons.Outlined.Close, onClick = onDismiss)
             }
+            MediaDetail(item, onOpen, onProtect, Modifier.weight(1f),
+                folderProtected, ocrText = ocrText, ocrQuery = ocrQuery,
+                cloudBackup = cloudBackup, accountUid = accountUid,
+                cloudVerified = cloudVerified, onRequestCloud = onRequestCloud,
+                cloudDetailAccess = cloudDetailAccess, cloudAccountEmail = cloudAccountEmail, cloudNotice = cloudNotice)
         }
     }
 }
@@ -196,6 +218,9 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
     folderProtected: Boolean = false, ocrText: String? = null, ocrQuery: String = "",
     cloudBackup: CloudBackup? = null, accountUid: String? = null,
     cloudVerified: Boolean = false, onRequestCloud: () -> Unit = {},
+    cloudDetailAccess: DetailCloudAccess = defaultDetailCloudAccess(cloudBackup, accountUid),
+    cloudAccountEmail: String? = null,
+    cloudNotice: String? = null,
 ) {
     var previewOpen by remember(item.uri, item.fingerprint, item.volumeVersion) { mutableStateOf(false) }
     if (previewOpen) MediaPreviewDialog(item, onDismiss = { previewOpen = false }, onOpen = onOpen)
@@ -225,15 +250,21 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
             ActionButton("미리보기", { previewOpen = true }, actionModifier, filled = true,
                 icon = if (item.kind == MediaKind.VIDEO) Icons.Outlined.PlayArrow else Icons.Outlined.ZoomIn)
         }
-        if (confirmUpload && cloudBackup != null && accountUid != null) {
+        if (confirmUpload && cloudDetailAccess == DetailCloudAccess.READY && cloudBackup != null && accountUid != null) {
             AlertDialog(
                 onDismissRequest = { confirmUpload = false },
                 title = { Text("클라우드에 보관") },
                 text = {
                     val limit = if (resumeAvailable) "요금제의 남은 용량을 사용합니다. 중단 후 같은 파일을 선택하면 이어서 올릴 수 있습니다."
                         else "현재 이용 환경의 파일 크기와 저장 용량 기준이 적용됩니다."
-                    Text("${item.displayName} 원본(${bytesLabel(item.sizeBytes)})을 현재 Google 계정의 클라우드로 전송합니다. " +
-                        "모바일 데이터가 사용될 수 있습니다. $limit")
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(item.displayName, style = MaterialTheme.typography.titleSmall)
+                        CloudOriginalTransferNotice(
+                            accountLabel = cloudAccountEmail ?: "현재 로그인한 Google 계정",
+                            originalSize = bytesLabel(item.sizeBytes),
+                        )
+                        Text("모바일 데이터가 사용될 수 있습니다. $limit")
+                    }
                 },
                 confirmButton = {
                     TextButton(onClick = {
@@ -270,15 +301,27 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
             )
         }
         val cloudAction: @Composable (Modifier) -> Unit = { actionModifier ->
+            val ableToAct = when (cloudDetailAccess) {
+                DetailCloudAccess.READY -> cloudBackup != null && accountUid != null
+                DetailCloudAccess.SIGN_IN, DetailCloudAccess.CHECK_ACCESS, DetailCloudAccess.PLAN_REQUIRED -> true
+                else -> false
+            }
             ActionButton(
-                if (backedUp) "보관 완료" else if (uploadBusy) "보관 중" else "클라우드 보관",
+                when {
+                    backedUp -> "보관 완료"
+                    uploadBusy -> "보관 중"
+                    cloudDetailAccess == DetailCloudAccess.SIGN_IN -> "로그인하여 보관"
+                    cloudDetailAccess == DetailCloudAccess.PLAN_REQUIRED -> "요금제·이용 권한 확인"
+                    cloudDetailAccess == DetailCloudAccess.CHECK_ACCESS -> "보관 권한 다시 확인"
+                    cloudDetailAccess == DetailCloudAccess.CHECKING -> "이용 상태 확인 중"
+                    else -> "클라우드 보관"
+                },
                 onClick = {
-                    if (cloudBackup == null) return@ActionButton
-                    if (accountUid == null) onRequestCloud()
-                    else if (!backedUp && !uploadBusy) confirmUpload = true
+                    if (cloudDetailAccess == DetailCloudAccess.READY) confirmUpload = true
+                    else onRequestCloud()
                 },
                 modifier = actionModifier,
-                enabled = cloudBackup != null && !uploadBusy && !backedUp,
+                enabled = ableToAct && !uploadBusy && !backedUp,
                 icon = Icons.Outlined.CloudUpload,
             )
         }
@@ -305,6 +348,7 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(item.displayName, style = MaterialTheme.typography.titleMedium)
+                cloudNotice?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = Muted) }
                 if (ocrText != null) {
                     Column(
                         Modifier.fillMaxWidth()
@@ -353,7 +397,7 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
                     Text(message, color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val protectLabel = if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "보호"
+                    val protectLabel = if (folderProtected) "폴더 보호 중" else if (item.isProtected) "보호 해제" else "정리에서 보호"
                     val stacked = maxWidth < 350.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
                     if (stacked) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

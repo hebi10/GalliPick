@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -40,11 +41,38 @@ class ReferenceFilesFilterTest {
         durationMs = 0L, dateTakenMs = 1L, dateAddedMs = 1L, dateModifiedMs = 1L,
     )
 
+    @Test fun returningFromCloudOpensOnlyTheSameVerifiedFileVersion() {
+        val original = media(7L).copy(volumeVersion = "original-volume")
+        val replacement = original.copy(volumeVersion = "new-volume")
+        val request = mutableStateOf(original.detailVersion())
+        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL))
+        var resumed = 0
+        val actions = FilesScreenActions({}, {}, {}, {}, {}, {}, { _, _ -> }, {})
+        compose.setContent {
+            GalliPickTheme {
+                FilesScreenContent(state.value, false, {}, {}, {}, actions,
+                    resumeDetailVersion = request.value, onDetailResumed = { resumed++ })
+            }
+        }
+        compose.onNodeWithText("파일 상세").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(0, resumed)
+            state.value = state.value.copy(items = listOf(replacement), filtered = listOf(replacement), catalogReady = true)
+        }
+        compose.onNodeWithText("파일 상세").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(1, resumed)
+            request.value = replacement.detailVersion()
+        }
+        compose.onNodeWithText("파일 상세").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(2, resumed) }
+    }
+
     @Test fun narrowFilesGridShowsThreePhotoColumnsAndCanSwitchToReadableList() {
         val items = (1L..7L).map(::media)
         val listView = mutableStateOf(false)
-        var selectAllCount = 0
-        val actions = FilesScreenActions({}, { selectAllCount++ }, {}, {}, {}, {}, { _, _ -> }, {},
+        var bulkSelected = emptyList<MediaItem>()
+        val actions = FilesScreenActions({}, { bulkSelected = it }, {}, {}, {}, {}, { _, _ -> }, {},
             setFileListView = { listView.value = it })
         compose.setContent {
             GalliPickTheme {
@@ -66,8 +94,8 @@ class ReferenceFilesFilterTest {
         assertTrue("Reference media grid should show 3 photos per row", a.left < b.left && b.left < c.left)
         assertTrue("First three selections should share a grid row", kotlin.math.abs(a.top - c.top) < 1f)
         compose.onNodeWithContentDescription("파일 목록 요약").assertExists()
-        compose.onNodeWithText("모두 선택").performClick()
-        compose.runOnIdle { assertEquals(1, selectAllCount) }
+        compose.onNodeWithText("현재 결과 7개 선택").performClick()
+        compose.runOnIdle { assertEquals(items, bulkSelected) }
         compose.onNodeWithContentDescription("파일 추가 작업").performClick()
         compose.onNodeWithText("목록 보기").performClick()
         compose.onNodeWithText("sample-1.jpg").assertIsDisplayed()
@@ -131,7 +159,7 @@ class ReferenceFilesFilterTest {
                     Box(Modifier.requiredSize(360.dp, 700.dp)) {
                         FilesScreenContent(
                             AppUiState(access = MediaAccess.FULL, items = listOf(item),
-                                filtered = listOf(item), selected = selected.value),
+                                filtered = listOf(item), selected = selected.value, fileGridColumns = 6),
                             false, {}, {}, {}, actions,
                         )
                     }
@@ -141,6 +169,7 @@ class ReferenceFilesFilterTest {
 
         val checkbox = compose.onNodeWithContentDescription("sample-1.jpg 선택")
             .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        compose.onNodeWithText("한 줄 3개 표시 · 설정 6개").assertIsDisplayed()
         val hit = checkbox.fetchSemanticsNode().boundsInRoot
         val glyph = compose.onNodeWithTag("grid-selection-indicator", useUnmergedTree = true)
             .fetchSemanticsNode().boundsInRoot
@@ -148,13 +177,14 @@ class ReferenceFilesFilterTest {
             glyph.left >= hit.left && glyph.top >= hit.top && glyph.right <= hit.right && glyph.bottom <= hit.bottom)
         assertTrue("Visible circle should be within 8dp of the thumbnail top-left",
             glyph.left - hit.left < hit.width / 6f && glyph.top - hit.top < hit.height / 6f)
-        checkbox.performClick()
+        checkbox.performTouchInput { click() }
         compose.runOnIdle {
             assertEquals(1, toggles)
             assertTrue(item.uri in selected.value)
         }
-        compose.onNodeWithText(item.displayName).performClick()
+        compose.onNodeWithText(item.displayName).performTouchInput { click(Offset(width * .75f, center.y / 3f)) }
         compose.onNodeWithText("파일 상세").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(1, toggles) }
     }
 
     @Test fun quickLastMonthUsesCalendarBoundariesAndBottomApply() {

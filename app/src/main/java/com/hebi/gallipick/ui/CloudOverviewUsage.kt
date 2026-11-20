@@ -45,12 +45,29 @@ internal fun cloudOverviewUsage(
     if (!plan.enabled || plan.usedBytes < 0L || plan.quotaBytes < 0L || (production && !plan.backupAvailable)) {
         return null
     }
-    val activeId = plan.activeCloudProductId(nowMillis)
     val count = plan.verifiedMediaCount?.takeIf { production && it >= 0 }
-    if (!production || activeId == null) return CloudOverviewUsage(plan.usedBytes, null, count)
-    val active = productionBillingProduct(activeId, plan.activeBasePlanId.orEmpty()) ?: return null
-    if (active.isStandaloneAdFree || active.quotaBytes != plan.quotaBytes || active !in plan.products) return null
-    return CloudOverviewUsage(plan.usedBytes, active.quotaBytes, count)
+    if (!production) return CloudOverviewUsage(plan.usedBytes, null, count)
+    val active = plan.activeCloudProductId(nowMillis)?.let { activeId ->
+        val product = productionBillingProduct(activeId, plan.activeBasePlanId.orEmpty()) ?: return null
+        if (product.isStandaloneAdFree || product !in plan.products + plan.legacyRecoveryProducts) return null
+        product
+    }
+    val effectiveQuota = maxOf(active?.quotaBytes ?: 0L, plan.verifiedManualCloudQuota(nowMillis))
+    if (effectiveQuota > 0L && effectiveQuota != plan.quotaBytes) return null
+    return CloudOverviewUsage(plan.usedBytes, effectiveQuota.takeIf { it > 0L }, count)
+}
+
+private fun CloudBillingPlan.verifiedManualCloudQuota(nowMillis: Long): Long {
+    val expectedQuota = when (manualGrantKind) {
+        "CLOUD_10GB" -> 10_000_000_000L
+        "CLOUD_50GB" -> 50_000_000_000L
+        "CLOUD_100GB" -> 100_000_000_000L
+        else -> return 0L
+    }
+    return expectedQuota.takeIf {
+        manualGrantQuotaBytes == it && manualGrantExpiresAtMs == manualAdFreeExpiresAtMs &&
+            manualGrantExpiresAtMs?.let { expiry -> expiry > nowMillis } == true
+    } ?: 0L
 }
 
 private sealed interface CloudOverviewUsageStatus {
@@ -61,8 +78,16 @@ private sealed interface CloudOverviewUsageStatus {
 }
 
 @Composable
-internal fun CloudOverviewStorageCard(connection: CloudAccountConnection, uid: String) {
-    val billing = connection.billing ?: return
+internal fun CloudOverviewStorageCard(
+    connection: CloudAccountConnection,
+    uid: String,
+    showLibraryStatus: Boolean,
+) {
+    val billing = connection.billing
+    if (billing == null) {
+        if (showLibraryStatus) CloudAccountCard { CloudStatusMessage("이 빌드에서 보관함 이용 상태를 확인할 수 없습니다.") }
+        return
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var retry by remember(connection, uid) { mutableIntStateOf(0) }
     var status by remember(connection, uid) { mutableStateOf<CloudOverviewUsageStatus>(CloudOverviewUsageStatus.Loading) }
@@ -86,13 +111,25 @@ internal fun CloudOverviewStorageCard(connection: CloudAccountConnection, uid: S
     CloudAccountCard {
         if (status !is CloudOverviewUsageStatus.Ready) CloudOverviewStorageHeading()
         when (val current = status) {
-            CloudOverviewUsageStatus.Loading -> CloudStatusMessage("저장공간 사용량을 확인하는 중입니다.")
-            CloudOverviewUsageStatus.Unavailable -> CloudStatusMessage("저장공간 정보를 사용할 수 없습니다.")
+            CloudOverviewUsageStatus.Loading -> CloudStatusMessage(
+                if (showLibraryStatus) "저장공간 사용량과 보관함 이용 상태를 확인하는 중입니다."
+                else "저장공간 사용량을 확인하는 중입니다.",
+            )
+            CloudOverviewUsageStatus.Unavailable -> CloudStatusMessage(
+                if (showLibraryStatus) "현재 계정에서는 저장공간과 보관함 정보를 확인할 수 없습니다."
+                else "저장공간 정보를 사용할 수 없습니다.",
+            )
             CloudOverviewUsageStatus.Failed -> {
-                CloudStatusMessage("저장공간 사용량을 확인하지 못했습니다.")
+                CloudStatusMessage(
+                    if (showLibraryStatus) "저장공간과 보관함 정보를 불러오지 못했습니다. 연결을 확인해 주세요."
+                    else "저장공간 사용량을 확인하지 못했습니다. 연결을 확인해 주세요.",
+                )
                 ActionButton("다시 확인", { retry++ })
             }
-            is CloudOverviewUsageStatus.Ready -> CloudOverviewStorageDetails(current.usage)
+            is CloudOverviewUsageStatus.Ready -> {
+                CloudOverviewStorageDetails(current.usage)
+                if (showLibraryStatus) CloudStatusMessage("현재 계정에서 보관함을 열 수 없습니다.")
+            }
         }
     }
 }

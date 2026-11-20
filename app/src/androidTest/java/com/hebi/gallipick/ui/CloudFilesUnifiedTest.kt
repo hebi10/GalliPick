@@ -16,11 +16,13 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.MediaAccess
+import com.hebi.gallipick.data.cloud.CloudGalleryPerformancePolicy
 import com.hebi.gallipick.data.cloud.CloudGallerySnapshot
 import com.hebi.gallipick.data.cloud.CloudOriginal
 import com.hebi.gallipick.data.cloud.VerifiedGalleryMatch
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -147,6 +149,44 @@ class CloudFilesUnifiedTest {
         chooseSource("cloud")
         compose.onNodeWithText("휴지통으로", substring = true).assertDoesNotExist()
         compose.runOnIdle { org.junit.Assert.assertEquals(0, trashCount) }
+    }
+
+    @Test fun unifiedBulkSelectionUsesOnlyShownEligibleDeviceFilesAndClearsOnSourceChange() {
+        val page = CloudGalleryPerformancePolicy.PAGE_SIZE
+        val devices = (1..page + 1).map { index ->
+            local.copy(
+                uri = "${local.uri}/$index", id = local.id + index, displayName = "local-$index.jpg",
+                dateTakenMs = local.dateTakenMs + index, isFavorite = index == page + 1,
+            )
+        }
+        val cloud = saved.copy(capturedAtMs = local.dateTakenMs + page + 2)
+        val selected = mutableStateOf(emptySet<String>())
+        compose.setContent {
+            GalliPickTheme {
+                Surface(Modifier.requiredSize(420.dp, 850.dp)) {
+                    FilesScreenContent(
+                        state = AppUiState(access = MediaAccess.FULL, items = devices,
+                            filtered = devices, selected = selected.value),
+                        wide = false, trash = {}, open = {}, requestAccess = {},
+                        actions = actions().copy(
+                            selectAll = { results -> selected.value = results.map { it.uri }.toSet() },
+                            clearSelection = { selected.value = emptySet() },
+                        ),
+                        cloudFiles = cloudState().copy(snapshot = CloudGallerySnapshot("owner", listOf(cloud))),
+                    )
+                }
+            }
+        }
+        compose.onNodeWithText("현재 결과 ${page - 2}개 선택").performClick()
+        compose.runOnIdle {
+            assertEquals(devices.sortedByDescending { it.dateTakenMs }.take(page - 1)
+                .filterNot { it.isFavorite }.map { it.uri }.toSet(), selected.value)
+        }
+        chooseSource("device")
+        compose.runOnIdle { assertTrue(selected.value.isEmpty()) }
+        compose.onNodeWithText("현재 결과 ${page}개 선택").assertIsDisplayed()
+        chooseSource("cloud")
+        compose.onNodeWithText("현재 결과", substring = true).assertDoesNotExist()
     }
 
     @Test fun offlineCloudCatalogStaysBrowsableWithoutDevicePermission() {

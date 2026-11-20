@@ -85,7 +85,7 @@ class AdaptiveFilesTest {
             }
         } }
         val count = compose.onNodeWithContentDescription("파일 목록 요약").fetchSemanticsNode().boundsInRoot
-        val select = compose.onNodeWithText("모두 선택").fetchSemanticsNode().boundsInRoot
+        val select = compose.onNodeWithText("현재 결과 1개 선택").fetchSemanticsNode().boundsInRoot
         assertTrue("Selection action belongs beside its list count", select.left - count.right <= 24f)
         assertTrue("Selection action should not sit on the far edge", select.right - count.left < 350f)
     }

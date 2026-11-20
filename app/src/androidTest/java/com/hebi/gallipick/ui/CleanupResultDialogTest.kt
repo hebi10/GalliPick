@@ -21,6 +21,20 @@ import org.junit.runner.RunWith
 class CleanupResultDialogTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun recoveryShortcutOpensTrashForConfirmedMoves() {
+        val result = mutableStateOf(CleanupOperationResult.verified(TrashOutcome(1, 1, 0, 1_024L), false, 2, 2_048L))
+        var opened = 0
+        compose.setContent { GalliPickTheme {
+            CleanupResultDialog(result.value, {}, {}, {}, onOpenTrash = { opened++ })
+        } }
+        compose.onNodeWithText("휴지통에서 확인").assertIsDisplayed().performClick()
+        compose.runOnIdle {
+            assertEquals(1, opened)
+            result.value = CleanupOperationResult.cancelled(false, 2, 2_048L)
+        }
+        compose.onNodeWithText("휴지통에서 확인").assertDoesNotExist()
+    }
+
     @Test fun verifiedResultShowsConfirmedCountsAndNavigatesToNextCleanup() {
         var home = 0
         var next = 0

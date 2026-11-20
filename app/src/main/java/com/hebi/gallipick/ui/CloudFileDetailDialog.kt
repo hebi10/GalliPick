@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -23,7 +22,6 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,9 +33,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.hebi.gallipick.data.cloud.CloudBackup
 import com.hebi.gallipick.data.cloud.CloudOriginal
 import kotlinx.coroutines.CancellationException
@@ -57,15 +55,12 @@ internal fun CloudFileDetailDialog(
     val scope = rememberCoroutineScope()
     var saving by remember(original.uploadId, uid) { mutableStateOf(false) }
     var message by remember(original.uploadId, uid) { mutableStateOf<String?>(null) }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            Modifier.safeDrawingPadding().widthIn(max = 760.dp).fillMaxWidth(.96f).fillMaxHeight(.94f),
-            color = AppSurface,
-        ) {
-            Column {
+    MediaViewerDialog(onDismiss) { contentModifier ->
+        Box(contentModifier, contentAlignment = Alignment.TopCenter) {
+            Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().fillMaxHeight()) {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 6.dp, end = 4.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Text("파일 상세", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                    Text("파일 상세", Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
                     IconAction("닫기", Icons.Outlined.Close, onClick = onDismiss)
                 }
                 Column(

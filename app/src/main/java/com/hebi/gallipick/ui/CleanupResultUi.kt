@@ -7,12 +7,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -77,8 +80,13 @@ fun CleanupResultDialog(
     onDismiss: () -> Unit,
     onHome: () -> Unit,
     onNext: () -> Unit,
+    onOpenTrash: (() -> Unit)? = null,
 ) {
     val action = if (result.restore) "복원" else "이동"
+    val recovery = onOpenTrash?.takeIf {
+        !result.restore && result.completedCount > 0 &&
+            (result.status == CleanupResultStatus.SUCCESS || result.status == CleanupResultStatus.PARTIAL)
+    }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BoxWithConstraints(
             Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp),
@@ -101,7 +109,7 @@ fun CleanupResultDialog(
                         Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("정리 작업 결과", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                        Text("정리 작업 결과", Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleMedium)
                         IconAction("결과 닫기", Icons.Outlined.Close, onClick = onDismiss)
                     }
                     val bodyScroll = key(result) { rememberScrollState() }
@@ -165,23 +173,27 @@ fun CleanupResultDialog(
                             )
                         }
                     }
-                    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        val stacked = maxWidth < 420.dp * fontScale
-                        if (stacked) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ActionButton("홈으로", onHome, Modifier.fillMaxWidth())
-                                ActionButton(
-                                    if (result.restore) "휴지통 확인" else "다음 정리 후보 확인",
-                                    onNext, Modifier.fillMaxWidth(), filled = true,
-                                )
-                            }
-                        } else {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ActionButton("홈으로", onHome, Modifier.weight(1f))
-                                ActionButton(
-                                    if (result.restore) "휴지통 확인" else "다음 정리 후보 확인",
-                                    onNext, Modifier.weight(1f), filled = true,
-                                )
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (recovery != null) {
+                            ActionButton("휴지통에서 확인", recovery, Modifier.fillMaxWidth(), filled = true,
+                                icon = Icons.Outlined.RestoreFromTrash)
+                        }
+                        val nextLabel = if (result.restore) "휴지통 확인" else "다음 정리 후보 확인"
+                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            val stacked = maxWidth < (if (recovery != null) 300.dp else 420.dp) * fontScale
+                            if (stacked) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    ActionButton("홈으로", onHome, Modifier.fillMaxWidth())
+                                    ActionButton(nextLabel, onNext, Modifier.fillMaxWidth(), filled = recovery == null)
+                                }
+                            } else {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    ActionButton("홈으로", onHome, Modifier.weight(1f))
+                                    ActionButton(nextLabel, onNext, Modifier.weight(1f), filled = recovery == null)
+                                }
                             }
                         }
                     }

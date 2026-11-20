@@ -31,7 +31,9 @@ import com.hebi.gallipick.AppThemeMode
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.data.cloud.CloudAccountBackend
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
+import com.hebi.gallipick.data.cloud.CloudAccountFailure
 import com.hebi.gallipick.data.cloud.CloudAccountIdentity
+import com.hebi.gallipick.data.cloud.CloudAccountNotice
 import com.hebi.gallipick.data.cloud.CloudAccountSession
 import com.hebi.gallipick.data.cloud.CloudBackupException
 import com.hebi.gallipick.data.cloud.CloudBackupResult
@@ -63,6 +65,45 @@ class CloudCheckoutUiTest {
         get() = InstrumentationRegistry.getArguments().getString("liveAdBanner") == "true"
 
     @Test
+    fun cloudOverviewAccountChangeWaitsForSelectionAndKeepsAccountOnCancellation() {
+        val original = CloudAccountIdentity("current-test-user", "기존 테스트 계정", null)
+        val replacement = CloudAccountIdentity("next-test-user", "새 테스트 계정", null)
+        val selections = Channel<Result<String>>(Channel.UNLIMITED)
+        val backend = object : CloudAccountBackend {
+            override val account = MutableStateFlow<CloudAccountIdentity?>(original)
+            override suspend fun signIn(googleIdToken: String) {
+                assertEquals("replacement-test-token", googleIdToken)
+                account.value = replacement
+            }
+            override fun signOut() { account.value = null }
+            override suspend fun clearGoogleState() = Unit
+        }
+        val activity = compose.activity
+        val connection = CloudAccountConnection(CloudAccountSession(backend)) {
+            selections.receive().getOrThrow()
+        }
+        compose.setContent {
+            GalliPickTheme {
+                CloudScreen(connection) {
+                    CloudAccountCard { CloudAccountSettings(connection, activity) }
+                }
+            }
+        }
+
+        compose.onNodeWithText("Google 계정 변경").performClick()
+        compose.onNodeWithTag("cloud-account-loading").assertIsDisplayed()
+        check(selections.trySend(Result.failure(CloudAccountFailure(CloudAccountNotice.CANCELLED))).isSuccess)
+        compose.onNodeWithText("기존 테스트 계정").assertIsDisplayed()
+        compose.onNodeWithText("Google 계정 선택을 취소했습니다.").assertIsDisplayed()
+
+        compose.onNodeWithText("Google 계정 변경").performClick()
+        compose.onNodeWithTag("cloud-account-loading").assertIsDisplayed()
+        check(selections.trySend(Result.success("replacement-test-token")).isSuccess)
+        compose.onNodeWithText("새 테스트 계정").assertIsDisplayed()
+        compose.onNodeWithTag("cloud-account-loading").assertDoesNotExist()
+    }
+
+    @Test
     fun homeToGoogleSignInToCheckoutRemovesBannerWithoutManualRecovery() {
         val billing = showJourney()
 
@@ -78,12 +119,12 @@ class CloudCheckoutUiTest {
         capture(if (useSdkBanner) "06-home-with-sdk-test-ad" else "01-home-with-preview-ad")
         compose.onNodeWithText("광고 제거").performClick()
 
-        compose.onNodeWithText("홈 배너 광고 제거").assertIsDisplayed()
+        compose.onNodeWithText("광고 없이 이용하기").assertIsDisplayed()
         compose.onNodeWithText("Google로 로그인").assertIsDisplayed()
         capture("02-ad-removal-sign-in")
         compose.onNodeWithText("Google로 로그인").performClick()
 
-        compose.onNodeWithText("클라우드 요금제").assertIsDisplayed()
+        compose.onNodeWithText("클라우드 월간").assertIsDisplayed()
         compose.onNodeWithText("GalliPick Cloud 1 GiB 테스트").assertDoesNotExist()
         compose.onNodeWithText("Google Play에서 구독 관리").assertDoesNotExist()
         compose.onNodeWithText("구매 복구").assertExists()
@@ -99,8 +140,8 @@ class CloudCheckoutUiTest {
             billing.returnedToApp.complete(Unit)
         }
 
-        compose.onNodeWithText("홈 배너 광고가 제거됐어요").assertIsDisplayed()
-        compose.onNodeWithText("구독 혜택으로 홈 배너 광고가 제거됩니다.").assertExists()
+        compose.onNodeWithText("광고가 제거됐어요").assertIsDisplayed()
+        compose.onNodeWithText("구독 혜택으로 광고가 제거됩니다.").assertExists()
         compose.onNodeWithText("Google Play에서 구독 관리").assertExists()
         billingCta().assertDoesNotExist()
         capture("04-verified-purchase")
@@ -141,7 +182,7 @@ class CloudCheckoutUiTest {
 
         compose.onNodeWithText("결제 확인을 기다리고 있어요").assertIsDisplayed()
         billingCta().assertDoesNotExist()
-        compose.onNodeWithText("홈 배너 광고가 제거됐어요").assertDoesNotExist()
+        compose.onNodeWithText("광고가 제거됐어요").assertDoesNotExist()
         compose.onNodeWithText("결제 상태 확인").performClick()
         compose.onNodeWithText("결제 확인을 기다리고 있어요").assertIsDisplayed()
         capture("07-payment-pending")
@@ -168,7 +209,7 @@ class CloudCheckoutUiTest {
         compose.onNode(tab and hasText("클라우드")).performClick()
         compose.onNodeWithText("요금제·결제").performScrollTo().performClick()
         compose.onNodeWithText("월간 결제").performScrollTo().assertIsDisplayed()
-        billingPeriod("연간").assertDoesNotExist()
+        planChoice("연간").assertDoesNotExist()
         val option = planChoice("50 GB")
         billingCta().assertIsNotEnabled()
         option.performScrollTo().assertIsDisplayed().performClick().assertIsSelected()
@@ -272,14 +313,13 @@ class CloudCheckoutUiTest {
     }
 
     @Test
-    fun globalBillingPeriodKeepsAvailableSelectionAndOnlyAnchoredActionOpensTheQuote() {
+    fun monthlyCloudAndTwoAdRemovalTermsShareOneCheckoutSelection() {
         val billing = FakeBillingSession(includeAnnualPlan = true, includeExtraPlans = true)
         showJourney(billing, signedIn = true)
         openCloudBilling()
-        billingPeriod("월간").assertIsSelected()
-        billingPeriod("연간").assertIsNotSelected()
+        compose.onNodeWithText("클라우드 월간").performScrollTo().assertIsDisplayed()
         val ctaBounds = billingCta().assertIsDisplayed().assertIsNotEnabled().fetchSemanticsNode().boundsInRoot
-        listOf("10 GB", "50 GB", "100 GB", "광고 제거만").forEach { label ->
+        listOf("10 GB", "50 GB", "100 GB", "월간", "연간").forEach { label ->
             planChoice(label).performScrollTo().assertIsDisplayed().assertIsNotSelected()
         }
         val scrolledCta = billingCta().assertIsDisplayed().fetchSemanticsNode().boundsInRoot
@@ -290,30 +330,76 @@ class CloudCheckoutUiTest {
         billingCta().assertIsEnabled().assert(hasText("10 GB 구독하기 · 월 ₩1,900"))
         compose.onNodeWithText("Google Play 결제창 열기").assertDoesNotExist()
 
-        billingPeriod("연간").performScrollTo().performClick().assertIsSelected()
-        tenGb.performScrollTo().assertIsNotSelected().assertIsNotEnabled()
         compose.onNodeWithText("₩19,900/년").assertDoesNotExist()
-        billingCta().assertIsNotEnabled()
-        planChoice("광고 제거만").performScrollTo().assertIsDisplayed().assert(hasText("₩9,900/년"))
+        planChoice("연간").performScrollTo().assertIsDisplayed().assert(hasText("₩9,900/년"))
             .performClick().assertIsSelected()
         billingCta().assertIsEnabled().assert(hasText("광고 제거만 구독하기 · 연 ₩9,900"))
+        tenGb.performScrollTo().assertIsNotSelected().assertIsEnabled()
         compose.runOnIdle { assertEquals(0, billing.checkoutCount) }
     }
 
     @Test
-    fun switchingToAnUnavailablePeriodClearsTheSelectedPlan() {
-        showJourney(FakeBillingSession(includeAnnualPlan = true, includeExtraPlans = true), signedIn = true)
+    fun unavailableAdRemovalAnnualQuoteDoesNotChangeAMonthlyCloudSelection() {
+        showJourney(FakeBillingSession(includeExtraPlans = true), signedIn = true)
         openCloudBilling()
         planChoice("50 GB").performScrollTo().performClick().assertIsSelected()
-        billingCta().assertIsEnabled()
+        planChoice("연간").performScrollTo().assertIsNotEnabled()
+        planChoice("50 GB").performScrollTo().assertIsSelected()
+        billingCta().assertIsEnabled().assert(hasText("50 GB 구독하기 · 월 ₩8,900"))
+    }
 
-        billingPeriod("연간").performScrollTo().performClick().assertIsSelected()
-        planChoice("10 GB").performScrollTo().assertIsNotSelected()
-        billingCta().assertIsNotEnabled()
+    @Test
+    fun recoveringACloudPurchaseReloadsReplacementOptions() {
+        val billing = FakeBillingSession()
+        showJourney(billing, signedIn = true)
+        openCloudBilling()
+        val previousRecoverCalls = compose.runOnIdle {
+            billing.purchaseWaitingForRecovery = true
+            billing.recoverCalls
+        }
+        compose.onNodeWithText("구매 복구").performClick()
 
-        billingPeriod("월간").performScrollTo().performClick().assertIsSelected()
-        planChoice("50 GB").performScrollTo().assertIsNotSelected()
-        billingCta().assertIsNotEnabled()
+        compose.onNodeWithText("내 구독").performScrollTo().assertIsDisplayed()
+        planChoice("50 GB").performScrollTo().assertIsEnabled().performClick()
+        billingCta().assertIsEnabled().assert(hasText("요금제 변경"))
+        compose.runOnIdle { assertEquals(previousRecoverCalls + 1, billing.recoverCalls) }
+    }
+
+    @Test
+    fun recoveringALegacyAnnualCloudPurchaseKeepsPlayManagementAvailable() {
+        val billing = FakeBillingSession()
+        showJourney(billing, signedIn = true)
+        openCloudBilling()
+
+        compose.runOnIdle {
+            billing.purchaseWaitingForRecovery = true
+            billing.restoreAnnualPlan = true
+        }
+        compose.onNodeWithText("구매 복구").performClick()
+
+        compose.onNodeWithText("내 구독").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("클라우드 10 GB · 연간").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Google Play에서 구독 관리").performScrollTo().assertIsDisplayed()
+        planChoice("50 GB").assertDoesNotExist()
+        billingCta().assertDoesNotExist()
+    }
+
+    @Test
+    fun purchaseAccountMismatchKeepsCheckoutOpenWhileChoosingTheCorrectAccount() {
+        val accountChoices = Channel<Result<String>>(Channel.UNLIMITED)
+        val originalBilling = FakeBillingSession().apply { loadNotice = CloudBillingNotice.PURCHASE_LINKED_TO_ANOTHER_ACCOUNT }
+        showJourney(originalBilling, signedIn = true, replacementBilling = FakeBillingSession(), accountChoices = accountChoices)
+        openCloudBilling()
+
+        compose.onNodeWithText("Google 계정 변경").performScrollTo().performClick()
+        check(accountChoices.trySend(Result.failure(CloudAccountFailure(CloudAccountNotice.CANCELLED))).isSuccess)
+        compose.onNodeWithText("Google 계정 선택을 취소했습니다.").performScrollTo().assertIsDisplayed()
+        billingCta().assertDoesNotExist()
+
+        compose.onNodeWithText("Google 계정 변경").performScrollTo().performClick()
+        check(accountChoices.trySend(Result.success("replacement-test-token")).isSuccess)
+        planChoice("10 GB").performScrollTo().assertIsEnabled()
+        compose.runOnIdle { assertEquals(0, originalBilling.checkoutCount) }
     }
 
     @Test
@@ -322,26 +408,18 @@ class CloudCheckoutUiTest {
         showJourney(billing, signedIn = true)
         openCloudBilling()
         val plans = listOf("10 GB", "50 GB", "100 GB")
-        billingPeriod("월간").assertIsSelected()
-        billingPeriod("연간").assertIsNotSelected()
         plans.forEach { label ->
             planChoice(label).performScrollTo().assertIsDisplayed().assertIsNotEnabled().assertIsNotSelected()
-                .assert(hasText("신청 불가"))
+                .assert(hasText("판매 없음"))
         }
         listOf("₩1,900/월", "₩8,900/월", "₩15,900/월", "₩5,900/월", "₩10,900/월").forEach { price ->
             compose.onNodeWithText(price).assertDoesNotExist()
         }
         billingCta().assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText("현재 클라우드 신규 구독을 신청할 수 없습니다.").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("가격은 Google Play에서 조회될 때 표시됩니다.").performScrollTo().assertIsDisplayed()
         capture("09-billing-unavailable-monthly")
 
-        billingPeriod("연간").performScrollTo().performClick().assertIsSelected()
-        billingPeriod("월간").assertIsNotSelected()
-        plans.forEach { label ->
-            planChoice(label).performScrollTo().assertIsDisplayed().assertIsNotEnabled().assertIsNotSelected()
-        }
-        planChoice("10 GB").performScrollTo().assert(hasText("신청 불가"))
+        planChoice("연간").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText("₩19,900/년").assertDoesNotExist()
         compose.onNodeWithText("₩1,900/월").assertDoesNotExist()
         billingCta().assertIsDisplayed().assertIsNotEnabled()
@@ -371,10 +449,6 @@ class CloudCheckoutUiTest {
         SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton) and hasText(label),
     )
 
-    private fun billingPeriod(label: String) = compose.onNode(
-        SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab) and hasText(label),
-    )
-
     private fun billingCta() = compose.onNodeWithTag("cloud-billing-cta")
 
     private fun selectMonthlyTenGbAndOpenQuote() {
@@ -391,13 +465,19 @@ class CloudCheckoutUiTest {
     private fun showJourney(
         billing: FakeBillingSession = FakeBillingSession(),
         signedIn: Boolean = false,
+        replacementBilling: FakeBillingSession? = null,
+        accountChoices: Channel<Result<String>>? = null,
     ): FakeBillingSession {
         val identity = CloudAccountIdentity("checkout-test", "테스트 계정", null)
+        val replacement = CloudAccountIdentity("replacement-checkout-test", "새 테스트 계정", null)
         val backend = object : CloudAccountBackend {
             override val account = MutableStateFlow(if (signedIn) identity else null)
             override suspend fun signIn(googleIdToken: String) {
-                assertEquals("local-test-token", googleIdToken)
-                account.value = identity
+                account.value = when (googleIdToken) {
+                    "local-test-token" -> identity
+                    "replacement-test-token" -> replacement
+                    else -> error("Unexpected test credential")
+                }
             }
             override fun signOut() { account.value = null }
             override suspend fun clearGoogleState() = Unit
@@ -405,9 +485,11 @@ class CloudCheckoutUiTest {
         val connection = CloudAccountConnection(
             session = CloudAccountSession(backend),
             billing = object : CloudBilling {
-                override fun open(uid: String): CloudBillingSession = billing
+                override fun open(uid: String): CloudBillingSession =
+                    if (uid == replacement.uid) checkNotNull(replacementBilling) else billing
             },
-            getGoogleIdToken = { "local-test-token" },
+            productionBackupAccess = com.hebi.gallipick.data.cloud.CloudBackupAccessState { backend.account.value?.uid },
+            getGoogleIdToken = { accountChoices?.receive()?.getOrThrow() ?: "local-test-token" },
         )
         val activity = compose.activity
         val vm = AppViewModel(activity.application)
@@ -517,6 +599,9 @@ class CloudCheckoutUiTest {
         var pendingPurchase = false
         var changePriceOnCheckout = false
         var returnPendingFromReplacement = false
+        var restoreAnnualPlan = false
+        var loadNotice: CloudBillingNotice? = null
+        private var restoredCloudPurchase = false
 
         override suspend fun loadPlan(): CloudBillingPlan = serverPlan
 
@@ -528,8 +613,11 @@ class CloudCheckoutUiTest {
                     offer, retiredOffer, annualOffer.takeIf { includeAnnualPlan },
                     annualAdFreeOffer.takeIf { includeAnnualPlan && includeExtraPlans },
                 ) + extraOffers,
-                notice = CloudBillingNotice.PENDING.takeIf { pendingPurchase },
-                replacementOffers = listOf(replacementOffer).filter { hasCurrentCloudPlan },
+                notice = loadNotice ?: CloudBillingNotice.PENDING.takeIf { pendingPurchase },
+                replacementOffers = listOf(replacementOffer).filter {
+                    (hasCurrentCloudPlan || restoredCloudPurchase) &&
+                        serverPlan.activeProductId == product.productId && serverPlan.activeBasePlanId == "monthly"
+                },
             )
         }
 
@@ -537,7 +625,12 @@ class CloudCheckoutUiTest {
             recoverCalls++
             if (purchaseWaitingForRecovery) {
                 purchaseWaitingForRecovery = false
-                return verifyPurchase()
+                restoredCloudPurchase = true
+                val purchase = verifyPurchase()
+                if (!restoreAnnualPlan) return purchase
+                serverPlan = serverPlan.copy(activeBasePlanId = "annual", products = listOf(product),
+                    legacyRecoveryProducts = listOf(annual))
+                return purchase.copy(plan = serverPlan)
             }
             val notice = if (pendingPurchase) CloudBillingNotice.PENDING else CloudBillingNotice.NO_PURCHASE
             return CloudBillingUpdate(serverPlan, notice)

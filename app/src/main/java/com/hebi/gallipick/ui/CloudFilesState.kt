@@ -17,6 +17,12 @@ import com.hebi.gallipick.data.cloud.CloudSpaceAnalysis
 import com.hebi.gallipick.data.cloud.VerifiedGalleryMatch
 import com.hebi.gallipick.domain.MediaItem
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+
+internal enum class DetailCloudAccess { UNAVAILABLE, SIGN_IN, CHECKING, CHECK_ACCESS, PLAN_REQUIRED, READY }
+
+internal fun defaultDetailCloudAccess(backup: CloudBackup?, accountUid: String?): DetailCloudAccess =
+    if (backup != null && accountUid != null) DetailCloudAccess.READY else DetailCloudAccess.UNAVAILABLE
 
 internal data class CloudFilesUiState(
     val enabled: Boolean = false,
@@ -35,6 +41,9 @@ internal data class CloudFilesUiState(
     val matchTotal: Int = 0,
     val matchFailed: Boolean = false,
     val matchNext: () -> Unit = {},
+    val detailAccess: DetailCloudAccess = defaultDetailCloudAccess(backup, accountUid),
+    val accountEmail: String? = null,
+    val detailNotice: String? = null,
 )
 
 /** Retains account-scoped catalog state across tab switches, without loading local files from the network. */
@@ -48,10 +57,34 @@ internal fun rememberCloudFilesState(
     if (connection == null) return CloudFilesUiState()
     val identity by connection.session.account.collectAsStateWithLifecycle()
     val uid = identity?.uid
+    val status by connection.session.status.collectAsStateWithLifecycle()
     val configuredBackup = connection.backupAvailability
     val observation = configuredBackup?.collectAsStateWithLifecycle()?.value
     val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == uid }
-        ?: return CloudFilesUiState()
+    val waitingForAccess = uid != null && configuredBackup != null && observation?.uid != uid && connection.billing != null
+    var accessCheckWaited by remember(connection, uid, waitingForAccess) { mutableStateOf(false) }
+    LaunchedEffect(connection, uid, waitingForAccess) {
+        if (waitingForAccess) {
+            delay(5_000)
+            accessCheckWaited = true
+        }
+    }
+    val detailAccess = when {
+        !connection.session.available -> DetailCloudAccess.UNAVAILABLE
+        status.operation != null -> DetailCloudAccess.CHECKING
+        uid == null && (connection.billing != null || backup != null) -> DetailCloudAccess.SIGN_IN
+        uid != null && backup?.accessFor(uid)?.allowsManualUpload(System.currentTimeMillis()) == true ->
+            DetailCloudAccess.READY
+        waitingForAccess -> if (accessCheckWaited) DetailCloudAccess.CHECK_ACCESS else DetailCloudAccess.CHECKING
+        uid != null && connection.billing != null -> DetailCloudAccess.PLAN_REQUIRED
+        else -> DetailCloudAccess.UNAVAILABLE
+    }
+    val accountLabel = identity?.transferAccountLabel
+    val detailNotice = status.displayText(uid != null)
+        ?: "클라우드 이용 권한을 아직 확인하지 못했습니다.".takeIf { detailAccess == DetailCloudAccess.CHECK_ACCESS }
+    if (backup == null) return CloudFilesUiState(
+        detailAccess = detailAccess, accountEmail = accountLabel, detailNotice = detailNotice,
+    )
     val namespace = observation?.access?.namespace
     val network = rememberCloudNetworkStatus(enabled = true)
     LaunchedEffect(uid, namespace) { CloudPhotoThumbnailStore.activate(uid) }
@@ -175,5 +208,8 @@ internal fun rememberCloudFilesState(
                 requestedBatches++
             }
         },
+        detailAccess = detailAccess,
+        accountEmail = accountLabel,
+        detailNotice = detailNotice,
     )
 }

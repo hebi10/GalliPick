@@ -79,7 +79,8 @@ internal fun resolvedFileGridColumns(
         val tile = if (fontScale >= 1.5f) 132f else 108f
         return ((availableWidth.value + 6f) / (tile + 6f)).toInt().coerceAtLeast(1)
     }
-    val minimumTile = 48f * fontScale.coerceIn(1f, 1.5f)
+    // Keep a full 48 dp detail target beside the 48 dp selection target.
+    val minimumTile = 96f * fontScale.coerceIn(1f, 1.5f)
     val safe = ((availableWidth.value + 6f) / (minimumTile + 6f)).toInt().coerceAtLeast(1)
     return requested.coerceIn(3, 6).coerceAtMost(safe)
 }

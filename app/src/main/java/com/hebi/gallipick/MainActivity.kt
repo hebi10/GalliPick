@@ -3,6 +3,7 @@ package com.hebi.gallipick
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val cloudAccount = (application as GalliPickApplication).cloudAccount
+        val isDebuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         setContent {
           val uiState by vm.ui.collectAsState()
           var cloudAdPlan by remember { mutableStateOf<CloudAdPlanObservation?>(null) }
@@ -275,6 +277,8 @@ class MainActivity : ComponentActivity() {
                 homeBanner = { GalliHomeBanner(this@MainActivity, adsSession) },
                 adsConfigured = adsSession.configured || adsSession.previewOnly,
                 adRemoval = adsSession.removal,
+                adPreviewEnabled = isDebuggable && adsSession.previewOnly,
+                onConfirmExit = { finish() },
                 onBillingScreenVisible = { billingScreenVisible = it },
                 adsPrivacyOptionsRequired = adsSession.privacyOptionsRequired,
                 onAdsPrivacyOptions = adsSession.openPrivacyOptions,

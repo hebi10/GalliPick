@@ -98,17 +98,17 @@ class ReferenceNavigationFlowTest {
 
         tab("정리").performClick()
         tab("정리").assertIsSelected()
-        compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").performScrollTo().performClick()
         compose.onNodeWithContentDescription("정리로 돌아가기").assertIsDisplayed()
         compose.onNodeWithText("중복 정리").assertIsDisplayed()
         tab("정리").assertIsSelected()
 
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        compose.onNodeWithContentDescription("중복 파일 검사 열기").assertIsDisplayed()
+        compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").assertIsDisplayed()
         compose.onNodeWithContentDescription("정리로 돌아가기").assertDoesNotExist()
         tab("정리").assertIsSelected()
 
-        compose.onNodeWithContentDescription("중복 파일 검사 열기").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").performScrollTo().performClick()
         tab("파일").performClick()
         tab("파일").assertIsSelected()
         compose.onNodeWithContentDescription("정리로 돌아가기").assertDoesNotExist()
@@ -141,12 +141,12 @@ class ReferenceNavigationFlowTest {
             }
         }
 
-        compose.onNode(hasText("중복 파일 찾기") and hasClickAction())
+        compose.onNode(hasText("사진·동영상 중복 찾기") and hasClickAction())
             .performScrollTo().performClick()
         tab("정리").assertIsSelected()
         compose.onNodeWithContentDescription("정리로 돌아가기").assertIsDisplayed()
         compose.onNodeWithContentDescription("정리로 돌아가기").performClick()
-        compose.onNodeWithContentDescription("중복 파일 검사 열기").assertIsDisplayed()
+        compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").assertIsDisplayed()
         compose.onAllNodes(tabMatcher).assertCountEquals(4)
     }
 }

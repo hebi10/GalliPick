@@ -2,6 +2,7 @@ package com.hebi.gallipick.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,8 +22,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -41,7 +44,7 @@ import com.hebi.gallipick.data.cloud.cloudGalleryPhotos
 
 internal data class FilesScreenActions(
     val setFilter: (MediaFilter) -> Unit,
-    val selectAll: () -> Unit,
+    val selectAll: (List<MediaItem>) -> Unit,
     val toggleSelection: (String) -> Unit,
     val clearSelection: () -> Unit,
     val savePreset: (String) -> Unit,
@@ -59,18 +62,18 @@ internal fun FilesScreen(
     state: AppUiState, vm: AppViewModel, wide: Boolean,
     trash: (List<MediaItem>) -> Unit, open: (MediaItem) -> Unit, requestAccess: () -> Unit,
     cloudFiles: CloudFilesUiState = CloudFilesUiState(), openCloud: () -> Unit = {},
-    resumeDetailUri: String? = null,
+    resumeDetailVersion: Triple<String, String, String>? = null,
     onDetailResumed: () -> Unit = {},
-    onCloudSignInFromDetail: (String) -> Unit = {},
+    onCloudSignInFromDetail: (MediaItem) -> Unit = {},
     showSearch: Boolean = false,
 ) {
     FilesScreenContent(state, wide, trash, open, requestAccess, FilesScreenActions(
-        vm::setFilter, vm::selectAllFiltered, vm::toggleSelection, vm::clearSelection,
+        vm::setFilter, vm::selectVisibleFiles, vm::toggleSelection, vm::clearSelection,
         vm::savePreset, vm::deletePreset, { item, protected -> vm.setProtected(item, protected) },
         vm::refresh, vm::startOcrIndex, vm::pauseOcrIndex, vm::resumeOcrIndex,
         setFileListView = vm::setFileListView,
     ), cloudFiles = cloudFiles, openCloud = openCloud,
-        resumeDetailUri = resumeDetailUri, onDetailResumed = onDetailResumed,
+        resumeDetailVersion = resumeDetailVersion, onDetailResumed = onDetailResumed,
         onCloudSignInFromDetail = onCloudSignInFromDetail, showSearch = showSearch)
 }
 
@@ -84,9 +87,9 @@ internal fun FilesScreenContent(
     actions: FilesScreenActions,
     cloudFiles: CloudFilesUiState = CloudFilesUiState(),
     openCloud: () -> Unit = {},
-    resumeDetailUri: String? = null,
+    resumeDetailVersion: Triple<String, String, String>? = null,
     onDetailResumed: () -> Unit = {},
-    onCloudSignInFromDetail: (String) -> Unit = {},
+    onCloudSignInFromDetail: (MediaItem) -> Unit = {},
     showSearch: Boolean = false,
 ) {
     var showFilter by remember { mutableStateOf(false) }
@@ -94,19 +97,22 @@ internal fun FilesScreenContent(
     val gridView = !state.fileListView
     var searchMode by rememberSaveable { mutableStateOf(FileSearchMode.FILES) }
     var ocrQuery by rememberSaveable { mutableStateOf("") }
-    var detailUri by rememberSaveable { mutableStateOf<String?>(resumeDetailUri) }
-    LaunchedEffect(resumeDetailUri) {
-        if (resumeDetailUri != null) {
-            detailUri = resumeDetailUri
-            onDetailResumed()
-        }
-    }
+    var detailVersion by rememberSaveable { mutableStateOf<Triple<String, String, String>?>(null) }
     var detailCloudId by rememberSaveable(cloudFiles.accountUid) { mutableStateOf<String?>(null) }
     var sourceFilter by rememberSaveable { mutableStateOf(GallerySourceFilter.ALL) }
     var visiblePages by rememberSaveable { mutableIntStateOf(1) }
     var allowMeteredThumbnails by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.filter, sourceFilter, cloudFiles.accountUid) { visiblePages = 1 }
     var chosenCloud by remember(cloudFiles.accountUid) { mutableStateOf<CloudOriginal?>(null) }
+    val changeSource: (GallerySourceFilter) -> Unit = { option ->
+        if (sourceFilter != option) {
+            actions.clearSelection()
+            sourceFilter = option
+            detailVersion = null
+            detailCloudId = null
+            chosenCloud = null
+        }
+    }
     val gridState = rememberLazyGridState()
     LaunchedEffect(sourceFilter) { gridState.scrollToItem(0) }
     var previousFilter by remember { mutableStateOf(state.filter) }
@@ -118,14 +124,27 @@ internal fun FilesScreenContent(
     }
     val catalogVisible = !state.loading && state.catalogError == null && state.access != MediaAccess.NONE
     val visibleItems = if (catalogVisible) state.items else emptyList()
+    LaunchedEffect(resumeDetailVersion, catalogVisible, state.catalogReady) {
+        if (resumeDetailVersion != null && catalogVisible && state.catalogReady) {
+            detailVersion = resumeDetailVersion.takeIf { version -> visibleItems.any { it.matchesDetailVersion(version) } }
+            onDetailResumed()
+        }
+    }
     val ocrRows = remember(visibleItems, state.ocrEntries) {
         PhotoOcrIndexPolicy.valid(visibleItems, state.ocrEntries)
     }
-    val filtered = if (!catalogVisible) emptyList() else if (searchMode == FileSearchMode.OCR) {
-        val base = MediaQuery.apply(visibleItems, state.filter.copy(query = ""))
-        PhotoOcrIndexPolicy.searchable(base, state.ocrEntries, ocrQuery)
-    } else state.filtered
-    val detail = visibleItems.find { it.uri == detailUri }
+    val filtered = remember(catalogVisible, searchMode, visibleItems, state.filter,
+        state.filtered, state.ocrEntries, ocrQuery) {
+        when {
+            !catalogVisible -> emptyList()
+            searchMode == FileSearchMode.OCR -> {
+                val base = MediaQuery.apply(visibleItems, state.filter.copy(query = ""))
+                PhotoOcrIndexPolicy.searchable(base, state.ocrEntries, ocrQuery)
+            }
+            else -> state.filtered
+        }
+    }
+    val detail = detailVersion?.let { version -> visibleItems.find { it.matchesDetailVersion(version) } }
     val useUnified = cloudFiles.enabled && searchMode == FileSearchMode.FILES &&
         (sourceFilter == GallerySourceFilter.CLOUD ||
             (sourceFilter == GallerySourceFilter.ALL && cloudFiles.accountUid != null))
@@ -150,19 +169,26 @@ internal fun FilesScreenContent(
     val autoLoadThumbnails = CloudGalleryPerformancePolicy.canLoadThumbnails(
         cloudFiles.online, cloudFiles.unmetered, allowMeteredThumbnails,
     )
-    // CLOUD-only is strictly read-only even if another tab left a device selection behind.
-    val selected = if (useUnified && sourceFilter == GallerySourceFilter.CLOUD) emptyList()
-        else if (useUnified) galleryFiltered.mapNotNull { it.device }
-            .filter { it.uri in state.selected && it.canTrash() }
-        else filtered.filter { it.uri in state.selected && it.canTrash() }
-    val selectedUris = selected.mapTo(hashSetOf()) { it.uri }
-    val verifiedSelected = if (useUnified) galleryFiltered.count { entry ->
-        entry.source == com.hebi.gallipick.data.cloud.GallerySource.BOTH &&
-            (entry.device?.uri?.let { it in selectedUris } == true)
-    } else 0
     val fileSections = remember(filtered, state.filter) {
         FileSections.local(filtered, state.filter)
     }
+    val visibleDeviceItems = remember(useUnified, sourceFilter, visibleGallery, filtered,
+        fileSections, state.filter) {
+        when {
+            !useUnified -> if (fileSections.isEmpty()) filtered else fileSections.flatMap { it.items }
+            sourceFilter == GallerySourceFilter.CLOUD -> emptyList()
+            else -> {
+                val sections = FileSections.unified(visibleGallery, state.filter)
+                val entries = if (sections.isEmpty()) visibleGallery else sections.flatMap { it.items }
+                entries.mapNotNull { it.device }
+            }
+        }
+    }
+    val selectable = remember(visibleDeviceItems) { SelectionPolicy.candidates(visibleDeviceItems) }
+    val selected = remember(visibleDeviceItems, state.selected) {
+        SelectionPolicy.candidates(visibleDeviceItems.filter { it.uri in state.selected })
+    }
+    val verifiedSelected = if (useUnified) selected.count { it.uri in backedUpDeviceUris } else 0
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             ScrollAwayHeaderLayout(
@@ -178,17 +204,23 @@ internal fun FilesScreenContent(
                             onGridViewChange = { actions.setFileListView(!it) }, searchMode = searchMode,
                             showSearch = showSearch,
                             ocrQuery = ocrQuery,
-                            onSearchModeChange = { searchMode = it; detailUri = null },
-                            onOcrQueryChange = { ocrQuery = it },
-                            sourceFilter = sourceFilter, showSourceFilter = cloudFiles.enabled,
-                            onSourceFilterChange = { option ->
-                                if (sourceFilter != option) {
-                                    sourceFilter = option
-                                    detailUri = null
+                            onSearchModeChange = { mode ->
+                                if (searchMode != mode) {
+                                    actions.clearSelection()
+                                    searchMode = mode
+                                    detailVersion = null
+                                    detailCloudId = null
                                     chosenCloud = null
-                                    if (option == GallerySourceFilter.CLOUD) actions.clearSelection()
                                 }
                             },
+                            onOcrQueryChange = { query ->
+                                if (ocrQuery != query) {
+                                    actions.clearSelection()
+                                    ocrQuery = query
+                                }
+                            },
+                            sourceFilter = sourceFilter, showSourceFilter = cloudFiles.enabled,
+                            onSourceFilterChange = changeSource,
                         )
                         if (cloudFiles.enabled && searchMode == FileSearchMode.FILES) {
                             if (cloudFiles.accountUid != null && sourceFilter != GallerySourceFilter.DEVICE &&
@@ -327,7 +359,9 @@ internal fun FilesScreenContent(
                                                     entries = visibleGallery, filter = state.filter, source = sourceFilter,
                                                     gridView = gridView, wide = wide, availableWidth = availableGridWidth,
                                                     gridState = gridState, selected = state.selected,
-                                                    toggleDevice = actions.toggleSelection, openDevice = { detailUri = it },
+                                                    toggleDevice = actions.toggleSelection, openDevice = { uri ->
+                                                        detailVersion = visibleItems.find { it.uri == uri }?.detailVersion()
+                                                    },
                                                     openCloud = { detailCloudId = it.uploadId },
                                                     backup = cloudFiles.backup, accountUid = cloudFiles.accountUid,
                                                     autoLoadThumbnails = autoLoadThumbnails,
@@ -403,7 +437,7 @@ internal fun FilesScreenContent(
                                                     }
                                                     items(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
-                                                            { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
+                                                            { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
                                                             state.filter.sortField, tabletGrid = tabletGrid,
                                                             ocrText = if (searchMode == FileSearchMode.OCR)
                                                                 ocrRows[item.uri]?.recognizedText else null,
@@ -413,7 +447,7 @@ internal fun FilesScreenContent(
                                             } else {
                                                 items(filtered, key = { it.uri }) { item ->
                                                     MediaTile(item, item.uri in state.selected,
-                                                        { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
+                                                        { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
                                                         state.filter.sortField, tabletGrid = tabletGrid,
                                                             ocrText = if (searchMode == FileSearchMode.OCR)
                                                                 ocrRows[item.uri]?.recognizedText else null,
@@ -434,7 +468,7 @@ internal fun FilesScreenContent(
                                                     }
                                                     listItems(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
-                                                            { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
+                                                            { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
                                                             state.filter.sortField, listView = true,
                                                             dateMs = MediaQuery.dateOf(item, state.filter.dateField),
                                                             ocrText = if (searchMode == FileSearchMode.OCR)
@@ -445,7 +479,7 @@ internal fun FilesScreenContent(
                                             } else {
                                                 listItems(filtered, key = { it.uri }) { item ->
                                                     MediaTile(item, item.uri in state.selected,
-                                                        { actions.toggleSelection(item.uri) }, { detailUri = item.uri },
+                                                        { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
                                                         state.filter.sortField, listView = true,
                                                         ocrText = if (searchMode == FileSearchMode.OCR)
                                                             ocrRows[item.uri]?.recognizedText else null,
@@ -462,8 +496,9 @@ internal fun FilesScreenContent(
                                 .background(MaterialTheme.colorScheme.surface).border(1.dp, Line, RoundedCornerShape(20.dp))
                                 .semantics { contentDescription = "파일 상세 패널" }) {
                                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("파일 정보", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                                    IconAction("파일 상세 닫기", Icons.Outlined.Close) { detailUri = null }
+                                    Text("파일 정보", style = MaterialTheme.typography.titleMedium,
+                                        modifier = Modifier.weight(1f).semantics { heading() })
+                                    IconAction("파일 상세 닫기", Icons.Outlined.Close) { detailVersion = null }
                                 }
                                 MediaDetail(detail, open, { actions.setProtected(detail, it) },
                                     Modifier.weight(1f), detail.hasFolderProtection(state.protectedFolders),
@@ -473,15 +508,17 @@ internal fun FilesScreenContent(
                                     cloudBackup = cloudFiles.backup,
                                     accountUid = cloudFiles.accountUid,
                                     cloudVerified = detailVerified,
+                                    cloudDetailAccess = cloudFiles.detailAccess,
+                                    cloudAccountEmail = cloudFiles.accountEmail,
+                                    cloudNotice = cloudFiles.detailNotice,
                                     onRequestCloud = {
-                                        if (detail != null) onCloudSignInFromDetail(detail.uri)
-                                        else openCloud()
+                                        onCloudSignInFromDetail(detail)
                                     })
                             }
                         }
                     }
                     if (!useSideDetail && detail != null) MediaDetailDialog(
-                        detail, { detailUri = null }, open,
+                        detail, { detailVersion = null }, open,
                         { actions.setProtected(detail, it) }, detail.hasFolderProtection(state.protectedFolders),
                         ocrText = if (searchMode == FileSearchMode.OCR)
                             ocrRows[detail.uri]?.recognizedText else null,
@@ -489,20 +526,31 @@ internal fun FilesScreenContent(
                         cloudBackup = cloudFiles.backup,
                         accountUid = cloudFiles.accountUid,
                         cloudVerified = detailVerified,
+                        cloudDetailAccess = cloudFiles.detailAccess,
+                        cloudAccountEmail = cloudFiles.accountEmail,
+                        cloudNotice = cloudFiles.detailNotice,
                         onRequestCloud = {
-                            if (detail != null) onCloudSignInFromDetail(detail.uri)
-                            else openCloud()
+                            onCloudSignInFromDetail(detail)
                         },
                     )
                 }
             }
 
-            if (useUnified && galleryFiltered.isNotEmpty() && selected.isEmpty()) {
-                Text("목록 ${galleryFiltered.size}개 · 기기 파일만 선택하여 정리할 수 있습니다.",
-                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    color = Muted, style = MaterialTheme.typography.bodySmall)
-            } else if (!useUnified && catalogVisible && filtered.isNotEmpty() && selected.isEmpty()) {
-                FilesFooterSummary(filtered, actions.selectAll)
+            if (selected.isEmpty()) {
+                if (useUnified && visibleGallery.isNotEmpty()) {
+                    FilesFooterSummary(
+                        "표시 ${visibleGallery.size}개",
+                        selectable,
+                        actions.selectAll,
+                    )
+                } else if (!useUnified && filtered.isNotEmpty()) {
+                    val count = String.format(java.util.Locale.KOREA, "%,d", filtered.size)
+                    FilesFooterSummary(
+                        "총 ${count}개 · ${bytesLabel(filtered.sumOf { it.sizeBytes })}",
+                        selectable,
+                        actions.selectAll,
+                    )
+                }
             }
             if (verifiedSelected > 0 && selected.isNotEmpty()) {
                 Text("선택한 기기 파일 중 ${verifiedSelected}개는 서버의 검증된 백업 기록과 내용이 일치합니다. " +
@@ -510,21 +558,13 @@ internal fun FilesScreenContent(
                     Modifier.fillMaxWidth().padding(vertical = 6.dp),
                     style = MaterialTheme.typography.bodySmall, color = Muted)
             }
-            SelectionBar(selected, actions.clearSelection, { trash(selected) })
+            SelectionBar(selected, actions.clearSelection, { trash(selected) }, clearOnSearchChange = true)
         }
         if (showFilter) FilterDialog(state.filter, visibleItems, {
             actions.setFilter(MediaFilterActions.sort(it, it.sortField, it.sortDirection)); showFilter = false
         }, { showFilter = false }, cloudItems = cloudFiles.snapshot?.originals.orEmpty(),
             sourceFilter = if (cloudFiles.enabled) sourceFilter else null,
-            onSourceFilterChange = { option ->
-                if (sourceFilter != option) {
-                    sourceFilter = option
-                    detailUri = null
-                    detailCloudId = null
-                    chosenCloud = null
-                    if (option == GallerySourceFilter.CLOUD) actions.clearSelection()
-                }
-            })
+            onSourceFilterChange = changeSource)
         if (showSave) SavePresetDialog({ actions.savePreset(it); showSave = false }, { showSave = false })
         detailCloud?.let { original ->
             CloudFileDetailDialog(
@@ -604,23 +644,37 @@ internal fun DateGroupHeader(date: String, count: Int, field: DateField) {
 }
 
 @Composable
-private fun FilesFooterSummary(items: List<MediaItem>, selectAll: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            "총 " + String.format(java.util.Locale.KOREA, "%,d", items.size) +
-                "개 · " + bytesLabel(items.sumOf { it.sizeBytes }),
-            style = MaterialTheme.typography.bodySmall,
-            color = Muted,
-            modifier = Modifier.semantics { contentDescription = "파일 목록 요약" },
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
-        if (items.any { it.canTrash() }) TextAction("모두 선택", selectAll)
+private fun FilesFooterSummary(
+    summary: String,
+    selectable: List<MediaItem>,
+    selectAll: (List<MediaItem>) -> Unit,
+) {
+    Column {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = Muted,
+                modifier = Modifier.weight(1f, fill = false)
+                    .semantics { contentDescription = "파일 목록 요약" },
+            )
+            if (selectable.isNotEmpty()) TextAction("현재 결과 ${selectable.size}개 선택", { selectAll(selectable) })
+        }
+        if (selectable.size == SelectionPolicy.MAX_SELECTION_SIZE) {
+            Text("한 번에 최대 ${SelectionPolicy.MAX_SELECTION_SIZE}개까지 선택할 수 있습니다.",
+                style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
     }
 }
+
+internal fun MediaItem.detailVersion(): Triple<String, String, String> = Triple(uri, fingerprint, volumeVersion)
+
+private fun MediaItem.matchesDetailVersion(version: Triple<String, String, String>): Boolean =
+    uri == version.first && fingerprint == version.second && volumeVersion == version.third
 
 internal fun tabletMediaGridColumns(availableWidth: androidx.compose.ui.unit.Dp, fontScale: Float): Int {
     val minimumTileWidth = 212f * fontScale.coerceIn(1f, 1.5f)
@@ -642,50 +696,60 @@ internal fun MediaTile(
     hasCloudOriginal: Boolean = false,
     allowSelection: Boolean = true,
 ) {
+    var detailFocused by remember(item.uri) { mutableStateOf(false) }
+    val detailClick = Modifier.onFocusChanged { detailFocused = it.isFocused }
+        .clickable(role = Role.Button, onClickLabel = "파일 상세 열기", onClick = detail)
+    val showOutline = selected || detailFocused
+    val selectable = !item.isTrashed && item.canTrash()
+    val selectionLabel = if (selectable) "${item.displayName} 선택" else "${item.displayName} 즐겨찾기 또는 보호 파일"
     if (listView) {
         Row(
-            Modifier.fillMaxWidth().galliCardSurface().padding(6.dp),
+            Modifier.fillMaxWidth().galliCardSurface()
+                .then(if (showOutline) Modifier.border(
+                    2.dp, Primary, RoundedCornerShape(GalliUiMetrics.cardCorner),
+                ) else Modifier)
+                .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(Modifier.size(76.dp).plainClick(action = detail)) {
-                MediaThumbnail(item, Modifier.fillMaxSize())
-                if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
-            }
-            Column(Modifier.weight(1f).plainClick(action = detail), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(item.displayName, style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(dateMs).substringBefore(" "),
-                    style = MaterialTheme.typography.bodySmall, color = Muted)
-                if (ocrText != null) {
-                    Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery),
-                        style = MaterialTheme.typography.labelSmall, color = Muted,
+            Row(
+                Modifier.weight(1f).then(detailClick),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(Modifier.size(76.dp)) {
+                    MediaThumbnail(item, Modifier.fillMaxSize(), contentDescription = null)
+                    if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(item.displayName, style = MaterialTheme.typography.bodyMedium,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                if (item.kind == MediaKind.VIDEO) {
-                    Text(durationLabel(item.durationMs), style = MaterialTheme.typography.labelSmall, color = Muted)
+                    Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(dateMs).substringBefore(" "),
+                        style = MaterialTheme.typography.bodySmall, color = Muted)
+                    if (ocrText != null) {
+                        Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery),
+                            style = MaterialTheme.typography.labelSmall, color = Muted,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (item.kind == MediaKind.VIDEO) {
+                        Text(durationLabel(item.durationMs), style = MaterialTheme.typography.labelSmall, color = Muted)
+                    }
                 }
             }
-            if (allowSelection) SelectBox(
-                selected, item.canTrash(),
-                if (item.canTrash()) item.displayName + " 선택" else item.displayName + " 즐겨찾기 또는 보호 파일",
-                toggle,
-            )
+            if (allowSelection) SelectBox(selected, selectable, selectionLabel, toggle)
         }
     } else {
         Column(Modifier.fillMaxWidth().then(
             if (tabletGrid) Modifier.testTag("tablet-media-${item.id}") else Modifier,
-        ), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Box(
-                Modifier.fillMaxWidth().aspectRatio(1f)
-                    .border(if (selected) 2.dp else 0.dp,
-                        if (selected) Primary else androidx.compose.ui.graphics.Color.Transparent)
-                    .plainClick(action = detail),
-            ) {
-                MediaThumbnail(item, Modifier.fillMaxSize())
+        ).then(detailClick), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+                MediaThumbnail(item, Modifier.fillMaxSize(), contentDescription = null)
+                if (showOutline) {
+                    Box(Modifier.matchParentSize().border(2.dp, Primary)
+                        .padding(2.dp).border(1.dp, AppSurface))
+                }
                 if (allowSelection) SelectBox(
-                    selected, item.canTrash(),
-                    if (item.canTrash()) item.displayName + " 선택" else item.displayName + " 즐겨찾기 또는 보호 파일",
+                    selected, selectable, selectionLabel,
                     toggle, Modifier.align(Alignment.TopStart), indicatorAtTopStart = true,
                 )
                 if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
@@ -708,7 +772,7 @@ internal fun MediaTile(
             }
             Text(item.displayName, style = if (tabletGrid) MaterialTheme.typography.bodySmall
                 else MaterialTheme.typography.labelSmall, maxLines = if (tabletGrid) 2 else 1,
-                overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().plainClick(action = detail))
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
             if (tabletGrid) {
                 Text(bytesLabel(item.sizeBytes), style = MaterialTheme.typography.labelSmall,
                     color = Muted, maxLines = 1)
@@ -724,7 +788,12 @@ internal fun MediaTile(
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-internal fun SelectionBar(selected: List<MediaItem>, clear: () -> Unit, trash: () -> Unit) {
+internal fun SelectionBar(
+    selected: List<MediaItem>,
+    clear: () -> Unit,
+    trash: () -> Unit,
+    clearOnSearchChange: Boolean = false,
+) {
     if (selected.isEmpty()) return
     Column(Modifier.fillMaxWidth().galliCardSurface(backgroundColor = Panel).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -737,6 +806,8 @@ internal fun SelectionBar(selected: List<MediaItem>, clear: () -> Unit, trash: (
             ActionButton("휴지통으로", trash, Modifier.align(Alignment.CenterVertically), filled = true, icon = Icons.Outlined.DeleteOutline)
         }
         Text("즐겨찾기·보호 파일은 선택할 수 없습니다. 이동 전 Android 확인창이 표시됩니다.", color = Muted, style = MaterialTheme.typography.labelSmall)
+        if (clearOnSearchChange) Text("검색어나 검색 범위·저장 위치를 바꾸면 선택이 해제됩니다.",
+            color = Muted, style = MaterialTheme.typography.labelSmall)
     }
 }
 
