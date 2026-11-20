@@ -9,5 +9,5 @@ export function cloudOperationAccess(operation, secret = false) {
     const writes = secret ? secretWrites : backupWrites;
     if (reads.has(operation)) return 'read';
     if (writes.has(operation)) return 'write';
-    throw new Error('Unclassified Cloud operation');
+    return null;
 }
