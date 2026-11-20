@@ -430,7 +430,7 @@ class CloudCheckoutUiTest {
         private val hasCurrentCloudPlan: Boolean = false,
         private val includeAnnualPlan: Boolean = false,
         private val hasOffers: Boolean = true,
-        includeExtraPlans: Boolean = false,
+        private val includeExtraPlans: Boolean = false,
         cloudCheckoutAllowed: Boolean = true,
     ) : CloudBillingSession {
         private val product = CloudBillingProduct("gallipick_cloud_10gb", "monthly", 10_000_000_000L)

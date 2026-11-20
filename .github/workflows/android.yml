@@ -40,7 +40,7 @@ jobs:
       - name: Install SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
       - name: Test, lint and build
-        run: gradle -PgallipickTestSigning=true testDebugUnitTest lintDebug assembleDebug --stacktrace
+        run: gradle -PgallipickTestSigning=true testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest --stacktrace
       - name: Verify release tooling
         run: python3 -m unittest discover -s scripts/release -p 'test_*.py'
       - name: Upload reports
