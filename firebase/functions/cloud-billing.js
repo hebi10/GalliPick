@@ -244,9 +244,12 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     async function getPlanForOwner(owner, checkedSource) {
         if (production) {
             if (!settings.enabled) return pausedProductionPlan;
-            const [account, usage] = await Promise.all([ownerRef(owner).get(),
-                settings.cloudEnabled ? usageRef(owner).get() : null]);
+            const [account, usage, exit] = await Promise.all([ownerRef(owner).get(),
+                settings.cloudEnabled ? usageRef(owner).get() : null,
+                db.doc(`gallipickAccountExitRequests/${owner}`).get()]);
             const current = account.data();
+            const exitState = exit.data();
+            const mayUpload = !exitState || (exitState.scope === 'CLOUD' && exitState.status === 'RESUMED');
             const evaluatedAt = now();
             const verified = productionBenefits(current, evaluatedAt);
             const lifecycle = settings.retentionEnabled ? lifecycleForAccount(current, evaluatedAt) : null;
@@ -279,7 +282,9 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
                 expiresAtMs: verified.cloudExpiresAtMs, adFreeProductId: verified.adFreeProductId,
                 adFreeBasePlanId: verified.adFreeBasePlanId, adFreeExpiresAtMs: verified.adFreeExpiresAtMs,
                 backupAvailable: settings.cloudEnabled, quotaBytes, usedBytes,
-                uploadAllowed: usedBytes < quotaBytes && (!lifecycle || lifecycle.mayUpload),
+                uploadAllowed: mayUpload && usedBytes < quotaBytes && (!lifecycle || lifecycle.mayUpload),
+                ...(exitState?.scope === 'CLOUD' && exitState.status === 'COMPLETED'
+                    ? { cloudUploadReactivationRequired: true } : {}),
                 scheduledReplacement, replacementSourceAllowed: replacementSourcePrice !== null, replacementSourcePrice,
                 ...(lifecycle ? { cloudLifecycleState: lifecycle.state,
                     cloudRecoveryEndsAtMs: lifecycle.recoveryEndsAtMs,
@@ -389,6 +394,14 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     return {
         async requireCloudAccess(auth, operation) {
             const { owner } = authorizeAccount(auth);
+            if (production) {
+                const exit = (await db.doc(`gallipickAccountExitRequests/${owner}`).get()).data();
+                if (exit && (exit.scope === 'ACCOUNT' ||
+                    (exit.status !== 'COMPLETED' && exit.status !== 'RESUMED') ||
+                    (exit.status === 'COMPLETED' && operation === 'write'))) {
+                    throw new BackupError('permission-denied', 'Cloud access requires deletion to finish and fresh backup consent.');
+                }
+            }
             if (production && !settings.cloudEnabled) {
                 throw new BackupError('failed-precondition', 'Production Cloud backup is unavailable.');
             }
@@ -459,6 +472,11 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
             const licenseEmailAllowed = settings.mode === 'license-test' && allowedEmailHashes.has(licenseEmailHash);
             if (typeof owner !== 'string' || !HASH.test(owner)
                 || (settings.mode !== 'live' && !allowedOwners.has(owner) && !licenseEmailAllowed)) return false;
+            if (production) {
+                const exit = (await db.doc(`gallipickAccountExitRequests/${owner}`).get()).data();
+                if (exit && (exit.scope === 'ACCOUNT' || (exit.status !== 'COMPLETED'
+                    && exit.status !== 'RESUMED'))) return false;
+            }
             // Re-fetch after reserving the revision. The notification is only a refresh signal.
             await reconcile(owner, token, licenseEmailAllowed ? licenseEmailHash : null);
             return true;
@@ -467,6 +485,11 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
         // Read this in the same transaction as new reservations and before any writes.
         async uploadQuota(transaction, owner, ownerLimit) {
             if (production && !settings.cloudEnabled) return 0;
+            if (production) {
+                const exit = (await transaction.get(db.doc(`gallipickAccountExitRequests/${owner}`))).data();
+                if (exit && (exit.status !== 'RESUMED' ||
+                    exit.scope === 'ACCOUNT')) return 0;
+            }
             if (!Number.isSafeInteger(ownerLimit) || ownerLimit < 0) {
                 throw new BackupError('failed-precondition', 'The backup allocation limit is invalid.');
             }

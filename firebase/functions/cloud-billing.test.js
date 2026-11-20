@@ -712,3 +712,45 @@ test('a server-marked account exit suppresses both normal and resumable upload p
     await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
     await assert.rejects(service.requireCloudAccess(auth, 'write'), isCode('permission-denied'));
 });
+
+test('account exit stops RTDN entitlement refresh and paid Cloud quota even when retention flag is off', async () => {
+    const { service, records, purchases, db } = createHarness({ settings: licenseCloud });
+    const uid = 'owner-a';
+    const owner = accountId(uid);
+    const auth = user(uid);
+    const cloud = cloudOffer(10);
+    purchases.set(token(1), subscription({ product: cloud }));
+    const initial = await verify(service, uid, token(1));
+    assert.equal(initial.activeProductId, cloud.productId);
+    const path = `gallipickProductionLicenseBillingAccounts/${owner}`;
+    const previouslyVerified = structuredClone(records.get(path));
+    records.set(`gallipickAccountExitRequests/${owner}`, { scope: 'ACCOUNT', status: 'REQUESTED' });
+    const quota = await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000));
+    assert.equal(quota, 0);
+    await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+    assert.equal(await service.reconcileNotification(renewalEvent(token(1))), false);
+    assert.deepEqual(records.get(path), previouslyVerified);
+});
+
+test('completed Cloud-only deletion may resume paid usage, but completed account deletion remains blocked', async () => {
+    const { service, records, purchases, db } = createHarness({ settings: licenseCloud });
+    const uid = 'owner-a';
+    const owner = accountId(uid);
+    const auth = user(uid);
+    purchases.set(token(1), subscription({ product: cloudOffer(10) }));
+    await verify(service, uid, token(1));
+    const exitPath = `gallipickAccountExitRequests/${owner}`;
+    records.set(exitPath, { scope: 'CLOUD', status: 'COMPLETED' });
+    assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)), 0);
+    await service.requireCloudAccess(auth, 'read');
+    await assert.rejects(service.requireCloudAccess(auth, 'write'), isCode('permission-denied'));
+    assert.equal((await service.getPlan(auth)).uploadAllowed, false);
+    assert.equal((await service.getPlan(auth)).cloudUploadReactivationRequired, true);
+    records.set(exitPath, { scope: 'CLOUD', status: 'RESUMED' });
+    assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)), 10_000_000_000);
+    await service.requireCloudAccess(auth, 'write');
+    assert.equal((await service.getPlan(auth)).cloudUploadReactivationRequired, undefined);
+    records.set(exitPath, { scope: 'ACCOUNT', status: 'COMPLETED' });
+    assert.equal(await db.runTransaction(tx => service.uploadQuota(tx, owner, 100_000_000_000)), 0);
+    await assert.rejects(service.requireCloudAccess(auth, 'read'), isCode('permission-denied'));
+});
