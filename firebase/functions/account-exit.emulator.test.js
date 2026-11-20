@@ -60,6 +60,19 @@ test('Firestore, Auth and Storage emulators delete only the verified owner and p
             });
             await db.doc(`gallipickProductionBackupAccounts/${second}`).set({ allocatedBytes: 1, files: 1 });
             await db.doc(`gallipickProductionBillingAccounts/${second}`).set({ revision: 1 });
+            for (const [scope, mode] of [
+                ['gallipickProductionBilling', 'live'],
+                ['gallipickProductionLicenseBilling', 'license-test'],
+            ]) {
+                await db.doc(`${scope}TokenEscrows/${'1'.repeat(64)}`).set({
+                    owner: first, tokenHash: '1'.repeat(64), mode,
+                    formatVersion: 1, ciphertext: 'opaque-synthetic-ciphertext',
+                });
+            }
+            await db.doc(`gallipickProductionBillingTokenEscrows/${'2'.repeat(64)}`).set({
+                owner: second, tokenHash: '2'.repeat(64), mode: 'live',
+                formatVersion: 1, ciphertext: 'other-customer-must-not-be-deleted',
+            });
             for (const mode of ['live', 'license-test']) {
                 const ref = db.doc(`gallipickAdminManualGrants/${mode}-${first}`);
                 await ref.set({ source: 'ADMIN_MANUAL', ownerId: first, mode,
@@ -103,6 +116,9 @@ test('Firestore, Auth and Storage emulators delete only the verified owner and p
             assert.equal((await db.doc(`gallipickProductionBackupVaultAccounts/${first}/originals/b`).get()).exists, false);
             assert.equal((await db.doc(`gallipickProductionBackupResumableAccountsJobs/${first}-job`).get()).exists, false);
             assert.equal((await db.doc(`gallipickProductionBillingAccounts/${first}`).get()).exists, true);
+            for (const scope of ['gallipickProductionBilling', 'gallipickProductionLicenseBilling']) {
+                assert.equal((await db.doc(`${scope}TokenEscrows/${'1'.repeat(64)}`).get()).exists, true);
+            }
             for (const mode of ['live', 'license-test']) {
                 assert.equal((await db.doc(`gallipickAdminManualGrants/${mode}-${first}`).get()).exists, true);
             }
@@ -133,6 +149,10 @@ test('Firestore, Auth and Storage emulators delete only the verified owner and p
             assert.equal(finished.scope, 'ACCOUNT');
             assert.equal(finished.uid, undefined);
             assert.equal((await db.doc(`gallipickProductionBillingAccounts/${first}`).get()).exists, false);
+            for (const scope of ['gallipickProductionBilling', 'gallipickProductionLicenseBilling']) {
+                assert.equal((await db.doc(`${scope}TokenEscrows/${'1'.repeat(64)}`).get()).exists, false);
+            }
+            assert.equal((await db.doc(`gallipickProductionBillingTokenEscrows/${'2'.repeat(64)}`).get()).exists, true);
             for (const mode of ['live', 'license-test']) {
                 const path = `gallipickAdminManualGrants/${mode}-${first}`;
                 assert.equal((await db.doc(path).get()).exists, false);
@@ -153,7 +173,8 @@ test('Firestore, Auth and Storage emulators delete only the verified owner and p
                 await Promise.allSettled([db.recursiveDelete(db.doc(`gallipickAccountExitRequests/${first}`)),
                     db.recursiveDelete(db.doc(`gallipickProductionBillingAccounts/${second}`)),
                     db.recursiveDelete(db.doc(`gallipickProductionBackupAccounts/${second}`)),
-                    db.recursiveDelete(db.doc(`gallipickAdminManualGrants/live-${second}`))]);
+                    db.recursiveDelete(db.doc(`gallipickAdminManualGrants/live-${second}`)),
+                    db.recursiveDelete(db.doc(`gallipickProductionBillingTokenEscrows/${'2'.repeat(64)}`))]);
             }
             await deleteApp(app);
         }
