@@ -56,6 +56,7 @@ function services(privateVault = false) {
         const objectPrefix = PRODUCTION_BACKUP_PREFIXES[scope];
         return scopedBackup({ db, backup, billing, scope, objectPrefix, privateVault,
             authorizeOwner: billing.authorizeBackup, ownerLimit: PRODUCTION_CLOUD_MAX_BYTES,
+            checkQuotaOnPublish: settings.retentionEnabled,
             maxOwnerFiles: PRODUCTION_MAX_OWNER_FILES, getBucket, uploadsPaused,
             rollout: { objectPrefix, maxOriginalBytes: settings.maxOriginalBytes, uploadsPaused, getBucket },
         });
@@ -74,13 +75,14 @@ function services(privateVault = false) {
 }
 
 function scopedBackup({ db, backup, billing, scope, objectPrefix, privateVault, authorizeOwner, ownerLimit,
-    maxOwnerFiles, getBucket, uploadsPaused, rollout, globalAllocation }) {
+    maxOwnerFiles, getBucket, uploadsPaused, rollout, globalAllocation, checkQuotaOnPublish = false }) {
     const resumablePaused = uploadsPaused || process.env.GALLIPICK_RESUMABLE_UPLOADS_PAUSED !== 'false';
     const resumable = process.env.GALLIPICK_RESUMABLE_ENABLED === 'true' ? createResumableBackupService({
         db, getBucket, authorizeOwner, objectPrefix, privateVault, ownerLimit, maxOwnerFiles, globalAllocation,
         uploadQuota: billing.uploadQuota, allocationCollection: `${scope}Accounts`,
         catalogCollection: `${scope}${privateVault ? 'Vault' : ''}ResumableAccounts`,
         catalogDocumentId: FieldPath.documentId(), uploadsPaused: resumablePaused,
+        checkQuotaOnPublish,
     }) : undefined;
     const vault = privateVault ? createSecretCloud({ db, authorizeOwner, backup, resumable,
         credentialCollection: `${scope}VaultCredentials` }) : undefined;
