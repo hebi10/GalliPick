@@ -389,6 +389,12 @@ export function createBillingService({ db, play, settings, pilotUsers, now = Dat
     return {
         async requireCloudAccess(auth, operation) {
             const { owner } = authorizeAccount(auth);
+            if (production) {
+                const exit = (await db.doc(`gallipickAccountExitRequests/${owner}`).get()).data();
+                if (exit && (exit.status !== 'COMPLETED' || exit.scope === 'ACCOUNT')) {
+                    throw new BackupError('permission-denied', 'Cloud access is blocked during account deletion.');
+                }
+            }
             if (production && !settings.cloudEnabled) {
                 throw new BackupError('failed-precondition', 'Production Cloud backup is unavailable.');
             }
