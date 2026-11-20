@@ -64,8 +64,14 @@ async function updateOverview() {
       timeZone: "Asia/Seoul", dateStyle: "medium", timeStyle: "short",
     }).format(new Date(data.checkedAtMs)) + " 기준";
     overviewStatus.textContent = "서버 집계 확인 완료";
-  } catch {
-    overviewStatus.textContent = "통계를 확인하지 못했습니다. 권한이나 서버 설정을 확인해 주세요.";
+  } catch (error) {
+    if (error?.code === "functions/permission-denied" ||
+        error?.code === "functions/failed-precondition") {
+      resetDashboard();
+      authMessage("서버에서 관리자 접근 권한을 승인하지 않았습니다.");
+    } else {
+      overviewStatus.textContent = "통계를 확인하지 못했습니다. 권한이나 서버 설정을 확인해 주세요.";
+    }
   } finally {
     refresh.disabled = false;
   }
