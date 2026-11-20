@@ -14,6 +14,7 @@ import { createPlaySubscriptions } from './play-subscriptions.js';
 import { PRODUCTION_CLOUD_MAX_BYTES } from './monetization-entitlements.js';
 import { createSecretCloud } from './secret-cloud.js';
 import { createResumableBackupService } from './resumable-backup.js';
+import { cloudOperationAccess } from './cloud-api-access.js';
 
 const app = initializeApp();
 const project = app.options.projectId ?? process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
@@ -107,6 +108,7 @@ async function billingPlan(plan, data, configured, auth) {
     }
     const { verifiedMediaCount, ...included } = available;
     const modernCount = Number.isSafeInteger(verifiedMediaCount) && data?.includeVerifiedCount === true
+        && (!production || included.cloudReadAllowed !== false)
         ? await resumable.countVerifiedMedia(auth) : null;
     const total = modernCount === null ? null : verifiedMediaCount + modernCount;
     return { ...included,
@@ -133,6 +135,11 @@ function endpoint(operation, billingRequest = false) {
             if (typeof protocol?.[operation] !== 'function') {
                 throw new BackupError('failed-precondition', 'Cloud backup is unavailable.');
             }
+            if (production) {
+                const access = cloudOperationAccess(operation);
+                if (!access) throw new BackupError('invalid-argument', 'The Cloud operation is unsupported.');
+                await billing.requireCloudAccess(request.auth, access);
+            }
             return await protocol[operation](request.auth, request.data);
         } catch (error) {
             if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
@@ -158,8 +165,13 @@ export const secretCloud = onCall({ ...options, timeoutSeconds: 540 }, async req
         if (production && version !== PRODUCTION_BACKUP_PROTOCOL_VERSION && version !== RESUMABLE_PROTOCOL_VERSION) {
             throw new BackupError('failed-precondition', 'Secret cloud is unavailable.');
         }
-        const { vault } = services(true);
+        const { vault, billing } = services(true);
         if (!vault) throw new BackupError('failed-precondition', 'Secret cloud is unavailable.');
+        if (production) {
+            const access = cloudOperationAccess(request.data?.action, true);
+            if (!access) throw new BackupError('invalid-argument', 'The secret Cloud operation is unsupported.');
+            await billing.requireCloudAccess(request.auth, access);
+        }
         return await vault.handle(request.auth, request.data);
     } catch (error) {
         if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
