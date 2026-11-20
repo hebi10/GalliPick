@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
@@ -193,13 +194,13 @@ private fun CloudAccountExitAction(connection: CloudAccountConnection, scope: Cl
                 CloudStatusMessage("삭제 요청은 가능한 즉시 처리하며 처리 목표는 최대 14일입니다. 요청 접수만으로 삭제가 완료된 것은 아닙니다.")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = acknowledgePermanent, onCheckedChange = { acknowledgePermanent = it },
-                        enabled = !requestBusy)
+                        enabled = !requestBusy, modifier = Modifier.testTag("cloud-exit-confirm-permanent"))
                     Text("삭제된 클라우드 원본은 복원할 수 없음을 확인했습니다.",
                         modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = acknowledgeBilling, onCheckedChange = { acknowledgeBilling = it },
-                        enabled = !requestBusy)
+                        enabled = !requestBusy, modifier = Modifier.testTag("cloud-exit-confirm-billing"))
                     Text("Google Play 자동 갱신은 직접 취소해야 함을 확인했습니다.",
                         modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                 }
@@ -207,7 +208,9 @@ private fun CloudAccountExitAction(connection: CloudAccountConnection, scope: Cl
         },
         confirmButton = {
             ActionButton(
-                if (exitApi == null) "삭제 요청 메일 작성" else "Google 재인증 후 삭제 요청",
+                if (exitApi == null && scope == CloudExitScope.ACCOUNT) "탈퇴 요청 메일 작성"
+                else if (exitApi == null) "삭제 요청 메일 작성"
+                else "Google 재인증 후 삭제 요청",
                 {
                     operationFailed = null
                     if (exitApi == null) {
