@@ -68,7 +68,7 @@ function services(privateVault = false) {
         const objectPrefix = PRODUCTION_BACKUP_PREFIXES[scope];
         return scopedBackup({ db, backup, billing, scope, objectPrefix, privateVault,
             authorizeOwner: billing.authorizeBackup, ownerLimit: PRODUCTION_CLOUD_MAX_BYTES,
-            checkQuotaOnPublish: settings.retentionEnabled,
+            checkQuotaOnPublish: true,
             maxOwnerFiles: PRODUCTION_MAX_OWNER_FILES, getBucket, uploadsPaused,
             rollout: { objectPrefix, maxOriginalBytes: settings.maxOriginalBytes, uploadsPaused, getBucket },
         });
