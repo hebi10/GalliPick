@@ -8,6 +8,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-functions.js";
 import { firebaseConfig } from "./config.js";
 import { createManualGrantControl } from "./manual-grants.js";
+import { createDeletionReviewPanel } from "./deletion-reviews.js";
 
 const $ = id => document.getElementById(id);
 const authStatus = $("auth-status");
@@ -27,6 +28,7 @@ let auth = null;
 let getOverview = null;
 let getMembers = null;
 let manualGrantCalls = null;
+let deletionPanel = null;
 let memberTokens = [null];
 let currentMemberPage = 0;
 let memberRequestId = 0;
@@ -38,6 +40,7 @@ function resetDashboard() {
   overview.hidden = true;
   authorizedUser = null;
   memberRequestId++;
+  deletionPanel?.clear();
   memberTokens = [null];
   currentMemberPage = 0;
   memberList.replaceChildren();
@@ -258,6 +261,16 @@ if (!validateConfig(firebaseConfig)) {
       await user.getIdToken(true);
     },
   };
+  const adminListDeletions = httpsCallable(cloudFunctions, "getAdminDeletionReviews");
+  const adminPreviewPurge = httpsCallable(cloudFunctions, "previewAdminExpiryPurge");
+  const adminRetryDeletion = httpsCallable(cloudFunctions, "retryAdminFailedDeletion");
+  deletionPanel = createDeletionReviewPanel(document.getElementById("deletion-admin"), {
+    currentUser: manualGrantCalls.currentUser,
+    reauthenticate: () => manualGrantCalls.reauthenticate(),
+    list: data => adminListDeletions(data),
+    preview: data => adminPreviewPurge(data),
+    retry: data => adminRetryDeletion(data),
+  });
   signin.hidden = false;
 
   signin.addEventListener("click", async () => {
@@ -280,6 +293,7 @@ if (!validateConfig(firebaseConfig)) {
   refresh.addEventListener("click", async () => {
     await updateOverview();
     if (authorizedUser) await loadMembers(currentMemberPage);
+    if (authorizedUser) await deletionPanel?.refresh();
   });
   memberRefresh.addEventListener("click", async () => {
     memberTokens = [null];
@@ -313,6 +327,7 @@ if (!validateConfig(firebaseConfig)) {
       if (authorizedUser === user && overviewStatus.textContent === "서버 집계 확인 완료") {
         authMessage("관리자 접근 승인");
         await loadMembers(0);
+        await deletionPanel?.refresh();
       }
     } catch {
       resetDashboard();
