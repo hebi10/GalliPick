@@ -20,6 +20,7 @@ import { createAccountExitService } from './account-exit.js';
 import { createAdminOverviewService } from './admin-overview.js';
 import { createAdminMembersService } from './admin-members.js';
 import { createAdminManualGrantService } from './admin-manual-grants.js';
+import { createAdminDeletionReviewService } from './admin-deletion-review.js';
 import { createCloudPurgeReviewService } from './cloud-expiry-purge-review.js';
 
 const app = initializeApp();
@@ -325,6 +326,32 @@ function manualGrantCall(operation) {
 export const getAdminManualGrant = manualGrantCall('read');
 export const issueAdminManualGrant = manualGrantCall('issue');
 export const revokeAdminManualGrant = manualGrantCall('revoke');
+
+// Operators can review existing user-initiated deletion requests and preview
+// expiry candidates. Retrying a previously failed job is gated and audited;
+// the UI cannot create new deletion requests or execute bulk purges.
+function deletionAdminService() {
+    return createAdminDeletionReviewService({
+        db: getFirestore(app), project,
+        allowedUidHashes: process.env.GALLIPICK_ADMIN_ALLOWED_UID_HASHES,
+        retryEnabled: process.env.GALLIPICK_ADMIN_EXIT_RETRY_ENABLED === 'true',
+        workerEnabled: process.env.GALLIPICK_ACCOUNT_EXIT_WORKER_ENABLED === 'true',
+    });
+}
+function deletionAdminCall(operation) {
+    return onCall({ ...options, maxInstances: 2, concurrency: 4 }, async request => {
+        try {
+            return await deletionAdminService()[operation](request.auth, request.data);
+        } catch (error) {
+            if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
+            throw new HttpsError('unavailable', 'Deletion administration is temporarily unavailable.');
+        }
+    });
+}
+
+export const getAdminDeletionReviews = deletionAdminCall('list');
+export const previewAdminExpiryPurge = deletionAdminCall('preview');
+export const retryAdminFailedDeletion = deletionAdminCall('retry');
 
 export const processResumableBackups = onSchedule({
     ...options, schedule: 'every 2 minutes', timeoutSeconds: 170, memory: '512MiB', maxInstances: 1, concurrency: 1,
