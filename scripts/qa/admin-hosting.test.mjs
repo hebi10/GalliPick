@@ -63,5 +63,5 @@ test('manual access UI cannot edit Play records or directly delete cloud files',
   assert.match(app, /getAdminManualGrant/);
   assert.match(app, /issueAdminManualGrant/);
   assert.match(app, /revokeAdminManualGrant/);
-  assert.match(html, /Google Play 구매 기록/);
+  assert.match(html, /Google Play 결제 원장/);
 });
