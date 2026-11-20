@@ -18,6 +18,7 @@ import { createResumableBackupService } from './resumable-backup.js';
 import { cloudOperationAccess } from './cloud-api-access.js';
 import { createAccountExitService } from './account-exit.js';
 import { createAdminOverviewService } from './admin-overview.js';
+import { createCloudPurgeReviewService } from './cloud-expiry-purge-review.js';
 
 const app = initializeApp();
 const project = app.options.projectId ?? process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
@@ -232,6 +233,25 @@ export const getAccountExitStatus = onCall(options, async request => {
     } catch (error) {
         if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
         throw new HttpsError('unavailable', 'Unable to retrieve account deletion status.');
+    }
+});
+
+// This scans for due records but NEVER enqueues or executes any deletion.
+// Purchase-token hashes cannot be used to query Google Play; a separate
+// fresh Play check is required before a destructive purge can be authorized.
+export const reviewCloudExpiryPurges = onSchedule({
+    ...options, schedule: 'every 12 hours', maxInstances: 1, concurrency: 1, timeoutSeconds: 120,
+}, async () => {
+    if (!production || process.env.GALLIPICK_PRODUCTION_CLOUD_RETENTION_ENABLED !== 'true' ||
+        process.env.GALLIPICK_CLOUD_PURGE_REVIEW_ENABLED !== 'true') return;
+    const service = createCloudPurgeReviewService({
+        db: getFirestore(app), project,
+    });
+    const result = await service.review({ maximumPerMode: 10 });
+    if (result.needsPlayRecheck > 0) {
+        console.warn('Cloud purge candidates await independent Google Play verification.', {
+            count: result.needsPlayRecheck,
+        });
     }
 });
 
