@@ -128,6 +128,21 @@ class GalliAdsPolicyTest {
             cloudAdRemovalStatus(incomplete.copy(expiresAtMs = 2_000L), nowMillis = 1_000L))
     }
 
+    @Test fun adminGrantRemovesAdsWithoutImpersonatingAPlayPurchase() {
+        val manual = CloudBillingPlan(
+            enabled = true,
+            manualGrantKind = "AD_FREE",
+            manualGrantExpiresAtMs = 3_000L,
+            manualAdFreeExpiresAtMs = 3_000L,
+        )
+        assertNull(manual.activeSubscriptionProductId(2_999L))
+        assertEquals(AdRemovalStatus.VERIFIED_AD_FREE, cloudAdRemovalStatus(manual, 2_999L))
+        assertEquals(3_000L, manual.verifiedAdRemovalExpiry(2_999L))
+        assertEquals(AdRemovalStatus.NOT_PURCHASED, cloudAdRemovalStatus(manual, 3_000L))
+        assertEquals(AdRemovalStatus.NOT_PURCHASED, cloudAdRemovalStatus(
+            manual.copy(manualAdFreeExpiresAtMs = 4_000L), 2_999L))
+    }
+
     @Test fun inactiveCloudPlansDoNotGrantAdRemoval() {
         assertEquals(AdRemovalStatus.NOT_PURCHASED,
             cloudAdRemovalStatus(CloudBillingPlan(), nowMillis = 1_000L))
