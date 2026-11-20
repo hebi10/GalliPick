@@ -117,7 +117,8 @@ async function billingPlan(plan, data, configured, auth) {
         ...(total !== null && total < PRODUCTION_MAX_OWNER_FILES ? { verifiedMediaCount: total } : {}),
         supportsResumableTransfers: true,
         resumableUploadAllowed: !resumablePaused && writableBucket && included.quotaBytes > 0
-            && included.usedBytes <= included.quotaBytes };
+            && included.usedBytes <= included.quotaBytes
+            && (!production || included.cloudLifecycleState == null || included.cloudLifecycleState === 'PAID') };
 }
 
 function endpoint(operation, billingRequest = false) {
