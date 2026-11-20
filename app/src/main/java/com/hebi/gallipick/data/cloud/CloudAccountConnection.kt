@@ -8,6 +8,7 @@ internal class CloudAccountConnection(
     val billing: CloudBilling? = null,
     private val productionBackupAccess: CloudBackupAccessState? = null,
     val secretVault: CloudSecretVault? = null,
+    val accountExit: CloudAccountExit? = null,
     private val getGoogleIdToken: suspend (Activity) -> String,
 ) {
     val backupAvailability = productionBackupAccess?.observations

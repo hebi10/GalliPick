@@ -311,8 +311,9 @@ internal class CloudBackupTransport(
         route: String, token: String, data: JSONObject, maxResponseBytes: Int = MAX_RESPONSE_BYTES,
         readTimeoutMillis: Int = DEFAULT_READ_TIMEOUT_MS,
         protocolVersion: Int = 1,
+        includeProtocol: Boolean = true,
     ): JSONObject {
-        if (productionProtocol || protocolVersion == CLOUD_RESUMABLE_PROTOCOL_VERSION) {
+        if (includeProtocol && (productionProtocol || protocolVersion == CLOUD_RESUMABLE_PROTOCOL_VERSION)) {
             data.put("cloudProtocolVersion", protocolVersion)
         }
         val destination = if (vaultSessionToken == null) route else {
