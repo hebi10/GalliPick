@@ -276,6 +276,23 @@ private fun CloudBillingControls(
                 }
             }
 
+            if (plan?.manualGrantKind != null &&
+                plan.manualGrantExpiresAtMs?.let { it > nowMillis } == true) {
+                CloudAccountCard {
+                    BillingHeading("관리자 지급 이용권")
+                    val manualLabel = when (plan.manualGrantKind) {
+                        "CLOUD_10GB" -> "Cloud 10 GB"
+                        "CLOUD_50GB" -> "Cloud 50 GB"
+                        "CLOUD_100GB" -> "Cloud 100 GB"
+                        "AD_FREE" -> "광고 제거"
+                        else -> "이용권"
+                    }
+                    CloudStatusMessage(manualLabel + " · " +
+                        billingDateLabel(checkNotNull(plan.manualGrantExpiresAtMs)) + "까지 적용")
+                    CloudStatusMessage("관리자가 별도로 지급한 무상 이용권입니다. Google Play 정기 결제나 자동 갱신과는 관계없습니다.")
+                }
+            }
+
             if (showOffers) {
                 BillingPlanPicker(
                     visibleOffers, period, selectedOffer?.product?.productId,
