@@ -101,12 +101,18 @@ internal fun CloudScreen(
     val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == account?.uid }
     val namespace = observation?.access?.namespace
     var requestedRoute by rememberSaveable(account?.uid) { mutableStateOf(CloudRoute.OVERVIEW) }
-    var checkoutRequested by rememberSaveable { mutableStateOf(false) }
+    var checkoutSignInPending by rememberSaveable { mutableStateOf(false) }
     val canOpenBilling = connection.billing != null && access != CloudAccessState.UNAVAILABLE
+    LaunchedEffect(checkoutSignInPending, access) {
+        if (checkoutSignInPending && access == CloudAccessState.SIGNED_IN) {
+            requestedRoute = CloudRoute.BILLING
+            checkoutSignInPending = false
+        }
+    }
     val requested = when {
         canOpenBilling && onBackFromAdRemoval != null ->
             if (access == CloudAccessState.SIGNED_IN) CloudRoute.BILLING else CloudRoute.BILLING_SIGN_IN
-        canOpenBilling && checkoutRequested -> CloudRoute.BILLING
+        canOpenBilling && checkoutSignInPending -> CloudRoute.BILLING
         else -> cloudVisibleRoute(requestedRoute, access)
     }
     val route = when (requested) {
@@ -116,7 +122,7 @@ internal fun CloudScreen(
         else -> requested
     }
     val onBack = onBackFromAdRemoval ?: {
-        checkoutRequested = false
+        checkoutSignInPending = false
         requestedRoute = CloudRoute.OVERVIEW
     }
     BackHandler(enabled = route != CloudRoute.OVERVIEW, onBack = onBack)
@@ -152,7 +158,11 @@ internal fun CloudScreen(
                 else -> {
                     content(CloudRoute.OVERVIEW)
                     val onNavigate: (CloudRoute) -> Unit = {
-                        if (it == CloudRoute.BILLING) checkoutRequested = true else requestedRoute = it
+                        if (it == CloudRoute.BILLING && access == CloudAccessState.SIGNED_OUT) {
+                            checkoutSignInPending = true
+                        } else {
+                            requestedRoute = it
+                        }
                     }
                     val billingAvailable = connection.billing != null
                     if (access == CloudAccessState.SIGNED_IN) {
