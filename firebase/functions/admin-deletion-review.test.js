@@ -220,6 +220,9 @@ test('manual retry requires explicit authorization and original verified user de
     assert.equal(same.repeated, true);
     assert.equal(record.scope, 'ACCOUNT');
     assert.equal(f.db.writes, 2);
+    await assert.rejects(f.service.retry(signedAdmin(), retryInput({
+        reason: '다른 사유를 이용한 기존 재시도 ID 부당 재사용 차단 테스트',
+    })), isError('permission-denied'));
 });
 
 test('manual retry is disabled by default and cannot widen, replace or restart unrelated deletions', async () => {
