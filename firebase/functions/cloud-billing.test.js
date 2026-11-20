@@ -65,9 +65,11 @@ function createHarness({ enabled = true, acknowledge, settings = { enabled, prod
 }
 
 function subscription({ uid = 'owner-a', product = products[0], state = 'ACTIVE', expires = now + 20_000,
-    acknowledged = true, testPurchase = {}, linkedPurchaseToken, recurringPrice } = {}) {
+    acknowledged = true, testPurchase = {}, linkedPurchaseToken, recurringPrice,
+    startTime = product?.kind === 'CLOUD' && product.basePlanId === 'annual'
+        ? '2026-11-18T00:00:00Z' : new Date(now - 60_000).toISOString() } = {}) {
     return {
-        testPurchase, linkedPurchaseToken,
+        testPurchase, linkedPurchaseToken, startTime,
         externalAccountIdentifiers: { obfuscatedExternalAccountId: accountId(uid) },
         subscriptionState: `SUBSCRIPTION_STATE_${state}`,
         acknowledgementState: `ACKNOWLEDGEMENT_STATE_${acknowledged ? 'ACKNOWLEDGED' : 'PENDING'}`,
@@ -235,7 +237,7 @@ const [monthly, annual] = live.products;
 const productId = 'gallipick_ad_free';
 const verify = (service, uid, purchaseToken) => service.verify(user(uid), { purchaseToken, cloudProtocolVersion: 1 });
 const renewalEvent = purchaseToken => ({ packageName: 'com.hebi.gallipick', subscriptionNotification: { purchaseToken } });
-const cloudOffer = (gb, base = 'monthly') => liveCloud.products.find(item =>
+const cloudOffer = (gb, base = 'monthly') => liveCloud.verificationProducts.find(item =>
     item.productId === `gallipick_cloud_${gb}gb` && item.basePlanId === base);
 const checkoutCloud = productionBillingSettings(PRODUCTION_PROJECT, { ...cloudEnv('license-test', 'owner-a,owner-b'),
     GALLIPICK_PRODUCTION_CLOUD_UPLOADS_PAUSED: 'false' });
@@ -331,7 +333,11 @@ test('paid Cloud requires an explicit project-scoped rollout and bounded origina
     assert.deepEqual(adOnlyLive.products, live.products);
     assert.equal(productionBillingSettings('gallipick-dev', cloudEnv('live')).cloudEnabled, false);
     assert.equal(liveCloud.maxOriginalBytes, 268_435_456);
-    assert.equal(liveCloud.products.length, 8);
+    assert.equal(liveCloud.products.length, 5);
+    assert.equal(liveCloud.verificationProducts.length, 8);
+    assert.equal(liveCloud.products.filter(product => product.kind === 'CLOUD').length, 3);
+    assert.equal(liveCloud.products.every(product =>
+        product.kind !== 'CLOUD' || product.basePlanId === 'monthly'), true);
     for (const base of ['monthly', 'annual']) {
         for (const gb of [10, 50, 100]) {
             assert.deepEqual(cloudOffer(gb, base), {
@@ -878,8 +884,8 @@ test('GP-CHECKOUT-NEW-01: a newly authenticated live user sees the approved cata
     assert.equal(firstPlan.quotaBytes, 0);
     assert.equal(firstPlan.usedBytes, 0);
     assert.equal(firstPlan.uploadAllowed, false);
-    assert.equal(firstPlan.products.length, 8);
-    assert.deepEqual(firstPlan.products.filter(product => product.kind === 'CLOUD').length, 6);
+    assert.equal(firstPlan.products.length, 5);
+    assert.deepEqual(firstPlan.products.filter(product => product.kind === 'CLOUD').length, 3);
     assert.equal(records.has(`gallipickProductionBillingAccounts/${accountId(uid)}`), false,
         'Viewing the new-user catalogue must not grant a subscription');
 
@@ -939,7 +945,7 @@ test('GP-CHECKOUT-NEW-01: test allowlist and paused catalogue must never imply p
     });
     assert.equal(blocked.cloudCheckoutAllowed, false);
     assert.equal(blocked.uploadAllowed, false);
-    assert.equal(blocked.products.length, 8);
+    assert.equal(blocked.products.length, 5);
     const incorrectProtocol = productionBackupPlan(cloudPlan, 0, {
         objectPrefix: PRODUCTION_BACKUP_PREFIXES.gallipickProductionBackup,
         maxOriginalBytes: liveCloud.maxOriginalBytes, uploadsPaused: false,
@@ -959,4 +965,59 @@ test('GP-CHECKOUT-NEW-01: live checkout rejects license-test purchases and token
     await assert.rejects(service.verify(user(uid), { purchaseToken: token(14),
         cloudProtocolVersion: 1 }), isCode('permission-denied'));
     assert.equal((await service.getPlan(user(uid))).quotaBytes, 0);
+});
+
+test('current-sale Cloud is monthly only but standalone ad-free retains monthly and annual', async () => {
+    const { service } = createHarness({ settings: liveCloud });
+    const plan = await service.getPlan(user('new-live-monthly-only'));
+    assert.deepEqual(plan.products.map(p => `${p.productId}:${p.basePlanId}`), [
+        'gallipick_ad_free:monthly', 'gallipick_ad_free:annual',
+        'gallipick_cloud_10gb:monthly', 'gallipick_cloud_50gb:monthly',
+        'gallipick_cloud_100gb:monthly',
+    ]);
+    assert.equal(liveCloud.verificationProducts.length, 8);
+    assert.equal(licenseCloud.products.filter(p => p.kind === 'CLOUD' && p.basePlanId === 'annual').length, 0);
+});
+
+test('unbound new Cloud annual purchase is denied, while Play-proven historical annual retains storage and ads', async () => {
+    const uid = 'legacy-annual-cloud-holder';
+    const { service, purchases, records } = createHarness({ settings: liveCloud });
+    const annualPlan = cloudOffer(50, 'annual');
+    purchases.set(token(30), subscription({ uid, product: annualPlan, testPurchase: null,
+        startTime: '2026-11-21T00:00:00Z' }));
+    await assert.rejects(service.verify(user(uid), { purchaseToken: token(30), cloudProtocolVersion: 1 }),
+        isCode('failed-precondition'));
+    assert.equal((await service.getPlan(user(uid))).quotaBytes, 0);
+
+    purchases.set(token(31), subscription({ uid, product: annualPlan, testPurchase: null,
+        startTime: '2026-11-18T12:00:00Z' }));
+    const plan = await service.verify(user(uid), { purchaseToken: token(31), cloudProtocolVersion: 1 });
+    assert.equal(plan.activeProductId, annualPlan.productId);
+    assert.equal(plan.activeBasePlanId, 'annual');
+    assert.equal(plan.quotaBytes, annualPlan.quotaBytes);
+    assert.equal(plan.products.some(p => p.productId === annualPlan.productId && p.basePlanId === 'annual'), true);
+    assert.equal(plan.products.filter(p => p.kind === 'CLOUD' && p.basePlanId === 'annual').length, 1);
+    const owner = accountId(uid);
+    assert.equal(Object.values(records.get(`gallipickProductionBillingAccounts/${owner}`).entitlements)
+        .some(p => p.basePlanId === 'annual'), true);
+
+    // A known bound historical receipt can be revalidated even if the provider
+    // omits startTime; this never grants a new annual purchase token.
+    purchases.set(token(31), subscription({ uid, product: annualPlan, testPurchase: null,
+        startTime: null }));
+    assert.equal((await service.verify(user(uid),
+        { purchaseToken: token(31), cloudProtocolVersion: 1 })).activeBasePlanId, 'annual');
+
+    purchases.set(token(32), subscription({ uid: 'new-annual-buyer', product: cloudOffer(10, 'annual'),
+        testPurchase: null, startTime: '2026-11-20T00:30:00Z' }));
+    await assert.rejects(service.verify(user('new-annual-buyer'),
+        { purchaseToken: token(32), cloudProtocolVersion: 1 }), isCode('failed-precondition'));
+});
+
+test('annual Cloud cutoff is fail-closed without a Play startTime for an unbound receipt', async () => {
+    const { service, purchases } = createHarness({ settings: liveCloud });
+    purchases.set(token(33), subscription({ product: cloudOffer(10, 'annual'),
+        testPurchase: null, startTime: null }));
+    await assert.rejects(service.verify(user('owner-a'),
+        { purchaseToken: token(33), cloudProtocolVersion: 1 }), isCode('failed-precondition'));
 });
