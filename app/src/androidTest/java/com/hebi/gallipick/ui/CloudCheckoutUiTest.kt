@@ -257,11 +257,12 @@ class CloudCheckoutUiTest {
         compose.onNodeWithText("Google Play 결제창 열기").assertDoesNotExist()
 
         billingPeriod("연간").performScrollTo().performClick().assertIsSelected()
-        tenGb.performScrollTo().assertIsSelected().assert(hasText("₩19,900/년"))
-        billingCta().assertIsEnabled().assert(hasText("10 GB 구독하기 · 연 ₩19,900")).performClick()
-        compose.onNodeWithText("GalliPick Cloud 10 GB · 매년 ₩19,900").assertIsDisplayed()
-        compose.onNodeWithText("Google Play에서 금액과 결제수단을 확인해 주세요.").assertIsDisplayed()
-        compose.onNodeWithText("시험 결제수단", substring = true).assertDoesNotExist()
+        tenGb.performScrollTo().assertIsNotSelected().assertIsNotEnabled()
+        compose.onNodeWithText("₩19,900/년").assertDoesNotExist()
+        billingCta().assertIsNotEnabled()
+        planChoice("광고 제거만").performScrollTo().assertIsDisplayed().assert(hasText("₩9,900/년"))
+            .performClick().assertIsSelected()
+        billingCta().assertIsEnabled().assert(hasText("광고 제거만 구독하기 · 연 ₩9,900"))
         compose.runOnIdle { assertEquals(0, billing.checkoutCount) }
     }
 
@@ -303,7 +304,8 @@ class CloudCheckoutUiTest {
         plans.forEach { label ->
             planChoice(label).performScrollTo().assertIsDisplayed().assertIsNotEnabled().assertIsNotSelected()
         }
-        planChoice("10 GB").performScrollTo().assert(hasText("₩19,900/년"))
+        planChoice("10 GB").performScrollTo().assert(hasText("신청 불가"))
+        compose.onNodeWithText("₩19,900/년").assertDoesNotExist()
         compose.onNodeWithText("₩1,900/월").assertDoesNotExist()
         billingCta().assertIsDisplayed().assertIsNotEnabled()
         compose.onNodeWithText("Google Play 결제창 열기").assertDoesNotExist()
@@ -432,6 +434,10 @@ class CloudCheckoutUiTest {
         private val annual = product.copy(basePlanId = "annual")
         private var offer = CloudBillingOffer(product, "GalliPick Cloud 10 GB", "₩1,900", 1_900_000_000L, "KRW")
         private val annualOffer = CloudBillingOffer(annual, "GalliPick Cloud 10 GB", "₩19,900", 19_900_000_000L, "KRW")
+        private val annualAdFreeOffer = CloudBillingOffer(
+            CloudBillingProduct("gallipick_ad_free", "annual", 0),
+            "광고 제거", "₩9,900", 9_900_000_000L, "KRW",
+        )
         private val fifty = CloudBillingOffer(
             CloudBillingProduct("gallipick_cloud_50gb", "monthly", 50_000_000_000L),
             "GalliPick Cloud 50 GB", "₩5,900", 5_900_000_000L, "KRW",
@@ -444,7 +450,9 @@ class CloudCheckoutUiTest {
                 "광고 제거", "₩1,000", 1_000_000_000L, "KRW"),
         ) else emptyList()
         private var serverPlan = CloudBillingPlan(enabled = true,
-            products = listOf(product, annual) + extraOffers.map { it.product }, cloudCheckoutAllowed = cloudCheckoutAllowed)
+            products = listOf(product, annual) + extraOffers.map { it.product } +
+                listOfNotNull(annualAdFreeOffer.product.takeIf { includeAnnualPlan && includeExtraPlans }),
+            cloudCheckoutAllowed = cloudCheckoutAllowed)
         private val retiredOffer = CloudBillingOffer(
             CloudBillingProduct("gallipick_cloud_pilot", "monthly", 1_073_741_824L),
             "GalliPick Cloud 1 GiB 테스트", "₩1,000", 1_000_000_000L, "KRW",
@@ -476,7 +484,10 @@ class CloudCheckoutUiTest {
 
         override suspend fun load(): CloudBillingSnapshot = CloudBillingSnapshot(
             serverPlan,
-            if (!hasOffers) emptyList() else listOfNotNull(offer, retiredOffer, annualOffer.takeIf { includeAnnualPlan }) + extraOffers,
+            if (!hasOffers) emptyList() else listOfNotNull(
+                offer, retiredOffer, annualOffer.takeIf { includeAnnualPlan },
+                annualAdFreeOffer.takeIf { includeAnnualPlan && includeExtraPlans },
+            ) + extraOffers,
             notice = CloudBillingNotice.PENDING.takeIf { pendingPurchase },
             replacementOffers = listOf(replacementOffer).filter { hasCurrentCloudPlan },
         )
