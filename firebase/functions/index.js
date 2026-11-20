@@ -19,6 +19,7 @@ import { cloudOperationAccess } from './cloud-api-access.js';
 import { createAccountExitService } from './account-exit.js';
 import { createAdminOverviewService } from './admin-overview.js';
 import { createAdminMembersService } from './admin-members.js';
+import { createAdminManualGrantService } from './admin-manual-grants.js';
 import { createCloudPurgeReviewService } from './cloud-expiry-purge-review.js';
 
 const app = initializeApp();
@@ -299,6 +300,31 @@ export const getAdminMembers = onCall({ ...options, maxInstances: 2, concurrency
         throw new HttpsError('unavailable', 'GalliPick member records are temporarily unavailable.');
     }
 });
+
+// Staff-issued temporary access is a separate, audited record. No Google Play
+// subscription, purchase token or billing entitlement is edited by this API.
+function manualGrantService() {
+    return createAdminManualGrantService({
+        db: getFirestore(app), project,
+        allowedUidHashes: process.env.GALLIPICK_ADMIN_ALLOWED_UID_HASHES,
+        enabled: process.env.GALLIPICK_ADMIN_MANUAL_GRANTS_ENABLED === 'true',
+    });
+}
+
+function manualGrantCall(operation) {
+    return onCall({ ...options, maxInstances: 2, concurrency: 4 }, async request => {
+        try {
+            return await manualGrantService()[operation](request.auth, request.data);
+        } catch (error) {
+            if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
+            throw new HttpsError('unavailable', 'Manual access management is temporarily unavailable.');
+        }
+    });
+}
+
+export const getAdminManualGrant = manualGrantCall('read');
+export const issueAdminManualGrant = manualGrantCall('issue');
+export const revokeAdminManualGrant = manualGrantCall('revoke');
 
 export const processResumableBackups = onSchedule({
     ...options, schedule: 'every 2 minutes', timeoutSeconds: 170, memory: '512MiB', maxInstances: 1, concurrency: 1,
