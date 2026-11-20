@@ -56,3 +56,23 @@ p { line-height: 1.65; }
 .pagination { display: flex; gap: 16px; align-items: center; justify-content: center; margin: 18px 0; }
 #members-page { font-size: .88rem; font-variant-numeric: tabular-nums; }
 @media (max-width: 600px) { .member-plans { grid-template-columns: 1fr; } }
+
+.manual-grant { border: 1px solid #d5d5d5; margin-top: 14px; padding: 12px; }
+.manual-grant > summary { cursor: pointer; font-weight: 600; font-size: .9rem; padding: 3px 0; }
+.manual-grant > summary:focus-visible { outline: 2px solid #222; outline-offset: 4px; }
+.manual-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding-top: 15px; }
+.manual-field { display: grid; gap: 6px; font-size: .86rem; color: #3f3f3f; }
+.manual-field select,
+.manual-field input[type="number"],
+.manual-field textarea {
+  width: 100%; border: 1px solid #777; padding: 9px; background: #fff;
+  color: #222; font: inherit; font-size: .9rem;
+}
+.manual-field:has(textarea), .manual-confirm, .manual-buttons,
+.manual-form > p, .manual-history { grid-column: 1 / -1; }
+.manual-confirm { display: flex; gap: 10px; align-items: center; }
+.manual-confirm input { width: 18px; height: 18px; flex: 0 0 18px; }
+.manual-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.manual-history { margin: 0; padding: 12px 16px 12px 30px; background: #f7f7f7; }
+.manual-history-item { font-size: .82rem; line-height: 1.6; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .manual-form { grid-template-columns: 1fr; } }
