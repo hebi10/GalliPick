@@ -81,8 +81,12 @@ function publicStatus(record) {
         progressStage: record.stage ?? null };
 }
 
-function activeExit(record) {
-    return record && (record.status !== 'COMPLETED' || record.scope === 'ACCOUNT');
+function activeExit(record, operation = 'read') {
+    if (!record) return false;
+    if (record.scope === 'ACCOUNT') return true;
+    if (record.status === 'RESUMED') return false;
+    if (record.status === 'COMPLETED') return operation === 'write';
+    return true;
 }
 
 function isNotFound(error) {
@@ -220,17 +224,26 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
         return publicStatus((await ownerRef(owner).get()).data());
     }
 
-    async function assertActive(auth) {
+    async function assertActive(auth, operation = 'read') {
         const owner = ownerFromAuth(auth);
+        if (!['read', 'write'].includes(operation)) {
+            throw new BackupError('invalid-argument', 'Unknown account access operation.');
+        }
         const record = (await ownerRef(owner).get()).data();
-        if (activeExit(record)) throw new BackupError('permission-denied', 'This GalliPick account has a pending deletion.');
+        if (activeExit(record, operation)) {
+            throw new BackupError('permission-denied', 'This GalliPick account has a pending deletion or requires fresh backup consent.');
+        }
         return owner;
     }
 
-    async function assertActiveOwner(owner) {
-        if (!validOwner(owner)) throw new BackupError('permission-denied', 'Invalid Cloud owner.');
+    async function assertActiveOwner(owner, operation = 'read') {
+        if (!validOwner(owner) || !['read', 'write'].includes(operation)) {
+            throw new BackupError('permission-denied', 'Invalid Cloud owner or access operation.');
+        }
         const record = (await ownerRef(owner).get()).data();
-        if (activeExit(record)) throw new BackupError('permission-denied', 'This GalliPick account has a pending deletion.');
+        if (activeExit(record, operation)) {
+            throw new BackupError('permission-denied', 'This GalliPick account has a pending deletion.');
+        }
     }
 
     async function request(auth, input) {
@@ -242,7 +255,7 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
         const ref = ownerRef(owner);
         return db.runTransaction(async tx => {
             const old = (await tx.get(ref)).data();
-            if (old && old.status !== 'COMPLETED') {
+            if (old && old.status !== 'COMPLETED' && old.status !== 'RESUMED') {
                 if (old.scope !== scope) throw new BackupError('failed-precondition', 'Another deletion request is in progress.');
                 return publicStatus(old);
             }
@@ -255,6 +268,31 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
                 stage: 'OBJECTS', stageIndex: 0, consecutiveFailures: 0 };
             tx.set(ref, record);
             return publicStatus(record);
+        });
+    }
+
+    async function resumeCloudBackup(auth, input) {
+        const owner = ownerFromAuth(auth);
+        const timestamp = now();
+        requireRecentSignIn(auth, timestamp);
+        if (!input || typeof input !== 'object' || Array.isArray(input) ||
+            Object.keys(input).length !== 1 || input.confirmation !== 'RESUME_CLOUD_BACKUP') {
+            throw new BackupError('invalid-argument', 'Explicit backup restart confirmation is required.');
+        }
+        return db.runTransaction(async tx => {
+            const ref = ownerRef(owner);
+            const previous = (await tx.get(ref)).data();
+            if (previous?.scope !== 'CLOUD' ||
+                !['COMPLETED', 'RESUMED'].includes(previous.status)) {
+                throw new BackupError('failed-precondition', 'The Cloud-only deletion must finish before restarting backup.');
+            }
+            if (previous.status === 'RESUMED') return publicStatus(previous);
+            const resumed = { scope: 'CLOUD', status: 'RESUMED', requestId: previous.requestId,
+                requestedAtMs: previous.requestedAtMs, completedAtMs: previous.completedAtMs,
+                deadlineAtMs: previous.deadlineAtMs, resumedAtMs: timestamp,
+                nextAttemptAtMs: Number.MAX_SAFE_INTEGER, stage: 'RESUMED' };
+            tx.set(ref, resumed);
+            return publicStatus(resumed);
         });
     }
 
@@ -350,5 +388,5 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
         return { processed: outcomes.length, outcomes };
     }
 
-    return { request, status, assertActive, assertActiveOwner, processOne, processDue };
+    return { request, status, resumeCloudBackup, assertActive, assertActiveOwner, processOne, processDue };
 }
