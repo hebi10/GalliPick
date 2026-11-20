@@ -20,6 +20,7 @@ import { createAccountExitService } from './account-exit.js';
 import { createAdminOverviewService } from './admin-overview.js';
 import { createAdminMembersService } from './admin-members.js';
 import { createAdminManualGrantService } from './admin-manual-grants.js';
+import { createAdminDeletionReviewService } from './admin-deletion-review.js';
 import { createCloudPurgeReviewService } from './cloud-expiry-purge-review.js';
 
 const app = initializeApp();
@@ -325,6 +326,32 @@ function manualGrantCall(operation) {
 export const getAdminManualGrant = manualGrantCall('read');
 export const issueAdminManualGrant = manualGrantCall('issue');
 export const revokeAdminManualGrant = manualGrantCall('revoke');
+
+// Management is non-destructive by default. Explicit retries only restart an
+// already consented user exit, never create new deletion requests or mass purges.
+function adminDeletionReviewService() {
+    return createAdminDeletionReviewService({
+        db: getFirestore(app), project,
+        allowedUidHashes: process.env.GALLIPICK_ADMIN_ALLOWED_UID_HASHES,
+        retryEnabled: process.env.GALLIPICK_ADMIN_DELETE_RETRY_ENABLED === 'true',
+        accountExitWorkerEnabled: process.env.GALLIPICK_ACCOUNT_EXIT_WORKER_ENABLED === 'true',
+    });
+}
+
+function adminDeletionCall(operation) {
+    return onCall({ ...options, maxInstances: 2, concurrency: 4 }, async request => {
+        try {
+            return await adminDeletionReviewService()[operation](request.auth, request.data);
+        } catch (error) {
+            if (error instanceof BackupError) throw new HttpsError(error.code, error.message);
+            throw new HttpsError('unavailable', 'GalliPick deletion review is temporarily unavailable.');
+        }
+    });
+}
+
+export const getAdminDeletionReviews = adminDeletionCall('list');
+export const previewAdminDeletionBatch = adminDeletionCall('preview');
+export const retryAdminDeletion = adminDeletionCall('retry');
 
 export const processResumableBackups = onSchedule({
     ...options, schedule: 'every 2 minutes', timeoutSeconds: 170, memory: '512MiB', maxInstances: 1, concurrency: 1,
