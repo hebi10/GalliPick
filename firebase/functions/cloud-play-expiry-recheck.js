@@ -94,7 +94,6 @@ export function createCloudPlayExpiryRecheckService({
         const results = [];
         for (const { scope, mode } of CLOUD_PURGE_SOURCES) {
             const list = await db.collection(CLOUD_PURGE_REVIEW_COLLECTION)
-                .where('status', '==', 'NEEDS_PLAY_RECHECK')
                 .where('sourceScope', '==', scope).limit(maximumPerMode).get();
             for (const document of list.docs) {
                 const candidate = document.data();
