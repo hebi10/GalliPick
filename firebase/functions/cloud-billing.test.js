@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { BackupError } from './backup.js';
+import { BackupError, productionBackupPlan, PRODUCTION_BACKUP_PROTOCOL_VERSION, PRODUCTION_BACKUP_PREFIXES } from './backup.js';
 import { billingSettings, createBillingService, PILOT_ACCOUNT_QUOTA_BYTES, PRODUCTION_PROJECT,
     productionBillingSettings } from './cloud-billing.js';
 
@@ -863,4 +863,99 @@ test('manual Cloud entitlement rollout requires retention enforcement to avoid u
     });
     assert.equal(adOnly.cloudEnabled, false);
     assert.equal(adOnly.manualGrantsEnabled, true);
+});
+
+test('GP-CHECKOUT-NEW-01: a newly authenticated live user sees the approved catalogue without a server allowlist', async () => {
+    const uid = 'new-live-customer-without-test-allowlist';
+    const { service, purchases, records } = createHarness({ settings: liveCloud });
+    const account = user(uid);
+    const firstPlan = await service.getPlan(account);
+    assert.equal(firstPlan.enabled, true);
+    assert.equal(firstPlan.obfuscatedAccountId, accountId(uid));
+    assert.equal(firstPlan.testPurchasesOnly, false);
+    assert.equal(firstPlan.activeProductId, null);
+    assert.equal(firstPlan.adFreeProductId, null);
+    assert.equal(firstPlan.quotaBytes, 0);
+    assert.equal(firstPlan.usedBytes, 0);
+    assert.equal(firstPlan.uploadAllowed, false);
+    assert.equal(firstPlan.products.length, 8);
+    assert.deepEqual(firstPlan.products.filter(product => product.kind === 'CLOUD').length, 6);
+    assert.equal(records.size, 0, 'Viewing the new-user catalogue must not grant a subscription');
+
+    const advertised = productionBackupPlan(firstPlan, PRODUCTION_BACKUP_PROTOCOL_VERSION, {
+        objectPrefix: PRODUCTION_BACKUP_PREFIXES.gallipickProductionBackup,
+        maxOriginalBytes: liveCloud.maxOriginalBytes,
+        uploadsPaused: false,
+    });
+    assert.equal(advertised.cloudCheckoutAllowed, true);
+    assert.equal(advertised.backupAvailable, true);
+    assert.deepEqual(advertised.products, firstPlan.products);
+    assert.equal(advertised.uploadAllowed, false);
+
+    // The only route from a simulated Play purchase to paid Cloud capacity is
+    // Google Play receipt verification tied to the new Firebase account.
+    const purchaseToken = token(11);
+    purchases.set(purchaseToken, subscription({ uid, product: cloudOffer(10),
+        testPurchase: null, expires: now + 7 * 86_400_000 }));
+    const verified = await service.verify(account, { purchaseToken, cloudProtocolVersion: 1 });
+    assert.equal(verified.activeProductId, 'gallipick_cloud_10gb');
+    assert.equal(verified.quotaBytes, 10_000_000_000);
+    assert.equal(verified.uploadAllowed, true);
+    assert.equal(verified.adFreeProductId, null);
+    assert.equal((await service.getPlan(user('other-new-customer'))).quotaBytes, 0);
+    assert.equal(JSON.stringify([...records]).includes(purchaseToken), false);
+});
+
+test('GP-CHECKOUT-NEW-01: test allowlist and paused catalogue must never imply public Cloud checkout', async () => {
+    const uid = 'new-customer-not-in-license-test';
+    const testHarness = createHarness({ settings: licenseCloud });
+    await assert.rejects(testHarness.service.getPlan(user(uid)), isCode('permission-denied'));
+    await assert.rejects(testHarness.service.verify(user(uid), {
+        purchaseToken: token(12), cloudProtocolVersion: 1,
+    }), isCode('permission-denied'));
+
+    const approved = await testHarness.service.getPlan(user('owner-a'));
+    assert.equal(approved.testPurchasesOnly, true);
+    assert.equal(approved.activeProductId, null);
+
+    const adOnly = createHarness({ settings: live }).service;
+    const initial = await adOnly.getPlan(user(uid));
+    assert.equal(initial.enabled, true);
+    assert.equal(initial.products.length, 2);
+    assert.equal(initial.products.every(product => product.kind === 'AD_FREE'), true);
+    assert.equal(initial.activeProductId, null);
+    assert.equal(initial.quotaBytes, 0);
+    const adOnlyCheckout = productionBackupPlan(initial, 1, undefined);
+    assert.equal(adOnlyCheckout.cloudCheckoutAllowed, false);
+    assert.equal(adOnlyCheckout.backupAvailable, false);
+    assert.equal(adOnlyCheckout.products.every(product => product.kind === 'AD_FREE'), true);
+
+    const cloudPlan = await createHarness({ settings: liveCloud }).service.getPlan(user(uid));
+    const blocked = productionBackupPlan(cloudPlan, 1, {
+        objectPrefix: PRODUCTION_BACKUP_PREFIXES.gallipickProductionBackup,
+        maxOriginalBytes: liveCloud.maxOriginalBytes,
+        uploadsPaused: true,
+    });
+    assert.equal(blocked.cloudCheckoutAllowed, false);
+    assert.equal(blocked.uploadAllowed, false);
+    assert.equal(blocked.products.length, 8);
+    const incorrectProtocol = productionBackupPlan(cloudPlan, 0, {
+        objectPrefix: PRODUCTION_BACKUP_PREFIXES.gallipickProductionBackup,
+        maxOriginalBytes: liveCloud.maxOriginalBytes, uploadsPaused: false,
+    });
+    assert.equal(incorrectProtocol.cloudCheckoutAllowed, false);
+    assert.equal(incorrectProtocol.products.filter(product => product.kind === 'CLOUD').length, 0);
+});
+
+test('GP-CHECKOUT-NEW-01: live checkout rejects license-test purchases and tokens for another account', async () => {
+    const uid = 'another-new-customer';
+    const { service, purchases } = createHarness({ settings: liveCloud });
+    purchases.set(token(13), subscription({ uid, product: cloudOffer(10), testPurchase: {} }));
+    purchases.set(token(14), subscription({ uid: 'another-owner', product: cloudOffer(10),
+        testPurchase: null }));
+    await assert.rejects(service.verify(user(uid), { purchaseToken: token(13),
+        cloudProtocolVersion: 1 }), isCode('permission-denied'));
+    await assert.rejects(service.verify(user(uid), { purchaseToken: token(14),
+        cloudProtocolVersion: 1 }), isCode('permission-denied'));
+    assert.equal((await service.getPlan(user(uid))).quotaBytes, 0);
 });
