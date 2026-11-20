@@ -46,3 +46,27 @@ export function cloudRetentionState({ nowMs, lastVerifiedCloudExpiryMs = null, d
         deletionDueAtMs,
     };
 }
+
+/**
+ * Only a current server-verified Cloud entitlement is paid. Historical expiry
+ * alone may authorize read-only recovery after that date, never paid access.
+ */
+export function cloudAccountAccess({
+    nowMs, activeCloudExpiryMs = null, lastVerifiedCloudExpiryMs = null,
+    recoveryAllowed = true, deletionRequestedAtMs = null,
+}) {
+    if (deletionRequestedAtMs !== null) {
+        return cloudRetentionState({ nowMs, deletionRequestedAtMs });
+    }
+    if (activeCloudExpiryMs !== null) {
+        const active = cloudRetentionState({ nowMs, lastVerifiedCloudExpiryMs: activeCloudExpiryMs });
+        if (active.state === 'PAID') return active;
+    }
+    if (lastVerifiedCloudExpiryMs !== null) {
+        const history = cloudRetentionState({ nowMs, lastVerifiedCloudExpiryMs });
+        if (recoveryAllowed && history.state !== 'PAID') return history;
+        return { state: 'CLOUD_ACCESS_SUSPENDED', mayBrowse: false, mayDownload: false, mayUpload: false,
+            recoveryEndsAtMs: null, deletionDueAtMs: null };
+    }
+    return cloudRetentionState({ nowMs });
+}
