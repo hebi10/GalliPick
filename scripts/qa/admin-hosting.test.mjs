@@ -65,3 +65,25 @@ test('manual access UI cannot edit Play records or directly delete cloud files',
   assert.match(app, /revokeAdminManualGrant/);
   assert.match(html, /Google Play 결제 원장/);
 });
+
+test('deletion oversight offers only a dry-run and audited retry of an existing user request', () => {
+  const html = read('firebase/admin-web/index.html');
+  const app = read('firebase/admin-web/app.js');
+  const review = read('firebase/admin-web/deletion-reviews.js');
+  assert.match(html, /id="deletion-review-list"/);
+  assert.match(html, /id="purge-review-preview"/);
+  assert.match(html, /id="purge-preview-list"/);
+  assert.match(app, /getAdminDeletionReviews/);
+  assert.match(app, /previewAdminExpiryPurge/);
+  assert.match(app, /retryAdminFailedDeletion/);
+  assert.match(review, /dryRunOnly/);
+  assert.match(review, /deletionExecuted !== false/);
+  assert.match(review, /RETRY_EXISTING_DELETION_ONLY/);
+  assert.match(review, /api\.reauthenticate\(\)/);
+  assert.match(review, /window\.confirm/);
+  assert.match(review, /\.textContent/);
+  assert.doesNotMatch(review, /\.innerHTML\s*=/);
+  assert.doesNotMatch(review, /(?:deleteDoc|updateDoc|addDoc|setDoc|collection\()/);
+  assert.doesNotMatch(review, /requestAccountExit|processAccountExits|deleteUser|deleteObject/);
+  assert.doesNotMatch(app, /bulkDelete|deleteAllCloud/);
+});
