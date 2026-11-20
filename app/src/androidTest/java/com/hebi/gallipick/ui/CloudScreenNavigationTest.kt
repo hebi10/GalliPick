@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hebi.gallipick.data.cloud.CloudAccountBackend
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
@@ -54,7 +55,7 @@ class CloudScreenNavigationTest {
         runBlocking { connection.session.chooseAccount { "test-credential" } }
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
         compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
-        compose.onNodeWithText("회원 탈퇴").assertExists().performClick()
+        compose.onNodeWithText("회원 탈퇴").performScrollTo().performClick()
         compose.onNodeWithText("GalliPick 회원 탈퇴").assertIsDisplayed()
         compose.onNodeWithText("탈퇴 요청 메일 작성").assertExists()
         compose.onNodeWithText("돌아가기").performClick()
