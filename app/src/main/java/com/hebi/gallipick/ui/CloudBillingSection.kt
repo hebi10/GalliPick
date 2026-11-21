@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -113,12 +115,15 @@ internal fun CloudBillingSection(
         val pendingReplacementTarget = rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
         val billingSession = remember(billing, uid) { billing.open(uid) }
         DisposableEffect(billingSession) { onDispose(billingSession::close) }
+        val goHomeForAccount: (() -> Unit)? = onGoHome?.let { goHome ->
+            { if (connection.session.account.value?.uid == uid) goHome() }
+        }
         key(billingSession) {
             CloudBillingControls(
-                billingSession, activity, onGoHome, selectedProduct, pendingReplacementTarget,
+                billingSession, activity, goHomeForAccount, selectedProduct, pendingReplacementTarget,
                 accountStatus, currentAccount.transferAccountLabel, chooseAccount, connection.usesProductionBackupPlan,
             ) { plan ->
-                onPlanUpdated(uid, plan)
+                if (connection.session.account.value?.uid == uid) onPlanUpdated(uid, plan)
             }
         }
     }
@@ -206,6 +211,12 @@ private fun CloudBillingControls(
         }
     }
 
+    fun requestRefresh() {
+        if (busy || accountChanging) return
+        busy = true
+        scope.launch { refresh() }
+    }
+
     fun runBilling(
         fromCheckout: Boolean = false,
         replacementTarget: CloudBillingProduct? = null,
@@ -253,7 +264,7 @@ private fun CloudBillingControls(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         if (refreshAfterManagement) {
             refreshAfterManagement = false
-            scope.launch { refresh() }
+            requestRefresh()
         } else if (!notice.canChangeAccount() && (pendingReplacement != null || notice.awaitingPurchaseConfirmation())) {
             runBilling {
                 val update = session.recover()
@@ -274,14 +285,16 @@ private fun CloudBillingControls(
     val showPlanPicker = !checkingPayment && !waitingForPurchase && !accountMismatch &&
         plan?.hasServerSubscription != true && verifiedProductId == null
     val cloudCheckoutAllowed = !requiresCloudCheckoutPermission || plan?.cloudCheckoutAllowed == true
-    val visibleOffers = if (showPlanPicker && !screenBusy && !notice.canChangeAccount() && plan?.enabled == true) {
+    val priceCheckFailed = notice == CloudBillingNotice.FAILED || notice == CloudBillingNotice.UNAVAILABLE
+    val cloudRestricted = plan?.enabled == true && !cloudCheckoutAllowed
+    val visibleOffers = if (showPlanPicker && !screenBusy && !accountBlocked && !priceCheckFailed && plan?.enabled == true) {
         snapshot?.offers.orEmpty().filter {
             it.product in plan.products && it.product.isAvailableForNewCheckout() &&
                 (it.product.isStandaloneAdFree || cloudCheckoutAllowed)
         }
     } else emptyList()
     val selectedOffer = visibleOffers.firstOrNull { it.product.selectionId == selectedProductId }
-    val replacementOffers = if (!screenBusy && !waitingForPurchase && !notice.canChangeAccount() &&
+    val replacementOffers = if (!screenBusy && !waitingForPurchase && !accountBlocked && !priceCheckFailed &&
         verifiedProductId != null && plan?.scheduledReplacement == null
     ) snapshot?.replacementOffers.orEmpty().filter {
         it.target.product.isAvailableForNewCheckout()
@@ -298,9 +311,9 @@ private fun CloudBillingControls(
     var managementFailed by remember(verifiedProductId) { mutableStateOf(false) }
     val recover = { runBilling { session.recover() } }
     val refreshPlans: () -> Unit = {
-        if (!screenBusy) {
+        if (!busy && !accountChanging) {
             managementFailed = false
-            scope.launch { refresh() }
+            requestRefresh()
         }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
@@ -342,30 +355,34 @@ private fun CloudBillingControls(
             }
 
             if (showPlanPicker) {
-                val priceCheckFailed = notice == CloudBillingNotice.FAILED || notice == CloudBillingNotice.UNAVAILABLE
                 val message = when {
-                    accountChanging -> null
-                    busy -> "Google Play 요금제와 가격을 확인하는 중입니다."
-                    notice.canChangeAccount() || priceCheckFailed -> notice?.displayText()
+                    accountChanging -> "Google 계정을 확인하는 중입니다."
+                    screenBusy -> "Google Play 요금제와 가격을 확인하는 중입니다."
+                    accountBlocked || priceCheckFailed -> notice?.displayText()
                     plan?.enabled != true -> "현재 구독을 확인할 수 없습니다. 구독 정보를 새로고침해 주세요."
-                    !cloudCheckoutAllowed -> "현재 클라우드 신규 구독을 신청할 수 없습니다."
+                    cloudRestricted -> "이 계정은 클라우드 신규 구독을 신청할 수 없습니다."
                     visibleOffers.none { !it.product.isStandaloneAdFree } ->
                         "Google Play에서 현재 제공하는 클라우드 요금제가 없습니다."
                     else -> notice?.displayText()
                 }
                 message?.let { CloudStatusMessage(it) }
-                if (notice.canChangeAccount()) {
+                if (!screenBusy && (accountBlocked || cloudRestricted && !priceCheckFailed)) {
                     BillingAccountAction(accountStatus, onChooseAccount)
+                } else if (!screenBusy && priceCheckFailed) {
+                    ActionButton("요금제 다시 확인", refreshPlans, Modifier.fillMaxWidth(), icon = Icons.Outlined.Refresh)
+                }
+                val unavailableLabel = when {
+                    screenBusy -> "조회 중"
+                    accountBlocked -> "계정 확인"
+                    priceCheckFailed || plan?.enabled != true -> "확인 필요"
+                    else -> "판매 없음"
                 }
                 BillingPlanPicker(
                     visibleOffers,
                     selectedOffer?.product?.selectionId,
-                    unavailableLabel = when {
-                        busy -> "조회 중"
-                        notice.canChangeAccount() -> "계정 확인"
-                        priceCheckFailed || plan?.enabled != true -> "확인 필요"
-                        else -> "판매 없음"
-                    },
+                    unavailableLabel = unavailableLabel,
+                    cloudUnavailableLabel = "신청 제한".takeIf { cloudRestricted && !screenBusy && !priceCheckFailed && !accountBlocked }
+                        ?: unavailableLabel,
                     onSelect = { selectedProductId = it },
                 )
             } else {
@@ -385,7 +402,7 @@ private fun CloudBillingControls(
                         waitingForPurchase -> {
                             BillingHeading("결제 확인을 기다리고 있어요")
                             CloudStatusMessage("Google Play에서 결제 내역을 확인 중입니다. 확인이 끝나면 구독 상태가 갱신됩니다.")
-                            CloudPrimaryAction("결제 상태 확인", { scope.launch { refresh() } })
+                            CloudPrimaryAction("결제 상태 확인", ::requestRefresh)
                         }
                         verifiedCloudProductId != null -> {
                             BillingPlanDetails(checkNotNull(plan), snapshot?.autoRenewing)
@@ -487,8 +504,13 @@ private fun CloudBillingControls(
         }
     }
 
-    val replacement = replacementConfirmation
-    (replacement?.target ?: confirmation)?.let { offer ->
+    val replacement = replacementConfirmation?.takeIf { it == selectedReplacement }
+    val currentConfirmation = confirmation?.takeIf { it == selectedOffer }
+    LaunchedEffect(screenBusy, replacement, currentConfirmation) {
+        if (replacement == null) replacementConfirmation = null
+        if (currentConfirmation == null) confirmation = null
+    }
+    (replacement?.target ?: currentConfirmation)?.let { offer ->
         fun clearSelection() {
             confirmation = null
             replacementConfirmation = null
@@ -557,6 +579,7 @@ private fun BillingPlanPicker(
     offers: List<CloudBillingOffer>,
     selectedProductId: String?,
     unavailableLabel: String,
+    cloudUnavailableLabel: String = unavailableLabel,
     onSelect: (String) -> Unit,
 ) {
     val (adFree, cloud) = offers.partition { it.product.isStandaloneAdFree }
@@ -572,7 +595,7 @@ private fun BillingPlanPicker(
                 val id = offer?.product?.selectionId
                 BillingPlanRow(
                     billingQuotaLabel(quota), offer, selected = id != null && id == selectedProductId,
-                    unavailableLabel = unavailableLabel, onSelect = { id?.let(onSelect) },
+                    unavailableLabel = cloudUnavailableLabel, onSelect = { id?.let(onSelect) },
                 )
             }
         }
@@ -618,29 +641,38 @@ private fun BillingPlanRow(
     onSelect: () -> Unit,
 ) {
     val enabled = offer != null
-    Row(
+    BoxWithConstraints(
         Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.touchTarget).clip(RoundedCornerShape(10.dp))
             .then(if (selected) Modifier.background(SelectedContainer) else Modifier)
             .selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect)
             .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        contentAlignment = Alignment.CenterStart,
     ) {
-        RadioButton(
-            selected = selected,
-            onClick = null,
-            enabled = enabled,
-            colors = RadioButtonDefaults.colors(selectedColor = Primary, unselectedColor = Muted),
-        )
-        Text(label, Modifier.weight(1f), color = if (enabled) Ink else Muted,
-            style = MaterialTheme.typography.titleSmall)
-        Text(
-            offer?.let { "${it.formattedPrice}/${it.product.period.rateUnit}" } ?: unavailableLabel,
-            modifier = Modifier.weight(1f),
-            color = if (enabled) Ink else Muted,
-            style = if (enabled) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.End,
-        )
+        val stackPrice = maxWidth < 172.dp * LocalDensity.current.fontScale
+        val foreground = if (enabled) Ink else Muted
+        val value = offer?.let { "${it.formattedPrice}/${it.product.period.rateUnit}" } ?: unavailableLabel
+        val valueStyle = if (enabled) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = selected,
+                onClick = null,
+                enabled = enabled,
+                colors = RadioButtonDefaults.colors(selectedColor = Primary, unselectedColor = Muted),
+            )
+            if (stackPrice) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(label, color = foreground, style = MaterialTheme.typography.titleSmall)
+                    Text(value, color = foreground, style = valueStyle)
+                }
+            } else {
+                Text(label, Modifier.weight(1f), color = foreground, style = MaterialTheme.typography.titleSmall)
+                Text(value, color = foreground, style = valueStyle, textAlign = TextAlign.End)
+            }
+        }
     }
 }
 
@@ -670,13 +702,18 @@ private fun BillingCheckoutFooter(
             filled = true, enabled = enabled,
         )
         if (onRefresh != null && onRestore != null) {
-            Row(
-                Modifier.widthIn(max = 320.dp).fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                TextAction("구매 복구", onRestore, Modifier.weight(1f), MaterialTheme.typography.bodyMedium)
-                TextAction("구독 정보 새로고침", onRefresh, Modifier.weight(1.65f), MaterialTheme.typography.bodyMedium)
+            BoxWithConstraints(Modifier.widthIn(max = 360.dp).fillMaxWidth()) {
+                if (maxWidth < 220.dp * LocalDensity.current.fontScale) {
+                    Column {
+                        TextAction("구매 복구", onRestore, Modifier.fillMaxWidth())
+                        TextAction("구독 정보 새로고침", onRefresh, Modifier.fillMaxWidth())
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        TextAction("구매 복구", onRestore, Modifier.weight(1f), MaterialTheme.typography.bodyMedium)
+                        TextAction("구독 정보 새로고침", onRefresh, Modifier.weight(1.65f), MaterialTheme.typography.bodyMedium)
+                    }
+                }
             }
         } else if (onRefresh != null) TextAction("구독 정보 새로고침", onRefresh)
         else if (onRestore != null) TextAction("구매 복구", onRestore)
@@ -849,7 +886,7 @@ private fun CloudBillingNotice.displayText(): String = when (this) {
     CloudBillingNotice.PRICE_CHANGED -> "상품 정보가 변경됐습니다. 구독 정보를 새로고침하고 다시 확인해 주세요."
     CloudBillingNotice.ACCOUNT_CHANGED -> "계정이 변경됐습니다. 같은 계정에서 다시 확인해 주세요."
     CloudBillingNotice.PURCHASE_LINKED_TO_ANOTHER_ACCOUNT -> "다른 GalliPick 계정에 연결된 Google Play 구독이 있습니다. 구매할 때 연결한 계정을 확인해 주세요."
-    CloudBillingNotice.ACCOUNT_ACCESS_REQUIRED -> "현재 계정에는 결제 이용 권한이 없습니다. 내부 테스트에서는 승인된 Google 계정으로 로그인해 주세요."
+    CloudBillingNotice.ACCOUNT_ACCESS_REQUIRED -> "현재 계정에는 결제 이용 권한이 없습니다. Google 계정을 확인해 주세요."
     CloudBillingNotice.UNAVAILABLE -> "Google Play 결제 정보를 불러올 수 없습니다. Play 스토어 상태를 확인해 주세요."
     CloudBillingNotice.FAILED -> "구독 정보를 확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요."
 }

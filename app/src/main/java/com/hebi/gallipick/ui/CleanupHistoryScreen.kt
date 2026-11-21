@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.RestoreFromTrash
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +29,7 @@ internal fun CleanupHistoryScreen(
     onBack: () -> Unit,
     onDelete: (String) -> Unit,
     onClear: () -> Unit,
+    onOpenTrash: (() -> Unit)? = null,
 ) {
     var deleteId by remember { mutableStateOf<String?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
@@ -45,6 +47,10 @@ internal fun CleanupHistoryScreen(
             Text("기록 삭제는 기록만 지우며, 사진·동영상이나 Android 휴지통에는 영향을 주지 않습니다.",
                 color = Muted, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(12.dp))
+            if (onOpenTrash != null) {
+                ActionButton("휴지통·복원", onOpenTrash, Modifier.fillMaxWidth(), icon = Icons.Outlined.RestoreFromTrash)
+                Spacer(Modifier.height(12.dp))
+            }
             if (entries.isEmpty()) {
                 Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                     EmptyState("정리 기록이 없습니다", "확인된 휴지통 이동이나 복원 작업이 이곳에 표시됩니다.")

@@ -21,7 +21,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -188,7 +188,7 @@ class ReviewExperienceTest {
         compose.setContent {
             GalliPickTheme { TrashScreen(state.value, { requested = it }, {}, {}, {}) }
         }
-        compose.onNodeWithContentDescription("휴지통 전체 선택").performClick()
+        compose.onNodeWithContentDescription("앞 500개 선택").performClick()
         compose.onNodeWithText("500개 선택 · ${bytesLabel(500L * 1024L)}").assertIsDisplayed()
         compose.onNodeWithText("선택한 ${if (requested.isEmpty()) 500 else 498}개 복원").performClick()
         compose.runOnIdle {
@@ -202,7 +202,7 @@ class ReviewExperienceTest {
         compose.runOnIdle { state.value = state.value.copy(loading = false, trashed = all, catalogReady = true) }
         // The same file versions stay selected when Android confirmation is cancelled and the catalog reloads.
         compose.onNodeWithText("500개 선택 · ${bytesLabel(500L * 1024L)}").assertIsDisplayed()
-        compose.onNodeWithContentDescription("휴지통 파일 목록").performScrollToIndex(500)
+        compose.onNodeWithContentDescription("휴지통 파일 목록").performScrollToKey(all.last().uri)
         compose.onNodeWithContentDescription("${all.last().displayName} 복원 선택").performClick()
         compose.onNodeWithText("한 번에 최대 500개까지 복원할 수 있습니다. 선택을 해제한 뒤 다시 선택해 주세요.").assertIsDisplayed()
         compose.onNodeWithText("500개 선택 · ${bytesLabel(500L * 1024L)}").assertIsDisplayed()

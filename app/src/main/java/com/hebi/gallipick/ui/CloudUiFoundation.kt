@@ -18,6 +18,7 @@ import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.HorizontalDivider
@@ -48,6 +49,7 @@ internal enum class CloudRoute(val title: String, val description: String) {
     SPACE("공간 확보 검토", "백업이 확인된 기기 파일을 검토합니다."),
     BILLING_SIGN_IN("광고 제거", "클라우드 구독 혜택 보기"),
     BILLING("요금제·결제", "요금제를 선택하고 구독을 신청하거나 관리합니다."),
+    ACCOUNT_MANAGEMENT("계정·구독 관리", "구독 관리, 클라우드 데이터 삭제, 회원 탈퇴"),
 }
 
 internal enum class CloudAccessState {
@@ -77,7 +79,11 @@ internal fun cloudAccessState(
 internal fun cloudVisibleRoute(
     requested: CloudRoute,
     access: CloudAccessState,
-): CloudRoute = if (access == CloudAccessState.SIGNED_IN) requested else CloudRoute.OVERVIEW
+): CloudRoute = when {
+    access == CloudAccessState.SIGNED_IN -> requested
+    access == CloudAccessState.SIGNED_OUT && requested == CloudRoute.ACCOUNT_MANAGEMENT -> requested
+    else -> CloudRoute.OVERVIEW
+}
 
 internal fun cloudSubscriptionUiState(
     loading: Boolean,
@@ -186,8 +192,9 @@ private val CloudRoute.icon: ImageVector get() = when (this) {
     CloudRoute.SECRET -> Icons.Outlined.Lock
     CloudRoute.AUTO_BACKUP -> Icons.Outlined.Sync
     CloudRoute.SPACE -> Icons.Outlined.Storage
-    CloudRoute.BILLING_SIGN_IN -> Icons.Outlined.Cloud
+    CloudRoute.BILLING_SIGN_IN -> Icons.Outlined.CreditCard
     CloudRoute.BILLING -> Icons.Outlined.CreditCard
+    CloudRoute.ACCOUNT_MANAGEMENT -> Icons.Outlined.Settings
 }
 
 @Composable

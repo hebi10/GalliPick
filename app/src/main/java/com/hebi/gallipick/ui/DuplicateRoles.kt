@@ -1,5 +1,6 @@
 package com.hebi.gallipick.ui
 
+import com.hebi.gallipick.domain.DateField
 import com.hebi.gallipick.domain.DuplicateGroup
 import com.hebi.gallipick.domain.DuplicatePolicy
 import com.hebi.gallipick.domain.DuplicateReviewPolicy
@@ -39,11 +40,11 @@ internal data class DuplicateRoles(
         }
         val dateRanks = peers.map { it.capturedAt.takeIf { timestamp -> timestamp > 0 } ?: Long.MAX_VALUE }
         if (dateRanks.distinct().size > 1 && item.capturedAt > 0) {
-            val field = if (item.dateTakenMs > 0) "촬영일" else "저장일"
+            val field = if (item.dateTakenMs > 0) DateField.CAPTURED else DateField.ADDED
             val scope = if (camera) "카메라 폴더에서 " else ""
             val basis = if (dateRanks.count { it == item.capturedAt } > 1) "가장 이른 날짜가 같은 사본 중 한 개를 추천했습니다."
                 else "가장 이른 날짜로 추천했습니다."
-            return "$scope$basis $field ${dateLabel(item.capturedAt)}."
+            return "$scope$basis ${dateFieldLabel(field)} ${dateLabel(item.capturedAt)}."
         }
         return if (camera && (kept + candidates).any { !it.inCameraFolder() }) "카메라 폴더의 파일을 우선 추천했습니다."
         else "같은 내용의 사본 중 한 개를 남기도록 추천했습니다."

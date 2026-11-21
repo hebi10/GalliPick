@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hebi.gallipick.domain.DateField
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.PhotoOcrIndexPolicy
@@ -434,11 +435,13 @@ internal fun MediaDetail(item: MediaItem, onOpen: (MediaItem) -> Unit,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     DetailRow("용량", bytesLabel(item.sizeBytes))
+                    DetailRow("저장 위치", if (backedUp) "기기·클라우드" else "기기")
                     DetailRow("해상도", "${item.width} × ${item.height} · %.1f MP".format(item.pixels / 1_000_000.0))
                     if (item.kind == MediaKind.VIDEO) DetailRow("재생 시간", durationLabel(item.durationMs))
-                    DetailRow(if (item.dateTakenMs > 0) "촬영일" else "저장일", dateLabel(item.capturedAt))
-                    DetailRow("추가일", dateLabel(item.dateAddedMs))
-                    DetailRow("수정일", dateLabel(item.dateModifiedMs))
+                    DetailRow(dateFieldLabel(DateField.CAPTURED),
+                        if (item.dateTakenMs > 0) dateLabel(item.dateTakenMs) else "촬영 정보 없음")
+                    DetailRow(dateFieldLabel(DateField.ADDED), dateLabel(item.dateAddedMs))
+                    DetailRow(dateFieldLabel(DateField.MODIFIED), dateLabel(item.dateModifiedMs))
                     DetailRow("파일 형식", item.mimeType.ifEmpty { "정보 없음" })
                     DetailRow("폴더", item.relativePath.ifEmpty { "기본 폴더" })
                 }

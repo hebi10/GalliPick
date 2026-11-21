@@ -115,7 +115,9 @@ private suspend fun backupIdToken(auth: FirebaseAuth, uid: String, forceRefresh:
             when {
                 auth.currentUser?.uid != uid -> continuation.resumeWithException(CloudBackupException(CloudBackupResult.ACCOUNT_CHANGED))
                 !token.isNullOrBlank() -> continuation.resume(token)
-                task.exception is FirebaseNetworkException -> continuation.resumeWithException(CloudBackupException(CloudBackupResult.NETWORK_ERROR))
+                task.exception is FirebaseNetworkException -> continuation.resumeWithException(
+                    cloudBackupNetworkError(CloudBackupNetworkFailure.CONNECTION),
+                )
                 else -> continuation.resumeWithException(CloudBackupException(CloudBackupResult.TEST_ACCESS_REQUIRED))
             }
         }

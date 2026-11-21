@@ -60,8 +60,9 @@ class DateGroupedFilesTest {
                 }
             }
         }
-        compose.onNodeWithText("추가일 2025.01.02").assertExists()
-        compose.onNodeWithText("추가일 2025.01.05").assertExists()
+        compose.onNodeWithText("2025.01.02").assertExists()
+        compose.onNodeWithText("2025.01.05").assertExists()
+        compose.onNodeWithText("추가일 2025.01.02").assertDoesNotExist()
     }
 
     private fun item(id: Long, added: Long) = MediaItem(

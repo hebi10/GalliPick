@@ -2,11 +2,12 @@ package com.hebi.gallipick.ui
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -29,6 +31,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
+import com.hebi.gallipick.domain.DateField
 import com.hebi.gallipick.domain.DuplicateGroup
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
@@ -78,7 +81,8 @@ internal fun DuplicateCompareContent(
     var focusedUri by rememberSaveable(group.hash, initialItemUri) {
         mutableStateOf(initialItemUri?.takeIf { uri -> ordered.any { it.uri == uri } } ?: roles.keeper.uri)
     }
-    val focused = ordered.firstOrNull { it.uri == focusedUri } ?: roles.keeper
+    val focusedIndex = ordered.indexOfFirst { it.uri == focusedUri }.coerceAtLeast(0)
+    val focused = ordered[focusedIndex]
     val photos = ordered.filter { it.kind == MediaKind.PHOTO }
     var compareAB by rememberSaveable(group.hash) { mutableStateOf(false) }
     var showAdvanced by rememberSaveable(group.hash) { mutableStateOf(false) }
@@ -89,14 +93,22 @@ internal fun DuplicateCompareContent(
         ?: photos.firstOrNull { it.uri != firstPhoto?.uri }
     val showingAB = compareAB && firstPhoto != null && secondPhoto != null
     val rowState = rememberLazyListState()
-    LaunchedEffect(roles.keeper.uri) { rowState.scrollToItem(0) }
+    LaunchedEffect(roles.keeper.uri, initialItemUri) { rowState.scrollToItem(focusedIndex) }
     val coordinator = remember(group.hash) { PreviewPlaybackCoordinator() }
     DisposableEffect(coordinator) { onDispose { coordinator.pauseActive() } }
     BoxWithConstraints(modifier.fillMaxSize()) {
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
         val compact = maxHeight < 420.dp || maxWidth < 350.dp
-        val pinDecision = maxHeight >= 500.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
-        val cardWidth = if (compact) 108.dp else if (maxWidth >= 900.dp) 164.dp else 136.dp
-        val thumbnailHeight = if (compact) 72.dp else if (maxWidth >= 900.dp) 124.dp else 106.dp
+        val pinDecision = maxHeight >= 500.dp * fontScale
+        val pagePadding = 12.dp
+        val stripPadding = 2.dp
+        val cardSpacing = 8.dp
+        val maxCardWidth = if (compact) 108.dp else if (maxWidth >= 900.dp) 164.dp else 136.dp
+        val cardWidth = if (ordered.size >= 3 && fontScale <= 1.3f) {
+            val threeCardWidth = (maxWidth - (pagePadding + stripPadding + cardSpacing) * 2) / 3
+            threeCardWidth.coerceIn(100.dp, maxCardWidth)
+        } else maxCardWidth
+        val thumbnailHeight = if (compact) 72.dp else if (maxWidth >= 900.dp) 124.dp else minOf(106.dp, cardWidth * .8f)
         val previewHeight = when {
             maxHeight < 420.dp -> 180.dp
             maxWidth >= 900.dp -> 380.dp
@@ -114,7 +126,7 @@ internal fun DuplicateCompareContent(
                 onToggleSelection = { onToggleSelection(focused.uri) },
             )
         }
-        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = pagePadding)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("중복 파일 비교", Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
                 if (photos.size >= 2) TextButton(onClick = { compareAB = !showingAB },
@@ -130,16 +142,18 @@ internal fun DuplicateCompareContent(
                 modifier = Modifier.semantics { contentDescription = "중복 결과 확인 중" },
             )
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-                Text("내용이 같은 파일 ${ordered.size}개 · 정리 후보 ${roles.candidates.size}개",
+                Text(
+                    if (showingAB) "사진 A·B · 아래에서 교체할 사본을 고르세요"
+                    else "사본 ${focusedIndex + 1} / ${ordered.size} · 다른 사본을 눌러 비교",
                     style = MaterialTheme.typography.bodySmall, color = Muted,
                     modifier = Modifier.padding(bottom = 8.dp))
                 LazyRow(
                     Modifier.fillMaxWidth().semantics { contentDescription = "중복 파일 가로 비교 목록" },
                     state = rowState,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(cardSpacing),
+                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = stripPadding),
                 ) {
-                    items(ordered, key = { it.uri }) { item ->
+                    itemsIndexed(ordered, key = { _, item -> item.uri }) { index, item ->
                         val active = focused.uri == item.uri
                         val path = item.relativePath.ifBlank { "기본 폴더" }
                         Column(
@@ -160,7 +174,8 @@ internal fun DuplicateCompareContent(
                                 .padding(4.dp)
                                 .semantics {
                                     contentDescription = "${item.displayName} 비교 대상"
-                                    stateDescription = "$path, ${if (active) "현재 보고 있는 파일" else roles.label(item, selectedUris)}"
+                                    stateDescription = "사본 ${index + 1} / ${ordered.size}, $path, " +
+                                        if (active) "현재 보고 있는 파일" else roles.label(item, selectedUris)
                                 },
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
@@ -277,8 +292,17 @@ private fun DuplicateKeeperActions(
                             .semantics { contentDescription = "선택 파일 남길 파일로 지정" },
                         filled = true, enabled = actionsEnabled,
                     )
-                    if (canSelect) Row(verticalAlignment = Alignment.CenterVertically) {
-                        SelectBox(selected, actionsEnabled, "선택 파일 정리 후보 선택", onToggleSelection)
+                    if (canSelect) Row(
+                        Modifier.heightIn(min = GalliUiMetrics.touchTarget)
+                            .toggleable(value = selected, enabled = actionsEnabled, role = Role.Checkbox,
+                                onValueChange = { onToggleSelection() })
+                            .semantics { contentDescription = "선택 파일 정리 후보 선택" }
+                            .padding(end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(GalliUiMetrics.touchTarget), contentAlignment = Alignment.Center) {
+                            SelectionIndicator(selected, actionsEnabled)
+                        }
                         Text(if (selected) "정리 후보 · 선택됨" else "정리 후보로 선택",
                             style = MaterialTheme.typography.labelMedium)
                     }
@@ -322,7 +346,8 @@ private fun DuplicateComparePanel(
                     Text("파일 정보", style = MaterialTheme.typography.titleSmall, color = Muted)
                     Text("${bytesLabel(item.sizeBytes)} · ${String.format(Locale.KOREA, "%,d", item.sizeBytes)} B", style = MaterialTheme.typography.bodySmall)
                     Text("${item.width} × ${item.height}" + if (item.kind == MediaKind.VIDEO) " · ${durationLabel(item.durationMs)}" else "", style = MaterialTheme.typography.bodySmall)
-                    Text("${if (item.dateTakenMs > 0) "촬영일" else "저장일"} ${dateLabel(item.capturedAt)}", style = MaterialTheme.typography.bodySmall)
+                    val dateField = if (item.dateTakenMs > 0) DateField.CAPTURED else DateField.ADDED
+                    Text("${dateFieldLabel(dateField)} ${dateLabel(item.capturedAt)}", style = MaterialTheme.typography.bodySmall)
                     if (!candidate) Text(roles.reason(item), style = MaterialTheme.typography.bodySmall, color = Muted)
                     else Text(if (selected) "정리 대상으로 선택했습니다. 아직 휴지통으로 이동하지 않았습니다." else "남길 파일을 확인한 뒤 필요한 사본만 정리 대상으로 선택하세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
                     HorizontalDivider(color = Line)

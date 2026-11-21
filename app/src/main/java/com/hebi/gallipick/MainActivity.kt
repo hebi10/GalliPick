@@ -58,6 +58,8 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels()
+    private val mediaPermissionPreferences by lazy { getSharedPreferences("media_permission", MODE_PRIVATE) }
+    private var mediaPermissionSettingsRequired by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,8 +107,8 @@ class MainActivity : ComponentActivity() {
                 onDispose { lifecycle.removeObserver(observer) }
             }
             val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-                vm.setAccess(mediaAccess())
-                vm.refresh()
+                mediaPermissionPreferences.edit().putBoolean("requested", true).apply()
+                refreshMediaAccess()
             }
             val trashLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
                 val identities = decodeTrashRequest(submitted)
@@ -220,6 +222,7 @@ class MainActivity : ComponentActivity() {
                 vm = vm,
                 onRequestPermission = { permissionLauncher.launch(requiredPermissions()) },
                 onOpenSettings = { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) },
+                mediaPermissionSettingsRequired = mediaPermissionSettingsRequired,
                 onTrash = { review(it, false) },
                 onOpenMedia = { item ->
                     try {
@@ -238,6 +241,7 @@ class MainActivity : ComponentActivity() {
                         when (route) {
                             CloudRoute.OVERVIEW ->
                                 CloudAccountCard { CloudAccountSettings(cloudAccount, this@MainActivity) }
+                            CloudRoute.ACCOUNT_MANAGEMENT -> Unit
                             CloudRoute.BILLING_SIGN_IN ->
                                 CloudAccountCard { CloudAccountSettings(cloudAccount, this@MainActivity, forAdRemoval = true) }
                             CloudRoute.LIBRARY ->
@@ -342,7 +346,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        vm.setAccess(mediaAccess())
+        refreshMediaAccess()
+    }
+
+    private fun refreshMediaAccess() {
+        val access = mediaAccess()
+        val canReselectPhotos = Build.VERSION.SDK_INT >= 34 && granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+        mediaPermissionSettingsRequired = access != MediaAccess.FULL && !canReselectPhotos &&
+            mediaPermissionPreferences.getBoolean("requested", false) &&
+            requiredPermissions().filterNot {
+                it == Manifest.permission.ACCESS_MEDIA_LOCATION ||
+                    it == Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED || granted(it)
+            }
+                .none { shouldShowRequestPermissionRationale(it) }
+        vm.setAccess(access)
         vm.refresh()
     }
 

@@ -5,6 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -22,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
@@ -172,7 +177,7 @@ private fun CloudAccountExitAction(connection: CloudAccountConnection, scope: Cl
         titleContentColor = Ink,
         title = { Text(if (scope == CloudExitScope.ACCOUNT) "GalliPick 회원 탈퇴" else "클라우드 데이터 삭제") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     if (scope == CloudExitScope.ACCOUNT)
                         "GalliPick 계정과 일반·시크릿 클라우드 원본 및 연결 데이터가 삭제됩니다."
@@ -192,18 +197,14 @@ private fun CloudAccountExitAction(connection: CloudAccountConnection, scope: Cl
                         CloudStatusMessage("다른 Google 계정의 활성 구독이 있을 수 있으므로 Google Play 결제 목록을 확인해 주세요.")
                 }
                 CloudStatusMessage("삭제 요청은 가능한 즉시 처리하며 처리 목표는 최대 14일입니다. 요청 접수만으로 삭제가 완료된 것은 아닙니다.")
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = acknowledgePermanent, onCheckedChange = { acknowledgePermanent = it },
-                        enabled = !requestBusy, modifier = Modifier.testTag("cloud-exit-confirm-permanent"))
-                    Text("삭제된 클라우드 원본은 복원할 수 없음을 확인했습니다.",
-                        modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = acknowledgeBilling, onCheckedChange = { acknowledgeBilling = it },
-                        enabled = !requestBusy, modifier = Modifier.testTag("cloud-exit-confirm-billing"))
-                    Text("Google Play 자동 갱신은 직접 취소해야 함을 확인했습니다.",
-                        modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                }
+                CloudExitAcknowledgement(
+                    "삭제된 클라우드 원본은 복원할 수 없음을 확인했습니다.",
+                    "cloud-exit-confirm-permanent", acknowledgePermanent, !requestBusy,
+                ) { acknowledgePermanent = it }
+                CloudExitAcknowledgement(
+                    "Google Play 자동 갱신은 직접 취소해야 함을 확인했습니다.",
+                    "cloud-exit-confirm-billing", acknowledgeBilling, !requestBusy,
+                ) { acknowledgeBilling = it }
             }
         },
         confirmButton = {
@@ -243,6 +244,25 @@ private fun CloudAccountExitAction(connection: CloudAccountConnection, scope: Cl
         },
         dismissButton = { TextAction("돌아가기", { if (!requestBusy) confirmationOpen = false }) },
     )
+}
+
+@Composable
+private fun CloudExitAcknowledgement(
+    label: String,
+    tag: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onChecked: (Boolean) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.touchTarget).testTag(tag)
+            .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = onChecked),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null, enabled = enabled)
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+    }
 }
 
 private fun CloudExitSnapshot.exitStatusText(): String = when (state) {

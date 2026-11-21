@@ -2,6 +2,7 @@ package com.hebi.gallipick.data.cloud
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 internal data class CloudBackupAccess(
     val namespace: CloudBackupNamespace,
@@ -10,6 +11,7 @@ internal data class CloudBackupAccess(
     val supportsResumableTransfers: Boolean = false,
     val resumableUploadExpiryMillis: Long? = null,
     val maximumResumableOriginalBytes: Long = 0L,
+    val lastKnownRemainingBytes: Long? = null,
 ) {
     fun allowsUpload(nowMillis: Long): Boolean = uploadExpiryMillis?.let { nowMillis < it } == true
     fun allowsResumableUpload(nowMillis: Long): Boolean =
@@ -25,7 +27,12 @@ internal data class CloudBackupAccess(
     }
 }
 
-internal data class CloudBackupAccessObservation(val uid: String, val access: CloudBackupAccess?)
+internal data class CloudBackupAccessObservation(
+    val uid: String,
+    val access: CloudBackupAccess?,
+    val mayReadCatalog: Boolean?,
+    val checkFailure: Exception? = null,
+)
 
 internal class CloudBackupAccessState(
     val development: Boolean = false,
@@ -36,10 +43,24 @@ internal class CloudBackupAccessState(
 
     fun observe(uid: String, plan: CloudBillingPlan) {
         if (currentUid() == uid) {
+            val access = if (development) plan.developmentBackupAccess() else plan.productionBackupAccess()
             latest.value = CloudBackupAccessObservation(
-                uid,
-                if (development) plan.developmentBackupAccess() else plan.productionBackupAccess(),
+                uid, access, mayReadCatalog = access != null && plan.cloudReadAllowed != false,
             )
+        }
+    }
+
+    fun observeReadCheckFailure(uid: String, error: Exception) {
+        latest.update { current ->
+            if (currentUid() != uid) return@update current
+            val previous = current?.takeIf { it.uid == uid }
+            if (previous?.mayReadCatalog == false) return@update previous
+            val invalidatedAccess = (error as? CloudBackupException)?.let {
+                it.permissionDenied || it.result == CloudBackupResult.TEST_ACCESS_REQUIRED
+            } == true
+            val access = previous?.access ?: CloudBackupAccess.development.takeIf { development && previous == null }
+            CloudBackupAccessObservation(uid, access.takeUnless { invalidatedAccess },
+                previous?.mayReadCatalog, checkFailure = error)
         }
     }
 
@@ -49,7 +70,7 @@ internal class CloudBackupAccessState(
 
     fun forAccount(uid: String): CloudBackupAccess? {
         if (currentUid() != uid) return null
-        return latest.value?.takeIf { it.uid == uid }?.access
-            ?: CloudBackupAccess.development.takeIf { development }
+        val observation = latest.value?.takeIf { it.uid == uid }
+        return if (observation != null) observation.access else CloudBackupAccess.development.takeIf { development }
     }
 }

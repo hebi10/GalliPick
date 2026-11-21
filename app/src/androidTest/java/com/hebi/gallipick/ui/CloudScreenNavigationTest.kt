@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,6 +46,29 @@ class CloudScreenNavigationTest {
     }
 
     @Test
+    fun cloudDescriptionIsBelowTheTitleForBothAccountStatesAndOnlyOnOverview() {
+        val backend = FakeAccountBackend("test-user-1")
+        backend.active.value = null
+        val connection = showCloud(backend)
+        val description = compose.onNodeWithText("사진과 동영상을 기기와 별도로 보관하고 관리합니다.")
+
+        description.assertIsDisplayed()
+        val titleBounds = compose.onNodeWithText("클라우드").fetchSemanticsNode().boundsInRoot
+        val descriptionBounds = description.fetchSemanticsNode().boundsInRoot
+        val contentBounds = compose.onNodeWithText("screen-OVERVIEW").fetchSemanticsNode().boundsInRoot
+        assertEquals(titleBounds.left, descriptionBounds.left, 1f)
+        assertTrue(descriptionBounds.top >= titleBounds.bottom)
+        assertTrue(contentBounds.top >= descriptionBounds.bottom)
+
+        runBlocking { connection.session.chooseAccount { "test-credential" } }
+        description.assertIsDisplayed()
+        compose.onNodeWithTag("cloud-route-BILLING").performScrollTo().performClick()
+        description.assertDoesNotExist()
+        compose.onNodeWithContentDescription("뒤로").performClick()
+        description.assertIsDisplayed()
+    }
+
+    @Test
     fun newAccountSignInStaysOnCloudOverviewUntilBillingIsTapped() {
         val backend = FakeAccountBackend("new-account")
         backend.active.value = null
@@ -54,11 +78,14 @@ class CloudScreenNavigationTest {
         runBlocking { connection.session.chooseAccount { "test-credential" } }
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
         compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
+        compose.onNodeWithText("회원 탈퇴").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-route-ACCOUNT_MANAGEMENT").performScrollTo().performClick()
         compose.onNodeWithText("회원 탈퇴").performScrollTo().performClick()
         compose.onNodeWithText("GalliPick 회원 탈퇴").assertIsDisplayed()
         compose.onNodeWithText("탈퇴 요청 메일 작성").assertExists()
         compose.onNodeWithText("돌아가기").performClick()
         compose.onNodeWithText("클라우드 데이터 삭제 요청").assertExists()
+        compose.onNodeWithContentDescription("뒤로").performClick()
         compose.onNodeWithTag("cloud-route-BILLING").performClick()
         compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
         compose.onNodeWithContentDescription("뒤로").performClick()
@@ -132,6 +159,10 @@ class CloudScreenNavigationTest {
         compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
         compose.onNodeWithContentDescription("뒤로").performClick()
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+
+        compose.onNodeWithTag("cloud-route-ACCOUNT_MANAGEMENT").performScrollTo().performClick()
+        compose.onNodeWithText("클라우드 데이터 삭제 요청").assertExists()
+        compose.onNodeWithText("회원 탈퇴").assertDoesNotExist()
     }
 
     @Test

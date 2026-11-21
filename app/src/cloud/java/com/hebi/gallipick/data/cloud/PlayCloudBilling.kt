@@ -17,6 +17,7 @@ import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.hebi.gallipick.domain.MediaHasher
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -66,7 +67,7 @@ internal class PlayCloudBilling(
         } catch (error: CloudBackupException) {
             if (!error.permissionDenied) throw error
             ensureCurrentAccount()
-            disabledPlan().also { backupAccess?.observe(uid, it) }
+            disabledPlan()
         }
 
         override suspend fun load(): CloudBillingSnapshot = withContext(Dispatchers.Main.immediate) {
@@ -247,6 +248,27 @@ internal class PlayCloudBilling(
             purchaseToken: String? = null,
             includeVerifiedCount: Boolean = false,
         ): CloudBillingPlan = serverPlanRequests.withLock {
+            val plan = if (purchaseToken != null) {
+                requestServerPlan(purchaseToken, includeVerifiedCount)
+            } else {
+                try {
+                    withTimeoutOrNull(CLOUD_PLAN_TIMEOUT_MS) { requestServerPlan(null, includeVerifiedCount) }
+                        ?: throw cloudBackupNetworkError(CloudBackupNetworkFailure.TIMEOUT)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    if ((error as? CloudBackupException)?.result != CloudBackupResult.ACCOUNT_CHANGED) {
+                        backupAccess?.observeReadCheckFailure(uid, error)
+                    }
+                    throw error
+                }
+            }
+            backupAccess?.observe(uid, plan)
+            plan
+        }
+
+        private suspend fun requestServerPlan(purchaseToken: String?, includeVerifiedCount: Boolean): CloudBillingPlan {
             ensureCurrentAccount()
             val idToken = tokenFor(uid)
             ensureCurrentAccount()
@@ -258,7 +280,11 @@ internal class PlayCloudBilling(
                 transport.call("verifyCloudSubscription", idToken, input.put("purchaseToken", purchaseToken))
             }
             ensureCurrentAccount()
-            if (response.opt("enabled") != true) return@withLock disabledPlan().also { backupAccess?.observe(uid, it) }
+            when (response.opt("enabled")) {
+                false -> return disabledPlan()
+                true -> Unit
+                else -> unavailable()
+            }
             val expectedId = MediaHasher.sha256(uid.byteInputStream())
             val obfuscatedId = response.optString("obfuscatedAccountId")
             if (obfuscatedId != expectedId) unavailable()
@@ -370,11 +396,12 @@ internal class PlayCloudBilling(
                 supportsResumableTransfers = response.opt("supportsResumableTransfers") == true,
                 resumableUploadAllowed = response.opt("resumableUploadAllowed") == true,
                 legacyRecoveryProducts = legacyRecoveryProducts,
+                cloudReadAllowed = response.opt("cloudReadAllowed") as? Boolean,
             )
             if (production && backupAvailable &&
                 (isTestOnly == null || plan.productionBackupAccess() == null)) unavailable()
             if (production && plan.cloudCheckoutAllowed && !backupAvailable) unavailable()
-            plan.also { backupAccess?.observe(uid, it) }
+            return plan
         }
 
         private suspend fun queryPurchases(plan: CloudBillingPlan): CloudBillingUpdate =
@@ -558,6 +585,7 @@ internal class PlayCloudBilling(
         const val MAX_PRODUCTS = 12
         const val MAX_VERIFIED_MEDIA_COUNT = 20_000
         const val PLAY_API_TIMEOUT_MS = 15_000L
+        const val CLOUD_PLAN_TIMEOUT_MS = 45_000L
         val CURRENCY_CODE = Regex("[A-Z]{3}")
 
         fun JSONObject.positiveSafeLong(key: String): Long? {

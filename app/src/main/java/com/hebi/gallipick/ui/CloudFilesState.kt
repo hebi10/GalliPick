@@ -11,15 +11,35 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hebi.gallipick.data.MediaRepository
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudBackup
+import com.hebi.gallipick.data.cloud.CloudBackupException
+import com.hebi.gallipick.data.cloud.CloudBackupNetworkFailure
+import com.hebi.gallipick.data.cloud.CloudBackupResult
 import com.hebi.gallipick.data.cloud.CloudGalleryMatchPolicy
 import com.hebi.gallipick.data.cloud.CloudGallerySnapshot
+import com.hebi.gallipick.data.cloud.CloudOriginal
 import com.hebi.gallipick.data.cloud.CloudSpaceAnalysis
 import com.hebi.gallipick.data.cloud.VerifiedGalleryMatch
 import com.hebi.gallipick.domain.MediaItem
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 
 internal enum class DetailCloudAccess { UNAVAILABLE, SIGN_IN, CHECKING, CHECK_ACCESS, PLAN_REQUIRED, READY }
+
+internal enum class CloudCatalogIssue(val blocksCachedCatalog: Boolean) {
+    ACCOUNT_RESTRICTED(true), AUTH_REQUIRED(true), CONNECTION(false), TIMEOUT(false), TEMPORARY_FAILURE(false),
+}
+
+internal fun cloudCatalogIssue(error: Exception): CloudCatalogIssue = when {
+    error is CloudBackupException && error.permissionDenied -> CloudCatalogIssue.ACCOUNT_RESTRICTED
+    error is CloudBackupException && error.result in setOf(
+        CloudBackupResult.TEST_ACCESS_REQUIRED, CloudBackupResult.ACCOUNT_CHANGED,
+    ) -> CloudCatalogIssue.AUTH_REQUIRED
+    error is CloudBackupException && error.networkFailure == CloudBackupNetworkFailure.CONNECTION -> CloudCatalogIssue.CONNECTION
+    error is CloudBackupException && error.networkFailure == CloudBackupNetworkFailure.TIMEOUT -> CloudCatalogIssue.TIMEOUT
+    else -> CloudCatalogIssue.TEMPORARY_FAILURE
+}
 
 internal fun defaultDetailCloudAccess(backup: CloudBackup?, accountUid: String?): DetailCloudAccess =
     if (backup != null && accountUid != null) DetailCloudAccess.READY else DetailCloudAccess.UNAVAILABLE
@@ -30,7 +50,7 @@ internal data class CloudFilesUiState(
     val backup: CloudBackup? = null,
     val snapshot: CloudGallerySnapshot? = null,
     val loading: Boolean = false,
-    val failed: Boolean = false,
+    val catalogIssue: CloudCatalogIssue? = null,
     val online: Boolean = true,
     val unmetered: Boolean = true,
     val cachedCatalog: Boolean = false,
@@ -44,6 +64,7 @@ internal data class CloudFilesUiState(
     val detailAccess: DetailCloudAccess = defaultDetailCloudAccess(backup, accountUid),
     val accountEmail: String? = null,
     val detailNotice: String? = null,
+    val mayReadCatalog: Boolean = snapshot != null || catalogIssue != null,
 )
 
 /** Retains account-scoped catalog state across tab switches, without loading local files from the network. */
@@ -53,15 +74,21 @@ internal fun rememberCloudFilesState(
     active: Boolean,
     repository: MediaRepository? = null,
     deviceItems: List<MediaItem> = emptyList(),
+    loadOriginals: suspend (CloudBackup, String) -> List<CloudOriginal> = CloudBackup::listOriginals,
 ): CloudFilesUiState {
     if (connection == null) return CloudFilesUiState()
     val identity by connection.session.account.collectAsStateWithLifecycle()
     val uid = identity?.uid
     val status by connection.session.status.collectAsStateWithLifecycle()
     val configuredBackup = connection.backupAvailability
-    val observation = configuredBackup?.collectAsStateWithLifecycle()?.value
-    val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == uid }
-    val waitingForAccess = uid != null && configuredBackup != null && observation?.uid != uid && connection.billing != null
+    val observation = configuredBackup?.collectAsStateWithLifecycle()?.value?.takeIf { it.uid == uid }
+    val waitingForAccess = uid != null && configuredBackup != null && observation == null && connection.billing != null
+    val backup = connection.backup.takeUnless { waitingForAccess }
+    val accessIssue = observation?.checkFailure?.let(::cloudCatalogIssue)?.takeUnless {
+        // The development server rejects accounts outside the pilot before returning a plan.
+        !connection.usesProductionBackupPlan && it == CloudCatalogIssue.ACCOUNT_RESTRICTED &&
+            observation?.mayReadCatalog != true
+    }
     var accessCheckWaited by remember(connection, uid, waitingForAccess) { mutableStateOf(false) }
     LaunchedEffect(connection, uid, waitingForAccess) {
         if (waitingForAccess) {
@@ -75,6 +102,7 @@ internal fun rememberCloudFilesState(
         uid == null && (connection.billing != null || backup != null) -> DetailCloudAccess.SIGN_IN
         uid != null && backup?.accessFor(uid)?.allowsManualUpload(System.currentTimeMillis()) == true ->
             DetailCloudAccess.READY
+        accessIssue != null -> DetailCloudAccess.CHECK_ACCESS
         waitingForAccess -> if (accessCheckWaited) DetailCloudAccess.CHECK_ACCESS else DetailCloudAccess.CHECKING
         uid != null && connection.billing != null -> DetailCloudAccess.PLAN_REQUIRED
         else -> DetailCloudAccess.UNAVAILABLE
@@ -82,12 +110,33 @@ internal fun rememberCloudFilesState(
     val accountLabel = identity?.transferAccountLabel
     val detailNotice = status.displayText(uid != null)
         ?: "클라우드 이용 권한을 아직 확인하지 못했습니다.".takeIf { detailAccess == DetailCloudAccess.CHECK_ACCESS }
-    if (backup == null) return CloudFilesUiState(
-        detailAccess = detailAccess, accountEmail = accountLabel, detailNotice = detailNotice,
-    )
-    val namespace = observation?.access?.namespace
+    val namespace = uid?.let { backup?.accessFor(it)?.namespace }
+    if (backup == null || observation?.mayReadCatalog == false) {
+        var retryAccess by remember(connection, uid) { mutableStateOf(false) }
+        LaunchedEffect(connection, uid, active, retryAccess) {
+            if (!retryAccess || uid == null) return@LaunchedEffect
+            try {
+                if (active) connection.refreshBackupAccess(uid)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The access observation carries this check's failure.
+            } finally {
+                retryAccess = false
+            }
+        }
+        LaunchedEffect(uid) { CloudPhotoThumbnailStore.activate(null) }
+        return CloudFilesUiState(
+            enabled = configuredBackup != null || backup != null,
+            accountUid = uid,
+            loading = retryAccess || waitingForAccess,
+            catalogIssue = accessIssue,
+            retry = { retryAccess = true },
+            detailAccess = detailAccess, accountEmail = accountLabel, detailNotice = detailNotice,
+            mayReadCatalog = observation?.mayReadCatalog == true,
+        )
+    }
     val network = rememberCloudNetworkStatus(enabled = true)
-    LaunchedEffect(uid, namespace) { CloudPhotoThumbnailStore.activate(uid) }
     val revision by backup.catalogRevision.collectAsStateWithLifecycle()
     val recentUpload by backup.recentVerifiedUpload.collectAsStateWithLifecycle()
     var retryKey by remember(uid, namespace) { mutableIntStateOf(0) }
@@ -101,31 +150,43 @@ internal fun rememberCloudFilesState(
     }
     var snapshot by remember(uid, backup, namespace) { mutableStateOf<CloudGallerySnapshot?>(null) }
     var loading by remember(uid, backup, namespace) { mutableStateOf(false) }
-    var failed by remember(uid, backup, namespace) { mutableStateOf(false) }
+    var catalogIssue by remember(uid, backup, namespace) { mutableStateOf<CloudCatalogIssue?>(null) }
     var lastAttempt by remember(uid, backup, namespace) { mutableStateOf<Pair<Long, Int>?>(null) }
 
     LaunchedEffect(uid, backup, namespace, active, revision, retryKey, network.online) {
+        if (!active && catalogIssue != null) lastAttempt = null
         if (!active || uid == null || !network.online ||
             lastAttempt == (revision to retryKey)
         ) return@LaunchedEffect
         loading = true
-        failed = false
         try {
-            val originals = backup.listOriginals(uid)
+            val originals = loadOriginals(backup, uid)
+            currentCoroutineContext().ensureActive()
             if (connection.session.account.value?.uid == uid) {
                 snapshot = CloudGallerySnapshot(uid, originals)
+                catalogIssue = null
                 lastAttempt = revision to retryKey
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            currentCoroutineContext().ensureActive()
             if (connection.session.account.value?.uid == uid) {
-                failed = true
+                val issue = cloudCatalogIssue(error)
+                if (issue.blocksCachedCatalog) {
+                    snapshot = null
+                    CloudPhotoThumbnailStore.activate(null)
+                }
+                catalogIssue = issue
                 lastAttempt = revision to retryKey
             }
         } finally {
             loading = false
         }
+    }
+
+    LaunchedEffect(uid, namespace, catalogIssue) {
+        if (catalogIssue?.blocksCachedCatalog != true) CloudPhotoThumbnailStore.activate(uid)
     }
 
     // SHA-256 comparison is bounded: one short batch starts automatically.
@@ -151,11 +212,11 @@ internal fun rememberCloudFilesState(
     var matchChecking by remember(uid, namespace, snapshot, deviceItems) { mutableStateOf(false) }
     var matchFailed by remember(uid, namespace, snapshot, deviceItems) { mutableStateOf(false) }
 
-    LaunchedEffect(uid, namespace, active, snapshot, candidates, requestedBatches, analyzer, network.online) {
+    LaunchedEffect(uid, namespace, active, snapshot, candidates, requestedBatches, analyzer, network.online, catalogIssue, loading) {
         val owner = uid ?: return@LaunchedEffect
         val catalog = snapshot?.takeIf { it.accountUid == owner } ?: return@LaunchedEffect
         val verifier = analyzer ?: return@LaunchedEffect
-        if (!active || !network.online || failed || completedBatches >= requestedBatches ||
+        if (!active || !network.online || catalogIssue != null || loading || completedBatches >= requestedBatches ||
             matchChecked >= candidates.size
         ) return@LaunchedEffect
 
@@ -168,7 +229,8 @@ internal fun rememberCloudFilesState(
                 val matches = verifier.matchGalleryBatch(batch, catalog.originals, owner) {
                     connection.session.account.value?.uid == owner
                 }
-                if (connection.session.account.value?.uid != owner) break
+                currentCoroutineContext().ensureActive()
+                if (connection.session.account.value?.uid != owner || snapshot !== catalog) break
                 verifiedMatches = (verifiedMatches + matches)
                     .distinctBy { it.localUri }
                 matchChecked += batch.size
@@ -183,33 +245,40 @@ internal fun rememberCloudFilesState(
         }
     }
 
+    val visibleCatalogIssue = if (active && uid != null && namespace != null && !network.online &&
+        catalogIssue?.blocksCachedCatalog != true) CloudCatalogIssue.CONNECTION else catalogIssue
     return CloudFilesUiState(
         enabled = true,
         accountUid = uid,
         backup = backup,
-        snapshot = snapshot?.takeIf { it.accountUid == uid },
-        loading = uid != null && network.online && (loading || (active && lastAttempt == null)),
-        failed = failed,
+        snapshot = snapshot?.takeIf { it.accountUid == uid && catalogIssue?.blocksCachedCatalog != true },
+        loading = uid != null && network.online && (loading || (active && lastAttempt != (revision to retryKey))),
+        catalogIssue = visibleCatalogIssue,
         online = network.online,
         unmetered = network.unmetered,
         cachedCatalog = uid != null && snapshot?.accountUid == uid &&
-            (!network.online || failed),
+            (!network.online || catalogIssue?.blocksCachedCatalog == false),
         retry = { retryKey++ },
         verifiedMatches = verifiedMatches.takeIf {
-            uid != null && snapshot?.accountUid == uid
+            uid != null && snapshot?.accountUid == uid && catalogIssue?.blocksCachedCatalog != true
         }.orEmpty(),
         matchChecking = uid != null && matchChecking,
         matchChecked = matchChecked,
         matchTotal = candidates.size,
         matchFailed = matchFailed,
         matchNext = {
-            if (!matchChecking && matchChecked < candidates.size) {
+            if (catalogIssue == null && network.online && !matchChecking && matchChecked < candidates.size) {
                 matchFailed = false
                 requestedBatches++
             }
         },
-        detailAccess = detailAccess,
+        detailAccess = if (catalogIssue?.blocksCachedCatalog == true) DetailCloudAccess.CHECK_ACCESS else detailAccess,
         accountEmail = accountLabel,
-        detailNotice = detailNotice,
+        detailNotice = detailNotice ?: when (catalogIssue) {
+            CloudCatalogIssue.ACCOUNT_RESTRICTED -> "현재 계정은 클라우드 보관함을 이용할 수 없습니다."
+            CloudCatalogIssue.AUTH_REQUIRED -> "Google 계정 연결을 다시 확인해 주세요."
+            else -> null
+        },
+        mayReadCatalog = namespace != null,
     )
 }

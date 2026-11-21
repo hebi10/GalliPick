@@ -22,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
@@ -52,12 +53,19 @@ internal data class DuplicatesScreenActions(
 )
 
 @Composable
-internal fun DuplicatesScreen(state: AppUiState, vm: AppViewModel, trash: (List<MediaItem>) -> Unit, open: (MediaItem) -> Unit, requestAccess: () -> Unit) {
+internal fun DuplicatesScreen(
+    state: AppUiState,
+    vm: AppViewModel,
+    trash: (List<MediaItem>) -> Unit,
+    open: (MediaItem) -> Unit,
+    requestAccess: () -> Unit,
+    openPermissionSettings: (() -> Unit)? = null,
+) {
     DuplicatesScreenContent(state, trash, open, requestAccess, DuplicatesScreenActions(
         vm::startScan, vm::pauseScan, vm::resumeScan, vm::selectRecommendedDuplicates,
         vm::toggleDuplicateCandidateSelection, vm::clearSelection, vm::chooseDuplicateKeeper,
         { item, protected -> vm.setProtected(item, protected) }, vm::refresh, vm::selectDuplicateGroupCandidates,
-    ), showTitle = false)
+    ), showTitle = false, openPermissionSettings = openPermissionSettings)
 }
 
 @Composable
@@ -69,6 +77,7 @@ internal fun DuplicatesScreenContent(
     requestAccess: () -> Unit,
     actions: DuplicatesScreenActions,
     showTitle: Boolean = true,
+    openPermissionSettings: (() -> Unit)? = null,
 ) {
     var compareHash by rememberSaveable { mutableStateOf<String?>(null) }
     var initialCompareUri by rememberSaveable { mutableStateOf<String?>(null) }
@@ -86,6 +95,7 @@ internal fun DuplicatesScreenContent(
         }.collect { hash -> if (hash != null) lastVisibleGroup = hash }
     }
     val availability = state.catalogAvailability
+    val accessAction = openPermissionSettings ?: requestAccess
     val catalogVisible = availability == MediaCatalogAvailability.READY
     LaunchedEffect(catalogVisible) {
         if (!catalogVisible) groupToRestore = lastVisibleGroup
@@ -135,7 +145,8 @@ internal fun DuplicatesScreenContent(
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val shortResults = maxHeight < 420.dp && maxWidth >= 720.dp && groups.isNotEmpty()
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val shortResults = maxHeight < 420.dp && maxWidth >= 720.dp * fontScale && groups.isNotEmpty()
         LaunchedEffect(catalogVisible, groups, shortResults) {
             val requestedHash = groupToRestore
             if (catalogVisible && requestedHash != null && groups.isNotEmpty()) {
@@ -156,7 +167,7 @@ internal fun DuplicatesScreenContent(
                     if (shortResults) {
                         item("intro", span = { GridItemSpan(maxLineSpan) }) {
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                if (state.access == MediaAccess.PARTIAL) DuplicateScopeNotice(requestAccess)
+                                if (state.access == MediaAccess.PARTIAL) DuplicateScopeNotice(accessAction, openPermissionSettings != null)
                                 CompactDuplicateSummary(state.scan, groups.size, candidates, liveItems.isNotEmpty(), actions, showTitle)
                             }
                         }
@@ -164,7 +175,7 @@ internal fun DuplicatesScreenContent(
                         item("intro", span = { GridItemSpan(maxLineSpan) }) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 DuplicateIntro(showTitle)
-                                if (state.access == MediaAccess.PARTIAL) DuplicateScopeNotice(requestAccess)
+                                if (state.access == MediaAccess.PARTIAL) DuplicateScopeNotice(accessAction, openPermissionSettings != null)
                             }
                         }
                         item("scan", span = { GridItemSpan(maxLineSpan) }) { DuplicateScanSummary(state.scan, liveItems.isNotEmpty(), actions) }
@@ -181,7 +192,7 @@ internal fun DuplicatesScreenContent(
                                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Column(Modifier.weight(1f).widthIn(min = 130.dp).align(Alignment.CenterVertically)) {
                                         Text("현재 중복 ${groups.size}묶음 · 후보 ${candidates.size}개", style = MaterialTheme.typography.titleSmall)
-                                        Text(bytesLabel(duplicateBytes(candidates)), style = MaterialTheme.typography.bodySmall, color = Muted)
+                                        Text("정리 후보 용량 ${bytesLabel(duplicateBytes(candidates))}", style = MaterialTheme.typography.bodySmall, color = Muted)
                                     }
                                     ActionButton(duplicateSelectionLabel(candidates.size), actions.selectRecommended,
                                         Modifier.align(Alignment.CenterVertically).semantics { contentDescription = "중복 정리 후보 선택" }, enabled = candidates.isNotEmpty())
@@ -220,7 +231,10 @@ internal fun DuplicatesScreenContent(
                     when (availability) {
                         MediaCatalogAvailability.PERMISSION_REQUIRED -> EmptyState(
                             "미디어 접근이 필요합니다", "접근을 허용한 사진과 동영상에서 중복 파일을 찾습니다.", Icons.Outlined.CopyAll,
-                            action = { ActionButton("접근 허용", requestAccess, Modifier.fillMaxWidth(), filled = true) },
+                            action = { ActionButton(
+                                if (openPermissionSettings == null) "접근 허용" else "앱 권한 설정",
+                                accessAction, Modifier.fillMaxWidth(), filled = true,
+                            ) },
                             scene = GalliScene.SEARCH,
                         )
                         MediaCatalogAvailability.ERROR -> EmptyState(
@@ -297,6 +311,8 @@ private fun DuplicateGroupCard(
                     "선택 ${selectedInGroup}개", style = MaterialTheme.typography.labelSmall, color = Primary,
                 )
             }
+            ActionButton("비교", { onCompare(null) }, Modifier.align(Alignment.CenterVertically)
+                .semantics { contentDescription = "중복 묶음 ${index + 1} 비교" }, filled = true)
             ActionButton(
                 duplicateGroupSelectionLabel(roles.candidates.size, selectedInGroup, totalSelected),
                 onSelectGroup,
@@ -304,8 +320,6 @@ private fun DuplicateGroupCard(
                     .semantics { contentDescription = "중복 묶음 ${index + 1} 후보 선택" },
                 enabled = selectedInGroup < roles.candidates.size && totalSelected < SelectionPolicy.MAX_SELECTION_SIZE,
             )
-            TextAction("비교", { onCompare(null) }, Modifier.align(Alignment.CenterVertically)
-                .semantics { contentDescription = "중복 묶음 ${index + 1} 비교" })
         }
         LazyRow(
             modifier = Modifier.fillMaxWidth().semantics {
@@ -397,17 +411,17 @@ private fun DuplicateIntro(showTitle: Boolean, showDescription: Boolean = true) 
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         if (showTitle) Text("중복 정리", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge)
         if (showDescription) Text(
-            "접근을 허용한 사진과 동영상에서 중복 파일을 찾습니다. 남길 파일을 확인하고 정리 후보만 선택하세요.",
-            style = MaterialTheme.typography.bodySmall, color = Muted,
+            "내용이 같은 사진과 동영상을 찾습니다. 비교한 뒤 정리할 사본을 고르세요.",
+            style = MaterialTheme.typography.bodyMedium, color = Muted,
         )
     }
 }
 
 @Composable
-private fun DuplicateScopeNotice(requestAccess: () -> Unit) {
+private fun DuplicateScopeNotice(accessAction: () -> Unit, useSettings: Boolean) {
     GalliInlineNotice(
         "접근을 허용한 사진·동영상만 검사하고 결과에 표시합니다.",
-        "접근 범위 변경", requestAccess, Icons.Outlined.PhotoLibrary,
+        if (useSettings) "앱 권한 설정" else "접근 범위 변경", accessAction, Icons.Outlined.PhotoLibrary,
     )
 }
 
@@ -426,7 +440,7 @@ private fun CompactDuplicateSummary(scan: ScanState, groupCount: Int, candidates
                 }
                 val status = if (scan.phase == ScanPhase.COMPLETE) completedScanLabel(scan)
                     else scanTitle(scan) + if (scan.total > 0) " · ${scan.completed} / ${scan.total}개" else ""
-                Text("${bytesLabel(duplicateBytes(candidates))} · $status", style = MaterialTheme.typography.bodySmall, color = Muted,
+                Text("정리 후보 용량 ${bytesLabel(duplicateBytes(candidates))} · $status", style = MaterialTheme.typography.bodySmall, color = Muted,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             ActionButton(duplicateSelectionLabel(candidates.size), actions.selectRecommended,
@@ -493,7 +507,7 @@ private fun DuplicateCompleteSummary(scan: ScanState, canScan: Boolean, startSca
 }
 
 private fun completedScanLabel(scan: ScanState, previous: Boolean = false): String =
-    "${if (previous) "이전" else "최근"} 검사 기록 · ${scan.completed}개 확인" +
+    "${if (previous) "이전" else "최근"} 검사 기록 · 해시를 확인한 파일 ${scan.completed}개" +
         if (scan.skipped > 0) " · ${scan.skipped}개 건너뜀" else ""
 
 @Composable

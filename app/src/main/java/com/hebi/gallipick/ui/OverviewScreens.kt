@@ -58,12 +58,17 @@ internal fun HomeScreen(
     cleanup: () -> Unit,
     resumeReview: (() -> Unit)? = null,
     openAdRemoval: (() -> Unit)? = null,
+    openHistory: (() -> Unit)? = null,
+    openTrash: (() -> Unit)? = null,
+    openPermissionSettings: (() -> Unit)? = null,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
         val tabletLayout = maxWidth >= 940.dp * fontScale
         val wide = maxWidth >= 720.dp * fontScale
         val twoColumns = maxWidth >= 330.dp * fontScale
+        val recent = remember(state.cleanupHistory) { state.cleanupHistory.maxByOrNull { it.occurredAtMs } }
+        val prioritizeStorage = !wide && recent != null && state.access != MediaAccess.NONE
         Column(
             Modifier.align(Alignment.TopCenter).fillMaxHeight()
                 .widthIn(max = 1220.dp).fillMaxWidth()
@@ -71,7 +76,17 @@ internal fun HomeScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            if (state.access == MediaAccess.NONE) HomePermissionNotice(requestAccess)
+            if (state.access == MediaAccess.NONE) HomePermissionNotice(requestAccess, openPermissionSettings)
+            if (prioritizeStorage) HomeStorageSummary(state)
+            if (recent != null && openHistory != null) {
+                val action = if (recent.action == CleanupHistoryAction.RESTORE) "복원" else "휴지통 이동"
+                CleanupNavigationRow("최근 정리 내역", "$action ${recent.confirmedCount}개 · ${dateLabel(recent.occurredAtMs)}",
+                    Icons.Outlined.History, "최근 정리 기록 보기", openHistory)
+            }
+            if (state.trashed.isNotEmpty() && openTrash != null) {
+                CleanupNavigationRow("휴지통·복원", "접근 가능한 파일 ${state.trashed.size}개",
+                    Icons.Outlined.RestoreFromTrash, "홈에서 휴지통 열기", openTrash)
+            }
             val reviewGroups = state.similarGroups + state.burstGroups
             if (resumeReview != null && state.access != MediaAccess.NONE &&
                 PhotoReviewInboxPolicy.pending(reviewGroups, state.reviewEntries, state.protectedFolders)) {
@@ -119,7 +134,7 @@ internal fun HomeScreen(
                         HomeQuickActions(browse, duplicates, Modifier.weight(1f), twoColumns = true)
                     }
                 } else {
-                    HomeStorageSummary(state)
+                    if (!prioritizeStorage) HomeStorageSummary(state)
                     HomeQuickActions(browse, duplicates, twoColumns = twoColumns)
                 }
             }
@@ -128,7 +143,7 @@ internal fun HomeScreen(
 }
 
 @Composable
-private fun HomePermissionNotice(requestAccess: () -> Unit) {
+private fun HomePermissionNotice(requestAccess: () -> Unit, openPermissionSettings: (() -> Unit)?) {
     GalliCard(Modifier.fillMaxWidth()) {
         Text("사진·동영상 접근이 필요합니다", style = MaterialTheme.typography.titleSmall)
         Text(
@@ -136,7 +151,8 @@ private fun HomePermissionNotice(requestAccess: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = Muted,
         )
-        ActionButton("사진·동영상 선택", requestAccess, Modifier.fillMaxWidth(), filled = true)
+        ActionButton(if (openPermissionSettings == null) "사진·동영상 선택" else "앱 권한 설정",
+            openPermissionSettings ?: requestAccess, Modifier.fillMaxWidth(), filled = true)
     }
 }
 
@@ -163,7 +179,7 @@ private fun HomeWelcome(cleanup: () -> Unit) {
                 }
                 Text("정리 도구에서 남길 파일을 직접 고르세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
                 ActionButton(
-                    "정리 시작하기", cleanup, Modifier.fillMaxWidth(),
+                    "정리 도구 보기", cleanup, Modifier.fillMaxWidth(),
                     filled = true, icon = Icons.Outlined.ArrowForward,
                 )
             }
@@ -186,7 +202,7 @@ private fun HomeWelcome(cleanup: () -> Unit) {
                     )
                     Text("정리 도구에서 남길 파일을 직접 고르세요.", style = MaterialTheme.typography.bodySmall, color = Muted)
                     ActionButton(
-                        "정리 시작하기", cleanup, Modifier.widthIn(max = 260.dp).fillMaxWidth(),
+                        "정리 도구 보기", cleanup, Modifier.widthIn(max = 260.dp).fillMaxWidth(),
                         filled = true, icon = Icons.Outlined.ArrowForward,
                     )
                 }
@@ -205,6 +221,8 @@ private fun HomeStorageSummary(
     val used = (total - state.freeStorageBytes).coerceIn(0L, total)
     val usedFraction = if (total > 0L) (used.toFloat() / total).coerceIn(0f, 1f) else 0f
     val usedPercent = (usedFraction * 100f).toInt()
+    val mediaCountReady = state.access != MediaAccess.NONE && state.catalogError == null && !state.loading &&
+        (state.catalogReady || state.items.isNotEmpty())
     Column(
         modifier.galliCardSurface(AppSurface)
             .padding(14.dp),
@@ -218,10 +236,10 @@ private fun HomeStorageSummary(
                 Modifier.size(46.dp).background(Panel, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                GalliIcon(Icons.Outlined.Storage, null, Modifier.size(28.dp), tint = Primary)
+                GalliIcon(Icons.Outlined.Storage, null, Modifier.size(24.dp), tint = Primary)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("저장공간 사용량", style = MaterialTheme.typography.titleSmall)
+                Text("기기 저장공간", style = MaterialTheme.typography.titleSmall)
                 if (total > 0L) {
                     Text(
                         bytesLabel(used) + " / " + bytesLabel(total) + " (" + usedPercent + "%)",
@@ -241,15 +259,17 @@ private fun HomeStorageSummary(
             }
         }
         Text(
-            when (state.access) {
-                MediaAccess.NONE -> "접근을 허용하면 관리할 파일을 확인할 수 있습니다."
-                MediaAccess.PARTIAL -> "선택해 허용한 미디어 " + state.items.size + "개"
+            when {
+                state.access == MediaAccess.NONE -> "접근을 허용하면 관리할 파일을 확인할 수 있습니다."
+                state.catalogError != null -> "기기 파일 수를 확인하지 못했습니다."
+                !mediaCountReady -> "사진·동영상 목록 확인 중"
+                state.access == MediaAccess.PARTIAL -> "선택해 허용한 미디어 " + state.items.size + "개"
                 else -> "접근 가능한 미디어 " + state.items.size + "개"
             },
             style = MaterialTheme.typography.bodySmall,
             color = Muted,
         )
-        if (showBreakdown && state.access != MediaAccess.NONE) {
+        if (showBreakdown && mediaCountReady) {
             val photoCount = remember(state.items) { state.items.count { it.kind == MediaKind.PHOTO } }
             val videoCount = remember(state.items) { state.items.count { it.kind == MediaKind.VIDEO } }
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -386,10 +406,19 @@ internal fun CleanupScreen(
     onOpenHistory: (() -> Unit)? = null,
     onOpenReviewInbox: (() -> Unit)? = null,
     onOpenTrash: (() -> Unit)? = null,
+    onRequestAccess: (() -> Unit)? = null,
+    onOpenPermissionSettings: (() -> Unit)? = null,
+    onRetryCatalog: (() -> Unit)? = null,
     browse: (MediaFilter) -> Unit,
 ) {
-    val suggestions = remember(state.items) { cleanupSuggestions(state.items) }
-    val populated = suggestions.filter { it.items.isNotEmpty() }
+    val catalogIssue = when {
+        state.access == MediaAccess.NONE -> "사진·동영상 접근이 필요합니다."
+        state.catalogError != null -> state.catalogError
+        state.loading || (!state.catalogReady && state.items.isEmpty()) -> "정리할 수 있는 기기 파일을 확인하고 있습니다."
+        else -> null
+    }
+    val accessibleItems = if (catalogIssue == null) state.items else emptyList()
+    val suggestions = remember(accessibleItems) { cleanupSuggestions(accessibleItems) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
         val wide = maxWidth >= 700.dp * fontScale
@@ -407,14 +436,34 @@ internal fun CleanupScreen(
                     GalliIllustration(GalliScene.ORGANIZE, Modifier.size(88.dp))
                 }
             }
+            if (catalogIssue != null) {
+                GalliCard(Modifier.fillMaxWidth()) {
+                    Text(catalogIssue, style = MaterialTheme.typography.bodyMedium)
+                    val action = when {
+                        state.access == MediaAccess.NONE && onOpenPermissionSettings != null -> "앱 권한 설정" to onOpenPermissionSettings
+                        state.access == MediaAccess.NONE && onRequestAccess != null -> "접근 허용" to onRequestAccess
+                        state.catalogError != null && onRetryCatalog != null -> "다시 시도" to onRetryCatalog
+                        else -> null
+                    }
+                    action?.let { (label, open) -> ActionButton(label, open, Modifier.fillMaxWidth(), filled = true) }
+                }
+            } else if (state.access == MediaAccess.PARTIAL) {
+                GalliCard(Modifier.fillMaxWidth()) {
+                    Text("허용한 사진과 동영상에서 정리 후보를 찾습니다.",
+                        style = MaterialTheme.typography.bodyMedium, color = Muted)
+                    (onOpenPermissionSettings ?: onRequestAccess)?.let { changeAccess ->
+                        TextAction(if (onOpenPermissionSettings == null) "접근 변경" else "앱 권한 설정", changeAccess)
+                    }
+                }
+            }
             if (onOpenDuplicates != null) {
                 Text(
                     "중복 파일", style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.semantics { heading() },
                 )
                 CleanupNavigationRow(
-                    title = DUPLICATE_MEDIA_SEARCH_TITLE,
-                    subtitle = "파일 내용이 완전히 같은 사진과 동영상을 묶어요.",
+                    title = "같은 파일 찾기",
+                    subtitle = "내용이 같은 사진과 동영상을 묶습니다.",
                     icon = Icons.Outlined.CopyAll,
                     description = "사진·동영상 중복 검사 열기",
                     open = onOpenDuplicates,
@@ -429,7 +478,7 @@ internal fun CleanupScreen(
             if (onOpenPhotoAnalysis != null) {
                 CleanupNavigationRow(
                     title = "비슷한 사진 찾기",
-                    subtitle = "구도나 장면이 비슷한 사진을 후보로 보여줘요.",
+                    subtitle = "장면이 비슷한 사진을 찾습니다.",
                     icon = Icons.Outlined.Collections,
                     description = "유사 사진 분석 열기",
                     open = onOpenPhotoAnalysis,
@@ -444,25 +493,11 @@ internal fun CleanupScreen(
                     open = onOpenReviewInbox,
                 )
             }
-            Text(
-                "종류별 정리", style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.semantics { heading() },
-            )
-            suggestions.forEach { suggestion ->
-                CleanupSuggestionRow(suggestion) { browse(suggestion.filter) }
-            }
-            if (onOpenFolderStorage != null) {
-                CleanupNavigationRow(
-                    title = "폴더별 용량 분석",
-                    subtitle = "접근 가능한 사진·동영상의 폴더별 용량 확인",
-                    icon = Icons.Outlined.Folder,
-                    description = "폴더별 용량 분석 열기",
-                    open = onOpenFolderStorage,
-                )
+            if (onOpenHistory != null || onOpenTrash != null) {
+                Text("기록·복원", style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { heading() })
             }
             if (onOpenHistory != null) {
-                Text("정리 기록", style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.semantics { heading() })
                 CleanupNavigationRow(
                     title = "정리 기록 보기",
                     subtitle = "확인된 휴지통 이동·복원 내역 · ${state.cleanupHistory.size}건",
@@ -473,15 +508,25 @@ internal fun CleanupScreen(
             }
             if (onOpenTrash != null) {
                 CleanupNavigationRow(
-                    title = "휴지통에서 확인·복원",
+                    title = "휴지통·복원",
                     subtitle = "Android 휴지통에 보관된 원본을 확인해요.",
                     icon = Icons.Outlined.RestoreFromTrash,
                     description = "휴지통 확인 및 복원 열기",
                     open = onOpenTrash,
                 )
             }
-            if (populated.isEmpty()) {
-                Text("현재 확인된 정리 후보가 없습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
+            Text("종류별 정리", style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.semantics { heading() })
+            suggestions.forEach { suggestion ->
+                CleanupSuggestionRow(suggestion, catalogIssue == null) { browse(suggestion.filter) }
+            }
+            if (onOpenFolderStorage != null) {
+                CleanupNavigationRow("폴더별 용량 분석", "접근 가능한 사진·동영상의 폴더별 용량 확인",
+                    Icons.Outlined.Folder, "폴더별 용량 분석 열기", onOpenFolderStorage)
+            }
+            if (catalogIssue == null && suggestions.none { it.items.any { item -> item.canTrash() } }) {
+                Text(if (state.access == MediaAccess.PARTIAL) "허용한 파일 중 정리 후보가 없습니다."
+                    else "현재 확인된 정리 후보가 없습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             Text(
                 "스크린샷·화면 녹화 후보는 폴더 및 파일명 기준입니다. 실제 내용을 확인해 주세요. 자동 삭제하지 않습니다.",
@@ -501,8 +546,7 @@ private fun CleanupNavigationRow(
 ) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 76.dp)
-            .clip(RoundedCornerShape(GalliUiMetrics.cardCorner))
-            .background(AppSurface)
+            .galliCardSurface(AppSurface)
             .semantics { role = Role.Button; contentDescription = description }
             .plainClick(action = open).padding(GalliUiMetrics.cardPadding),
         verticalAlignment = Alignment.CenterVertically,
@@ -512,10 +556,10 @@ private fun CleanupNavigationRow(
             Modifier.size(44.dp).background(Panel, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            GalliIcon(icon, null, Modifier.size(26.dp), tint = Primary)
+            GalliIcon(icon, null, Modifier.size(24.dp), tint = Primary)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleSmall)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
         }
         GalliIcon(Icons.Outlined.ChevronRight, null, Modifier.size(22.dp))
@@ -523,11 +567,11 @@ private fun CleanupNavigationRow(
 }
 
 @Composable
-private fun CleanupSuggestionRow(suggestion: CleanupSuggestion, open: () -> Unit) {
+private fun CleanupSuggestionRow(suggestion: CleanupSuggestion, catalogReady: Boolean, open: () -> Unit) {
     val deletable = suggestion.items.filter { it.canTrash() }
     Row(
         Modifier.fillMaxWidth().heightIn(min = 76.dp)
-            .background(AppSurface, RoundedCornerShape(14.dp))
+            .galliCardSurface(AppSurface)
             .semantics { role = Role.Button }
             .plainClick(action = open).padding(14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -535,8 +579,8 @@ private fun CleanupSuggestionRow(suggestion: CleanupSuggestion, open: () -> Unit
     ) {
         CleanupCategoryIcon(suggestion, Modifier.size(44.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(suggestion.title, style = MaterialTheme.typography.titleMedium)
-            Text(
+            Text(suggestion.title, style = MaterialTheme.typography.titleSmall)
+            if (catalogReady) Text(
                 if (deletable.isEmpty()) "현재 선택 가능한 후보 없음"
                 else "${deletable.size}개 · ${bytesLabel(deletable.sumOf { it.sizeBytes })}",
                 style = MaterialTheme.typography.bodySmall, color = Muted,
@@ -615,6 +659,21 @@ internal fun SettingsScreen(
     cloudConnection: CloudAccountConnection? = null,
 ) {
     val uriHandler = LocalUriHandler.current
+    val cloudAccount = cloudConnection?.session?.account?.collectAsStateWithLifecycle()?.value
+    val settingsScroll = rememberScrollState()
+    var showSecretPasswordSettings by remember { mutableStateOf(false) }
+    var secretPasswordRegistered by remember(cloudAccount?.uid) { mutableStateOf(false) }
+    if (showSecretPasswordSettings) {
+        SecretCloudPasswordSettings(
+            connection = cloudConnection,
+            onClose = { showSecretPasswordSettings = false },
+            onRegistered = {
+                secretPasswordRegistered = true
+                showSecretPasswordSettings = false
+            },
+        )
+        return
+    }
     var confirmClear by remember { mutableStateOf(false) }
     var confirmClearOcr by remember { mutableStateOf(false) }
     var showProtectedFolders by remember { mutableStateOf(false) }
@@ -628,7 +687,7 @@ internal fun SettingsScreen(
         val gridWidth = (maxWidth - 24.dp).coerceAtLeast(0.dp)
         Column(
             Modifier.fillMaxHeight().widthIn(max = 660.dp).fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(settingsScroll)
                 .padding(horizontal = if (compact) 12.dp else 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
         ) {
@@ -644,13 +703,13 @@ internal fun SettingsScreen(
                         if (adRemoval == AdRemovalStatus.VERIFIED_AD_FREE) "구독 관리" else "광고 제거",
                         openAdRemoval,
                         Modifier.fillMaxWidth(),
-                        icon = Icons.Outlined.Cloud,
+                        icon = Icons.Outlined.CreditCard,
                     )
                 }
             }
             SettingsGroupTitle("화면")
             SettingsSection("파일 보기") {
-                Text("사진 보기 방식", style = MaterialTheme.typography.bodyMedium)
+                Text("파일 보기 방식", style = MaterialTheme.typography.bodyMedium)
                 FlowRow(
                     Modifier.fillMaxWidth().selectableGroup(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -666,30 +725,30 @@ internal fun SettingsScreen(
                         label = { Text("목록") },
                     )
                 }
-                Text("한 줄에 표시할 사진 수", style = MaterialTheme.typography.bodyMedium)
-                FlowRow(
-                    Modifier.fillMaxWidth().selectableGroup(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    listOf<Int?>(null, 3, 4, 5, 6).forEach { columns ->
-                        FilterChip(
-                            selected = state.fileGridColumns == columns,
-                            onClick = { vm.setFileGridColumns(columns) },
-                            label = { Text(columns?.let { "${it}개" } ?: "자동") },
-                        )
+                if (!photoListView) {
+                    Text("한 줄에 표시할 파일 수", style = MaterialTheme.typography.bodyMedium)
+                    FlowRow(
+                        Modifier.fillMaxWidth().selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        listOf<Int?>(null, 3, 4, 5, 6).forEach { columns ->
+                            FilterChip(
+                                selected = state.fileGridColumns == columns,
+                                onClick = { vm.setFileGridColumns(columns) },
+                                label = { Text(columns?.let { "${it}개" } ?: "자동") },
+                            )
+                        }
                     }
-                }
-                Text(
-                    "작은 화면에서는 표시 개수를 줄여 터치 영역을 확보합니다.",
-                    color = Muted, style = MaterialTheme.typography.bodySmall,
-                )
-                val requested = state.fileGridColumns
-                if (!photoListView && requested != null) {
-                    val applied = resolvedFileGridColumns(requested, gridWidth, fontScale, tablet = gridWidth >= 720.dp)
-                    if (applied < requested) {
-                        Text("현재 화면에서는 한 줄에 ${applied}개가 표시됩니다.",
-                            color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text("작은 화면에서는 표시 개수를 줄여 터치 영역을 확보합니다.",
+                        color = Muted, style = MaterialTheme.typography.bodySmall)
+                    val requested = state.fileGridColumns
+                    if (requested != null) {
+                        val applied = resolvedFileGridColumns(requested, gridWidth, fontScale, tablet = gridWidth >= 720.dp)
+                        if (applied < requested) {
+                            Text("현재 화면에서는 한 줄에 ${applied}개가 표시됩니다.",
+                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
             }
@@ -804,9 +863,13 @@ internal fun SettingsScreen(
                         modifier = Modifier.semantics { contentDescription = "시크릿 클라우드 표시" },
                     )
                 }
+                ActionButton("비밀번호 설정", {
+                    secretPasswordRegistered = false
+                    showSecretPasswordSettings = true
+                }, Modifier.fillMaxWidth())
+                if (secretPasswordRegistered) CloudStatusMessage("비밀번호를 설정했습니다")
             }
             if (cloudConnection != null) {
-                val cloudAccount by cloudConnection.session.account.collectAsStateWithLifecycle()
                 if (cloudAccount != null) {
                     SettingsSection("계정 관리") {
                         Text("GalliPick 클라우드 계정 및 연관 데이터 탈퇴를 요청할 수 있습니다.",

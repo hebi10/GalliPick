@@ -82,7 +82,7 @@ class AdaptiveOverviewTest {
                 }
             }
         }
-        compose.onNodeWithText("정리 시작하기").assertIsDisplayed()
+        compose.onNodeWithText("정리 도구 보기").assertIsDisplayed()
         compose.onNodeWithText("사진·동영상 중복 찾기").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("용량 큰 파일").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("오래된 파일").performScrollTo().assertIsDisplayed()
@@ -100,7 +100,7 @@ class AdaptiveOverviewTest {
             }
         }
         compose.onNodeWithText("사진과 영상을", substring = true).assertIsDisplayed()
-        compose.onNode(hasText("정리 시작하기") and hasClickAction())
+        compose.onNode(hasText("정리 도구 보기") and hasClickAction())
             .assertIsDisplayed().assertHeightIsAtLeast(48.dp).performClick()
         for (title in listOf("파일 둘러보기", "사진·동영상 중복 찾기", "용량 큰 파일", "오래된 파일")) {
             compose.onNode(hasText(title) and hasClickAction())
@@ -121,12 +121,12 @@ class AdaptiveOverviewTest {
             }
         }
         val wideAction = compose.onNodeWithText("사진·동영상 중복 찾기").fetchSemanticsNode().boundsInRoot
-        val wideStorage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
+        val wideStorage = compose.onNodeWithText("기기 저장공간").fetchSemanticsNode().boundsInRoot
         assertTrue("A wide home should place storage beside the quick grid", wideStorage.right <= wideAction.left)
 
         compose.runOnIdle { width.value = 360.dp }
         val narrowAction = compose.onNodeWithText("사진·동영상 중복 찾기").fetchSemanticsNode().boundsInRoot
-        val narrowStorage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
+        val narrowStorage = compose.onNodeWithText("기기 저장공간").fetchSemanticsNode().boundsInRoot
         assertTrue("A narrow home should show storage before the shortcut grid", narrowStorage.bottom < narrowAction.top)
     }
 
@@ -147,7 +147,7 @@ class AdaptiveOverviewTest {
             }
         }
         val welcome = compose.onNodeWithText("사진과 영상을", substring = true).fetchSemanticsNode().boundsInRoot
-        val storage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
+        val storage = compose.onNodeWithText("기기 저장공간").fetchSemanticsNode().boundsInRoot
         val shortcut = compose.onNode(hasText("파일 둘러보기") and hasClickAction())
             .fetchSemanticsNode().boundsInRoot
 
@@ -172,7 +172,7 @@ class AdaptiveOverviewTest {
             }
         }
         val welcome = compose.onNodeWithText("사진과 영상을", substring = true).fetchSemanticsNode().boundsInRoot
-        val storage = compose.onNodeWithText("저장공간 사용량").fetchSemanticsNode().boundsInRoot
+        val storage = compose.onNodeWithText("기기 저장공간").fetchSemanticsNode().boundsInRoot
         val shortcut = compose.onNode(hasText("사진·동영상 중복 찾기") and hasClickAction())
             .fetchSemanticsNode().boundsInRoot
         assertTrue("Medium screens still show the welcome panel before the content row", welcome.bottom < storage.top)
@@ -206,6 +206,18 @@ class AdaptiveOverviewTest {
         compose.runOnIdle { assertEquals(MediaKind.VIDEO, opened?.kind) }
     }
 
+    @Test fun cleanupOnlyShowsEmptyCandidatesAfterAReadableCatalogIsReady() {
+        val state = mutableStateOf(AppUiState(access = MediaAccess.FULL, loading = true))
+        compose.setContent { GalliPickTheme { CleanupScreen(state.value) {} } }
+        compose.onNodeWithText("현재 확인된 정리 후보가 없습니다.").assertDoesNotExist()
+
+        compose.runOnIdle { state.value = state.value.copy(loading = false, catalogError = "조회 실패") }
+        compose.onNodeWithText("현재 확인된 정리 후보가 없습니다.").assertDoesNotExist()
+
+        compose.runOnIdle { state.value = AppUiState(access = MediaAccess.PARTIAL, catalogReady = true) }
+        compose.onNodeWithText("허용한 파일 중 정리 후보가 없습니다.").assertExists()
+    }
+
     @Test fun cleanupStage9aUsesRealNavigationOnlyAndPreservesExistingActions() {
         var duplicateOpens = 0
         var folderOpens = 0
@@ -225,7 +237,7 @@ class AdaptiveOverviewTest {
         }
         compose.onNodeWithText("정리").assertExists()
         compose.onNodeWithText("중복 파일").assertExists()
-        compose.onNodeWithText("사진·동영상 중복 찾기").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("같은 파일 찾기").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("종류별 정리").assertExists()
         compose.onNodeWithText("사진 분석").assertDoesNotExist()
         compose.onNodeWithText("비슷한 사진 찾기").assertDoesNotExist()
@@ -333,7 +345,9 @@ class AdaptiveOverviewTest {
             }
         }
         compose.onNodeWithText("격자").assertIsSelected()
+        compose.onNodeWithText("한 줄에 표시할 파일 수").assertExists()
         compose.onNodeWithText("목록").assertIsNotSelected().performClick().assertIsSelected()
+        compose.onNodeWithText("한 줄에 표시할 파일 수").assertDoesNotExist()
         compose.onNodeWithText("격자").assertIsNotSelected().performClick().assertIsSelected()
         val themeChoice = compose.onNodeWithText("기기 설정 따르기").performScrollTo().assertIsDisplayed()
             .fetchSemanticsNode().boundsInRoot
@@ -346,6 +360,21 @@ class AdaptiveOverviewTest {
                 .fetchSemanticsNode().boundsInRoot
             assertTrue("$label should fill the settings card", button.width >= 560 * .6f - 1f)
         }
+    }
+
+    @Test fun secretPasswordEntryIsAvailableWhileCloudTabVisibilityIsOff() {
+        val vm = AppViewModel(compose.activity.application)
+        compose.setContent {
+            GalliPickTheme {
+                SettingsScreen(AppUiState(secretCloudVisible = false), vm, {}, {}, {})
+            }
+        }
+
+        val switch = compose.onNodeWithContentDescription("시크릿 클라우드 표시")
+        switch.performScrollTo().assertIsOff()
+        compose.onNodeWithText("비밀번호 설정").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("뒤로").assertIsDisplayed().performClick()
+        switch.assertIsOff()
     }
 
     private fun homeState() = AppUiState(access = MediaAccess.FULL, totalStorageBytes = 128L * 1024 * 1024 * 1024, freeStorageBytes = 32L * 1024 * 1024 * 1024)
