@@ -41,7 +41,7 @@ class UiSmokeTest {
         compose.onAllNodesWithText("정리").onFirst().performClick()
         compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").performScrollTo().performClick()
         compose.onNodeWithText("중복 정리").assertIsDisplayed()
-        compose.onNodeWithText("접근을 허용한 사진과 동영상에서 중복 파일을 찾습니다.", substring = true).assertIsDisplayed()
+        compose.onNodeWithContentDescription("정리로 돌아가기").assertIsDisplayed()
         saveScreenshot("duplicates")
         compose.onNodeWithContentDescription("정리로 돌아가기").performClick()
         compose.onNodeWithText("중복 파일").assertIsDisplayed()

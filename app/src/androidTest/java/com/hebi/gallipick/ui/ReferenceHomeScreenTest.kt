@@ -58,7 +58,7 @@ class ReferenceHomeScreenTest {
 
     @Test fun storageSummaryUsesDeviceUsageRatherThanMediaEstimate() {
         compose.setContent {
-            GalliPickTheme { HomeScreen(exampleState, {}, {}, {}, {}) }
+            GalliPickTheme { HomeScreen(exampleState.copy(catalogReady = true), {}, {}, {}, {}) }
         }
         compose.onNodeWithText("기기 저장공간").assertIsDisplayed()
         compose.onNodeWithText("96.0 GB / 128.0 GB (75%)").assertIsDisplayed()
