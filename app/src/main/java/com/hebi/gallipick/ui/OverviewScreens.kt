@@ -69,13 +69,7 @@ internal fun HomeScreen(
         val twoColumns = maxWidth >= 330.dp * fontScale
         val recent = remember(state.cleanupHistory) { state.cleanupHistory.maxByOrNull { it.occurredAtMs } }
         val prioritizeStorage = !wide && recent != null && state.access != MediaAccess.NONE
-        Column(
-            Modifier.align(Alignment.TopCenter).fillMaxHeight()
-                .widthIn(max = 1220.dp).fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
+        val statusCards: @Composable () -> Unit = {
             if (state.access == MediaAccess.NONE) HomePermissionNotice(requestAccess, openPermissionSettings)
             if (prioritizeStorage) HomeStorageSummary(state)
             if (recent != null && openHistory != null) {
@@ -98,6 +92,14 @@ internal fun HomeScreen(
                     open = resumeReview,
                 )
             }
+        }
+        Column(
+            Modifier.align(Alignment.TopCenter).fillMaxHeight()
+                .widthIn(max = 1220.dp).fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
             if (tabletLayout) {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -109,6 +111,7 @@ internal fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         HomeWelcome(cleanup)
+                        statusCards()
                         if (openAdRemoval != null) {
                             CloudActionGroup(CloudRoute.BILLING_SIGN_IN) { openAdRemoval() }
                         }
@@ -121,6 +124,7 @@ internal fun HomeScreen(
                 }
             } else {
                 HomeWelcome(cleanup)
+                statusCards()
                 if (openAdRemoval != null) {
                     CloudActionGroup(CloudRoute.BILLING_SIGN_IN) { openAdRemoval() }
                 }

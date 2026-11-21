@@ -72,6 +72,9 @@ class ReferenceHomeScreenTest {
                 HomeScreen(AppUiState(access = MediaAccess.NONE), { requests++ }, {}, {}, {})
             }
         }
+        val welcomeTop = compose.onNodeWithText("사진과 영상을", substring = true).fetchSemanticsNode().positionInRoot.y
+        val permissionTop = compose.onNodeWithText("사진·동영상 접근이 필요합니다").fetchSemanticsNode().positionInRoot.y
+        assertTrue("Home should show the welcome card first without media access", welcomeTop < permissionTop)
         compose.onNodeWithText("기기 저장공간 확인 중").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("사진·동영상 선택").performScrollTo().assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(1, requests) }
