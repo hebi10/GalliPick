@@ -4,8 +4,10 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -174,7 +176,7 @@ class ReferenceFilesFilterTest {
         compose.onNodeWithText("한 줄 3개 표시 · 설정 6개").assertIsDisplayed()
         firstTile.performTouchInput {
             down(center)
-            advanceEventTime(1_100)
+            advanceEventTime(1_400)
             up()
         }
         compose.onNodeWithText("파일 상세").assertIsDisplayed()
@@ -182,7 +184,11 @@ class ReferenceFilesFilterTest {
         checkbox.assertDoesNotExist()
         compose.onNode(hasText(protected.displayName) and hasClickAction())
             .assert(SemanticsMatcher.keyNotDefined(androidx.compose.ui.semantics.SemanticsActions.OnLongClick))
-        firstTile.performTouchInput { longClick(durationMillis = 2_100) }
+        firstTile.performTouchInput {
+            down(center)
+            move(delayMillis = 1_600)
+            up()
+        }
         checkbox.assertIsOn().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
         compose.onNodeWithContentDescription("sample-2.jpg 선택").assertIsOff()
         compose.onNodeWithContentDescription("sample-3.jpg 선택").assertDoesNotExist()
@@ -205,6 +211,122 @@ class ReferenceFilesFilterTest {
         firstTile.performTouchInput { click() }
         compose.onNodeWithText("파일 상세").assertIsDisplayed()
         compose.runOnIdle { assertTrue(selected.value.isEmpty()) }
+    }
+
+    @Test fun oneGridTouchCanSelectFilesWhileStillDown() = verifyContinuousFileSelection(listView = false)
+
+    @Test fun oneListTouchCanSelectFilesWhileStillDown() = verifyContinuousFileSelection(listView = true)
+
+    @Test fun swipingBeforeTheHoldThresholdScrollsWithoutSelecting() {
+        val items = (1L..60L).map(::media)
+        val selected = showFileDragFixture(items)
+        val root = compose.onRoot()
+        val origin = root.fetchSemanticsNode().boundsInRoot.topLeft
+        val list = compose.onNodeWithContentDescription("미디어 파일 목록").fetchSemanticsNode()
+        val scroll = list.config[SemanticsProperties.VerticalScrollAxisRange]
+        val before = compose.runOnIdle { scroll.value() }
+        val start = compose.onAllNodes(hasText("sample-", substring = true) and hasClickAction())
+            .fetchSemanticsNodes().map { it.boundsInRoot.intersect(list.boundsInRoot) }
+            .filterNot { it.isEmpty }.maxBy { it.center.y }.center - origin
+
+        root.performTouchInput {
+            swipe(start = start, end = Offset(start.x, list.boundsInRoot.top - origin.y + 4f), durationMillis = 220)
+        }
+
+        compose.runOnIdle {
+            assertTrue("A short swipe should scroll the file grid", scroll.value() > before)
+            assertTrue("A short swipe should leave selection empty", selected.value.isEmpty())
+        }
+        compose.onNodeWithText("파일 상세").assertDoesNotExist()
+    }
+
+    @Test fun draggingAtTheNewViewportEdgeScrollsAndAddsFiles() {
+        val items = (1L..60L).map(::media)
+        val selected = showFileDragFixture(items)
+        val root = compose.onRoot()
+        val origin = root.fetchSemanticsNode().boundsInRoot.topLeft
+        val list = compose.onNodeWithContentDescription("미디어 파일 목록")
+        val before = list.fetchSemanticsNode().boundsInRoot
+        val first = items.first()
+        val start = compose.onNode(hasText(first.displayName) and hasClickAction())
+            .fetchSemanticsNode().boundsInRoot.center - origin
+
+        root.performTouchInput {
+            down(start)
+            move(delayMillis = 1_600)
+        }
+        compose.onNodeWithContentDescription("${first.displayName} 선택").assertIsOn()
+        val activeList = list.fetchSemanticsNode()
+        assertTrue("The selection footer should shrink the file viewport", activeList.boundsInRoot.height < before.height)
+        val initiallyVisible = compose.onAllNodes(hasContentDescription(" 선택", substring = true) and hasClickAction())
+            .fetchSemanticsNodes().flatMap { it.config[SemanticsProperties.ContentDescription] }.toSet()
+        val scroll = activeList.config[SemanticsProperties.VerticalScrollAxisRange]
+        val beforeScroll = compose.runOnIdle { scroll.value() }
+
+        root.performTouchInput {
+            moveTo(pointerId = 0, position = Offset(start.x, activeList.boundsInRoot.bottom - origin.y - 2f))
+            move(delayMillis = 720)
+            up()
+        }
+
+        val afterScroll = compose.runOnIdle {
+            assertTrue("Holding at the edge should scroll the file grid", scroll.value() > beforeScroll)
+            assertTrue("Scrolling should add at least one previously unseen file", items.any {
+                it.uri in selected.value && "${it.displayName} 선택" !in initiallyVisible
+            })
+            scroll.value()
+        }
+        compose.mainClock.advanceTimeBy(240)
+        compose.runOnIdle { assertEquals(afterScroll, scroll.value(), 0f) }
+    }
+
+    private fun verifyContinuousFileSelection(listView: Boolean) {
+        val first = media(1)
+        val protected = media(2).copy(isProtected = true)
+        val third = media(3)
+        val items = listOf(first, protected, third)
+        val selected = showFileDragFixture(items, listView)
+
+        val root = compose.onRoot()
+        val origin = root.fetchSemanticsNode().boundsInRoot.topLeft
+        val firstPosition = compose.onNode(hasText(first.displayName) and hasClickAction())
+            .fetchSemanticsNode().boundsInRoot.center - origin
+        val thirdPosition = compose.onNode(hasText(third.displayName) and hasClickAction())
+            .fetchSemanticsNode().boundsInRoot.center - origin
+        root.performTouchInput {
+            down(firstPosition)
+            move(delayMillis = 1_600)
+        }
+        compose.onNodeWithContentDescription("${first.displayName} 선택").assertIsOn()
+        root.performTouchInput {
+            moveTo(pointerId = 0, position = thirdPosition)
+            moveTo(pointerId = 0, position = firstPosition)
+            up()
+        }
+        compose.onNodeWithContentDescription("${third.displayName} 선택").assertIsOn()
+        compose.runOnIdle { assertEquals(setOf(first.uri, third.uri), selected.value) }
+        compose.onNodeWithText("파일 상세").assertDoesNotExist()
+    }
+
+    private fun showFileDragFixture(items: List<MediaItem>, listView: Boolean = false): MutableState<Set<String>> {
+        val selected = mutableStateOf(emptySet<String>())
+        val actions = FilesScreenActions({}, {}, { uri ->
+            selected.value = if (uri in selected.value) selected.value - uri else selected.value + uri
+        }, { selected.value = emptySet() }, {}, {}, { _, _ -> }, {})
+        compose.setContent {
+            GalliPickTheme {
+                CompositionLocalProvider(LocalDensity provides Density(.6f)) {
+                    Box(Modifier.requiredSize(360.dp, 700.dp)) {
+                        FilesScreenContent(
+                            AppUiState(access = MediaAccess.FULL, items = items, filtered = items,
+                                selected = selected.value, fileListView = listView),
+                            false, {}, {}, {}, actions,
+                        )
+                    }
+                }
+            }
+        }
+        return selected
     }
 
     @Test fun quickLastMonthUsesCalendarBoundariesAndBottomApply() {

@@ -2,6 +2,7 @@ package com.hebi.gallipick.ui
 
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +36,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import com.hebi.gallipick.data.cloud.cloudPhotoSupportsViewer
 import com.hebi.gallipick.data.cloud.isCloudVideoStreamable
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
@@ -42,20 +45,30 @@ import com.hebi.gallipick.data.cloud.CloudBackup
 import com.hebi.gallipick.data.cloud.CloudBackupException
 import com.hebi.gallipick.data.cloud.CloudBackupResult
 import com.hebi.gallipick.data.cloud.CloudOriginal
+import com.hebi.gallipick.data.cloud.normalizeCloudFolderPath
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun CloudLibrarySection(
     connection: CloudAccountConnection,
     onRestored: () -> Unit,
+    loadOriginals: suspend (CloudBackup, String) -> List<CloudOriginal> = CloudBackup::listOriginals,
     onOpenRestored: (Uri, String) -> Unit,
 ) {
     val backup = connection.backup ?: return
     val account by connection.session.account.collectAsStateWithLifecycle()
     val uid = account?.uid ?: return
-    key(uid) { CloudLibraryControls(backup, uid, onRestored, onOpenRestored) }
+    val activity = LocalActivity.current
+    val scope = LocalLifecycleOwner.current.lifecycleScope
+    val onCheckAccount: (() -> Unit)? = activity?.let { owner ->
+        { scope.launch { connection.chooseAccount(owner) } }
+    }
+    key(uid) { CloudLibraryControls(backup, uid, onRestored, onOpenRestored, onCheckAccount, loadOriginals) }
 }
 
 private data class LibraryAction(val item: CloudOriginal, val preview: Boolean)
@@ -66,11 +79,14 @@ private fun CloudLibraryControls(
     uid: String,
     onRestored: () -> Unit,
     onOpenRestored: (Uri, String) -> Unit,
+    onCheckAccount: (() -> Unit)?,
+    loadOriginals: suspend (CloudBackup, String) -> List<CloudOriginal>,
 ) {
     var catalog by remember { mutableStateOf(emptyList<CloudOriginal>()) }
     var loading by remember { mutableStateOf(true) }
-    var catalogError by remember { mutableStateOf<String?>(null) }
+    var catalogIssue by remember { mutableStateOf<CloudCatalogIssue?>(null) }
     var reload by remember { mutableIntStateOf(0) }
+    var folder by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<CloudOriginal?>(null) }
     var playingVideo by remember { mutableStateOf<CloudOriginal?>(null) }
     var action by remember { mutableStateOf<LibraryAction?>(null) }
@@ -78,19 +94,35 @@ private fun CloudLibraryControls(
     var restored by remember { mutableStateOf<Pair<Uri, String>?>(null) }
     var preview by remember { mutableStateOf<Pair<String, Bitmap>?>(null) }
     val revision by backup.catalogRevision.collectAsStateWithLifecycle()
+    val network = rememberCloudNetworkStatus(enabled = true)
     val formatDate = remember { DateFormat.getDateInstance(DateFormat.MEDIUM) }
 
-    LaunchedEffect(revision, reload) {
+    LaunchedEffect(revision, reload, network.online) {
+        if (!network.online) {
+            loading = false
+            return@LaunchedEffect
+        }
         loading = true
-        catalogError = null
         try {
-            catalog = backup.listOriginals(uid)
+            val originals = loadOriginals(backup, uid)
+            currentCoroutineContext().ensureActive()
+            catalog = originals
+            catalogIssue = null
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            // Keep a previous in-session catalog if the network goes offline.
-            // CloudLibrarySection is keyed by UID: never reuse across accounts.
-            catalogError = cloudLibraryFailure(error)
+            val issue = cloudCatalogIssue(error)
+            if (issue.blocksCachedCatalog) {
+                catalog = emptyList()
+                folder = null
+                action = null
+                selected = null
+                playingVideo = null
+                preview = null
+                restored = null
+                status = null
+            }
+            catalogIssue = issue
         } finally {
             loading = false
         }
@@ -119,23 +151,42 @@ private fun CloudLibraryControls(
         }
     }
 
+    val byFolder = remember(catalog) {
+        catalog.flatMap { original ->
+            original.sourceFolders.mapNotNull(::normalizeCloudFolderPath).distinct().map { it to original }
+        }.groupBy({ it.first }, { it.second }).toSortedMap()
+    }
+    val currentFolder = folder?.takeIf(byFolder::containsKey)
+    val visible = currentFolder?.let(byFolder::get) ?: catalog
+    val blocked = catalogIssue?.blocksCachedCatalog == true
+    val canOpenOriginals = network.online && !loading && catalogIssue == null && action == null
+
     Column(
         Modifier.fillMaxWidth().galliCardSurface(AppSurface).padding(GalliUiMetrics.cardPadding),
         verticalArrangement = Arrangement.spacedBy(GalliUiMetrics.cardSpacing),
     ) {
-        ActionButton(
-            "목록 새로고침",
-            { reload++ },
-            enabled = !loading && action == null,
-            icon = Icons.Outlined.Refresh,
-        )
-        if (catalogError != null && catalog.isNotEmpty()) {
-            Text("현재 연결되지 않아 이전 목록을 표시합니다. 원본 열람·복원은 인터넷 연결이 필요합니다.",
-                color = Muted, style = MaterialTheme.typography.bodySmall)
+        when {
+            blocked -> {
+                CloudStatusMessage(if (catalogIssue == CloudCatalogIssue.ACCOUNT_RESTRICTED)
+                    "현재 계정은 클라우드 보관함을 이용할 수 없습니다."
+                else "보관함을 열려면 Google 계정 연결을 확인해 주세요.")
+                onCheckAccount?.let { CloudPrimaryAction("계정 확인", it) }
+            }
+            !network.online -> CloudStatusMessage(if (catalog.isNotEmpty())
+                "오프라인에서 최근 목록을 표시합니다. 원본 열람·복원에는 인터넷 연결이 필요합니다."
+            else "오프라인 상태입니다. 인터넷에 연결하면 보관함을 다시 확인합니다.")
+            catalogIssue != null -> {
+                CloudStatusMessage(if (catalog.isNotEmpty())
+                    "보관함을 새로 불러오지 못했습니다. 최근에 확인한 목록을 표시합니다."
+                else "보관함을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
+                CloudPrimaryAction("다시 시도", { reload++ }, enabled = !loading && action == null)
+            }
+            else -> ActionButton("목록 새로고침", { reload++ }, enabled = !loading && action == null,
+                icon = Icons.Outlined.Refresh)
         }
         when {
-            loading && catalog.isEmpty() -> Text("보관함을 확인하는 중입니다.", color = Muted)
-            catalogError != null && catalog.isEmpty() -> Text(checkNotNull(catalogError), color = Muted)
+            catalog.isEmpty() && (catalogIssue != null || !network.online) -> Unit
+            loading && catalog.isEmpty() -> CloudStatusMessage("보관함을 확인하는 중입니다.")
             catalog.isEmpty() -> Box(
                 Modifier.fillMaxWidth().heightIn(min = 420.dp),
                 contentAlignment = Alignment.Center,
@@ -160,25 +211,28 @@ private fun CloudLibraryControls(
                     )
                 }
             }
-            else -> LazyColumn(
-                Modifier.fillMaxWidth().heightIn(max = 400.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                items(catalog, key = CloudOriginal::uploadId) { item ->
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(item.displayName, style = MaterialTheme.typography.bodyMedium)
-                        val date = formatDate.format(Date(item.verifiedAtMs))
-                        val media = if (item.mimeType.startsWith("video/")) "동영상" else "사진"
-                        Text("$media · ${bytesLabel(item.sizeBytes)} · $date", color = Muted,
-                            style = MaterialTheme.typography.bodySmall)
-                        if (cloudPhotoSupportsViewer(item)) {
-                            ActionButton("미리보기", { action = LibraryAction(item, preview = true) },
-                                enabled = action == null)
+            else -> {
+                if (byFolder.isNotEmpty()) CloudLibraryFolderPicker(currentFolder, byFolder.keys, { folder = it })
+                LazyColumn(
+                    Modifier.fillMaxWidth().heightIn(max = 400.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    items(visible, key = CloudOriginal::uploadId) { item ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(item.displayName, style = MaterialTheme.typography.bodyMedium)
+                            val date = formatDate.format(Date(item.verifiedAtMs))
+                            val media = if (item.mimeType.startsWith("video/")) "동영상" else "사진"
+                            Text("$media · ${bytesLabel(item.sizeBytes)} · $date", color = Muted,
+                                style = MaterialTheme.typography.bodySmall)
+                            if (cloudPhotoSupportsViewer(item)) {
+                                ActionButton("미리보기", { action = LibraryAction(item, preview = true) },
+                                    enabled = canOpenOriginals)
+                            }
+                            if (isCloudVideoStreamable(item)) {
+                                ActionButton("앱에서 바로 재생", { playingVideo = item }, enabled = canOpenOriginals)
+                            }
+                            ActionButton("기기에 복원", { selected = item }, enabled = canOpenOriginals)
                         }
-                        if (isCloudVideoStreamable(item)) {
-                            ActionButton("앱에서 바로 재생", { playingVideo = item }, enabled = action == null)
-                        }
-                        ActionButton("기기에 복원", { selected = item }, enabled = action == null)
                     }
                 }
             }
@@ -200,7 +254,8 @@ private fun CloudLibraryControls(
             title = { Text("이 원본을 기기에 복원할까요?") },
             text = { Text("${item.displayName}\n${bytesLabel(item.sizeBytes)} · 기기 갤러리에 새 파일로 저장됩니다.") },
             confirmButton = {
-                ActionButton("원본 복원", { selected = null; action = LibraryAction(item, preview = false) }, filled = true)
+                ActionButton("원본 복원", { selected = null; action = LibraryAction(item, preview = false) },
+                    filled = true, enabled = canOpenOriginals)
             },
             dismissButton = { TextAction("취소", { selected = null }) },
         )
@@ -216,6 +271,36 @@ private fun CloudLibraryControls(
             confirmButton = { TextAction("닫기", { preview = null }) },
         )
     }
+}
+
+@Composable
+private fun CloudLibraryFolderPicker(
+    current: String?,
+    folders: Set<String>,
+    onSelect: (String?) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    ActionButton(current?.let { "원본 폴더 · $it" } ?: "원본 폴더 · 전체", { open = true }, Modifier.fillMaxWidth())
+    if (!open) return
+    val sortedFolders = remember(folders) { folders.toList() }
+    fun select(folder: String?) {
+        open = false
+        onSelect(folder)
+    }
+    AlertDialog(
+        onDismissRequest = { open = false },
+        containerColor = AppSurface,
+        title = { Text("원본 폴더") },
+        text = {
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                item { TextAction("모든 원본 폴더", { select(null) }, Modifier.fillMaxWidth()) }
+                items(sortedFolders, key = { it }) { folder ->
+                    TextAction(folder, { select(folder) }, Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = { TextAction("닫기", { open = false }) },
+    )
 }
 
 private fun cloudLibraryFailure(error: Exception): String = when ((error as? CloudBackupException)?.result) {

@@ -65,10 +65,13 @@ class Stage6AccessibilityTest {
         compose.onNodeWithText("다시 시도").performClick()
         compose.runOnIdle { assertEquals(1, retried) }
 
-        compose.runOnIdle { state.value = AppUiState(access = MediaAccess.FULL) }
-        compose.onNodeWithText("필터 초기화").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle {
+            state.value = AppUiState(access = MediaAccess.FULL, catalogReady = true,
+                filter = MediaFilter(query = "missing"))
+        }
+        compose.onNodeWithText("조건 지우기").performScrollTo().assertIsDisplayed()
         screenshot("stage6-files-empty-large-text")
-        compose.onNodeWithText("필터 초기화").performClick()
+        compose.onNodeWithText("조건 지우기").performClick()
         compose.runOnIdle { assertEquals(MediaFilter(), resetFilter) }
     }
 

@@ -97,11 +97,34 @@ class DuplicateClarityTest {
         } }
         val strip = compose.onNodeWithContentDescription("중복 파일 가로 비교 목록")
         strip.assertIsDisplayed()
+        compose.onNodeWithText("사본 1 / 2 · 다른 사본을 눌러 비교").assertIsDisplayed()
+        compose.onNodeWithContentDescription("선택 파일 정리 후보 선택").assertDoesNotExist()
         compose.onNodeWithTag("A 비교 탭").assertDoesNotExist()
         strip.performScrollToNode(hasContentDescription("copy.mp4 비교 대상"))
         compose.onNodeWithContentDescription("original.mp4 비교 대상").assertExists()
         compose.onNodeWithContentDescription("copy.mp4 비교 대상").performClick()
+        compose.onNodeWithText("사본 2 / 2 · 다른 사본을 눌러 비교").assertIsDisplayed()
+        compose.onNodeWithContentDescription("선택 파일 남길 파일로 지정").assertIsDisplayed().assertIsEnabled()
+        compose.onNodeWithContentDescription("선택 파일 정리 후보 선택").assertIsDisplayed().assertIsOff()
         compose.onNode(hasText("copy.mp4") and hasAnyAncestor(hasContentDescription("선택 파일 파일 비교 패널"))).assertExists()
+    }
+
+    @Test fun scanSummaryNamesTheHashCountAndCandidateBytesSeparately() {
+        val group = DuplicateGroup("summary-units", listOf(media(1, "keep.mp4"), media(2, "copy.mp4")))
+        compose.setContent { GalliPickTheme {
+            DuplicatesScreenContent(
+                AppUiState(access = MediaAccess.FULL, catalogReady = true, items = group.items,
+                    duplicates = listOf(group), scan = ScanState(ScanPhase.COMPLETE, 14, 15, 1)),
+                {}, {}, {}, actions(),
+            )
+        } }
+        val list = compose.onNodeWithContentDescription("중복 파일 목록")
+        val scan = "최근 검사 기록 · 해시를 확인한 파일 14개 · 1개 건너뜀"
+        val capacity = "정리 후보 용량 ${bytesLabel(group.items.last().sizeBytes)}"
+        list.performScrollToNode(hasText(scan))
+        compose.onNodeWithText(scan).assertIsDisplayed()
+        list.performScrollToNode(hasText(capacity))
+        compose.onNodeWithText(capacity).assertIsDisplayed()
     }
 
     @Test fun keptFilesHaveNoCheckboxAndOnlyCheckedCandidatesReachTheTrashAction() {
@@ -247,6 +270,21 @@ class DuplicateClarityTest {
         compose.onNodeWithText("검사 완료 · 2개 확인").assertDoesNotExist()
         compose.onNodeWithText("다시 검사").assertDoesNotExist()
         compose.onNodeWithContentDescription("중복 검사 진행률").assertDoesNotExist()
+    }
+
+    @Test fun duplicateScanOpensAppSettingsWhenThePermissionPromptCannotBeShown() {
+        var permissionsRequested = 0
+        var settingsOpened = 0
+        compose.setContent { GalliPickTheme {
+            DuplicatesScreenContent(AppUiState(access = MediaAccess.NONE), {}, {}, { permissionsRequested++ }, actions(),
+                openPermissionSettings = { settingsOpened++ })
+        } }
+        compose.onNodeWithText("접근 허용").assertDoesNotExist()
+        compose.onNodeWithText("앱 권한 설정").assertIsDisplayed().performClick()
+        compose.runOnIdle {
+            assertEquals(0, permissionsRequested)
+            assertEquals(1, settingsOpened)
+        }
     }
 
     @Test fun duplicateResultsKeepThePartialPermissionScopeAndDoNotUseAStaleCatalog() {

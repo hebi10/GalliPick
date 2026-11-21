@@ -48,7 +48,7 @@ class DuplicateRolesTest {
         val roles = duplicateRoles(DuplicateGroup("taken-date", listOf(earlierAdded, earlierTaken)), null, emptySet())
         assertEquals(earlierTaken.uri, roles.keeper.uri)
         assertTrue(roles.reason(roles.keeper).contains("촬영일 ${formatted(earlierTaken.dateTakenMs)}"))
-        assertFalse(roles.reason(roles.keeper).contains("저장일"))
+        assertFalse(roles.reason(roles.keeper).contains("추가일"))
     }
 
     @Test fun missingTakenDateNamesTheAddedDateUsedByTheRecommendation() {
@@ -56,7 +56,7 @@ class DuplicateRolesTest {
         val later = item(2).copy(dateTakenMs = 1_710_000_000_000, dateAddedMs = 1_690_000_000_000)
         val roles = duplicateRoles(DuplicateGroup("fallback-date", listOf(later, fallback)), null, emptySet())
         assertEquals(fallback.uri, roles.keeper.uri)
-        assertTrue(roles.reason(roles.keeper).contains("저장일 ${formatted(fallback.dateAddedMs)}"))
+        assertTrue(roles.reason(roles.keeper).contains("추가일 ${formatted(fallback.dateAddedMs)}"))
         assertFalse(roles.reason(roles.keeper).contains("촬영일"))
     }
 
@@ -76,7 +76,7 @@ class DuplicateRolesTest {
         val missing = listOf(item(1), item(2)).map { it.copy(dateTakenMs = 0, dateAddedMs = 0) }
         val undated = duplicateRoles(DuplicateGroup("no-date", missing), null, emptySet())
         assertFalse(undated.reason(undated.keeper).contains("촬영일"))
-        assertFalse(undated.reason(undated.keeper).contains("저장일"))
+        assertFalse(undated.reason(undated.keeper).contains("추가일"))
     }
 
     @Test fun equalDateRanksDoNotClaimThatTheDateResolvedTheRecommendation() {

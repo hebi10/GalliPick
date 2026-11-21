@@ -27,7 +27,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -77,6 +79,7 @@ internal fun GalliPickApp(
     onBillingScreenVisible: (Boolean) -> Unit = {},
     adPreviewEnabled: Boolean = false,
     onConfirmExit: () -> Unit = {},
+    mediaPermissionSettingsRequired: Boolean = false,
 ) {
     val state by vm.ui.collectAsState()
     val activity = LocalActivity.current
@@ -126,6 +129,7 @@ internal fun GalliPickApp(
         vm.clearSelection()
     }
     fun navigate(destinationValue: Destination) {
+        if (destination == Destination.FILES && destinationValue != Destination.FILES) closeFilesSearch()
         if (adRemovalOrigin == Destination.FILES && destinationValue != Destination.FILES) {
             resumeFileDetailVersion = null
         }
@@ -214,7 +218,7 @@ internal fun GalliPickApp(
         selectedDestination = Destination.CLEANUP
         showFolderStorage = true
     }
-    fun openCleanupHistory() {
+    fun openCleanupHistory(origin: Destination) {
         showTrash = false
         showDuplicates = false
         showFolderStorage = false
@@ -222,7 +226,7 @@ internal fun GalliPickApp(
         showSimilarResults = false
         showSoftFocusResults = false
         similarCompareId = null
-        selectedDestination = Destination.CLEANUP
+        selectedDestination = origin
         showCleanupHistory = true
     }
     fun openPhotoAnalysis() {
@@ -291,7 +295,7 @@ internal fun GalliPickApp(
                     resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage || showCleanupHistory, showPhotoAnalysis || showReviewInbox, Triple(showSimilarResults || showSoftFocusResults, similarCompareId, photoReviewMode))), state.filter),
                     header = {
                         when {
-                            destination == Destination.HOME -> GalliAppHeader(state.loading)
+                            destination == Destination.HOME && !secondaryScreenVisible -> GalliAppHeader(state.loading)
                             destination == Destination.FILES && !showTrash && !showDuplicates &&
                                 !showFolderStorage && !showPhotoAnalysis -> {
                                 GalliFilesHeader(state.loading, vm::refresh, filesSearchVisible) {
@@ -302,13 +306,15 @@ internal fun GalliPickApp(
                     },
                 ) {
                     Column(Modifier.fillMaxSize()) {
-                        val screenOwnsCatalogState = showTrash || showDuplicates
-                        if (!dedicatedBilling && !screenOwnsCatalogState && state.loading) LinearProgressIndicator(
+                        val screenOwnsCatalogState = showTrash || showDuplicates ||
+                            destination == Destination.FILES || (destination == Destination.CLEANUP && !secondaryScreenVisible)
+                        val showCatalogNotice = !screenOwnsCatalogState && destination != Destination.CLOUD
+                        if (showCatalogNotice && state.loading) LinearProgressIndicator(
                             Modifier.fillMaxWidth().height(3.dp),
                             color = Primary, trackColor = Panel,
                         )
                         val catalogError = state.catalogError
-                        if (!dedicatedBilling && !screenOwnsCatalogState && catalogError != null) {
+                        if (showCatalogNotice && catalogError != null) {
                             GalliInlineNotice(
                                 message = catalogError,
                                 actionLabel = "다시 시도",
@@ -324,7 +330,7 @@ internal fun GalliPickApp(
                                 icon = Icons.Outlined.Info,
                             )
                         }
-                        if (!dedicatedBilling && !screenOwnsCatalogState && state.access == MediaAccess.PARTIAL) {
+                        if (showCatalogNotice && state.access == MediaAccess.PARTIAL) {
                             GalliInlineNotice(
                                 message = "허용된 사진·동영상만 표시 중",
                                 actionLabel = "접근 변경",
@@ -341,6 +347,7 @@ internal fun GalliPickApp(
                                     showTrash -> TrashScreen(
                                         state = state, onRestore = onRestore, onBack = { showTrash = false },
                                         onRequestPermission = onRequestPermission, onRetry = vm::refresh,
+                                        onOpenPermissionSettings = onOpenSettings.takeIf { mediaPermissionSettingsRequired },
                                     )
                                     showDuplicates -> Column(Modifier.fillMaxSize()) {
                                         Row(
@@ -355,7 +362,8 @@ internal fun GalliPickApp(
                                                 style = MaterialTheme.typography.titleLarge)
                                         }
                                         Box(Modifier.weight(1f).fillMaxWidth()) {
-                                            DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission)
+                                            DuplicatesScreen(state, vm, onTrash, onOpenMedia, onRequestPermission,
+                                                openPermissionSettings = onOpenSettings.takeIf { mediaPermissionSettingsRequired })
                                         }
                                     }
                                     similarCompareId != null -> {
@@ -491,6 +499,7 @@ internal fun GalliPickApp(
                                         onBack = { showCleanupHistory = false },
                                         onDelete = vm::deleteCleanupHistory,
                                         onClear = vm::clearCleanupHistory,
+                                        onOpenTrash = { showTrash = true },
                                     )
                                     showFolderStorage -> FolderStorageScreen(
                                         state = state,
@@ -512,20 +521,27 @@ internal fun GalliPickApp(
                                             openAdRemoval = if (canOpenAdRemoval && adRemoval == AdRemovalStatus.NOT_PURCHASED) {
                                                 { openAdRemoval(Destination.HOME) }
                                             } else null,
+                                            openHistory = { openCleanupHistory(Destination.HOME) },
+                                            openTrash = { openTrash(Destination.HOME) },
+                                            openPermissionSettings = onOpenSettings.takeIf { mediaPermissionSettingsRequired },
                                         )
                                         Destination.FILES -> FilesScreen(state, vm, wide, onTrash, onOpenMedia, onRequestPermission,
                                              cloudFiles = cloudFiles, openCloud = { navigate(Destination.CLOUD) },
                                              showSearch = filesSearchVisible,
                                              resumeDetailVersion = resumeFileDetailVersion,
                                              onDetailResumed = { resumeFileDetailVersion = null },
-                                             onCloudSignInFromDetail = ::requestFileCloudAccess)
+                                             onCloudSignInFromDetail = ::requestFileCloudAccess,
+                                             onOpenPermissionSettings = onOpenSettings.takeIf { mediaPermissionSettingsRequired })
                                         Destination.CLEANUP -> CleanupScreen(
                                             state, onOpenDuplicates = ::openDuplicates,
                                             onOpenFolderStorage = ::openFolderStorage,
                                             onOpenPhotoAnalysis = ::openPhotoAnalysis,
-                                            onOpenHistory = ::openCleanupHistory,
+                                            onOpenHistory = { openCleanupHistory(Destination.CLEANUP) },
                                             onOpenReviewInbox = ::openReviewInbox,
                                             onOpenTrash = { openTrash(Destination.CLEANUP) },
+                                            onRequestAccess = onRequestPermission,
+                                            onOpenPermissionSettings = onOpenSettings.takeIf { mediaPermissionSettingsRequired },
+                                            onRetryCatalog = vm::refresh,
                                             browse = navigateFiles,
                                         )
                                         Destination.CLOUD -> if (cloudContent != null && cloudConnection != null) {
@@ -627,7 +643,8 @@ internal fun GalliInlineNotice(
 ) {
     BoxWithConstraints(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-            .galliCardSurface(Panel).padding(horizontal = 12.dp, vertical = 6.dp),
+            .galliCardSurface(Panel).padding(horizontal = 12.dp, vertical = 6.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
     ) {
         val compact = maxWidth < 360.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
         if (compact) {
@@ -744,7 +761,8 @@ private fun NavItem(destination: Destination, selected: Boolean, onClick: () -> 
     ) {
         Box(
             Modifier.size(width = 54.dp, height = if (compact) 24.dp else 34.dp)
-                .background(if (selected) SelectedContainer else Color.Transparent, RoundedCornerShape(GalliUiMetrics.navigationCorner)),
+                .background(if (selected) SelectedContainer else Color.Transparent, RoundedCornerShape(GalliUiMetrics.navigationCorner))
+                .then(if (selected) Modifier.border(1.dp, Primary, RoundedCornerShape(GalliUiMetrics.navigationCorner)) else Modifier),
             contentAlignment = Alignment.Center,
         ) {
             GalliNavigationIcon(destination.icon, modifier = Modifier.size(
@@ -811,7 +829,7 @@ internal fun IconAction(label: String, icon: ImageVector, modifier: Modifier = M
 @Composable
 internal fun SectionTitle(title: String, subtitle: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
+        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
         if (subtitle != null) Text(subtitle, color = Muted, style = MaterialTheme.typography.bodyMedium)
     }
 }

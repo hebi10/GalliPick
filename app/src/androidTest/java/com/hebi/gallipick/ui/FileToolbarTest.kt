@@ -86,6 +86,52 @@ class FileToolbarTest {
         compose.onNodeWithTag("files-search-scope-files").assertIsNotSelected()
     }
 
+    @Test fun openingSearchFocusesInputAndClosingKeepsAppliedConditionsVisible() {
+        val searchVisible = mutableStateOf(false)
+        val filter = mutableStateOf(MediaFilter(minSizeBytes = 104_857_600L))
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.7f)) {
+                Box(Modifier.requiredSize(360.dp, 420.dp)) {
+                    FileToolbar(filter.value, emptyList(), { filter.value = it }, {}, {}, {},
+                        showSearch = searchVisible.value)
+                }
+            }
+        } }
+        val input = compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색")
+
+        input.assertDoesNotExist()
+        compose.runOnIdle { searchVisible.value = true }
+        input.assertIsFocused().performTextInput("travel")
+        compose.runOnIdle { searchVisible.value = false }
+        input.assertDoesNotExist()
+        compose.onNode(hasText("travel", substring = true) and hasText("100 MB 이상", substring = true))
+            .assertIsDisplayed()
+
+        compose.onNodeWithText("조건 지우기").performClick()
+        compose.runOnIdle { assertEquals(MediaFilter(), filter.value) }
+    }
+
+    @Test fun moreMenuEnablesIndividualSelectionWithoutSelectingExistingFiles() {
+        val all = listOf(media(1), media(2))
+        var selectionActions = 0
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.7f)) {
+                Box(Modifier.requiredSize(360.dp, 650.dp)) {
+                    FilesScreenContent(AppUiState(access = MediaAccess.FULL, items = all, filtered = all),
+                        false, {}, {}, {}, actions().copy(selectAll = { selectionActions++ },
+                            toggleSelection = { selectionActions++ }))
+                }
+            }
+        } }
+        val indicators = compose.onAllNodesWithTag("grid-selection-indicator", useUnmergedTree = true)
+
+        indicators.assertCountEquals(0)
+        compose.onNodeWithContentDescription("파일 추가 작업").performClick()
+        compose.onNodeWithText("파일 선택").performClick()
+        indicators.assertCountEquals(all.size)
+        compose.runOnIdle { assertEquals(0, selectionActions) }
+    }
+
     @Test fun mediaTypeDropdownPreservesFolderAndSizeConditions() {
         val filter = mutableStateOf(MediaFilter(folder = "DCIM/Camera/", minSizeBytes = 1024))
         compose.setContent {

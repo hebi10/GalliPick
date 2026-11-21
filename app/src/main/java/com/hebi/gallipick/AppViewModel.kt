@@ -47,6 +47,7 @@ data class AppUiState(
     val fileListView: Boolean = false,
     val secretCloudVisible: Boolean = false,
     val catalogReady: Boolean = false,
+    val filterPending: Boolean = false,
 )
 
 private data class PhotoReviewSnapshot(
@@ -135,7 +136,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _ui.update { it.copy(items = emptyList(), trashed = emptyList(), filtered = emptyList(),
             duplicates = emptyList(), similarGroups = emptyList(), burstGroups = emptyList(),
             softFocusCandidates = emptyList(), sharpnessPending = 0, selected = emptySet(),
-            catalogReady = false) }
+            catalogReady = false, filterPending = false) }
     }
 
     private fun publishCatalog(catalog: VerifiedCatalog, storage: StatFs? = null) {
@@ -154,6 +155,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             totalStorageBytes = storage?.totalBytes ?: it.totalStorageBytes,
             freeStorageBytes = storage?.availableBytes ?: it.freeStorageBytes,
             catalogReady = true, catalogError = null,
+            filterPending = itemsChanged || it.filterPending,
             message = if (dropped > 0) "변경되었거나 접근할 수 없는 선택 ${dropped}개를 해제했습니다." else it.message,
         ) }
         if (itemsChanged) {
@@ -207,7 +209,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         catalogVerified = false
         if (access == MediaAccess.NONE) clearSelection()
         hideCatalog()
-        _ui.update { it.copy(access = access) }
+        _ui.update { it.copy(access = access, loading = false, catalogError = null) }
     }
 
     fun refresh() {
@@ -234,10 +236,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setFilter(filter: MediaFilter) {
-        if (filter != _ui.value.filter) clearSelection()
-        _ui.update { it.copy(filter = filter, filtered = emptyList()) }
+        if (filter == _ui.value.filter) return
+        clearSelection()
+        _ui.update { it.copy(filter = filter, filtered = emptyList(), filterPending = it.catalogReady) }
         settings.saveFilter(filter)
-        updateFiltered()
+        if (_ui.value.catalogReady) updateFiltered()
     }
 
     private fun updateFiltered() {
@@ -245,7 +248,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         filterJob = viewModelScope.launch {
             val snapshot = _ui.value
             val filtered = withContext(Dispatchers.Default) { MediaQuery.apply(snapshot.items, snapshot.filter) }
-            _ui.update { it.copy(filtered = filtered) }
+            _ui.update { current ->
+                if (current.catalogReady && current.items === snapshot.items && current.filter == snapshot.filter) {
+                    current.copy(filtered = filtered, filterPending = false)
+                } else current
+            }
         }
     }
 
@@ -324,6 +331,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         selectedSimilarGroups.clear()
         candidates.forEach { selectedVersions[it.uri] = it }
         rememberSafety(candidates)
+        _ui.update { it.copy(selected = selectedVersions.keys.toSet()) }
+    }
+
+    internal fun addFileSelection(visible: List<MediaItem>) {
+        val remaining = SelectionPolicy.MAX_SELECTION_SIZE - selectedVersions.size
+        val current = _ui.value
+        if (remaining <= 0 || !current.catalogReady || current.loading || current.catalogError != null ||
+            current.access == MediaAccess.NONE || !repository.catalogReady.value) return
+        val additions = SelectionPolicy.candidates(visible.mapNotNull { shown ->
+            if (shown.uri in selectedVersions) null else current.items.firstOrNull {
+                MediaCachePolicy.sameVersion(shown, it)
+            }
+        }).take(remaining)
+        if (additions.isEmpty()) return
+
+        additions.forEach { selectedVersions[it.uri] = it }
+        rememberSafety(additions)
         _ui.update { it.copy(selected = selectedVersions.keys.toSet()) }
     }
 

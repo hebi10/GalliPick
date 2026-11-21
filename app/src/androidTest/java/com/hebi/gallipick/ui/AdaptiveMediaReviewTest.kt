@@ -402,9 +402,9 @@ class AdaptiveMediaReviewTest {
             } }
             compose.onNodeWithText("촬영일 2024.01.01 00:00").performScrollTo().assertIsDisplayed()
             focusComparisonFile("stored.mp4")
-            compose.onNodeWithText("저장일 2024.01.02 00:00").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("추가일 2024.01.02 00:00").performScrollTo().assertIsDisplayed()
             focusComparisonFile("unknown.mp4")
-            compose.onNodeWithText("저장일 정보 없음").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithText("추가일 정보 없음").performScrollTo().assertIsDisplayed()
         } finally { TimeZone.setDefault(previousZone) }
     }
 

@@ -66,16 +66,24 @@ class CleanupHistoryScreenTest {
         compose.onNodeWithText("기록 삭제").assertDoesNotExist()
     }
 
+    @Test fun historyProvidesAccessToTrashEvenWithoutRecordedCleanup() {
+        var opened = 0
+        render(emptyList(), onOpenTrash = { opened++ })
+        compose.onNodeWithText("휴지통·복원").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(1, opened) }
+    }
+
     private fun render(
         entries: List<CleanupHistoryEntry>,
         onDelete: (String) -> Unit = {},
         onClear: () -> Unit = {},
+        onOpenTrash: (() -> Unit)? = null,
     ) {
         compose.setContent {
             GalliPickTheme {
                 CompositionLocalProvider(LocalDensity provides Density(.6f)) {
                     Surface(Modifier.requiredSize(360.dp, 800.dp)) {
-                        CleanupHistoryScreen(entries, {}, onDelete, onClear)
+                        CleanupHistoryScreen(entries, {}, onDelete, onClear, onOpenTrash)
                     }
                 }
             }

@@ -3,12 +3,13 @@ package com.hebi.gallipick.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items as listItems
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -20,22 +21,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.AppUiState
+import com.hebi.gallipick.AppSettings
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.*
@@ -59,6 +61,7 @@ internal data class FilesScreenActions(
     val pauseOcr: () -> Unit = {},
     val resumeOcr: () -> Unit = {},
     val setFileListView: (Boolean) -> Unit = {},
+    val addSelected: (List<MediaItem>) -> Unit = { items -> items.forEach { toggleSelection(it.uri) } },
 )
 
 @Composable
@@ -70,15 +73,18 @@ internal fun FilesScreen(
     onDetailResumed: () -> Unit = {},
     onCloudSignInFromDetail: (MediaItem) -> Unit = {},
     showSearch: Boolean = false,
+    onOpenPermissionSettings: (() -> Unit)? = null,
 ) {
     FilesScreenContent(state, wide, trash, open, requestAccess, FilesScreenActions(
         vm::setFilter, vm::selectVisibleFiles, vm::toggleSelection, vm::clearSelection,
         vm::savePreset, vm::deletePreset, { item, protected -> vm.setProtected(item, protected) },
         vm::refresh, vm::startOcrIndex, vm::pauseOcrIndex, vm::resumeOcrIndex,
         setFileListView = vm::setFileListView,
+        addSelected = vm::addFileSelection,
     ), cloudFiles = cloudFiles, openCloud = openCloud,
         resumeDetailVersion = resumeDetailVersion, onDetailResumed = onDetailResumed,
-        onCloudSignInFromDetail = onCloudSignInFromDetail, showSearch = showSearch)
+        onCloudSignInFromDetail = onCloudSignInFromDetail, showSearch = showSearch,
+        onOpenPermissionSettings = onOpenPermissionSettings)
 }
 
 @Composable
@@ -95,38 +101,72 @@ internal fun FilesScreenContent(
     onDetailResumed: () -> Unit = {},
     onCloudSignInFromDetail: (MediaItem) -> Unit = {},
     showSearch: Boolean = false,
+    onOpenPermissionSettings: (() -> Unit)? = null,
 ) {
     var showFilter by remember { mutableStateOf(false) }
     var showSave by remember { mutableStateOf(false) }
     val gridView = !state.fileListView
     var searchMode by rememberSaveable { mutableStateOf(FileSearchMode.FILES) }
     var ocrQuery by rememberSaveable { mutableStateOf("") }
+    var ocrFilter by rememberSaveable(stateSaver = Saver<MediaFilter, String>(
+        save = { AppSettings.encodeFilter(it).toString() },
+        restore = { AppSettings.decodeFilter(org.json.JSONObject(it)) },
+    )) { mutableStateOf(MediaFilter()) }
+    val activeFilter = if (searchMode == FileSearchMode.OCR) ocrFilter else state.filter
+    var startSelection by remember { mutableStateOf(false) }
+    val clearSelection = {
+        startSelection = false
+        actions.clearSelection()
+    }
+    val updateFilter: (MediaFilter) -> Unit = { filter ->
+        if (activeFilter != filter) {
+            clearSelection()
+            if (searchMode == FileSearchMode.OCR) ocrFilter = filter else actions.setFilter(filter)
+        }
+    }
     var detailVersion by rememberSaveable { mutableStateOf<Triple<String, String, String>?>(null) }
-    var detailCloudId by rememberSaveable(cloudFiles.accountUid) { mutableStateOf<String?>(null) }
+    val restrictedCloud = cloudFiles.catalogIssue?.blocksCachedCatalog == true
+    var detailCloudId by remember(cloudFiles.accountUid, cloudFiles.mayReadCatalog, restrictedCloud) {
+        mutableStateOf<String?>(null)
+    }
     var sourceFilter by rememberSaveable { mutableStateOf(GallerySourceFilter.ALL) }
     var visiblePages by rememberSaveable { mutableIntStateOf(1) }
     var allowMeteredThumbnails by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.filter, sourceFilter, cloudFiles.accountUid) { visiblePages = 1 }
-    var chosenCloud by remember(cloudFiles.accountUid) { mutableStateOf<CloudOriginal?>(null) }
+    var chosenCloud by remember(cloudFiles.accountUid, cloudFiles.mayReadCatalog, restrictedCloud) {
+        mutableStateOf<CloudOriginal?>(null)
+    }
     val changeSource: (GallerySourceFilter) -> Unit = { option ->
         if (sourceFilter != option) {
-            actions.clearSelection()
+            clearSelection()
             sourceFilter = option
             detailVersion = null
             detailCloudId = null
             chosenCloud = null
         }
     }
+    val clearConditions = {
+        updateFilter(MediaFilter())
+        if (searchMode == FileSearchMode.OCR) ocrQuery = "" else changeSource(GallerySourceFilter.ALL)
+        clearSelection()
+    }
+    val clearEmptyResultsAction: (@Composable () -> Unit)? =
+        if (showSearch && (activeFilter != MediaFilter() || sourceFilter != GallerySourceFilter.ALL)) {
+            { ActionButton("조건 지우기", clearConditions) }
+        } else null
     val gridState = rememberLazyGridState()
     LaunchedEffect(sourceFilter) { gridState.scrollToItem(0) }
-    var previousFilter by remember { mutableStateOf(state.filter) }
-    LaunchedEffect(state.filter) {
-        if (previousFilter != state.filter) {
-            previousFilter = state.filter
+    var previousFilter by remember { mutableStateOf(activeFilter) }
+    LaunchedEffect(activeFilter) {
+        if (previousFilter != activeFilter) {
+            previousFilter = activeFilter
+            startSelection = false
             gridState.scrollToItem(0)
         }
     }
     val catalogVisible = !state.loading && state.catalogError == null && state.access != MediaAccess.NONE
+    val deviceCatalogPending = state.access != MediaAccess.NONE && state.catalogError == null &&
+        (state.loading || (!state.catalogReady && state.items.isEmpty()))
     val visibleItems = if (catalogVisible) state.items else emptyList()
     LaunchedEffect(resumeDetailVersion, catalogVisible, state.catalogReady) {
         if (resumeDetailVersion != null && catalogVisible && state.catalogReady) {
@@ -137,12 +177,12 @@ internal fun FilesScreenContent(
     val ocrRows = remember(visibleItems, state.ocrEntries) {
         PhotoOcrIndexPolicy.valid(visibleItems, state.ocrEntries)
     }
-    val filtered = remember(catalogVisible, searchMode, visibleItems, state.filter,
+    val filtered = remember(catalogVisible, searchMode, visibleItems, activeFilter,
         state.filtered, state.ocrEntries, ocrQuery) {
         when {
             !catalogVisible -> emptyList()
             searchMode == FileSearchMode.OCR -> {
-                val base = MediaQuery.apply(visibleItems, state.filter.copy(query = ""))
+                val base = MediaQuery.apply(visibleItems, activeFilter.copy(kind = MediaKind.PHOTO, query = ""))
                 PhotoOcrIndexPolicy.searchable(base, state.ocrEntries, ocrQuery)
             }
             else -> state.filtered
@@ -151,7 +191,10 @@ internal fun FilesScreenContent(
     val detail = detailVersion?.let { version -> visibleItems.find { it.matchesDetailVersion(version) } }
     val useUnified = cloudFiles.enabled && searchMode == FileSearchMode.FILES &&
         (sourceFilter == GallerySourceFilter.CLOUD ||
-            (sourceFilter == GallerySourceFilter.ALL && cloudFiles.accountUid != null))
+            (sourceFilter == GallerySourceFilter.ALL && cloudFiles.mayReadCatalog))
+    val resultsPending = !useUnified && searchMode == FileSearchMode.FILES && state.filterPending
+    val accessLabel = if (onOpenPermissionSettings == null) "접근 허용" else "앱 권한 설정"
+    val openAccess = onOpenPermissionSettings ?: requestAccess
     val galleryItems = remember(
         visibleItems, cloudFiles.snapshot, cloudFiles.accountUid, cloudFiles.verifiedMatches,
     ) {
@@ -173,12 +216,13 @@ internal fun FilesScreenContent(
     val autoLoadThumbnails = CloudGalleryPerformancePolicy.canLoadThumbnails(
         cloudFiles.online, cloudFiles.unmetered, allowMeteredThumbnails,
     )
-    val fileSections = remember(filtered, state.filter) {
-        FileSections.local(filtered, state.filter)
+    val fileSections = remember(filtered, activeFilter) {
+        FileSections.local(filtered, activeFilter)
     }
-    val visibleDeviceItems = remember(useUnified, sourceFilter, visibleGallery, filtered,
+    val visibleDeviceItems = remember(resultsPending, useUnified, sourceFilter, visibleGallery, filtered,
         fileSections, state.filter) {
         when {
+            resultsPending -> emptyList()
             !useUnified -> if (fileSections.isEmpty()) filtered else fileSections.flatMap { it.items }
             sourceFilter == GallerySourceFilter.CLOUD -> emptyList()
             else -> {
@@ -188,29 +232,39 @@ internal fun FilesScreenContent(
             }
         }
     }
+    val dragSelectionSession = Triple(
+        Triple(activeFilter, searchMode, ocrQuery),
+        Triple(sourceFilter, cloudFiles.accountUid, state.access),
+        useUnified,
+    )
     val selectable = remember(visibleDeviceItems) { SelectionPolicy.candidates(visibleDeviceItems) }
     val selected = remember(visibleDeviceItems, state.selected) {
         SelectionPolicy.candidates(visibleDeviceItems.filter { it.uri in state.selected })
     }
-    val selectionMode = selected.isNotEmpty()
-    BackHandler(enabled = selectionMode, onBack = actions.clearSelection)
+    val selectionMode = selected.isNotEmpty() || (startSelection && selectable.isNotEmpty())
+    LaunchedEffect(selected.isNotEmpty()) {
+        if (selected.isNotEmpty()) startSelection = false
+    }
+    BackHandler(enabled = selectionMode, onBack = clearSelection)
     LaunchedEffect(selectionMode) {
         if (selectionMode) {
             detailVersion = null
             detailCloudId = null
         }
     }
-    val verifiedSelected = if (useUnified) selected.count { it.uri in backedUpDeviceUris } else 0
+    val verifiedSelected = if (useUnified && cloudFiles.online && cloudFiles.catalogIssue == null) {
+        selected.count { it.uri in backedUpDeviceUris }
+    } else 0
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
             ScrollAwayHeaderLayout(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                resetKey = Triple(state.filter, searchMode, ocrQuery) to
+                resetKey = (Triple(activeFilter, searchMode, ocrQuery) to showSearch) to
                     Triple(state.catalogError != null || state.access == MediaAccess.NONE,
                         sourceFilter, cloudFiles.accountUid),
                 header = {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FileToolbar(state.filter, state.presets, actions.setFilter,
+                        FileToolbar(activeFilter, state.presets, updateFilter,
                             advanced = { showFilter = true }, save = { showSave = true },
                             deletePreset = actions.deletePreset, gridView = gridView,
                             onGridViewChange = { actions.setFileListView(!it) }, searchMode = searchMode,
@@ -218,7 +272,7 @@ internal fun FilesScreenContent(
                             ocrQuery = ocrQuery,
                             onSearchModeChange = { mode ->
                                 if (searchMode != mode) {
-                                    actions.clearSelection()
+                                    clearSelection()
                                     searchMode = mode
                                     detailVersion = null
                                     detailCloudId = null
@@ -227,13 +281,26 @@ internal fun FilesScreenContent(
                             },
                             onOcrQueryChange = { query ->
                                 if (ocrQuery != query) {
-                                    actions.clearSelection()
+                                    clearSelection()
                                     ocrQuery = query
                                 }
                             },
                             sourceFilter = sourceFilter, showSourceFilter = cloudFiles.enabled,
                             onSourceFilterChange = changeSource,
+                            onClearConditions = clearConditions,
+                            onStartSelection = if (selectable.isNotEmpty() && !selectionMode) {
+                                { startSelection = true }
+                            } else null,
                         )
+                        if (state.access == MediaAccess.PARTIAL &&
+                            (searchMode == FileSearchMode.OCR || sourceFilter != GallerySourceFilter.CLOUD)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("허용한 기기 파일만 표시합니다.", Modifier.weight(1f), color = Muted,
+                                    style = MaterialTheme.typography.bodySmall)
+                                TextAction(if (onOpenPermissionSettings == null) "접근 변경" else "앱 권한 설정",
+                                    onOpenPermissionSettings ?: requestAccess)
+                            }
+                        }
                         if (cloudFiles.enabled && searchMode == FileSearchMode.FILES) {
                             if (cloudFiles.accountUid != null && sourceFilter != GallerySourceFilter.DEVICE &&
                                 cloudFiles.matchTotal > 0) {
@@ -246,7 +313,8 @@ internal fun FilesScreenContent(
                                     Text("$progress · ${cloudFiles.matchChecked}/${cloudFiles.matchTotal}",
                                         Modifier.weight(1f),
                                         color = Muted, style = MaterialTheme.typography.bodySmall)
-                                    if (!cloudFiles.matchChecking && cloudFiles.matchChecked < cloudFiles.matchTotal) {
+                                    if (cloudFiles.online && cloudFiles.catalogIssue == null &&
+                                        !cloudFiles.matchChecking && cloudFiles.matchChecked < cloudFiles.matchTotal) {
                                         TextAction(
                                             if (cloudFiles.matchFailed) "다시 비교" else "다음 비교",
                                             cloudFiles.matchNext,
@@ -262,7 +330,8 @@ internal fun FilesScreenContent(
                     val screenWidth = maxWidth
                     val availableBodyHeight = maxHeight
                     val screenFontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-                    val ocrSidebar = searchMode == FileSearchMode.OCR && wide &&
+                    val showOcrIndex = searchMode == FileSearchMode.OCR && catalogVisible && !deviceCatalogPending
+                    val ocrSidebar = showOcrIndex && wide &&
                         screenWidth >= 900.dp * screenFontScale
                     val sidebarWidth = (screenWidth * .28f).coerceIn(240.dp, 320.dp)
                     val useSideDetail = !ocrSidebar && wide && screenWidth >= 840.dp && maxHeight >= 420.dp
@@ -276,7 +345,7 @@ internal fun FilesScreenContent(
                             }
                         }
                         Column(Modifier.weight(1f).fillMaxHeight()) {
-                            if (searchMode == FileSearchMode.OCR && !ocrSidebar) {
+                            if (showOcrIndex && !ocrSidebar) {
                                 val panelHeight = minOf(
                                     240.dp,
                                     maxOf(84.dp, availableBodyHeight * .42f),
@@ -292,6 +361,10 @@ internal fun FilesScreenContent(
                                     )
                                 }
                             }
+                            if (cloudFiles.loading && searchMode == FileSearchMode.FILES &&
+                                sourceFilter == GallerySourceFilter.ALL) {
+                                LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
+                            }
                             when {
                                 useUnified -> {
                                     when {
@@ -299,29 +372,65 @@ internal fun FilesScreenContent(
                                             Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                                 EmptyState("클라우드 로그인이 필요합니다",
                                                     "기기 파일은 로그인 없이 계속 사용할 수 있습니다.",
-                                                    action = { ActionButton("클라우드에서 로그인", openCloud, filled = true) })
+                                                    action = {
+                                                        ActionButton("클라우드에서 로그인", openCloud, Modifier.fillMaxWidth(), filled = true)
+                                                        ActionButton("기기 파일 보기", { changeSource(GallerySourceFilter.DEVICE) }, Modifier.fillMaxWidth())
+                                                    })
                                             }
-                                        galleryFiltered.isEmpty() && !cloudFiles.online && cloudFiles.accountUid != null ->
-                                            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-                                                EmptyState("인터넷 연결이 필요합니다",
-                                                    "이번 앱 사용 중 불러온 클라우드 목록이 없습니다. 기기 파일은 계속 이용할 수 있습니다.")
-                                            }
-                                        galleryFiltered.isEmpty() && cloudFiles.loading ->
+                                        galleryFiltered.isEmpty() && sourceFilter == GallerySourceFilter.CLOUD && cloudFiles.loading ->
                                             Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                                 EmptyState("클라우드 파일을 불러오는 중입니다",
-                                                    "기기 파일은 별도로 확인할 수 있습니다.")
+                                                    "기기 파일은 별도로 확인할 수 있습니다.", action = {
+                                                        ActionButton("기기 파일 보기", { changeSource(GallerySourceFilter.DEVICE) })
+                                                    })
                                             }
-                                        galleryFiltered.isEmpty() && cloudFiles.failed ->
+                                        galleryFiltered.isEmpty() && sourceFilter == GallerySourceFilter.CLOUD &&
+                                            cloudFiles.catalogIssue != null ->
                                             Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-                                                EmptyState("클라우드 목록을 불러오지 못했습니다",
-                                                    "네트워크와 Google 계정을 확인해 주세요.",
-                                                    action = { ActionButton("클라우드 다시 시도", cloudFiles.retry, filled = true) })
+                                                EmptyState("클라우드 파일을 표시할 수 없습니다",
+                                                    "기기 파일은 계속 열 수 있습니다.", action = {
+                                                        if (restrictedCloud) {
+                                                            ActionButton("계정 확인", openCloud, Modifier.fillMaxWidth(), filled = true)
+                                                        } else {
+                                                            ActionButton("클라우드 다시 시도", cloudFiles.retry, Modifier.fillMaxWidth(), filled = true)
+                                                        }
+                                                        ActionButton("기기 파일 보기", { changeSource(GallerySourceFilter.DEVICE) }, Modifier.fillMaxWidth())
+                                                    })
+                                            }
+                                        sourceFilter == GallerySourceFilter.CLOUD && !cloudFiles.mayReadCatalog ->
+                                            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                                EmptyState("클라우드 보관함을 이용할 수 없습니다",
+                                                    "클라우드 탭에서 이용 가능 여부를 확인할 수 있습니다.", action = {
+                                                        ActionButton("클라우드 탭 열기", openCloud, Modifier.fillMaxWidth(), filled = true)
+                                                        ActionButton("기기 파일 보기", { changeSource(GallerySourceFilter.DEVICE) }, Modifier.fillMaxWidth())
+                                                    })
+                                            }
+                                        sourceFilter == GallerySourceFilter.CLOUD && cloudFiles.snapshot?.originals?.isEmpty() == true ->
+                                            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                                EmptyState("아직 클라우드에 보관한 파일이 없습니다",
+                                                    "보관한 사진과 동영상이 여기에 표시됩니다.", action = {
+                                                        ActionButton("기기 파일 보기", { changeSource(GallerySourceFilter.DEVICE) })
+                                                    })
+                                            }
+                                        galleryFiltered.isEmpty() && sourceFilter == GallerySourceFilter.ALL && deviceCatalogPending ->
+                                            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                                EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.")
+                                            }
+                                        galleryFiltered.isEmpty() && sourceFilter == GallerySourceFilter.ALL && state.catalogError != null ->
+                                            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                                EmptyState("기기 파일을 불러오지 못했습니다", state.catalogError,
+                                                    action = { ActionButton("기기 파일 다시 시도", actions.refresh, filled = true) })
+                                            }
+                                        galleryFiltered.isEmpty() && sourceFilter == GallerySourceFilter.ALL && state.access == MediaAccess.NONE ->
+                                            Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                                EmptyState("미디어 접근이 필요합니다", "조건에 맞는 클라우드 파일은 없습니다.",
+                                                    action = { ActionButton(accessLabel, openAccess, filled = true) })
                                             }
                                         galleryFiltered.isEmpty() ->
                                             Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                                 EmptyState("조건에 맞는 파일이 없습니다",
                                                     "클라우드와 기기 저장 위치 또는 필터를 확인해 주세요.",
-                                                    action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) },
+                                                    action = clearEmptyResultsAction,
                                                     scene = GalliScene.SEARCH)
                                             }
                                         else -> {
@@ -331,15 +440,16 @@ internal fun FilesScreenContent(
                                             else if (ocrSidebar) screenWidth - sidebarWidth - 14.dp
                                             else screenWidth
                                             Column(Modifier.weight(1f).fillMaxWidth()) {
-                                                if (cloudFiles.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                                                if (!cloudFiles.online) {
+                                                if (cloudFiles.loading && sourceFilter == GallerySourceFilter.CLOUD) {
+                                                    LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
+                                                }
+                                                if (sourceFilter == GallerySourceFilter.CLOUD && !cloudFiles.online &&
+                                                    cloudFiles.cachedCatalog) {
                                                     Text(
-                                                        if (cloudFiles.cachedCatalog)
-                                                            "오프라인 · 이전에 불러온 파일 정보만 표시합니다. 클라우드 원본 감상에는 인터넷 연결이 필요합니다."
-                                                        else "오프라인 · 현재 접근 가능한 기기 파일만 표시합니다.",
+                                                        "오프라인 · 이전에 불러온 파일 정보만 표시합니다. 클라우드 원본 감상에는 인터넷 연결이 필요합니다.",
                                                         color = Muted, style = MaterialTheme.typography.bodySmall,
                                                     )
-                                                } else if (!cloudFiles.unmetered && !allowMeteredThumbnails &&
+                                                } else if (cloudFiles.online && !cloudFiles.unmetered && !allowMeteredThumbnails &&
                                                     galleryFiltered.any { it.cloud != null }) {
                                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                                         Text("모바일 데이터 사용 중 · 자동 썸네일 요청을 제한했습니다.",
@@ -348,18 +458,20 @@ internal fun FilesScreenContent(
                                                         TextAction("이번 화면에서 허용", { allowMeteredThumbnails = true })
                                                     }
                                                 }
-                                                if (cloudFiles.failed && cloudFiles.online) {
-                                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                                        Text("클라우드 일부 항목을 확인하지 못했습니다.",
-                                                            Modifier.weight(1f), color = Muted,
-                                                            style = MaterialTheme.typography.bodySmall)
-                                                        TextAction("다시 시도", cloudFiles.retry)
+                                                if (sourceFilter == GallerySourceFilter.ALL) {
+                                                    when {
+                                                        state.access == MediaAccess.NONE -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                            Text("클라우드 파일만 표시됩니다.", Modifier.weight(1f),
+                                                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                                                            TextAction(accessLabel, openAccess)
+                                                        }
+                                                        state.catalogError != null -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                            Text("기기 파일 목록을 불러오지 못했습니다.", Modifier.weight(1f),
+                                                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                                                            TextAction("기기 다시 시도", actions.refresh)
+                                                        }
+                                                        deviceCatalogPending -> LinearProgressIndicator(Modifier.fillMaxWidth())
                                                     }
-                                                }
-                                                if (sourceFilter == GallerySourceFilter.ALL &&
-                                                    state.access == MediaAccess.NONE) {
-                                                    Text("기기 사진 접근이 제한되어 클라우드 파일만 표시됩니다.",
-                                                        color = Muted, style = MaterialTheme.typography.bodySmall)
                                                 }
                                                 if (gridView && state.fileGridColumns != null) {
                                                     val applied = resolvedFileGridColumns(state.fileGridColumns,
@@ -380,6 +492,8 @@ internal fun FilesScreenContent(
                                                     autoLoadThumbnails = autoLoadThumbnails,
                                                     modifier = Modifier.weight(1f),
                                                     gridColumns = state.fileGridColumns,
+                                                    dragSelectionSession = dragSelectionSession,
+                                                    addSelected = actions.addSelected,
                                                 )
                                                 if (visibleGallery.size < galleryFiltered.size) {
                                                     Row(Modifier.fillMaxWidth(),
@@ -395,14 +509,20 @@ internal fun FilesScreenContent(
                                     }
                                 }
                                 state.access == MediaAccess.NONE -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-                                    EmptyState("미디어 접근이 필요합니다", "허용한 파일만 이곳에 표시됩니다.", action = { ActionButton("접근 허용", requestAccess, filled = true) })
+                                    EmptyState("미디어 접근이 필요합니다", "허용한 파일만 이곳에 표시됩니다.", action = {
+                                        ActionButton(accessLabel, openAccess, filled = true)
+                                    })
                                 }
                                 state.catalogError != null -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("파일을 불러오지 못했습니다", state.catalogError, Icons.Outlined.Info, action = { ActionButton("다시 시도", actions.refresh, filled = true) })
                                 }
-                                state.loading -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                deviceCatalogPending && filtered.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                     EmptyState("미디어를 불러오고 있습니다", "현재 접근 권한으로 파일을 확인하고 있습니다.")
                                 }
+                                resultsPending ->
+                                    Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                        EmptyState("검색 결과를 확인하는 중입니다", "현재 적용한 조건으로 기기 파일을 살펴보고 있습니다.")
+                                    }
                                 searchMode == FileSearchMode.OCR && ocrQuery.isBlank() ->
                                     Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                                         EmptyState("검색어를 입력해 주세요",
@@ -416,8 +536,9 @@ internal fun FilesScreenContent(
                                             scene = GalliScene.SEARCH)
                                     } else {
                                         EmptyState("조건에 맞는 파일이 없습니다",
-                                            "접근 범위와 필터 조건을 확인해주세요.",
-                                            action = { ActionButton("필터 초기화", { actions.setFilter(MediaFilter()) }) },
+                                            if (state.access == MediaAccess.PARTIAL) "허용한 파일에서 현재 조건으로 검색했습니다."
+                                            else "접근 범위와 필터 조건을 확인해 주세요.",
+                                            action = clearEmptyResultsAction,
                                             scene = GalliScene.SEARCH)
                                     }
                                 }
@@ -428,17 +549,22 @@ internal fun FilesScreenContent(
                                         screenWidth - detailWidth - 14.dp
                                     else if (ocrSidebar) screenWidth - sidebarWidth - 14.dp
                                     else screenWidth
+                                    val dragItems = remember(visibleDeviceItems) { visibleDeviceItems.associateBy(MediaItem::uri) }
                                     if (gridView) {
                                         if (state.fileGridColumns != null) {
-                                            val applied = resolvedFileGridColumns(state.fileGridColumns,
-                                                availableGridWidth, fontScale, tabletGrid)
+                                            val applied = resolvedFileGridColumns(
+                                                state.fileGridColumns, availableGridWidth, fontScale, tabletGrid,
+                                            )
                                             Text("한 줄 ${applied}개 표시 · 설정 ${state.fileGridColumns}개",
                                                 color = Muted, style = MaterialTheme.typography.bodySmall)
                                         }
                                         LazyVerticalGrid(
                                             columns = fileGridCells(state.fileGridColumns, availableGridWidth, fontScale, tabletGrid),
                                             state = gridState,
-                                            modifier = Modifier.weight(1f).semantics { contentDescription = "미디어 파일 목록" },
+                                            modifier = Modifier.weight(1f)
+                                                .fileDragSelection(gridState, dragSelectionSession, dragItems,
+                                                    state.selected, actions.addSelected)
+                                                .semantics { contentDescription = "미디어 파일 목록" },
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalArrangement = Arrangement.spacedBy(8.dp),
                                             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
@@ -446,12 +572,13 @@ internal fun FilesScreenContent(
                                             if (fileSections.isNotEmpty()) {
                                                 fileSections.forEach { group ->
                                                     item(key = "section:${group.title}", span = { GridItemSpan(maxLineSpan) }) {
-                                                        FileSectionHeader(group.title, group.items.size, state.filter.dateField.takeIf { group.isDate })
+                                                        FileSectionHeader(group.title, group.items.size, activeFilter.dateField.takeIf { group.isDate },
+                                                            group.isDate && group.items.any { it.dateTakenMs <= 0 && it.dateAddedMs > 0 })
                                                     }
                                                     items(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
                                                             { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
-                                                            state.filter.sortField, tabletGrid = tabletGrid,
+                                                            activeFilter.sortField, tabletGrid = tabletGrid,
                                                             selectionMode = selectionMode,
                                                             ocrText = if (searchMode == FileSearchMode.OCR)
                                                                 ocrRows[item.uri]?.recognizedText else null,
@@ -462,7 +589,7 @@ internal fun FilesScreenContent(
                                                 items(filtered, key = { it.uri }) { item ->
                                                     MediaTile(item, item.uri in state.selected,
                                                         { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
-                                                        state.filter.sortField, tabletGrid = tabletGrid,
+                                                        activeFilter.sortField, tabletGrid = tabletGrid,
                                                         selectionMode = selectionMode,
                                                         ocrText = if (searchMode == FileSearchMode.OCR)
                                                             ocrRows[item.uri]?.recognizedText else null,
@@ -471,22 +598,28 @@ internal fun FilesScreenContent(
                                             }
                                         }
                                     } else {
+                                        val listState = rememberLazyListState()
                                         LazyColumn(
-                                            modifier = Modifier.weight(1f).semantics { contentDescription = "미디어 파일 목록" },
+                                            state = listState,
+                                            modifier = Modifier.weight(1f)
+                                                .fileDragSelection(listState, dragSelectionSession, dragItems,
+                                                    state.selected, actions.addSelected)
+                                                .semantics { contentDescription = "미디어 파일 목록" },
                                             verticalArrangement = Arrangement.spacedBy(6.dp),
                                             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
                                         ) {
                                             if (fileSections.isNotEmpty()) {
                                                 fileSections.forEach { group ->
                                                     item(key = "section:${group.title}") {
-                                                        FileSectionHeader(group.title, group.items.size, state.filter.dateField.takeIf { group.isDate })
+                                                        FileSectionHeader(group.title, group.items.size, activeFilter.dateField.takeIf { group.isDate },
+                                                            group.isDate && group.items.any { it.dateTakenMs <= 0 && it.dateAddedMs > 0 })
                                                     }
                                                     listItems(group.items, key = { it.uri }) { item ->
                                                         MediaTile(item, item.uri in state.selected,
                                                             { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
-                                                            state.filter.sortField, listView = true,
+                                                            activeFilter.sortField, listView = true,
                                                             selectionMode = selectionMode,
-                                                            dateMs = MediaQuery.dateOf(item, state.filter.dateField),
+                                                            dateMs = MediaQuery.dateOf(item, activeFilter.dateField),
                                                             ocrText = if (searchMode == FileSearchMode.OCR)
                                                                 ocrRows[item.uri]?.recognizedText else null,
                                                             ocrQuery = ocrQuery, hasCloudOriginal = item.uri in backedUpDeviceUris)
@@ -496,7 +629,7 @@ internal fun FilesScreenContent(
                                                 listItems(filtered, key = { it.uri }) { item ->
                                                     MediaTile(item, item.uri in state.selected,
                                                         { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
-                                                        state.filter.sortField, listView = true,
+                                                        activeFilter.sortField, listView = true,
                                                         selectionMode = selectionMode,
                                                         ocrText = if (searchMode == FileSearchMode.OCR)
                                                             ocrRows[item.uri]?.recognizedText else null,
@@ -553,20 +686,21 @@ internal fun FilesScreenContent(
                 }
             }
 
-            if (selected.isEmpty()) {
-                if (useUnified && visibleGallery.isNotEmpty()) {
-                    FilesFooterSummary(
+            if (!selectionMode && !resultsPending) {
+                when {
+                    useUnified && visibleGallery.isNotEmpty() -> FilesFooterSummary(
                         "표시 ${visibleGallery.size}개",
                         selectable,
                         actions.selectAll,
                     )
-                } else if (!useUnified && filtered.isNotEmpty()) {
-                    val count = String.format(java.util.Locale.KOREA, "%,d", filtered.size)
-                    FilesFooterSummary(
-                        "총 ${count}개 · ${bytesLabel(filtered.sumOf { it.sizeBytes })}",
-                        selectable,
-                        actions.selectAll,
-                    )
+                    !useUnified && filtered.isNotEmpty() -> {
+                        val count = String.format(java.util.Locale.KOREA, "%,d", filtered.size)
+                        FilesFooterSummary(
+                            "총 ${count}개 · ${bytesLabel(filtered.sumOf { it.sizeBytes })}",
+                            selectable,
+                            actions.selectAll,
+                        )
+                    }
                 }
             }
             if (verifiedSelected > 0 && selected.isNotEmpty()) {
@@ -575,13 +709,20 @@ internal fun FilesScreenContent(
                     Modifier.fillMaxWidth().padding(vertical = 6.dp),
                     style = MaterialTheme.typography.bodySmall, color = Muted)
             }
-            SelectionBar(selected, actions.clearSelection, { trash(selected) }, clearOnSearchChange = true)
+            if (selectionMode && selected.isEmpty()) {
+                Row(Modifier.fillMaxWidth().galliCardSurface(Panel).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("선택할 파일을 눌러 주세요.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    TextAction("선택 닫기", clearSelection)
+                }
+            }
+            SelectionBar(selected, clearSelection, { trash(selected) }, clearOnSearchChange = true)
         }
-        if (showFilter) FilterDialog(state.filter, visibleItems, {
-            actions.setFilter(MediaFilterActions.sort(it, it.sortField, it.sortDirection)); showFilter = false
-        }, { showFilter = false }, cloudItems = cloudFiles.snapshot?.originals.orEmpty(),
-            sourceFilter = if (cloudFiles.enabled) sourceFilter else null,
-            onSourceFilterChange = changeSource)
+        if (showFilter) FilterDialog(activeFilter, visibleItems, {
+            updateFilter(MediaFilterActions.sort(it, it.sortField, it.sortDirection)); showFilter = false
+        }, { showFilter = false }, cloudItems = if (searchMode == FileSearchMode.FILES) cloudFiles.snapshot?.originals.orEmpty() else emptyList(),
+            sourceFilter = sourceFilter.takeIf { cloudFiles.enabled && searchMode == FileSearchMode.FILES },
+            onSourceFilterChange = changeSource, searchMode = searchMode)
         if (showSave) SavePresetDialog({ actions.savePreset(it); showSave = false }, { showSave = false })
         detailCloud?.let { original ->
             CloudFileDetailDialog(
@@ -622,13 +763,52 @@ internal fun FilesScreenContent(
                 dismissButton = { TextAction("닫기", { chosenCloud = null }) },
             )
         }
+        cloudFiles.accountUid?.let { uid ->
+            key(uid) {
+                var catalogErrorAcknowledged by rememberSaveable { mutableStateOf(false) }
+                val issue = cloudFiles.catalogIssue
+                if (cloudFiles.enabled && issue != null && !cloudFiles.loading && !catalogErrorAcknowledged &&
+                    searchMode == FileSearchMode.FILES && sourceFilter != GallerySourceFilter.DEVICE &&
+                    !showFilter && !showSave && !selectionMode && detail == null &&
+                    detailCloud == null && chosenCloud == null) {
+                    FileCloudCatalogErrorDialog(
+                        issue = issue,
+                        dismiss = { catalogErrorAcknowledged = true },
+                        confirm = {
+                            catalogErrorAcknowledged = true
+                            if (issue.blocksCachedCatalog) openCloud() else cloudFiles.retry()
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
-internal fun FileSectionHeader(title: String, count: Int, dateField: DateField?) {
+private fun FileCloudCatalogErrorDialog(issue: CloudCatalogIssue, dismiss: () -> Unit, confirm: () -> Unit) {
+    val reason = when (issue) {
+        CloudCatalogIssue.CONNECTION -> "인터넷 연결을 확인해 주세요."
+        CloudCatalogIssue.TIMEOUT -> "클라우드 서버 응답 시간이 초과되었습니다."
+        CloudCatalogIssue.TEMPORARY_FAILURE -> "잠시 후 다시 시도해 주세요."
+        CloudCatalogIssue.AUTH_REQUIRED -> "Google 계정을 다시 확인해 주세요."
+        CloudCatalogIssue.ACCOUNT_RESTRICTED -> "Google 계정의 클라우드 보관함 접근 권한을 확인해 주세요."
+    }
+    AlertDialog(
+        onDismissRequest = dismiss,
+        shape = MaterialTheme.shapes.extraLarge,
+        containerColor = AppSurface,
+        title = { Text("클라우드 파일을 불러오지 못했습니다", style = MaterialTheme.typography.titleSmall) },
+        text = { Text(reason, color = Muted, style = MaterialTheme.typography.bodyMedium) },
+        confirmButton = { TextAction(if (issue.blocksCachedCatalog) "계정 확인" else "다시 시도", confirm) },
+        dismissButton = { TextAction("닫기", dismiss) },
+    )
+}
+
+@Composable
+internal fun FileSectionHeader(title: String, count: Int, dateField: DateField?, includesAddedDate: Boolean = false) {
     if (dateField != null) {
-        DateGroupHeader(title, count, dateField)
+        DateGroupHeader(title, count, dateField, includesAddedDate)
     } else {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
@@ -643,19 +823,19 @@ internal fun FileSectionHeader(title: String, count: Int, dateField: DateField?)
 }
 
 @Composable
-internal fun DateGroupHeader(date: String, count: Int, field: DateField) {
-    val basis = when (field) {
-        DateField.CAPTURED -> "촬영일"
-        DateField.ADDED -> "추가일"
-        DateField.MODIFIED -> "수정일"
-    }
+internal fun DateGroupHeader(date: String, count: Int, field: DateField, includesAddedDate: Boolean = false) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("$basis $date", modifier = Modifier.weight(1f).semantics { heading() },
-            style = MaterialTheme.typography.titleSmall, color = Ink)
+        Column(Modifier.weight(1f)) {
+            Text(date, modifier = Modifier.semantics { heading() },
+                style = MaterialTheme.typography.titleSmall, color = Ink)
+            if (field == DateField.CAPTURED && includesAddedDate) {
+                Text("촬영 정보가 없는 기기 파일은 추가일 기준", style = MaterialTheme.typography.bodySmall, color = Muted)
+            }
+        }
         Text("${count}개", style = MaterialTheme.typography.bodySmall, color = Muted)
     }
 }
@@ -722,96 +902,93 @@ internal fun MediaTile(
             Modifier.semantics { contentDescription = "${item.displayName} 선택" }
                 .toggleable(value = selected, role = Role.Checkbox, onValueChange = { toggle() })
         } else {
-            Modifier.combinedClickable(
+            val selectionAction = if (selectable) Modifier.semantics {
+                onLongClick(label = "선택 시작") {
+                    toggle()
+                    true
+                }
+            } else Modifier
+            selectionAction.clickable(
                 role = Role.Button,
                 onClickLabel = "파일 상세 열기",
                 onClick = detail,
-                onLongClickLabel = if (selectable) "선택 시작" else null,
-                onLongClick = toggle.takeIf { selectable },
             )
         },
     )
     val showOutline = (selected && showSelection) || tileFocused
-    val viewConfiguration = LocalViewConfiguration.current
-    val selectionViewConfiguration = remember(viewConfiguration) {
-        object : ViewConfiguration by viewConfiguration {
-            override val longPressTimeoutMillis = 2_000L
-        }
-    }
-    CompositionLocalProvider(LocalViewConfiguration provides selectionViewConfiguration) {
-        if (listView) {
-            Row(
-                Modifier.fillMaxWidth().galliCardSurface()
-                    .then(if (showOutline) Modifier.border(
-                        2.dp, Primary, RoundedCornerShape(GalliUiMetrics.cardCorner),
-                    ) else Modifier)
-                    .then(tileAction).padding(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Box(Modifier.size(76.dp)) {
-                    MediaThumbnail(item, Modifier.fillMaxSize(), contentDescription = null)
-                    if (showSelection) SelectionIndicator(selected, selectable,
-                        Modifier.align(Alignment.TopStart).padding(4.dp))
-                    if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(item.displayName, style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(dateMs).substringBefore(" "),
-                        style = MaterialTheme.typography.bodySmall, color = Muted)
-                    if (ocrText != null) {
-                        Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery),
-                            style = MaterialTheme.typography.labelSmall, color = Muted,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (item.kind == MediaKind.VIDEO) {
-                        Text(durationLabel(item.durationMs), style = MaterialTheme.typography.labelSmall, color = Muted)
-                    }
-                }
+    if (listView) {
+        Row(
+            Modifier.fillMaxWidth().galliCardSurface()
+                .then(if (showOutline) Modifier.border(
+                    2.dp, Primary, RoundedCornerShape(GalliUiMetrics.cardCorner),
+                ) else Modifier)
+                .then(tileAction).padding(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(Modifier.size(76.dp)) {
+                MediaThumbnail(item, Modifier.fillMaxSize(), contentDescription = null)
+                if (showSelection) SelectionIndicator(selected, selectable,
+                    Modifier.align(Alignment.TopStart).padding(4.dp))
+                if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
             }
-        } else {
-            Column(Modifier.fillMaxWidth().then(
-                if (tabletGrid) Modifier.testTag("tablet-media-${item.id}") else Modifier,
-            ).then(tileAction), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
-                    MediaThumbnail(item, Modifier.fillMaxSize(), contentDescription = null)
-                    if (showOutline) {
-                        Box(Modifier.matchParentSize().border(2.dp, Primary)
-                            .padding(2.dp).border(1.dp, AppSurface))
-                    }
-                    if (showSelection) SelectionIndicator(selected, selectable,
-                        Modifier.align(Alignment.TopStart).padding(4.dp).testTag("grid-selection-indicator"))
-                    if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
-                    if (item.kind == MediaKind.VIDEO) {
-                        Text(durationLabel(item.durationMs), color = MaterialTheme.colorScheme.onPrimary,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
-                                .background(Ink, RoundedCornerShape(8.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp))
-                    }
-                    if (item.isFavorite || item.isProtected) {
-                        GalliIcon(
-                            if (item.isFavorite) Icons.Outlined.Star else Icons.Outlined.Shield,
-                            if (item.isFavorite) "즐겨찾기" else "보호됨",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
-                                .background(Ink, RoundedCornerShape(8.dp)).padding(4.dp).size(16.dp),
-                        )
-                    }
-                }
-                Text(item.displayName, style = if (tabletGrid) MaterialTheme.typography.bodySmall
-                    else MaterialTheme.typography.labelSmall, maxLines = if (tabletGrid) 2 else 1,
-                    overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
-                if (tabletGrid) {
-                    Text(bytesLabel(item.sizeBytes), style = MaterialTheme.typography.labelSmall,
-                        color = Muted, maxLines = 1)
-                }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(item.displayName, style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(dateMs).substringBefore(" "),
+                    style = MaterialTheme.typography.bodySmall, color = Muted)
                 if (ocrText != null) {
-                    Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery, 72),
+                    Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery),
                         style = MaterialTheme.typography.labelSmall, color = Muted,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
+                if (item.kind == MediaKind.VIDEO) {
+                    Text(durationLabel(item.durationMs), style = MaterialTheme.typography.labelSmall, color = Muted)
+                }
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxWidth().then(
+            if (tabletGrid) Modifier.testTag("tablet-media-${item.id}") else Modifier,
+        ).then(tileAction), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+                MediaThumbnail(item, Modifier.fillMaxSize(), contentDescription = null)
+                if (showOutline) {
+                    Box(Modifier.matchParentSize().border(2.dp, Primary)
+                        .padding(2.dp).border(1.dp, AppSurface))
+                }
+                if (showSelection) SelectionIndicator(selected, selectable,
+                    Modifier.align(Alignment.TopStart).padding(4.dp).testTag("grid-selection-indicator"))
+                if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
+                if (item.kind == MediaKind.VIDEO) {
+                    Text(durationLabel(item.durationMs), color = MaterialTheme.colorScheme.onPrimary,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                            .background(Ink, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+                if (item.isFavorite || item.isProtected) {
+                    GalliIcon(
+                        if (item.isFavorite) Icons.Outlined.Star else Icons.Outlined.Shield,
+                        if (item.isFavorite) "즐겨찾기" else "보호됨",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
+                            .background(Ink, RoundedCornerShape(8.dp)).padding(4.dp).size(16.dp),
+                    )
+                }
+            }
+            Text(item.displayName, style = if (tabletGrid) MaterialTheme.typography.bodySmall
+                else MaterialTheme.typography.labelSmall, maxLines = if (tabletGrid) 2 else 1,
+                overflow = if (tabletGrid) TextOverflow.Ellipsis else TextOverflow.MiddleEllipsis,
+                modifier = Modifier.fillMaxWidth())
+            if (tabletGrid) {
+                Text(bytesLabel(item.sizeBytes), style = MaterialTheme.typography.labelSmall,
+                    color = Muted, maxLines = 1)
+            }
+            if (ocrText != null) {
+                Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery, 72),
+                    style = MaterialTheme.typography.labelSmall, color = Muted,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }

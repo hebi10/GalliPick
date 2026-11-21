@@ -39,7 +39,7 @@ class ReferenceHomeScreenTest {
         compose.onNode(hasText("사진·동영상 중복 찾기") and hasClickAction()).performScrollTo().performClick()
         compose.onNode(hasText("용량 큰 파일") and hasClickAction()).performScrollTo().performClick()
         compose.onNode(hasText("오래된 파일") and hasClickAction()).performScrollTo().performClick()
-        compose.onNodeWithText("정리 시작하기").performScrollTo().performClick()
+        compose.onNodeWithText("정리 도구 보기").performScrollTo().performClick()
 
         compose.runOnIdle {
             assertEquals(1, duplicateOpens)
@@ -60,7 +60,7 @@ class ReferenceHomeScreenTest {
         compose.setContent {
             GalliPickTheme { HomeScreen(exampleState, {}, {}, {}, {}) }
         }
-        compose.onNodeWithText("저장공간 사용량").assertIsDisplayed()
+        compose.onNodeWithText("기기 저장공간").assertIsDisplayed()
         compose.onNodeWithText("96.0 GB / 128.0 GB (75%)").assertIsDisplayed()
         compose.onNodeWithText("접근 가능한 미디어 0개").assertIsDisplayed()
     }

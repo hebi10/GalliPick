@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,10 +57,21 @@ internal fun FileToolbar(
     showSourceFilter: Boolean = false,
     onSourceFilterChange: (GallerySourceFilter) -> Unit = {},
     showSearch: Boolean = true,
+    onStartSelection: (() -> Unit)? = null,
+    onClearConditions: (() -> Unit)? = null,
 ) {
     var menu by remember { mutableStateOf<String?>(null) }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val photoTextSearch = searchMode == FileSearchMode.OCR
+    val query = if (photoTextSearch) ocrQuery else filter.query
+    val showLocation = showSourceFilter && !photoTextSearch
+    val clearConditions: () -> Unit = onClearConditions ?: {
+        change(MediaFilter())
+        if (showLocation) onSourceFilterChange(GallerySourceFilter.ALL)
+        if (photoTextSearch) onOcrQueryChange("")
+    }
+    val summary = activeFileConditions(filter, query, sourceFilter.takeIf { showLocation }, photoTextSearch)
     val oneYearAgo = remember { Calendar.getInstance().apply { add(Calendar.YEAR, -1) }.timeInMillis }
     val quickFilters = remember(oneYearAgo) {
         listOf(
@@ -68,11 +80,17 @@ internal fun FileToolbar(
             "1년 이전 영상" to MediaFilter(kind = MediaKind.VIDEO, toDateMs = oneYearAgo),
         )
     }
-    val conditionCount = listOf(
-        filter.folder.isNotBlank(), filter.downloadsOnly, filter.mimeType.isNotBlank(), filter.minSizeBytes != null || filter.maxSizeBytes != null,
-        filter.minDurationMs != null || filter.maxDurationMs != null, filter.fromDateMs != null || filter.toDateMs != null,
-        filter.minPixels != null, filter.orientation != null, filter.favoritesOnly, filter.protectedOnly,
-    ).count { it }
+    var searchWasVisible by remember { mutableStateOf(showSearch) }
+    LaunchedEffect(showSearch) {
+        val justOpened = showSearch && !searchWasVisible
+        val justClosed = !showSearch && searchWasVisible
+        searchWasVisible = showSearch
+        if (justOpened) {
+            withFrameNanos { }
+            focus.requestFocus()
+            keyboard?.show()
+        } else if (justClosed) keyboard?.hide()
+    }
     var searchFocused by remember(showSearch) { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
@@ -88,13 +106,16 @@ internal fun FileToolbar(
                     modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 420.dp)) {
                     DropdownMenuItem(text = { Text("상세 필터") }, onClick = { menu = null; advanced() },
                         leadingIcon = { GalliIcon(Icons.Outlined.Tune, null) })
-                    if (conditionCount > 0) Text("적용 중: ${filterSummary(filter)}",
+                    if (summary.isNotEmpty()) Text("적용 중: $summary",
                         Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.bodySmall, color = Muted)
                     HorizontalDivider()
                     Text("빠른 조건", Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                         style = MaterialTheme.typography.labelMedium, color = Muted)
-                    quickFilters.forEach { (label, preset) ->
+                    val availableQuickFilters = quickFilters.filterNot { (_, preset) ->
+                        photoTextSearch && preset.kind == MediaKind.VIDEO
+                    }
+                    availableQuickFilters.forEach { (label, preset) ->
                         DropdownMenuItem(text = { Text(label) }, onClick = { change(preset); menu = null })
                     }
                     HorizontalDivider()
@@ -104,21 +125,23 @@ internal fun FileToolbar(
                     DropdownMenuItem(text = { Text("보호 파일만") },
                         onClick = { change(filter.copy(protectedOnly = !filter.protectedOnly)); menu = null },
                         trailingIcon = { if (filter.protectedOnly) GalliIcon(Icons.Outlined.Check, null) })
-                    HorizontalDivider()
-                    Text("저장한 조건", Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        style = MaterialTheme.typography.labelMedium, color = Muted)
-                    if (presets.isEmpty()) Text("저장한 조건이 없습니다.",
-                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.bodySmall, color = Muted)
-                    presets.forEach { preset ->
-                        DropdownMenuItem(text = { Text(preset.name) }, onClick = {
-                            change(MediaFilterActions.sort(preset.filter, preset.filter.sortField, preset.filter.sortDirection))
-                            menu = null
-                        }, trailingIcon = {
-                            IconAction("${preset.name} 필터 삭제", Icons.Outlined.Close, Modifier.size(44.dp)) {
-                                deletePreset(preset.id)
-                            }
-                        })
+                    if (!photoTextSearch) {
+                        HorizontalDivider()
+                        Text("저장한 조건", Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.labelMedium, color = Muted)
+                        if (presets.isEmpty()) Text("저장한 조건이 없습니다.",
+                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodySmall, color = Muted)
+                        presets.forEach { preset ->
+                            DropdownMenuItem(text = { Text(preset.name) }, onClick = {
+                                change(MediaFilterActions.sort(preset.filter, preset.filter.sortField, preset.filter.sortDirection))
+                                menu = null
+                            }, trailingIcon = {
+                                IconAction("${preset.name} 필터 삭제", Icons.Outlined.Close, Modifier.size(44.dp)) {
+                                    deletePreset(preset.id)
+                                }
+                            })
+                        }
                     }
                 }
             }
@@ -130,9 +153,18 @@ internal fun FileToolbar(
                         onClick = { menu = null; onGridViewChange(!gridView) },
                         modifier = Modifier.testTag("files-view-toggle"),
                     )
-                    DropdownMenuItem(text = { Text("현재 조건 저장") }, onClick = { menu = null; save() })
-                    DropdownMenuItem(text = { Text("조건 초기화") }, onClick = { change(MediaFilter()); menu = null })
-                    DropdownMenuItem(text = { Text("빠른 조건·저장한 조건") }, onClick = { menu = "conditions" })
+                    if (onStartSelection != null) {
+                        DropdownMenuItem(text = { Text("파일 선택") }, onClick = {
+                            menu = null
+                            onStartSelection()
+                        })
+                    }
+                    if (!photoTextSearch) {
+                        DropdownMenuItem(text = { Text("현재 조건 저장") }, onClick = { menu = null; save() })
+                    }
+                    DropdownMenuItem(text = { Text("조건 초기화") }, onClick = { clearConditions(); menu = null })
+                    DropdownMenuItem(text = { Text(if (photoTextSearch) "빠른 조건" else "빠른 조건·저장한 조건") },
+                        onClick = { menu = "conditions" })
                 }
             }
         }
@@ -142,9 +174,8 @@ internal fun FileToolbar(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (showSearch) {
-            val query = if (searchMode == FileSearchMode.OCR) ocrQuery else filter.query
             val updateQuery: (String) -> Unit = {
-                if (searchMode == FileSearchMode.OCR) onOcrQueryChange(it)
+                if (photoTextSearch) onOcrQueryChange(it)
                 else change(filter.copy(query = it))
             }
             val searchLabel = if (searchMode == FileSearchMode.OCR) "사진 속 글자 검색" else "파일 이름 또는 폴더 검색"
@@ -178,7 +209,7 @@ internal fun FileToolbar(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { finishSearch() }),
                 )
-                if (searchFocused || query.isNotBlank()) {
+                if ((searchFocused || query.isNotBlank()) && !compactSearchScope) {
                     TextAction("검색 완료", finishSearch)
                 }
             }
@@ -227,7 +258,7 @@ internal fun FileToolbar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Box {
+            if (!photoTextSearch) Box {
                 ToolbarChoice(
                     "유형: ${kindLabel(filter.kind)}", "미디어 유형 선택",
                     kindLabel(filter.kind), filter.kind != null,
@@ -256,7 +287,7 @@ internal fun FileToolbar(
                     }
                 }
             }
-            if (showSourceFilter && searchMode == FileSearchMode.FILES) {
+            if (showLocation) {
                 Box {
                     ToolbarChoice(
                         "위치: ${sourceLabel(sourceFilter)}", "저장 위치 선택",
@@ -306,11 +337,24 @@ internal fun FileToolbar(
                 }
             }
         }
+        if (!showSearch && summary.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(GalliUiMetrics.buttonCorner))
+                    .padding(start = 10.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(summary, Modifier.weight(1f), color = Ink, style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium, maxLines = if (fontScale >= 1.5f) 2 else 1,
+                    overflow = TextOverflow.Ellipsis)
+                ActionButton("조건 지우기", clearConditions)
+            }
+        }
         if (menu == "sort") {
             Dialog(onDismissRequest = { menu = null }) {
                 Surface(shape = RoundedCornerShape(16.dp), color = AppSurface) {
                     Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                        SortChoices.forEach { choice ->
+                        SortChoices.filterNot { photoTextSearch && it.field == SortField.DURATION }.forEach { choice ->
                             DropdownMenuItem(text = { Text(choice.label) }, onClick = {
                                 change(MediaFilterActions.sort(filter, choice.field, choice.direction))
                                 menu = null
@@ -381,17 +425,33 @@ internal fun sourceLabel(source: GallerySourceFilter): String = when (source) {
     GallerySourceFilter.CLOUD -> "클라우드"
 }
 
-internal fun filterSummary(filter: MediaFilter): String = buildList {
+private fun activeFileConditions(
+    filter: MediaFilter, query: String, source: GallerySourceFilter?, photoTextSearch: Boolean,
+): String = buildList {
+    if (!photoTextSearch) filter.kind?.let { add(kindLabel(it)) }
+    if (query.isNotBlank()) add("검색어 ‘${query.trim()}’")
     if (filter.downloadsOnly) add("다운로드 폴더")
     if (filter.folder.isNotBlank()) add(filter.folder.trimEnd('/'))
     if (filter.mimeType.isNotBlank()) add(filter.mimeType)
-    filter.minSizeBytes?.let { add("${bytesLabel(it)} 이상") }
-    filter.maxSizeBytes?.let { add("${bytesLabel(it)} 이하") }
+    filter.minSizeBytes?.let { add("${bytesLabel(it).replace(".0 ", " ")} 이상") }
+    filter.maxSizeBytes?.let { add("${bytesLabel(it).replace(".0 ", " ")} 이하") }
     filter.minDurationMs?.let { add("${durationLabel(it)} 이상") }
     filter.maxDurationMs?.let { add("${durationLabel(it)} 이하") }
-    if (filter.fromDateMs != null || filter.toDateMs != null) add("기간 지정")
+    val dateBasis = dateFieldLabel(filter.dateField)
+    val from = filter.fromDateMs?.takeUnless { it == 1L }?.let { dateLabel(it).substringBefore(" ") }
+    val to = filter.toDateMs?.let { dateLabel(it).substringBefore(" ") }
+    when {
+        from != null && to != null -> add("$dateBasis $from–$to")
+        from != null -> add("$dateBasis $from 이후")
+        to != null -> add("$dateBasis $to 이전")
+    }
     filter.minPixels?.let { add("%.1f MP 이상".format(it / 1_000_000.0)) }
     filter.orientation?.let { add(when (it) { Orientation.LANDSCAPE -> "가로"; Orientation.PORTRAIT -> "세로"; Orientation.SQUARE -> "정사각형" }) }
     if (filter.favoritesOnly) add("즐겨찾기")
     if (filter.protectedOnly) add("보호 파일")
+    if (source != null && source != GallerySourceFilter.ALL) add(sourceLabel(source))
+    if (isEmpty() && filter.groupMode != FileGroupMode.AUTO) add("${fileGroupModeLabel(filter.groupMode)} 그룹")
+    if (isEmpty() && (filter.sortField != SortField.CAPTURED || filter.sortDirection != SortDirection.DESCENDING)) {
+        add(sortChoiceLabel(filter))
+    }
 }.joinToString(" · ")

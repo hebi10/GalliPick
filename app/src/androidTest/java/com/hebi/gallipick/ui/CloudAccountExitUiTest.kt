@@ -67,9 +67,9 @@ class CloudAccountExitUiTest {
         compose.onNodeWithText("회원 탈퇴").performClick()
         compose.onNodeWithText("GalliPick 회원 탈퇴").assertIsDisplayed()
         compose.onNodeWithText("Google 재인증 후 삭제 요청").assertIsNotEnabled()
-        compose.onNodeWithTag("cloud-exit-confirm-permanent").performClick()
+        compose.onNodeWithText("삭제된 클라우드 원본은 복원할 수 없음을 확인했습니다.").performClick()
         compose.onNodeWithText("Google 재인증 후 삭제 요청").assertIsNotEnabled()
-        compose.onNodeWithTag("cloud-exit-confirm-billing").performClick()
+        compose.onNodeWithText("Google Play 자동 갱신은 직접 취소해야 함을 확인했습니다.").performClick()
         compose.waitUntil(5_000L) {
             compose.onAllNodesWithText("Google 재인증 후 삭제 요청").fetchSemanticsNodes().isNotEmpty()
         }

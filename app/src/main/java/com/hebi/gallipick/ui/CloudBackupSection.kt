@@ -1,5 +1,6 @@
 package com.hebi.gallipick.ui
 
+import android.text.format.Formatter
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -60,14 +62,19 @@ internal fun CloudOriginalTransferNotice(
     accountLabel: String,
     originalSize: String,
     privateVault: Boolean = false,
+    lastKnownRemainingBytes: Long? = null,
 ) {
     val destination = if (privateVault) "시크릿 클라우드" else "클라우드 보관함"
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("보관 위치 · $destination", style = MaterialTheme.typography.bodyMedium)
         Text("대상 계정 · $accountLabel", style = MaterialTheme.typography.bodyMedium)
         Text("원본 크기 · $originalSize", style = MaterialTheme.typography.bodyMedium)
+        lastKnownRemainingBytes?.let { remaining ->
+            val space = Formatter.formatShortFileSize(LocalContext.current, remaining)
+            Text("남은 저장공간 · $space (마지막 확인)", style = MaterialTheme.typography.bodyMedium)
+        }
         Text(
-            "원본에 포함된 촬영 위치 등의 정보도 함께 보관되며, 클라우드 저장공간을 사용합니다.",
+            "촬영 위치 등 원본에 포함된 정보도 함께 보관합니다.",
             color = Muted,
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -146,7 +153,7 @@ internal fun CloudBackupControls(
             )
             val storage = if (privateVault) "시크릿 클라우드" else "클라우드"
             Text(
-                if (supportsResume) "사진·동영상 원본을 ${storage}에 보관합니다. 요금제 남은 용량을 사용하며, 중단한 대용량 파일은 같은 파일을 선택해 이어서 올릴 수 있습니다."
+                if (supportsResume) "요금제 저장공간을 사용합니다. 대용량 백업이 중단되면 같은 파일을 선택해 이어서 올릴 수 있습니다."
                 else "한 번에 사진이나 동영상 한 개를 선택해 ${storage}에 보관합니다.\n파일당 최대 ${cloudOriginalLimitLabel(maximumBytes)}입니다.",
                 color = Muted,
                 style = MaterialTheme.typography.bodyMedium,
@@ -171,7 +178,9 @@ internal fun CloudBackupControls(
         }
         if (currentSelection != null) {
             Text(currentSelection.displayName, style = MaterialTheme.typography.bodyMedium)
-            CloudOriginalTransferNotice(accountLabel, bytesLabel(currentSelection.sizeBytes), privateVault)
+            CloudOriginalTransferNotice(
+                accountLabel, bytesLabel(currentSelection.sizeBytes), privateVault, access.lastKnownRemainingBytes,
+            )
             ActionButton(
                 when (result) {
                     null -> if (paused) "이어서 올리기" else "선택한 원본 백업"

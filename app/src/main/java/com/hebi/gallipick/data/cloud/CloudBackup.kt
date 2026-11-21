@@ -53,9 +53,12 @@ internal enum class CloudBackupResult {
     VERIFICATION_PENDING,
 }
 
+internal enum class CloudBackupNetworkFailure { CONNECTION, TIMEOUT, SERVICE }
+
 internal class CloudBackupException(
     val result: CloudBackupResult,
     val permissionDenied: Boolean = false,
+    val networkFailure: CloudBackupNetworkFailure? = null,
 ) : Exception()
 
 internal data class CloudAutoBackupTransfer(val folder: CloudAutoBackupFolder, val wifiNetwork: Network)
@@ -68,6 +71,9 @@ internal data class RecentVerifiedCloudUpload(
 )
 
 internal fun failBackup(result: CloudBackupResult): Nothing = throw CloudBackupException(result)
+
+internal fun cloudBackupNetworkError(reason: CloudBackupNetworkFailure) =
+    CloudBackupException(CloudBackupResult.NETWORK_ERROR, networkFailure = reason)
 
 internal class CloudBackup(
     context: Context,
@@ -354,7 +360,7 @@ internal class CloudBackup(
             }
         }
         return if (timeoutMillis == null) execute() else withTimeoutOrNull(timeoutMillis) { execute() }
-            ?: failBackup(CloudBackupResult.NETWORK_ERROR)
+            ?: throw cloudBackupNetworkError(CloudBackupNetworkFailure.TIMEOUT)
     }
 
     private suspend fun transferResumable(

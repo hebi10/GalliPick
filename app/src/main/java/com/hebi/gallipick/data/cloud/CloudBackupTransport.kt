@@ -5,6 +5,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.URL
 import java.net.URLConnection
@@ -26,6 +27,51 @@ internal fun openCloudBackupConnection(
 ): HttpsURLConnection {
     val connection = if (openOnNetwork == null) url.openConnection() else openOnNetwork(url)
     return connection as HttpsURLConnection
+}
+
+internal fun readCloudBackupCallableResult(
+    status: Int,
+    maxResponseBytes: Int,
+    openResponse: () -> InputStream?,
+    ensureActive: () -> Unit,
+): JSONObject {
+    if (status == HttpURLConnection.HTTP_UNAUTHORIZED) failBackup(CloudBackupResult.TEST_ACCESS_REQUIRED)
+    if (status == HttpURLConnection.HTTP_FORBIDDEN) {
+        throw CloudBackupException(CloudBackupResult.TEST_ACCESS_REQUIRED, permissionDenied = true)
+    }
+    val response = openResponse()?.use { stream ->
+        val bytes = ByteArray(maxResponseBytes + 1)
+        var size = 0
+        while (size < bytes.size) {
+            ensureActive()
+            val count = stream.read(bytes, size, bytes.size - size)
+            if (count < 0) break
+            size += count
+        }
+        if (size > maxResponseBytes) failBackup(CloudBackupResult.FAILED)
+        try {
+            JSONObject(String(bytes, 0, size, Charsets.UTF_8))
+        } catch (_: JSONException) {
+            if (status == HttpURLConnection.HTTP_OK) failBackup(CloudBackupResult.FAILED) else null
+        }
+    }
+    when (response?.optJSONObject("error")?.optString("status")) {
+        "UNAUTHENTICATED" -> failBackup(CloudBackupResult.TEST_ACCESS_REQUIRED)
+        "PERMISSION_DENIED" -> throw CloudBackupException(CloudBackupResult.TEST_ACCESS_REQUIRED, permissionDenied = true)
+        "RESOURCE_EXHAUSTED" -> failBackup(CloudBackupResult.QUOTA_REACHED)
+        "UNAVAILABLE" -> throw cloudBackupNetworkError(CloudBackupNetworkFailure.SERVICE)
+        "DEADLINE_EXCEEDED" -> throw cloudBackupNetworkError(CloudBackupNetworkFailure.TIMEOUT)
+        null -> Unit
+        else -> if (status == HttpURLConnection.HTTP_OK) failBackup(CloudBackupResult.FAILED)
+    }
+    when (status) {
+        HttpURLConnection.HTTP_OK -> Unit
+        HttpURLConnection.HTTP_CLIENT_TIMEOUT, HttpURLConnection.HTTP_GATEWAY_TIMEOUT ->
+            throw cloudBackupNetworkError(CloudBackupNetworkFailure.TIMEOUT)
+        429, in 500..599 -> throw cloudBackupNetworkError(CloudBackupNetworkFailure.SERVICE)
+        else -> failBackup(CloudBackupResult.FAILED)
+    }
+    return response?.optJSONObject("result") ?: failBackup(CloudBackupResult.FAILED)
 }
 
 internal class CloudBackupTransport(
@@ -329,33 +375,12 @@ internal class CloudBackupTransport(
             connection.setFixedLengthStreamingMode(body.size)
             connection.outputStream.use { it.write(body) }
             val status = connection.responseCode
-            val input = if (status == HttpURLConnection.HTTP_OK) connection.inputStream else connection.errorStream
-            val response = input?.use { stream ->
-                val bytes = ByteArray(maxResponseBytes + 1)
-                var size = 0
-                while (size < bytes.size) {
-                    ensureActive()
-                    val count = stream.read(bytes, size, bytes.size - size)
-                    if (count < 0) break
-                    size += count
-                }
-                if (size > maxResponseBytes) failBackup(CloudBackupResult.FAILED)
-                try {
-                    JSONObject(String(bytes, 0, size, Charsets.UTF_8))
-                } catch (_: JSONException) {
-                    failBackup(CloudBackupResult.FAILED)
-                }
-            }
-            when (response?.optJSONObject("error")?.optString("status")) {
-                "UNAUTHENTICATED" -> failBackup(CloudBackupResult.TEST_ACCESS_REQUIRED)
-                "PERMISSION_DENIED" -> throw CloudBackupException(CloudBackupResult.TEST_ACCESS_REQUIRED, permissionDenied = true)
-                "RESOURCE_EXHAUSTED" -> failBackup(CloudBackupResult.QUOTA_REACHED)
-                "UNAVAILABLE", "DEADLINE_EXCEEDED" -> failBackup(CloudBackupResult.NETWORK_ERROR)
-                null -> Unit
-                else -> failBackup(CloudBackupResult.FAILED)
-            }
-            if (status != HttpURLConnection.HTTP_OK) failBackup(CloudBackupResult.FAILED)
-            response?.optJSONObject("result") ?: failBackup(CloudBackupResult.FAILED)
+            readCloudBackupCallableResult(
+                status,
+                maxResponseBytes,
+                openResponse = { if (status == HttpURLConnection.HTTP_OK) connection.inputStream else connection.errorStream },
+                ensureActive = ensureActive,
+            )
         }
     }
 
@@ -368,8 +393,8 @@ internal class CloudBackupTransport(
         suspendCancellableCoroutine { continuation ->
             val connection = try {
                 openCloudBackupConnection(url, wifiNetwork?.let { it::openConnection })
-            } catch (_: IOException) {
-                continuation.resumeWith(Result.failure(CloudBackupException(CloudBackupResult.NETWORK_ERROR)))
+            } catch (error: IOException) {
+                continuation.resumeWith(Result.failure(error.asCloudBackupNetworkError()))
                 return@suspendCancellableCoroutine
             }
             continuation.invokeOnCancellation { connection.disconnect() }
@@ -383,9 +408,9 @@ internal class CloudBackupTransport(
                 continuation.resumeWith(Result.success(result))
             } catch (error: CancellationException) {
                 continuation.cancel(error)
-            } catch (_: IOException) {
+            } catch (error: IOException) {
                 if (continuation.isActive) {
-                    continuation.resumeWith(Result.failure(CloudBackupException(CloudBackupResult.NETWORK_ERROR)))
+                    continuation.resumeWith(Result.failure(error.asCloudBackupNetworkError()))
                 }
             } catch (error: Exception) {
                 if (continuation.isActive) continuation.resumeWith(Result.failure(error))
@@ -459,3 +484,7 @@ internal class CloudBackupTransport(
         const val PRODUCTION_FINISH_READ_TIMEOUT_MS = 550_000
     }
 }
+
+private fun IOException.asCloudBackupNetworkError() = cloudBackupNetworkError(
+    if (this is SocketTimeoutException) CloudBackupNetworkFailure.TIMEOUT else CloudBackupNetworkFailure.CONNECTION,
+)

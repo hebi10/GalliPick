@@ -3,7 +3,6 @@ package com.hebi.gallipick.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -74,9 +74,12 @@ internal fun TrashScreen(
     onBack: () -> Unit,
     onRequestPermission: () -> Unit,
     onRetry: () -> Unit,
+    onOpenPermissionSettings: (() -> Unit)? = null,
 ) {
     val availability = state.catalogAvailability
     val items = state.trashed
+    val partial = state.access == MediaAccess.PARTIAL
+    val accessAction = onOpenPermissionSettings ?: onRequestPermission
     var selected by rememberSaveable { mutableStateOf(emptyMap<String, Pair<String, String>>()) }
     var limitMessage by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
@@ -102,7 +105,9 @@ internal fun TrashScreen(
             else -> limitMessage = "한 번에 최대 ${SelectionPolicy.MAX_SELECTION_SIZE}개까지 복원할 수 있습니다. 선택을 해제한 뒤 다시 선택해 주세요."
         }
     }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val compact = maxHeight < 440.dp * fontScale
         Column(Modifier.widthIn(max = 1040.dp).fillMaxSize().padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 IconAction("뒤로", Icons.Outlined.ArrowBack, onClick = onBack)
@@ -110,7 +115,9 @@ internal fun TrashScreen(
                 Column(Modifier.weight(1f)) {
                     Text("휴지통", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
                     if (availability == MediaCatalogAvailability.READY) {
-                        Text("보관 파일 ${items.size}개 · 파일 용량 ${bytesLabel(items.sumOf { it.sizeBytes })}", color = Muted, style = MaterialTheme.typography.bodySmall)
+                        val scope = if (partial) "허용한 파일 중 " else ""
+                        Text("${scope}보관 파일 ${items.size}개 · 파일 용량 ${bytesLabel(items.sumOf { it.sizeBytes })}",
+                            color = Muted, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -120,7 +127,10 @@ internal fun TrashScreen(
                         MediaCatalogAvailability.PERMISSION_REQUIRED -> EmptyState(
                             "미디어 접근이 필요합니다", "휴지통에 있는 사진과 동영상을 확인하려면 접근을 허용해 주세요.",
                             Icons.Outlined.PhotoLibrary,
-                            action = { ActionButton("접근 허용", onRequestPermission, filled = true) },
+                            action = { ActionButton(
+                                if (onOpenPermissionSettings == null) "접근 허용" else "앱 권한 설정",
+                                accessAction, Modifier.fillMaxWidth(), filled = true,
+                            ) },
                         )
                         MediaCatalogAvailability.LOADING -> EmptyState(
                             "휴지통을 불러오고 있습니다", "복원할 수 있는 사진과 동영상을 확인하고 있습니다.",
@@ -138,69 +148,85 @@ internal fun TrashScreen(
                 return@Column
             }
             Spacer(Modifier.height(16.dp))
-            if (state.access == MediaAccess.PARTIAL) {
-                GalliInlineNotice(
-                    "접근을 허용한 사진·동영상만 표시 중",
-                    "접근 범위 변경", onRequestPermission, Icons.Outlined.PhotoLibrary,
-                )
-                Spacer(Modifier.height(8.dp))
+            val guidance: @Composable () -> Unit = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (partial) GalliInlineNotice(
+                        "접근을 허용한 사진·동영상만 표시 중",
+                        if (onOpenPermissionSettings == null) "접근 범위 변경" else "앱 권한 설정",
+                        accessAction, Icons.Outlined.PhotoLibrary,
+                    )
+                    Text(
+                        "보관 기간이 지나면 Android가 휴지통 파일을 삭제할 수 있습니다. 복원은 Android에서 승인해 주세요.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Muted,
+                        modifier = Modifier.fillMaxWidth().galliCardSurface(Panel).padding(14.dp),
+                    )
+                }
             }
-            Text(
-                "휴지통 보관 기간은 Android가 관리합니다. 보관 기간이 지나면 자동 삭제될 수 있습니다. 파일 복원은 Android 시스템에서 최종 승인합니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Muted,
-                modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(16.dp)).border(1.dp, Line, RoundedCornerShape(16.dp)).padding(14.dp),
-            )
             if (items.isEmpty()) {
-                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                    val short = maxHeight < 300.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
-                    if (short) {
+                val emptyTitle = if (partial) "허용한 파일 중 휴지통에 있는 파일이 없습니다" else "휴지통이 비어 있습니다"
+                val emptyDescription = if (partial) "다른 파일을 확인하려면 접근 범위를 변경해 주세요."
+                    else "휴지통으로 이동한 사진과 동영상이 여기에 표시됩니다."
+                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    guidance()
+                    if (compact) {
                         Column(
-                            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             GalliIllustration(GalliScene.EMPTY, Modifier.size(44.dp))
-                            Text("휴지통이 비어 있습니다", style = MaterialTheme.typography.titleSmall,
-                                textAlign = TextAlign.Center)
-                            Text("휴지통으로 이동한 사진과 동영상이 여기에 표시됩니다.",
+                            Text(emptyTitle, style = MaterialTheme.typography.titleSmall,
+                                textAlign = TextAlign.Center, modifier = Modifier.semantics { heading() })
+                            Text(emptyDescription,
                                 style = MaterialTheme.typography.bodySmall, color = Muted,
                                 textAlign = TextAlign.Center)
                         }
                     } else {
-                        Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                            EmptyState("휴지통이 비어 있습니다",
-                                "휴지통으로 이동한 사진과 동영상이 여기에 표시됩니다.",
-                                Icons.Outlined.DeleteOutline)
-                        }
+                        EmptyState(emptyTitle, emptyDescription, Icons.Outlined.DeleteOutline)
                     }
                 }
             } else {
-                Spacer(Modifier.height(14.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    val allSelected = selectedItems.size == minOf(items.size, SelectionPolicy.MAX_SELECTION_SIZE)
-                    SelectBox(
-                        checked = allSelected,
-                        description = "휴지통 전체 선택",
-                        onClick = {
-                            selected = if (allSelected) emptyMap() else items.take(SelectionPolicy.MAX_SELECTION_SIZE).associate { it.uri to (it.fingerprint to it.volumeVersion) }
-                            limitMessage = if (!allSelected && items.size > SelectionPolicy.MAX_SELECTION_SIZE) "앞의 ${SelectionPolicy.MAX_SELECTION_SIZE}개를 선택했습니다. 한 번에 최대 ${SelectionPolicy.MAX_SELECTION_SIZE}개까지 복원할 수 있습니다." else null
-                        },
-                    )
-                    Text(if (items.size > SelectionPolicy.MAX_SELECTION_SIZE) "앞 ${SelectionPolicy.MAX_SELECTION_SIZE}개 선택" else "전체 선택", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                    Text("${selectedItems.size}개 선택 · ${bytesLabel(selectedItems.sumOf { it.sizeBytes })}", color = Muted, style = MaterialTheme.typography.bodySmall)
+                val limit = SelectionPolicy.MAX_SELECTION_SIZE
+                val limited = items.size > limit
+                val batch = remember(items) { items.take(limit).associate { it.uri to (it.fingerprint to it.volumeVersion) } }
+                val allSelected = selected == batch
+                val batchLabel = if (limited) "앞 ${limit}개 선택" else "전체 선택"
+                val selection: @Composable () -> Unit = {
+                    Column {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            SelectBox(checked = allSelected,
+                                description = if (limited) batchLabel else "휴지통 전체 선택",
+                                onClick = {
+                                    selected = if (allSelected) emptyMap() else batch
+                                    limitMessage = if (!allSelected && limited) "앞의 ${limit}개를 선택했습니다. 한 번에 최대 ${limit}개까지 복원할 수 있습니다." else null
+                                },
+                            )
+                            Text(batchLabel, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                            Text("${selectedItems.size}개 선택 · ${bytesLabel(selectedItems.sumOf { it.sizeBytes })}",
+                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (limited || limitMessage != null) Text(
+                            limitMessage ?: "한 번에 최대 ${limit}개까지 복원할 수 있습니다.",
+                            color = Muted, style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(bottom = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                        )
+                    }
                 }
-                Text(
-                    limitMessage ?: "한 번에 최대 ${SelectionPolicy.MAX_SELECTION_SIZE}개까지 복원할 수 있습니다.",
-                    color = Muted, style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(bottom = 8.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                )
+                if (!compact) {
+                    guidance()
+                    Spacer(Modifier.height(8.dp))
+                    selection()
+                }
                 LazyColumn(
                     Modifier.weight(1f).semantics { contentDescription = "휴지통 파일 목록" },
                     state = listState,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    if (compact) {
+                        item("guidance") { guidance() }
+                        item("selection") { selection() }
+                    }
                     items(items, key = { it.uri }) { item ->
                         TrashRow(item, selected[item.uri] == (item.fingerprint to item.volumeVersion)) { toggle(item) }
                     }

@@ -114,6 +114,7 @@ internal fun FilterDialog(
     cloudItems: List<CloudOriginal> = emptyList(),
     sourceFilter: GallerySourceFilter? = null,
     onSourceFilterChange: (GallerySourceFilter) -> Unit = {},
+    searchMode: FileSearchMode = FileSearchMode.FILES,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -125,7 +126,7 @@ internal fun FilterDialog(
             contentAlignment = Alignment.Center,
         ) {
             FilterDialogContent(current, items, onApply, onDismiss, Modifier.fillMaxSize(),
-                cloudItems, sourceFilter, onSourceFilterChange)
+                cloudItems, sourceFilter, onSourceFilterChange, searchMode)
         }
     }
 }
@@ -142,7 +143,9 @@ internal fun FilterDialogContent(
     cloudItems: List<CloudOriginal> = emptyList(),
     sourceFilter: GallerySourceFilter? = null,
     onSourceFilterChange: (GallerySourceFilter) -> Unit = {},
+    searchMode: FileSearchMode = FileSearchMode.FILES,
 ) {
+    val photoTextSearch = searchMode == FileSearchMode.OCR
     var kind by remember(current) { mutableStateOf(current.kind) }
     var query by remember(current) { mutableStateOf(current.query) }
     var folder by remember(current) { mutableStateOf(current.folder) }
@@ -163,7 +166,9 @@ internal fun FilterDialogContent(
     var protectedOnly by remember(current) { mutableStateOf(current.protectedOnly) }
     var sortField by remember(current) { mutableStateOf(current.sortField) }
     var sortDirection by remember(current) { mutableStateOf(current.sortDirection) }
-    var selectedSource by remember(sourceFilter) { mutableStateOf(sourceFilter) }
+    var selectedSource by remember(sourceFilter, photoTextSearch) {
+        mutableStateOf(sourceFilter.takeUnless { photoTextSearch })
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var invalidTarget by remember { mutableStateOf<String?>(null) }
     var validationAttempt by remember { mutableIntStateOf(0) }
@@ -198,12 +203,16 @@ internal fun FilterDialogContent(
                 current.minDurationMs != null || current.maxDurationMs != null,
         )
     }
-    val folders = remember(items, cloudItems, current.folder) {
-        (items.map { it.relativePath } + cloudItems.flatMap { it.sourceFolders } + current.folder)
+    val deviceItems = remember(items, photoTextSearch) {
+        if (photoTextSearch) items.filter { it.kind == MediaKind.PHOTO } else items
+    }
+    val availableCloudItems = if (photoTextSearch) emptyList() else cloudItems
+    val folders = remember(deviceItems, availableCloudItems, current.folder) {
+        (deviceItems.map { it.relativePath } + availableCloudItems.flatMap { it.sourceFolders } + current.folder)
             .filter { it.isNotBlank() }.distinct().sorted()
     }
-    val mimeTypes = remember(items, cloudItems, current.mimeType) {
-        (items.map { it.mimeType } + cloudItems.map { it.mimeType } + current.mimeType)
+    val mimeTypes = remember(deviceItems, availableCloudItems, current.mimeType) {
+        (deviceItems.map { it.mimeType } + availableCloudItems.map { it.mimeType } + current.mimeType)
             .filter { it.isNotBlank() }.distinct().sorted()
     }
     val activeAdvancedCount = listOf(
@@ -214,7 +223,7 @@ internal fun FilterDialogContent(
         favoritesOnly, protectedOnly,
     ).count { it }
     val basicContent: @Composable ColumnScope.() -> Unit = {
-        FilterGroup("미디어 유형") {
+        if (!photoTextSearch) FilterGroup("미디어 유형") {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -317,7 +326,8 @@ internal fun FilterDialogContent(
             }
         }
         FilterGroup("정렬") {
-            FilterDropdown("정렬 기준", sortFieldLabel(sortField), SortField.entries.map { it to sortFieldLabel(it) }) {
+            val availableSort = SortField.entries.filterNot { photoTextSearch && it == SortField.DURATION }
+            FilterDropdown("정렬 기준", sortFieldLabel(sortField), availableSort.map { it to sortFieldLabel(it) }) {
                 sortField = it
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -330,7 +340,7 @@ internal fun FilterDialogContent(
                 }
             }
         }
-        if (sourceFilter != null) {
+        if (selectedSource != null) {
             FilterGroup("저장 위치") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -344,8 +354,8 @@ internal fun FilterDialogContent(
         }
     }
     val advancedContent: @Composable ColumnScope.() -> Unit = {
-        FilterGroup("검색과 폴더") {
-            OutlinedTextField(
+        FilterGroup(if (photoTextSearch) "기기 사진 폴더" else "검색과 폴더") {
+            if (!photoTextSearch) OutlinedTextField(
                 value = query, onValueChange = { query = it },
                 label = { Text("파일 이름 검색") },
                 singleLine = true, shape = RoundedCornerShape(GalliUiMetrics.buttonCorner),
@@ -381,7 +391,7 @@ internal fun FilterDialogContent(
                     FilterBounds(minDuration, { minDuration = it }, maxDuration, { maxDuration = it }, "최소 분", "최대 분")
                 }
             }
-        } else {
+        } else if (!photoTextSearch) {
             Text("길이 조건은 동영상 유형에서 설정할 수 있습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
         }
         FilterGroup("파일 형식") {
@@ -485,7 +495,8 @@ internal fun FilterDialogContent(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Text(
-                            "선택: ${when (kind) { MediaKind.PHOTO -> "사진"; MediaKind.VIDEO -> "동영상"; null -> "전체" }}" +
+                            (if (photoTextSearch) "사진 속 글자 · 기기 사진"
+                                else "선택: ${when (kind) { MediaKind.PHOTO -> "사진"; MediaKind.VIDEO -> "동영상"; null -> "전체" }}") +
                                 " · ${if (fromDate.isBlank() && toDate.isBlank()) "전체 기간" else "기간 지정"}" +
                                 " · ${fileGroupModeLabel(groupMode)} 그룹" +
                                 " · ${sortFieldLabel(sortField)}" +
@@ -513,6 +524,7 @@ internal fun FilterDialogContent(
                                     },
                                 )
                                 Text(if (activeAdvancedCount > 0) "세부 조건 ${activeAdvancedCount}개 적용 중"
+                                    else if (photoTextSearch) "폴더 · 크기 · 형식 · 해상도 · 보호"
                                     else "검색 · 폴더 · 크기 · 길이 · 형식 · 해상도 · 보호",
                                     color = Muted, style = MaterialTheme.typography.bodySmall)
                             }
@@ -860,12 +872,6 @@ private fun parseDateBound(text: String, endOfDay: Boolean): Long? {
         calendar.add(Calendar.MILLISECOND, -1)
     }
     return calendar.timeInMillis
-}
-
-private fun dateFieldLabel(value: DateField): String = when (value) {
-    DateField.CAPTURED -> "촬영일"
-    DateField.ADDED -> "추가일"
-    DateField.MODIFIED -> "수정일"
 }
 
 private fun orientationLabel(value: Orientation): String = when (value) {

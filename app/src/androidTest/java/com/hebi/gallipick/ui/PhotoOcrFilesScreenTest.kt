@@ -93,7 +93,7 @@ class PhotoOcrFilesScreenTest {
     @Test fun partialAccessDoesNotExposeStaleOcrText() {
         val photo = item("sample", "private.jpg")
         val state = AppUiState(
-            access = MediaAccess.PARTIAL, items = emptyList(), filtered = emptyList(),
+            access = MediaAccess.PARTIAL, catalogReady = true, items = emptyList(), filtered = emptyList(),
             ocrEntries = listOf(PhotoOcrEntry(photo.uri, photo.fingerprint,
                 photo.volumeVersion, "민감한 주소", OcrResultStatus.SUCCESS)),
         )
@@ -111,6 +111,40 @@ class PhotoOcrFilesScreenTest {
         compose.onNodeWithText("0장 분석됨", substring = true).assertExists()
         compose.onNodeWithContentDescription("사진 속 글자 검색").performTextInput("주소")
         compose.onNodeWithText("private.jpg").assertDoesNotExist()
+    }
+
+    @Test fun photoTextSearchIgnoresVideoFileConditionsAndShowsOnlyMatchingFilterControls() {
+        val photo = item("boarding-pass", "pass.jpg")
+        val fileFilter = MediaFilter(kind = MediaKind.VIDEO, query = "some-video", mimeType = "video/mp4",
+            minDurationMs = 600_000, sortField = SortField.DURATION)
+        val state = AppUiState(
+            access = MediaAccess.FULL, items = listOf(photo), filter = fileFilter,
+            ocrEntries = listOf(PhotoOcrEntry(photo.uri, photo.fingerprint, photo.volumeVersion,
+                "탑승권 서울", OcrResultStatus.SUCCESS)),
+        )
+        compose.setContent { GalliPickTheme {
+            CompositionLocalProvider(LocalDensity provides Density(.7f)) {
+                Surface(Modifier.requiredSize(400.dp, 760.dp)) {
+                    FilesScreenContent(state, false, {}, {}, {}, FilesScreenActions(
+                        {}, {}, {}, {}, {}, {}, { _, _ -> }, {}), showSearch = true,
+                        cloudFiles = CloudFilesUiState(enabled = true))
+                }
+            }
+        } }
+
+        compose.onNodeWithText("사진 속 글자").performClick()
+        compose.onNodeWithContentDescription("사진 속 글자 검색").performTextInput("서울")
+        compose.onNodeWithText(photo.displayName).assertExists()
+        compose.onNodeWithContentDescription("파일 조건 선택").performClick()
+        compose.onNodeWithText("고급 조건 열기").performScrollTo().performClick()
+        compose.onNodeWithText("모든 폴더  ▾").assertExists()
+        compose.onNodeWithText("파일 이름 검색").assertDoesNotExist()
+        compose.onNodeWithText("저장 위치").assertDoesNotExist()
+        compose.onNodeWithText("동영상 길이", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("취소").performClick()
+        compose.onNodeWithText("파일명·폴더").performClick()
+        compose.onNodeWithContentDescription("파일 이름 또는 폴더 검색").assertTextContains("some-video")
+        compose.onNodeWithText(photo.displayName).assertDoesNotExist()
     }
 
     private fun item(id: String, name: String) = MediaItem(

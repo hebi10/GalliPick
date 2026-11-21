@@ -202,6 +202,7 @@ class CloudBillingPolicyTest {
         assertTrue(access.allowsResumableUpload(1_999))
         assertTrue(access.allowsManualUpload(1_999))
         assertEquals(product.quotaBytes, access.maximumManualOriginalBytes(1_999))
+        assertEquals(0L, access.lastKnownRemainingBytes)
         assertFalse(access.allowsManualUpload(2_000))
         assertFalse(checkNotNull(plan.copy(usedBytes = product.quotaBytes + 1).productionBackupAccess())
             .allowsResumableUpload(0))

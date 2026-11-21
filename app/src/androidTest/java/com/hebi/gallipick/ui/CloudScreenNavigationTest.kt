@@ -10,11 +10,18 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.hebi.gallipick.data.cloud.CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES
 import com.hebi.gallipick.data.cloud.CloudAccountBackend
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudAccountIdentity
 import com.hebi.gallipick.data.cloud.CloudAccountSession
+import com.hebi.gallipick.data.cloud.CloudBackup
+import com.hebi.gallipick.data.cloud.CloudBackupAccessState
+import com.hebi.gallipick.data.cloud.CloudBackupNamespace
+import com.hebi.gallipick.data.cloud.CloudBackupTransport
 import com.hebi.gallipick.data.cloud.CloudBilling
+import com.hebi.gallipick.data.cloud.CloudBillingPlan
 import com.hebi.gallipick.data.cloud.CloudBillingSession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,6 +53,29 @@ class CloudScreenNavigationTest {
     }
 
     @Test
+    fun cloudDescriptionIsBelowTheTitleForBothAccountStatesAndOnlyOnOverview() {
+        val backend = FakeAccountBackend("test-user-1")
+        backend.active.value = null
+        val connection = showCloud(backend)
+        val description = compose.onNodeWithText("사진과 동영상을 기기와 별도로 보관하고 관리합니다.")
+
+        description.assertIsDisplayed()
+        val titleBounds = compose.onNodeWithText("클라우드").fetchSemanticsNode().boundsInRoot
+        val descriptionBounds = description.fetchSemanticsNode().boundsInRoot
+        val contentBounds = compose.onNodeWithText("screen-OVERVIEW").fetchSemanticsNode().boundsInRoot
+        assertEquals(titleBounds.left, descriptionBounds.left, 1f)
+        assertTrue(descriptionBounds.top >= titleBounds.bottom)
+        assertTrue(contentBounds.top >= descriptionBounds.bottom)
+
+        runBlocking { connection.session.chooseAccount { "test-credential" } }
+        description.assertIsDisplayed()
+        compose.onNodeWithTag("cloud-route-BILLING").performScrollTo().performClick()
+        description.assertDoesNotExist()
+        compose.onNodeWithContentDescription("뒤로").performClick()
+        description.assertIsDisplayed()
+    }
+
+    @Test
     fun newAccountSignInStaysOnCloudOverviewUntilBillingIsTapped() {
         val backend = FakeAccountBackend("new-account")
         backend.active.value = null
@@ -54,11 +85,14 @@ class CloudScreenNavigationTest {
         runBlocking { connection.session.chooseAccount { "test-credential" } }
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
         compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
+        compose.onNodeWithText("회원 탈퇴").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-route-ACCOUNT_MANAGEMENT").performScrollTo().performClick()
         compose.onNodeWithText("회원 탈퇴").performScrollTo().performClick()
         compose.onNodeWithText("GalliPick 회원 탈퇴").assertIsDisplayed()
         compose.onNodeWithText("탈퇴 요청 메일 작성").assertExists()
         compose.onNodeWithText("돌아가기").performClick()
         compose.onNodeWithText("클라우드 데이터 삭제 요청").assertExists()
+        compose.onNodeWithContentDescription("뒤로").performClick()
         compose.onNodeWithTag("cloud-route-BILLING").performClick()
         compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
         compose.onNodeWithContentDescription("뒤로").performClick()
@@ -132,6 +166,10 @@ class CloudScreenNavigationTest {
         compose.onNodeWithText("screen-BILLING").assertIsDisplayed()
         compose.onNodeWithContentDescription("뒤로").performClick()
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+
+        compose.onNodeWithTag("cloud-route-ACCOUNT_MANAGEMENT").performScrollTo().performClick()
+        compose.onNodeWithText("클라우드 데이터 삭제 요청").assertExists()
+        compose.onNodeWithText("회원 탈퇴").assertDoesNotExist()
     }
 
     @Test
@@ -164,6 +202,60 @@ class CloudScreenNavigationTest {
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
         compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
         compose.onNodeWithTag("cloud-route-BILLING").assertExists()
+    }
+
+    @Test
+    fun withdrawingCatalogAccessClosesCloudReadRoutesForTheSameAccount() {
+        val uid = "catalog-owner"
+        val backend = FakeAccountBackend(uid)
+        val access = CloudBackupAccessState { backend.active.value?.uid }
+        val readOnlyPlan = CloudBillingPlan(
+            enabled = true,
+            backupAvailable = true,
+            maxOriginalBytes = CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES,
+            backupObjectPrefix = CloudBackupNamespace.LICENSE_TEST.objectPrefix,
+        )
+        val backup = CloudBackup(
+            InstrumentationRegistry.getInstrumentation().targetContext,
+            backend.account,
+            { backend.active.value?.uid },
+            { error("Navigation tests do not request authentication tokens") },
+            CloudBackupTransport("https://example.invalid", emptySet()),
+            productionAccess = access,
+        )
+        val connection = CloudAccountConnection(
+            session = CloudAccountSession(backend), backupTransport = backup,
+            productionBackupAccess = access, getGoogleIdToken = { error("No account picker") },
+        )
+        access.observe(uid, readOnlyPlan)
+        compose.setContent {
+            GalliPickTheme {
+                CloudScreen(connection) { route -> Text("screen-${route.name}") }
+            }
+        }
+
+        compose.onNodeWithTag("cloud-route-LIBRARY").performScrollTo().performClick()
+        compose.onNodeWithText("screen-LIBRARY").assertIsDisplayed()
+        compose.onNodeWithContentDescription("뒤로").performClick()
+        compose.onNodeWithTag("cloud-route-SPACE").performScrollTo().performClick()
+        compose.onNodeWithText("screen-SPACE").assertIsDisplayed()
+        compose.runOnIdle { access.observe(uid, readOnlyPlan.copy(cloudReadAllowed = false)) }
+
+        compose.onNodeWithText("screen-SPACE").assertDoesNotExist()
+        compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+        compose.onNodeWithTag("cloud-route-LIBRARY").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-route-SPACE").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-route-BACKUP").performScrollTo().performClick()
+        compose.onNodeWithText("screen-BACKUP").assertIsDisplayed()
+
+        compose.runOnIdle { access.observe(uid, readOnlyPlan.copy(cloudReadAllowed = true)) }
+        compose.onNodeWithContentDescription("뒤로").performClick()
+        compose.onNodeWithTag("cloud-route-LIBRARY").performScrollTo().performClick()
+        compose.onNodeWithText("screen-LIBRARY").assertIsDisplayed()
+        compose.runOnIdle { access.observe(uid, readOnlyPlan.copy(cloudReadAllowed = false)) }
+
+        compose.onNodeWithText("screen-LIBRARY").assertDoesNotExist()
+        compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
     }
 
     @Test

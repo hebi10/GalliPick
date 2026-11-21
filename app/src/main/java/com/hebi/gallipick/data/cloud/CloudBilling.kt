@@ -100,6 +100,7 @@ internal data class CloudBillingPlan(
     val supportsResumableTransfers: Boolean = false,
     val resumableUploadAllowed: Boolean = false,
     val legacyRecoveryProducts: List<CloudBillingProduct> = emptyList(),
+    val cloudReadAllowed: Boolean? = null,
 )
 
 internal fun CloudBillingPlan.productionBackupAccess(): CloudBackupAccess? {
@@ -137,6 +138,7 @@ internal fun CloudBillingPlan.productionBackupAccess(): CloudBackupAccess? {
         supportsResumableTransfers,
         verifiedExpiry.takeIf { canResume },
         quotaBytes.takeIf { canResume } ?: 0L,
+        lastKnownRemainingBytes = (quotaBytes - usedBytes).takeIf { eligible },
     )
 }
 
@@ -147,6 +149,7 @@ internal fun CloudBillingPlan.developmentBackupAccess(): CloudBackupAccess {
         supportsResumableTransfers = supportsResumableTransfers,
         resumableUploadExpiryMillis = (expiresAtMs ?: Long.MAX_VALUE).takeIf { canResume },
         maximumResumableOriginalBytes = quotaBytes.takeIf { canResume } ?: 0L,
+        lastKnownRemainingBytes = (quotaBytes - usedBytes).takeIf { canResume },
     )
 }
 

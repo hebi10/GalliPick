@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items as listItems
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -44,6 +45,7 @@ import com.hebi.gallipick.data.cloud.GallerySource
 import com.hebi.gallipick.data.cloud.GallerySourceFilter
 import com.hebi.gallipick.domain.DateField
 import com.hebi.gallipick.domain.MediaFilter
+import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.SortField
 
 internal fun galleryItemKey(entry: GalleryEntry): String = when (val key = entry.key) {
@@ -70,16 +72,23 @@ internal fun UnifiedFilesList(
     autoLoadThumbnails: Boolean = true,
     modifier: Modifier = Modifier,
     gridColumns: Int? = null,
+    dragSelectionSession: Any?,
+    addSelected: (List<MediaItem>) -> Unit,
 ) {
     val groups = remember(entries, filter) { FileSections.unified(entries, filter) }
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     val tabletGrid = wide && availableWidth >= 720.dp
+    val dragItems = remember(entries, source) {
+        if (source == GallerySourceFilter.CLOUD) emptyMap()
+        else buildMap { entries.forEach { entry -> entry.device?.let { put(galleryItemKey(entry), it) } } }
+    }
 
     if (gridView) {
         LazyVerticalGrid(
             columns = fileGridCells(gridColumns, availableWidth, fontScale, tabletGrid),
             state = gridState,
-            modifier = modifier.semantics { contentDescription = "기기와 클라우드 미디어 파일 목록" },
+            modifier = modifier.fileDragSelection(gridState, dragSelectionSession, dragItems, selected, addSelected)
+                .semantics { contentDescription = "기기와 클라우드 미디어 파일 목록" },
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
@@ -87,7 +96,8 @@ internal fun UnifiedFilesList(
             if (groups.isNotEmpty()) {
                 groups.forEach { group ->
                     item(key = "section:${group.title}", span = { GridItemSpan(maxLineSpan) }) {
-                        FileSectionHeader(group.title, group.items.size, filter.dateField.takeIf { group.isDate })
+                        FileSectionHeader(group.title, group.items.size, filter.dateField.takeIf { group.isDate },
+                            group.isDate && group.items.any { it.device?.let { media -> media.dateTakenMs <= 0 && media.dateAddedMs > 0 } == true })
                     }
                     items(group.items, key = ::galleryItemKey) { item ->
                         UnifiedMediaTile(item, source, selected, selectionMode, toggleDevice, openDevice, openCloud, false, tabletGrid,
@@ -102,15 +112,19 @@ internal fun UnifiedFilesList(
             }
         }
     } else {
+        val listState = rememberLazyListState()
         LazyColumn(
-            modifier = modifier.semantics { contentDescription = "기기와 클라우드 미디어 파일 목록" },
+            state = listState,
+            modifier = modifier.fileDragSelection(listState, dragSelectionSession, dragItems, selected, addSelected)
+                .semantics { contentDescription = "기기와 클라우드 미디어 파일 목록" },
             verticalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
         ) {
             if (groups.isNotEmpty()) {
                 groups.forEach { group ->
                     item(key = "section:${group.title}") {
-                        FileSectionHeader(group.title, group.items.size, filter.dateField.takeIf { group.isDate })
+                        FileSectionHeader(group.title, group.items.size, filter.dateField.takeIf { group.isDate },
+                            group.isDate && group.items.any { it.device?.let { media -> media.dateTakenMs <= 0 && media.dateAddedMs > 0 } == true })
                     }
                     listItems(group.items, key = ::galleryItemKey) { item ->
                         UnifiedMediaTile(item, source, selected, selectionMode, toggleDevice, openDevice, openCloud, true, false, filter.dateField,

@@ -34,11 +34,9 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -137,7 +135,7 @@ class NativeScreenCaptureTest {
     }
 
     @Test fun captureRealActivityWithExampleMedia() {
-        val playStoreProfile = profile == "play-store"
+        val playStoreProfile = profile == "play-store" || profile == "stabilization"
         if (playStoreProfile) {
             check(!app.resources.getBoolean(R.bool.gallipick_ads_enabled) &&
                 !app.resources.getBoolean(R.bool.gallipick_ads_preview)) {
@@ -188,6 +186,7 @@ class NativeScreenCaptureTest {
             awaitCatalog()
             if (playStoreProfile) {
                 capturePlayStoreScreens()
+                if (profile == "stabilization") captureStabilizationStates()
                 return
             }
             compose.onNodeWithText("GalliPick").assertIsDisplayed()
@@ -204,11 +203,25 @@ class NativeScreenCaptureTest {
                             .fetchSemanticsNodes().isEmpty()
                 }
                 saveViewport("files-browsing")
-                compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and
-                    hasText("EXAMPLE_", substring = true)).onFirst()
-                    .performTouchInput { longClick(durationMillis = 2_100) }
-                compose.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off) and
-                    hasText("EXAMPLE_", substring = true)).onFirst().performClick()
+                val gallery = compose.onNode(
+                    hasContentDescription("미디어 파일 목록") or hasContentDescription("기기와 클라우드 미디어 파일 목록"),
+                )
+                val galleryOrigin = gallery.fetchSemanticsNode().boundsInRoot.topLeft
+                val tiles = compose.onAllNodes(
+                    SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick) and hasText("EXAMPLE_", substring = true),
+                ).fetchSemanticsNodes()
+                val first = tiles[0].boundsInRoot.center - galleryOrigin
+                val second = tiles[1].boundsInRoot.center - galleryOrigin
+                gallery.performTouchInput {
+                    down(first)
+                    advanceEventTime(1_600)
+                    moveTo(first)
+                }
+                compose.onNodeWithText("1개 선택").assertIsDisplayed()
+                gallery.performTouchInput {
+                    moveTo(second)
+                    up()
+                }
                 compose.onNodeWithText("2개 선택").assertIsDisplayed()
                 saveViewport("files-selection")
                 return
@@ -301,6 +314,7 @@ class NativeScreenCaptureTest {
                 compose.onNodeWithText("검사 시작").performScrollTo().performClick()
                 val groups = runBlocking {
                     withTimeout(90_000) {
+                        app.repository.scan.first { it.phase == ScanPhase.COMPLETE }
                         app.repository.duplicates.first { it.size >= Stage7aFixtureMedia.MIN_DUPLICATE_GROUPS }
                     }
                 }
@@ -421,7 +435,7 @@ class NativeScreenCaptureTest {
         saveViewport("05-cleanup")
 
         navigate("설정")
-        compose.onNodeWithText("사진 보기 방식").assertIsDisplayed()
+        compose.onNodeWithText("파일 보기 방식").assertIsDisplayed()
         compose.onNodeWithText("화면 테마").assertIsDisplayed()
         saveViewport("06-settings")
 
@@ -442,6 +456,24 @@ class NativeScreenCaptureTest {
         assertTrue("All eight Play Store screenshots must be saved", captures.length() == 8)
     }
 
+    private fun captureStabilizationStates() {
+        navigate("홈")
+        compose.onNodeWithText("오래된 파일").performScrollTo().performClick()
+        compose.onNodeWithText("조건 지우기").assertIsDisplayed()
+        compose.onNodeWithText("이전", substring = true).assertIsDisplayed()
+        saveViewport("09-files-applied-condition")
+        compose.onNodeWithText("조건 지우기").performClick()
+
+        navigate("정리")
+        compose.onNodeWithContentDescription("휴지통 확인 및 복원 열기").performScrollTo().performClick()
+        compose.onNodeWithText("휴지통이 비어 있습니다").assertIsDisplayed()
+        saveViewport("10-trash-empty")
+        navigate("클라우드")
+        compose.onNodeWithText("계정·구독 관리").performScrollTo().performClick()
+        compose.onNodeWithText("Google Play 구독 취소·관리").assertIsDisplayed()
+        saveViewport("11-cloud-account-management")
+    }
+
     @Test fun captureDuplicateAccessRequired() {
         assumeTrue(profile == "duplicate-access")
         ActivityScenario.launch(MainActivity::class.java).use {
@@ -451,6 +483,37 @@ class NativeScreenCaptureTest {
             compose.onNodeWithText("접근 허용").assertIsDisplayed()
             compose.onNodeWithText("검사 완료", substring = true).assertDoesNotExist()
             saveViewport("duplicate-access-required")
+        }
+    }
+
+    @Test fun captureSecretCloudSettingsAndOverview() {
+        assumeTrue(profile == "secret-cloud-settings")
+        val before = arguments.getString("captureVaultBefore") == "true"
+        check(app.cloudAccount?.session?.account?.value == null) { "These captures require a signed-out emulator." }
+        val prefs = app.getSharedPreferences("filters", Context.MODE_PRIVATE)
+        val previousTheme = prefs.getString("theme_mode", null)
+        val previousVisibility = prefs.getBoolean("secret_cloud_visible", false)
+            .takeIf { prefs.contains("secret_cloud_visible") }
+        prefs.edit().putString("theme_mode", AppThemeMode.LIGHT.name)
+            .putBoolean("secret_cloud_visible", false).commit()
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                navigate("설정")
+                val entry = if (before) compose.onNodeWithContentDescription("시크릿 클라우드 표시")
+                    else compose.onNodeWithText("비밀번호 설정")
+                entry.performScrollTo().assertIsDisplayed()
+                saveViewport("vault-settings")
+                navigate("클라우드")
+                val description = compose.onNodeWithText("사진과 동영상을 기기와 별도로 보관하고 관리합니다.")
+                if (before) description.assertDoesNotExist() else description.assertIsDisplayed()
+                saveViewport("cloud-overview")
+            }
+        } finally {
+            prefs.edit().apply {
+                if (previousTheme == null) remove("theme_mode") else putString("theme_mode", previousTheme)
+                if (previousVisibility == null) remove("secret_cloud_visible")
+                else putBoolean("secret_cloud_visible", previousVisibility)
+            }.commit()
         }
     }
 
@@ -511,6 +574,14 @@ class NativeScreenCaptureTest {
 
             compose.onNodeWithText("연간").performScrollTo().performClick()
             compose.onNodeWithText("광고 제거만 구독하기 · 연 ₩9,900").assertIsDisplayed()
+            if (app.resources.configuration.fontScale >= 1.9f) {
+                for (label in listOf("구매 복구", "구독 정보 새로고침")) {
+                    val layouts = mutableListOf<TextLayoutResult>()
+                    compose.onNodeWithText(label, useUnmergedTree = true).assertIsDisplayed()
+                        .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+                    assertTrue("$label should fit on one line in the large-font footer", layouts.single().lineCount == 1)
+                }
+            }
             saveViewport("billing-annual-ad-free")
         }
         File(outputDirectory, "$capturePrefix-billing-manifest.json").writeText(JSONObject()

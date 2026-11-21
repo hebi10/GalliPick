@@ -109,6 +109,27 @@ class MediaPreviewTest {
         }
     }
 
+    @Test fun fileDetailShowsAddedDateSeparatelyWhenCaptureDateIsMissing() {
+        val item = media(imageFile(120, 80)).copy(dateTakenMs = 0L, dateAddedMs = 1_700_000_000_000L)
+        compose.setContent { GalliPickTheme { MediaDetail(item, {}, {}) } }
+
+        compose.onNodeWithText("촬영 정보 없음").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("추가일").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("저장일").assertDoesNotExist()
+    }
+
+    @Test fun fileDetailIncludesCloudLocationOnlyForAVerifiedBackup() {
+        val item = media(imageFile(120, 80))
+        val verified = mutableStateOf(false)
+        compose.setContent { GalliPickTheme { MediaDetail(item, {}, {}, cloudVerified = verified.value) } }
+
+        compose.onNodeWithText("기기").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { verified.value = true }
+        compose.onNodeWithText("기기·클라우드").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { verified.value = false }
+        compose.onNodeWithText("기기·클라우드").assertDoesNotExist()
+    }
+
     @Test fun photoErrorCanRetryAfterFileBecomesAvailable() {
         val file = File(compose.activity.cacheDir, "preview-${System.nanoTime()}.jpg").also { files += it }
         val item = media(file)

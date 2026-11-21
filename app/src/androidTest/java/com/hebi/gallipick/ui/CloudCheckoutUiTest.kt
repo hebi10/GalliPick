@@ -146,7 +146,7 @@ class CloudCheckoutUiTest {
         billingCta().assertDoesNotExist()
         capture("04-verified-purchase")
         compose.onNodeWithText("홈으로").performClick()
-        compose.onNodeWithText("정리 시작하기").assertIsDisplayed()
+        compose.onNodeWithText("정리 도구 보기").assertIsDisplayed()
         compose.onNodeWithText("광고 제거").assertDoesNotExist()
         compose.onNodeWithText("광고").assertDoesNotExist()
         compose.onNodeWithTag("home-admob-banner").assertDoesNotExist()
@@ -162,7 +162,7 @@ class CloudCheckoutUiTest {
         val billing = FakeBillingSession().apply { purchaseWaitingForRecovery = true }
         showJourney(billing, signedIn = true)
         compose.waitUntil(5_000L) { compose.runOnIdle { billing.recoverCalls > 0 } }
-        compose.onNodeWithText("정리 시작하기").assertIsDisplayed()
+        compose.onNodeWithText("정리 도구 보기").assertIsDisplayed()
         compose.onNodeWithText("광고 제거").assertDoesNotExist()
         compose.onNodeWithText("광고").assertDoesNotExist()
         compose.runOnIdle {
@@ -404,7 +404,7 @@ class CloudCheckoutUiTest {
 
     @Test
     fun missingPlayOffersKeepPlansVisibleWithoutShowingPricesOrAllowingCheckout() {
-        val billing = FakeBillingSession(hasOffers = false, cloudCheckoutAllowed = false)
+        val billing = FakeBillingSession(hasOffers = false)
         showJourney(billing, signedIn = true)
         openCloudBilling()
         val plans = listOf("10 GB", "50 GB", "100 GB")
@@ -416,7 +416,8 @@ class CloudCheckoutUiTest {
             compose.onNodeWithText(price).assertDoesNotExist()
         }
         billingCta().assertIsDisplayed().assertIsNotEnabled()
-        compose.onNodeWithText("현재 클라우드 신규 구독을 신청할 수 없습니다.").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Google Play에서 현재 제공하는 클라우드 요금제가 없습니다.")
+            .performScrollTo().assertIsDisplayed()
         capture("09-billing-unavailable-monthly")
 
         planChoice("연간").performScrollTo().assertIsDisplayed().assertIsNotEnabled()
@@ -426,6 +427,28 @@ class CloudCheckoutUiTest {
         compose.onNodeWithText("Google Play 결제창 열기").assertDoesNotExist()
         compose.runOnIdle { assertEquals(0, billing.checkoutCount) }
         capture("10-billing-unavailable-annual")
+    }
+
+    @Test
+    fun cloudCheckoutRestrictionKeepsMonthlyAndAnnualAdRemovalOffersAvailable() {
+        val billing = FakeBillingSession(
+            includeAnnualPlan = true,
+            includeExtraPlans = true,
+            cloudCheckoutAllowed = false,
+        )
+        showJourney(billing, signedIn = true)
+        openCloudBilling()
+
+        compose.onNodeWithText("이 계정은 클라우드 신규 구독을 신청할 수 없습니다.")
+            .assertIsDisplayed()
+        compose.onNodeWithText("Google 계정 변경").assertIsDisplayed()
+        listOf("10 GB", "50 GB", "100 GB").forEach { label ->
+            planChoice(label).performScrollTo().assertIsNotEnabled().assert(hasText("신청 제한"))
+        }
+        planChoice("월간").performScrollTo().assertIsEnabled().assert(hasText("₩1,000/월"))
+        planChoice("연간").performScrollTo().assertIsEnabled().assert(hasText("₩9,900/년")).performClick()
+        billingCta().assertIsEnabled()
+        compose.runOnIdle { assertEquals(0, billing.checkoutCount) }
     }
 
     @Test

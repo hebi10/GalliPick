@@ -27,6 +27,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
+import com.hebi.gallipick.data.cloud.CloudBackupException
+import com.hebi.gallipick.data.cloud.CloudBillingException
+import com.hebi.gallipick.data.cloud.CloudBillingNotice
 import com.hebi.gallipick.data.cloud.CloudBillingPlan
 import com.hebi.gallipick.data.cloud.activeCloudProductId
 import com.hebi.gallipick.data.cloud.productionBillingProduct
@@ -73,6 +76,7 @@ private fun CloudBillingPlan.verifiedManualCloudQuota(nowMillis: Long): Long {
 private sealed interface CloudOverviewUsageStatus {
     data object Loading : CloudOverviewUsageStatus
     data object Unavailable : CloudOverviewUsageStatus
+    data object AccountRestricted : CloudOverviewUsageStatus
     data object Failed : CloudOverviewUsageStatus
     data class Ready(val usage: CloudOverviewUsage) : CloudOverviewUsageStatus
 }
@@ -101,8 +105,10 @@ internal fun CloudOverviewStorageCard(
                 if (usage == null) CloudOverviewUsageStatus.Unavailable else CloudOverviewUsageStatus.Ready(usage)
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
-                CloudOverviewUsageStatus.Failed
+            } catch (error: Exception) {
+                if ((error as? CloudBackupException)?.permissionDenied == true ||
+                    (error as? CloudBillingException)?.notice == CloudBillingNotice.ACCOUNT_ACCESS_REQUIRED
+                ) CloudOverviewUsageStatus.AccountRestricted else CloudOverviewUsageStatus.Failed
             }
             if (connection.session.account.value?.uid == uid) status = result
         }
@@ -118,6 +124,9 @@ internal fun CloudOverviewStorageCard(
             CloudOverviewUsageStatus.Unavailable -> CloudStatusMessage(
                 if (showLibraryStatus) "현재 계정에서는 저장공간과 보관함 정보를 확인할 수 없습니다."
                 else "저장공간 정보를 사용할 수 없습니다.",
+            )
+            CloudOverviewUsageStatus.AccountRestricted -> CloudStatusMessage(
+                "현재 계정은 클라우드 저장공간 정보를 확인할 수 없습니다. Google 계정을 확인해 주세요.",
             )
             CloudOverviewUsageStatus.Failed -> {
                 CloudStatusMessage(

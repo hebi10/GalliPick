@@ -102,8 +102,9 @@ internal fun CloudScreen(
     val status by connection.session.status.collectAsStateWithLifecycle()
     val access = cloudAccessState(connection.session.available, account?.uid, status.operation)
     val configuredBackup = connection.backupAvailability
-    val observation = configuredBackup?.collectAsStateWithLifecycle()?.value
-    val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == account?.uid }
+    val observation = configuredBackup?.collectAsStateWithLifecycle()?.value?.takeIf { it.uid == account?.uid }
+    val backup = connection.backup.takeIf { configuredBackup == null || observation != null }
+    val canReadBackupCatalog = backup != null && observation?.mayReadCatalog != false
     val namespace = observation?.access?.namespace
     var requestedRoute by rememberSaveable(account?.uid) { mutableStateOf(CloudRoute.OVERVIEW) }
     var checkoutUid by rememberSaveable { mutableStateOf<String?>(null) }
@@ -128,7 +129,9 @@ internal fun CloudScreen(
         else -> cloudVisibleRoute(requestedRoute, access)
     }
     val route = when (requested) {
-        CloudRoute.LIBRARY, CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, CloudRoute.SPACE ->
+        CloudRoute.LIBRARY, CloudRoute.SPACE ->
+            if (canReadBackupCatalog) requested else CloudRoute.OVERVIEW
+        CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP ->
             if (backup != null) requested else CloudRoute.OVERVIEW
         CloudRoute.SECRET -> if (showSecretCloud) requested else CloudRoute.OVERVIEW
         else -> requested
@@ -170,19 +173,35 @@ internal fun CloudScreen(
         return
     }
 
+    val routeScroll = key(route) { rememberScrollState() }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.fillMaxHeight().widthIn(max = 660.dp).fillMaxWidth()
-                .verticalScroll(rememberScrollState()).padding(12.dp),
+                .verticalScroll(routeScroll).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            CloudHeader(route, onBack)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                CloudHeader(route, onBack)
+                if (route == CloudRoute.OVERVIEW) {
+                    Text(
+                        "사진과 동영상을 기기와 별도로 보관하고 관리합니다.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             when {
                 access == CloudAccessState.CHOOSING_ACCOUNT || access == CloudAccessState.SIGNING_OUT ->
                     CloudAccountLoading(access)
                 access == CloudAccessState.UNAVAILABLE ->
                     CloudStatusMessage("이 빌드에서 클라우드 로그인 설정을 확인할 수 없습니다.")
                 route == CloudRoute.BILLING_SIGN_IN -> content(route)
+                route == CloudRoute.ACCOUNT_MANAGEMENT -> key(account?.uid) {
+                    CloudAccountCard {
+                        CloudAccountExitGuidance(connection, context)
+                        if (access == CloudAccessState.SIGNED_IN) CloudAccountDeletionButton(connection)
+                    }
+                }
                 route != CloudRoute.OVERVIEW -> key(namespace) { content(route) }
                 else -> {
                     val onNavigate: (CloudRoute) -> Unit = {
@@ -193,16 +212,20 @@ internal fun CloudScreen(
                     val billingAvailable = connection.billing != null
                     if (access == CloudAccessState.SIGNED_IN) {
                         account?.uid?.let { uid ->
-                            CloudOverviewStorageCard(connection, uid, showLibraryStatus = configuredBackup != null && backup == null)
+                            CloudOverviewStorageCard(connection, uid, showLibraryStatus = configuredBackup != null && !canReadBackupCatalog)
                         }
-                        if (backup != null) CloudActionGroup(CloudRoute.LIBRARY, onNavigate = onNavigate)
+                        if (canReadBackupCatalog) CloudActionGroup(CloudRoute.LIBRARY, onNavigate = onNavigate)
                         if (billingAvailable) {
                             CloudActionGroup(CloudRoute.BILLING, onNavigate = onNavigate)
                         } else {
                             CloudBillingOverviewNotice("이 빌드에서는 결제 기능을 사용할 수 없습니다.")
                         }
                         if (backup != null) {
-                            CloudActionGroup(CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, CloudRoute.SPACE, onNavigate = onNavigate)
+                            if (canReadBackupCatalog) {
+                                CloudActionGroup(CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, CloudRoute.SPACE, onNavigate = onNavigate)
+                            } else {
+                                CloudActionGroup(CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, onNavigate = onNavigate)
+                            }
                         }
                         if (showSecretCloud) CloudActionGroup(CloudRoute.SECRET, onNavigate = onNavigate)
                         content(CloudRoute.OVERVIEW)
@@ -212,12 +235,7 @@ internal fun CloudScreen(
                         else CloudBillingOverviewNotice("이 빌드에서는 결제 기능을 사용할 수 없습니다.")
                     }
                     if (access == CloudAccessState.SIGNED_IN || access == CloudAccessState.SIGNED_OUT) {
-                        key(account?.uid) {
-                            CloudAccountCard {
-                                CloudAccountExitGuidance(connection, context)
-                                if (access == CloudAccessState.SIGNED_IN) CloudAccountDeletionButton(connection)
-                            }
-                        }
+                        CloudActionGroup(CloudRoute.ACCOUNT_MANAGEMENT, onNavigate = onNavigate)
                     }
                 }
             }
@@ -311,7 +329,7 @@ internal fun CloudAccountSettings(
             )
         }
         Text(
-            "사진·동영상 원본을 백업하고 내 보관함에서 열어 볼 수 있습니다.",
+            "Google로 로그인해 사진·동영상 원본을 보관하고 열어 보세요.",
             color = Muted,
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -369,9 +387,8 @@ private fun CloudAccountExitGuidance(connection: CloudAccountConnection, context
     val account by connection.session.account.collectAsStateWithLifecycle()
     var actionUnavailable by remember { mutableStateOf(false) }
     var detailsExpanded by rememberSaveable { mutableStateOf(false) }
-    Text("구독 취소·계정 및 데이터 삭제", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
     Text(
-        "Google Play 구독 취소와 데이터 삭제는 별도로 진행합니다.",
+        "구독을 취소하려면 Google Play에서 자동 갱신을 해제해 주세요.",
         color = Muted,
         style = MaterialTheme.typography.bodyMedium,
     )

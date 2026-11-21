@@ -160,7 +160,9 @@ private fun CloudAutoBackupControls(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text("${folder.label()}의 원본과 나중에 이 폴더에 추가되는 파일을 자동으로 백업합니다.")
-                    CloudOriginalTransferNotice(accountLabel, "파일당 $limitLabel 이하")
+                    CloudOriginalTransferNotice(
+                        accountLabel, "파일당 $limitLabel 이하", lastKnownRemainingBytes = access.lastKnownRemainingBytes,
+                    )
                 }
             },
             confirmButton = {
