@@ -102,8 +102,9 @@ internal fun CloudScreen(
     val status by connection.session.status.collectAsStateWithLifecycle()
     val access = cloudAccessState(connection.session.available, account?.uid, status.operation)
     val configuredBackup = connection.backupAvailability
-    val observation = configuredBackup?.collectAsStateWithLifecycle()?.value
-    val backup = connection.backup.takeIf { configuredBackup == null || observation?.uid == account?.uid }
+    val observation = configuredBackup?.collectAsStateWithLifecycle()?.value?.takeIf { it.uid == account?.uid }
+    val backup = connection.backup.takeIf { configuredBackup == null || observation != null }
+    val canReadBackupCatalog = backup != null && observation?.mayReadCatalog != false
     val namespace = observation?.access?.namespace
     var requestedRoute by rememberSaveable(account?.uid) { mutableStateOf(CloudRoute.OVERVIEW) }
     var checkoutUid by rememberSaveable { mutableStateOf<String?>(null) }
@@ -128,7 +129,9 @@ internal fun CloudScreen(
         else -> cloudVisibleRoute(requestedRoute, access)
     }
     val route = when (requested) {
-        CloudRoute.LIBRARY, CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, CloudRoute.SPACE ->
+        CloudRoute.LIBRARY, CloudRoute.SPACE ->
+            if (canReadBackupCatalog) requested else CloudRoute.OVERVIEW
+        CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP ->
             if (backup != null) requested else CloudRoute.OVERVIEW
         CloudRoute.SECRET -> if (showSecretCloud) requested else CloudRoute.OVERVIEW
         else -> requested
@@ -209,16 +212,20 @@ internal fun CloudScreen(
                     val billingAvailable = connection.billing != null
                     if (access == CloudAccessState.SIGNED_IN) {
                         account?.uid?.let { uid ->
-                            CloudOverviewStorageCard(connection, uid, showLibraryStatus = configuredBackup != null && backup == null)
+                            CloudOverviewStorageCard(connection, uid, showLibraryStatus = configuredBackup != null && !canReadBackupCatalog)
                         }
-                        if (backup != null) CloudActionGroup(CloudRoute.LIBRARY, onNavigate = onNavigate)
+                        if (canReadBackupCatalog) CloudActionGroup(CloudRoute.LIBRARY, onNavigate = onNavigate)
                         if (billingAvailable) {
                             CloudActionGroup(CloudRoute.BILLING, onNavigate = onNavigate)
                         } else {
                             CloudBillingOverviewNotice("이 빌드에서는 결제 기능을 사용할 수 없습니다.")
                         }
                         if (backup != null) {
-                            CloudActionGroup(CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, CloudRoute.SPACE, onNavigate = onNavigate)
+                            if (canReadBackupCatalog) {
+                                CloudActionGroup(CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, CloudRoute.SPACE, onNavigate = onNavigate)
+                            } else {
+                                CloudActionGroup(CloudRoute.BACKUP, CloudRoute.AUTO_BACKUP, onNavigate = onNavigate)
+                            }
                         }
                         if (showSecretCloud) CloudActionGroup(CloudRoute.SECRET, onNavigate = onNavigate)
                         content(CloudRoute.OVERVIEW)

@@ -10,11 +10,18 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.hebi.gallipick.data.cloud.CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES
 import com.hebi.gallipick.data.cloud.CloudAccountBackend
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import com.hebi.gallipick.data.cloud.CloudAccountIdentity
 import com.hebi.gallipick.data.cloud.CloudAccountSession
+import com.hebi.gallipick.data.cloud.CloudBackup
+import com.hebi.gallipick.data.cloud.CloudBackupAccessState
+import com.hebi.gallipick.data.cloud.CloudBackupNamespace
+import com.hebi.gallipick.data.cloud.CloudBackupTransport
 import com.hebi.gallipick.data.cloud.CloudBilling
+import com.hebi.gallipick.data.cloud.CloudBillingPlan
 import com.hebi.gallipick.data.cloud.CloudBillingSession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -195,6 +202,60 @@ class CloudScreenNavigationTest {
         compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
         compose.onNodeWithText("screen-BILLING").assertDoesNotExist()
         compose.onNodeWithTag("cloud-route-BILLING").assertExists()
+    }
+
+    @Test
+    fun withdrawingCatalogAccessClosesCloudReadRoutesForTheSameAccount() {
+        val uid = "catalog-owner"
+        val backend = FakeAccountBackend(uid)
+        val access = CloudBackupAccessState { backend.active.value?.uid }
+        val readOnlyPlan = CloudBillingPlan(
+            enabled = true,
+            backupAvailable = true,
+            maxOriginalBytes = CLOUD_PRODUCTION_ORIGINAL_MAX_BYTES,
+            backupObjectPrefix = CloudBackupNamespace.LICENSE_TEST.objectPrefix,
+        )
+        val backup = CloudBackup(
+            InstrumentationRegistry.getInstrumentation().targetContext,
+            backend.account,
+            { backend.active.value?.uid },
+            { error("Navigation tests do not request authentication tokens") },
+            CloudBackupTransport("https://example.invalid", emptySet()),
+            productionAccess = access,
+        )
+        val connection = CloudAccountConnection(
+            session = CloudAccountSession(backend), backupTransport = backup,
+            productionBackupAccess = access, getGoogleIdToken = { error("No account picker") },
+        )
+        access.observe(uid, readOnlyPlan)
+        compose.setContent {
+            GalliPickTheme {
+                CloudScreen(connection) { route -> Text("screen-${route.name}") }
+            }
+        }
+
+        compose.onNodeWithTag("cloud-route-LIBRARY").performScrollTo().performClick()
+        compose.onNodeWithText("screen-LIBRARY").assertIsDisplayed()
+        compose.onNodeWithContentDescription("뒤로").performClick()
+        compose.onNodeWithTag("cloud-route-SPACE").performScrollTo().performClick()
+        compose.onNodeWithText("screen-SPACE").assertIsDisplayed()
+        compose.runOnIdle { access.observe(uid, readOnlyPlan.copy(cloudReadAllowed = false)) }
+
+        compose.onNodeWithText("screen-SPACE").assertDoesNotExist()
+        compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
+        compose.onNodeWithTag("cloud-route-LIBRARY").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-route-SPACE").assertDoesNotExist()
+        compose.onNodeWithTag("cloud-route-BACKUP").performScrollTo().performClick()
+        compose.onNodeWithText("screen-BACKUP").assertIsDisplayed()
+
+        compose.runOnIdle { access.observe(uid, readOnlyPlan.copy(cloudReadAllowed = true)) }
+        compose.onNodeWithContentDescription("뒤로").performClick()
+        compose.onNodeWithTag("cloud-route-LIBRARY").performScrollTo().performClick()
+        compose.onNodeWithText("screen-LIBRARY").assertIsDisplayed()
+        compose.runOnIdle { access.observe(uid, readOnlyPlan.copy(cloudReadAllowed = false)) }
+
+        compose.onNodeWithText("screen-LIBRARY").assertDoesNotExist()
+        compose.onNodeWithText("screen-OVERVIEW").assertIsDisplayed()
     }
 
     @Test

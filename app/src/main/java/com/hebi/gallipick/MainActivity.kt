@@ -106,8 +106,10 @@ class MainActivity : ComponentActivity() {
                 lifecycle.addObserver(observer)
                 onDispose { lifecycle.removeObserver(observer) }
             }
-            val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-                mediaPermissionPreferences.edit().putBoolean("requested", true).apply()
+            val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+                if (result.keys.any { it != Manifest.permission.ACCESS_MEDIA_LOCATION }) {
+                    mediaPermissionPreferences.edit().putBoolean("requested", true).apply()
+                }
                 refreshMediaAccess()
             }
             val trashLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
