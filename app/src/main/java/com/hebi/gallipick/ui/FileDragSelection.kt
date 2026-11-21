@@ -26,7 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-private const val FILE_SELECTION_HOLD_MILLIS = 1_500L
+private const val FILE_SELECTION_HOLD_MILLIS = 500L
 private const val EDGE_SCROLL_INTERVAL_MILLIS = 16L
 
 @Composable

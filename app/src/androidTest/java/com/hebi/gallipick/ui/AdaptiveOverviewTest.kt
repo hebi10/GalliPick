@@ -18,6 +18,8 @@ import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.R
+import com.hebi.gallipick.domain.CleanupHistoryAction
+import com.hebi.gallipick.domain.CleanupHistoryEntry
 import com.hebi.gallipick.domain.MediaFilter
 import com.hebi.gallipick.domain.MediaItem
 import com.hebi.gallipick.domain.MediaKind
@@ -73,16 +75,23 @@ class AdaptiveOverviewTest {
     }
 
     @Test fun shortHomeWindowShowsPrimaryCtaAndKeepsShortcutsReachable() {
+        val history = CleanupHistoryEntry("home-order", 1L, CleanupHistoryAction.MOVE_TO_TRASH, 1, 1, 1024L)
         compose.setContent {
             GalliPickTheme {
                 CompositionLocalProvider(LocalDensity provides Density(.6f)) {
                     Surface(Modifier.requiredSize(360.dp, 420.dp)) {
-                        HomeScreen(homeState(), {}, {}, {}, {})
+                        HomeScreen(homeState().copy(cleanupHistory = listOf(history)), {}, {}, {}, {}, openHistory = {})
                     }
                 }
             }
         }
         compose.onNodeWithText("정리 도구 보기").assertIsDisplayed()
+        val welcomeTop = compose.onNodeWithText("사진과 영상을", substring = true).fetchSemanticsNode().positionInRoot.y
+        val storageTop = compose.onNodeWithText("기기 저장공간").fetchSemanticsNode().positionInRoot.y
+        val historyRow = compose.onNodeWithText("최근 정리 내역")
+        assertTrue("The welcome card should precede storage when cleanup history exists", welcomeTop < storageTop)
+        assertTrue("The welcome card should precede recent cleanup history", welcomeTop < historyRow.fetchSemanticsNode().positionInRoot.y)
+        historyRow.performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("사진·동영상 중복 찾기").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("용량 큰 파일").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("오래된 파일").performScrollTo().assertIsDisplayed()

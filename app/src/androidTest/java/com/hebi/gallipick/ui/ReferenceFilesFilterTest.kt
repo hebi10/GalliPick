@@ -176,7 +176,7 @@ class ReferenceFilesFilterTest {
         compose.onNodeWithText("한 줄 3개 표시 · 설정 6개").assertIsDisplayed()
         firstTile.performTouchInput {
             down(center)
-            advanceEventTime(1_400)
+            advanceEventTime(400)
             up()
         }
         compose.onNodeWithText("파일 상세").assertIsDisplayed()
@@ -186,7 +186,7 @@ class ReferenceFilesFilterTest {
             .assert(SemanticsMatcher.keyNotDefined(androidx.compose.ui.semantics.SemanticsActions.OnLongClick))
         firstTile.performTouchInput {
             down(center)
-            move(delayMillis = 1_600)
+            move(delayMillis = 600)
             up()
         }
         checkbox.assertIsOn().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
@@ -295,7 +295,7 @@ class ReferenceFilesFilterTest {
             .fetchSemanticsNode().boundsInRoot.center - origin
         root.performTouchInput {
             down(firstPosition)
-            move(delayMillis = 1_600)
+            move(delayMillis = 600)
         }
         compose.onNodeWithContentDescription("${first.displayName} 선택").assertIsOn()
         root.performTouchInput {
