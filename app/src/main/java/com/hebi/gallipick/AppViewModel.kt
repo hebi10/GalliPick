@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Environment
 import android.os.StatFs
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.hebi.gallipick.domain.*
 import com.hebi.gallipick.data.CachedPhotoHash
@@ -57,8 +58,12 @@ private data class PhotoReviewSnapshot(
     val pending: Int,
 )
 
-class AppViewModel(application: Application) : AndroidViewModel(application) {
+class AppViewModel(
+    application: Application,
+    savedStateHandle: SavedStateHandle = SavedStateHandle(),
+) : AndroidViewModel(application) {
     val repository = (application as GalliPickApplication).repository
+    internal val trashReview by lazy { TrashReviewCoordinator(this, savedStateHandle, viewModelScope) }
     private val settings = AppSettings(application)
     private val _ui = MutableStateFlow(AppUiState(
         filter = settings.loadFilter(), presets = settings.loadPresets(), themeMode = settings.loadThemeMode(),

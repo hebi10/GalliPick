@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.AppViewModel
 import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.MediaItem
@@ -47,7 +49,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-internal enum class PhotoReviewMode { SIMILAR, BURST, SOFT_FOCUS }
+private val AppSubscreenSaver = listSaver<AppSubscreen, String>(
+    save = { it.save() },
+    restore = ::restoreAppSubscreen,
+)
 
 internal enum class Destination(val title: String, val icon: ImageVector) {
     HOME("홈", Icons.Outlined.Home), FILES("파일", Icons.Outlined.PhotoLibrary),
@@ -111,22 +116,13 @@ internal fun GalliPickApp(
         deviceItems = if (state.loading || state.catalogError != null || state.access == MediaAccess.NONE)
             emptyList() else state.items,
     )
-    var showTrash by rememberSaveable { mutableStateOf(false) }
-    var showDuplicates by rememberSaveable { mutableStateOf(false) }
-    var showFolderStorage by rememberSaveable { mutableStateOf(false) }
-    var showCleanupHistory by rememberSaveable { mutableStateOf(false) }
-    var showPhotoAnalysis by rememberSaveable { mutableStateOf(false) }
-    var showSimilarResults by rememberSaveable { mutableStateOf(false) }
-    var showSoftFocusResults by rememberSaveable { mutableStateOf(false) }
-    var showReviewInbox by rememberSaveable { mutableStateOf(false) }
-    var compareFromInbox by rememberSaveable { mutableStateOf(false) }
-    var similarCompareId by rememberSaveable { mutableStateOf<String?>(null) }
-    var photoReviewMode by rememberSaveable { mutableStateOf(PhotoReviewMode.SIMILAR) }
-    fun closeSimilarReview() {
-        showSimilarResults = false
-        showSoftFocusResults = false
-        similarCompareId = null
-        vm.clearSelection()
+    var subscreen by rememberSaveable(stateSaver = AppSubscreenSaver) {
+        mutableStateOf<AppSubscreen>(AppSubscreen.Main)
+    }
+    fun closeSubscreen() {
+        val current = subscreen
+        if (current is AppSubscreen.PhotoResults) vm.clearSelection()
+        subscreen = current.parent()
     }
     fun navigate(destinationValue: Destination) {
         if (destination == Destination.FILES && destinationValue != Destination.FILES) closeFilesSearch()
@@ -134,19 +130,11 @@ internal fun GalliPickApp(
             resumeFileDetailVersion = null
         }
         if ((destination == Destination.FILES && destinationValue != Destination.FILES) ||
-            showSimilarResults || showSoftFocusResults || showReviewInbox || similarCompareId != null) {
+            subscreen is AppSubscreen.PhotoResults || subscreen is AppSubscreen.PhotoCompare ||
+            subscreen == AppSubscreen.ReviewInbox) {
             vm.clearSelection()
         }
-        showReviewInbox = false
-        compareFromInbox = false
-        showTrash = false
-        showDuplicates = false
-        showFolderStorage = false
-        showCleanupHistory = false
-        showPhotoAnalysis = false
-        showSimilarResults = false
-        showSoftFocusResults = false
-        similarCompareId = null
+        subscreen = AppSubscreen.Main
         adRemovalOrigin = null
         selectedDestination = destinationValue
     }
@@ -155,9 +143,9 @@ internal fun GalliPickApp(
         adRemovalOrigin = origin
     }
     fun openTrash(origin: Destination) {
-        if (showTrash) return
+        if (subscreen is AppSubscreen.Trash) return
         navigate(origin)
-        showTrash = true
+        subscreen = AppSubscreen.Trash()
     }
     fun requestFileCloudAccess(item: MediaItem) {
         val connection = cloudConnection ?: return
@@ -177,17 +165,8 @@ internal fun GalliPickApp(
     }
     fun openReviewInbox() {
         vm.clearSelection()
-        showTrash = false
-        showDuplicates = false
-        showFolderStorage = false
-        showCleanupHistory = false
-        showPhotoAnalysis = false
-        showSimilarResults = false
-        showSoftFocusResults = false
-        similarCompareId = null
-        compareFromInbox = false
         selectedDestination = Destination.CLEANUP
-        showReviewInbox = true
+        subscreen = AppSubscreen.ReviewInbox
     }
     fun confirmInboxCandidates() {
         val candidates = vm.selectSavedReviewCandidates()
@@ -196,58 +175,27 @@ internal fun GalliPickApp(
     }
     fun openDuplicates() {
         vm.prepareDuplicateReview()
-        showTrash = false
-        showFolderStorage = false
-        showCleanupHistory = false
-        showPhotoAnalysis = false
-        showSimilarResults = false
-        showSoftFocusResults = false
-        showReviewInbox = false
-        compareFromInbox = false
-        similarCompareId = null
         selectedDestination = Destination.CLEANUP
-        showDuplicates = true
+        subscreen = AppSubscreen.Duplicates
     }
     fun openFolderStorage() {
-        showTrash = false
-        showDuplicates = false
-        showPhotoAnalysis = false
-        showSimilarResults = false
-        showSoftFocusResults = false
-        similarCompareId = null
         selectedDestination = Destination.CLEANUP
-        showFolderStorage = true
+        subscreen = AppSubscreen.FolderStorage
     }
     fun openCleanupHistory(origin: Destination) {
-        showTrash = false
-        showDuplicates = false
-        showFolderStorage = false
-        showPhotoAnalysis = false
-        showSimilarResults = false
-        showSoftFocusResults = false
-        similarCompareId = null
         selectedDestination = origin
-        showCleanupHistory = true
+        subscreen = AppSubscreen.CleanupHistory
     }
     fun openPhotoAnalysis() {
-        showTrash = false
-        showDuplicates = false
-        showFolderStorage = false
-        showCleanupHistory = false
-        showSimilarResults = false
-        showSoftFocusResults = false
-        similarCompareId = null
         selectedDestination = Destination.CLEANUP
-        showPhotoAnalysis = true
+        subscreen = AppSubscreen.PhotoAnalysis
     }
     fun reviewSimilarCandidates() {
         val candidates = vm.selectedSimilarCandidates()
         if (candidates.isEmpty()) vm.showMessage("이동할 사진을 직접 선택해 주세요.")
         else onTrash(candidates)
     }
-    val secondaryScreenVisible = showTrash || showDuplicates || showFolderStorage ||
-        showPhotoAnalysis || showCleanupHistory || showSimilarResults || showSoftFocusResults ||
-        showReviewInbox || similarCompareId != null
+    val secondaryScreenVisible = subscreen != AppSubscreen.Main
     val mainTabVisible = !secondaryScreenVisible && result == null &&
         (destination != Destination.CLOUD || (cloudOverviewVisible && !dedicatedBilling && adRemovalOrigin == null))
     val showAdPreviews = adPreviewEnabled && adRemoval == AdRemovalStatus.NOT_PURCHASED
@@ -263,17 +211,7 @@ internal fun GalliPickApp(
 
     BackHandler(enabled = secondaryScreenVisible || destination != Destination.HOME || showHomeAdFlow) {
         when {
-            showTrash -> showTrash = false
-            showDuplicates -> showDuplicates = false
-            showFolderStorage -> showFolderStorage = false
-            showCleanupHistory -> showCleanupHistory = false
-            similarCompareId != null -> {
-                similarCompareId = null
-                compareFromInbox = false
-            }
-            showReviewInbox -> showReviewInbox = false
-            showSimilarResults || showSoftFocusResults -> closeSimilarReview()
-            showPhotoAnalysis -> showPhotoAnalysis = false
+            secondaryScreenVisible -> closeSubscreen()
             destination == Destination.FILES && filesSearchVisible -> closeFilesSearch()
             destination != Destination.HOME -> navigate(Destination.HOME)
             else -> exitConfirmationVisible = true
@@ -292,12 +230,11 @@ internal fun GalliPickApp(
             Column(Modifier.fillMaxSize()) {
                 ScrollAwayHeaderLayout(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    resetKey = Triple(destination, Triple(showTrash, showDuplicates, Triple(showFolderStorage || showCleanupHistory, showPhotoAnalysis || showReviewInbox, Triple(showSimilarResults || showSoftFocusResults, similarCompareId, photoReviewMode))), state.filter),
+                    resetKey = Triple(destination, subscreen, state.filter),
                     header = {
                         when {
                             destination == Destination.HOME && !secondaryScreenVisible -> GalliAppHeader(state.loading)
-                            destination == Destination.FILES && !showTrash && !showDuplicates &&
-                                !showFolderStorage && !showPhotoAnalysis -> {
+                            destination == Destination.FILES && !secondaryScreenVisible -> {
                                 GalliFilesHeader(state.loading, vm::refresh, filesSearchVisible) {
                                     if (filesSearchVisible) closeFilesSearch() else filesSearchVisible = true
                                 }
@@ -306,7 +243,7 @@ internal fun GalliPickApp(
                     },
                 ) {
                     Column(Modifier.fillMaxSize()) {
-                        val screenOwnsCatalogState = showTrash || showDuplicates ||
+                        val screenOwnsCatalogState = subscreen is AppSubscreen.Trash || subscreen == AppSubscreen.Duplicates ||
                             destination == Destination.FILES || (destination == Destination.CLEANUP && !secondaryScreenVisible)
                         val showCatalogNotice = !screenOwnsCatalogState && destination != Destination.CLOUD
                         if (showCatalogNotice && state.loading) LinearProgressIndicator(
@@ -343,13 +280,13 @@ internal fun GalliPickApp(
                                 AppDestinationRail(destination, ::navigate, destinations = destinations)
                             }
                             Box(Modifier.weight(1f).fillMaxHeight()) {
-                                when {
-                                    showTrash -> TrashScreen(
-                                        state = state, onRestore = onRestore, onBack = { showTrash = false },
+                                when (val route = subscreen) {
+                                    is AppSubscreen.Trash -> TrashScreen(
+                                        state = state, onRestore = onRestore, onBack = ::closeSubscreen,
                                         onRequestPermission = onRequestPermission, onRetry = vm::refresh,
                                         onOpenPermissionSettings = onOpenSettings.takeIf { mediaPermissionSettingsRequired },
                                     )
-                                    showDuplicates -> Column(Modifier.fillMaxSize()) {
+                                    AppSubscreen.Duplicates -> Column(Modifier.fillMaxSize()) {
                                         Row(
                                             Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.touchTarget)
                                                 .padding(horizontal = 12.dp),
@@ -357,7 +294,7 @@ internal fun GalliPickApp(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         ) {
                                             IconAction("정리로 돌아가기", Icons.Outlined.ArrowBack,
-                                                onClick = { showDuplicates = false })
+                                                onClick = ::closeSubscreen)
                                             Text("중복 정리", Modifier.semantics { heading() },
                                                 style = MaterialTheme.typography.titleLarge)
                                         }
@@ -366,109 +303,73 @@ internal fun GalliPickApp(
                                                 openPermissionSettings = onOpenSettings.takeIf { mediaPermissionSettingsRequired })
                                         }
                                     }
-                                    similarCompareId != null -> {
-                                        val reviewGroups = if (photoReviewMode == PhotoReviewMode.BURST) state.burstGroups else state.similarGroups
-                                        val group = reviewGroups.firstOrNull { it.id == similarCompareId }
+                                    is AppSubscreen.PhotoCompare -> {
+                                        val reviewGroups = if (route.mode == PhotoReviewMode.BURST) state.burstGroups else state.similarGroups
+                                        val group = reviewGroups.firstOrNull { it.id == route.groupId }
                                         if (group == null) {
-                                            if (photoReviewMode == PhotoReviewMode.BURST) {
-                                                BurstPhotoResultsScreen(
-                                                    reviewGroups, state.selected,
-                                                    onBack = ::closeSimilarReview,
-                                                    onCompare = { similarCompareId = it },
-                                                    onReview = ::reviewSimilarCandidates,
-                                                )
-                                            } else if (photoReviewMode == PhotoReviewMode.SOFT_FOCUS) {
-                                                SoftFocusResultsScreen(
-                                                    state.softFocusCandidates, state.selected,
-                                                    onBack = ::closeSimilarReview,
-                                                    onCompare = { similarCompareId = it },
-                                                    onOpenMedia = onOpenMedia,
-                                                    onReview = ::reviewSimilarCandidates,
-                                                )
-                                            } else {
-                                                SimilarPhotoResultsScreen(
-                                                    reviewGroups, state.selected,
-                                                    onBack = ::closeSimilarReview,
-                                                    onCompare = { similarCompareId = it },
-                                                    onReview = ::reviewSimilarCandidates,
-                                                )
-                                            }
+                                            PhotoResultsContent(
+                                                route.mode, state,
+                                                onBack = {
+                                                    vm.clearSelection()
+                                                    subscreen = if (route.source == PhotoCompareSource.INBOX) {
+                                                        AppSubscreen.ReviewInbox
+                                                    } else AppSubscreen.PhotoAnalysis
+                                                },
+                                                onCompare = { subscreen = route.copy(groupId = it) },
+                                                onOpenMedia = onOpenMedia,
+                                                onReview = ::reviewSimilarCandidates,
+                                            )
                                         } else SimilarPhotoCompareScreen(
                                             group = group,
                                             groupIndex = reviewGroups.indexOf(group) + 1,
                                             groupCount = reviewGroups.size,
                                             selectedUris = state.selected,
                                             protectedFolders = state.protectedFolders,
-                                            onBack = {
-                                                similarCompareId = null
-                                                compareFromInbox = false
-                                            },
+                                            onBack = ::closeSubscreen,
                                             onToggleCandidate = { vm.toggleSimilarCandidate(group.id, it) },
                                             onOpenMedia = onOpenMedia,
                                             onReview = ::reviewSimilarCandidates,
-                                            title = when (photoReviewMode) {
-                                                 PhotoReviewMode.BURST -> "연속 촬영 사진 비교"
-                                                 PhotoReviewMode.SOFT_FOCUS -> "선명도 비교"
-                                                 else -> "사진 비교"
-                                             },
-                                            groupTitle = if (photoReviewMode == PhotoReviewMode.BURST) "연속 촬영 묶음" else "유사 사진 묶음",
-                                            explanation = when (photoReviewMode) {
+                                            title = when (route.mode) {
+                                                PhotoReviewMode.BURST -> "연속 촬영 사진 비교"
+                                                PhotoReviewMode.SOFT_FOCUS -> "선명도 비교"
+                                                PhotoReviewMode.SIMILAR -> "사진 비교"
+                                            },
+                                            groupTitle = if (route.mode == PhotoReviewMode.BURST) "연속 촬영 묶음" else "유사 사진 묶음",
+                                            explanation = when (route.mode) {
                                                 PhotoReviewMode.BURST ->
                                                     "촬영 시각과 장면이 가까운 사진입니다. 여러 장을 남길 수 있으며 직접 정리 후보를 선택합니다."
                                                 PhotoReviewMode.SOFT_FOCUS ->
                                                     "선명도는 추정값입니다. 원본을 확인하고 여러 장을 남길 수 있으며 정리 후보는 직접 선택합니다."
-                                                else ->
+                                                PhotoReviewMode.SIMILAR ->
                                                     "여러 장을 남길 수 있습니다. 미리보기 선택과 정리 후보 선택은 별도 동작입니다."
                                             },
                                         )
                                     }
-                                    showReviewInbox -> PhotoReviewInboxScreen(
+                                    AppSubscreen.ReviewInbox -> PhotoReviewInboxScreen(
                                         groups = state.similarGroups + state.burstGroups,
                                         entries = state.reviewEntries,
                                         protectedFolders = state.protectedFolders,
-                                        onBack = { showReviewInbox = false },
-                                        onAnalyze = {
-                                            showReviewInbox = false
-                                            openPhotoAnalysis()
-                                        },
+                                        onBack = ::closeSubscreen,
+                                        onAnalyze = ::openPhotoAnalysis,
                                         onMark = vm::markReviewDecision,
                                         onCompare = { id, burst ->
                                             vm.clearSelection()
-                                            photoReviewMode = if (burst) PhotoReviewMode.BURST else PhotoReviewMode.SIMILAR
-                                            compareFromInbox = true
-                                            similarCompareId = id
+                                            val mode = if (burst) PhotoReviewMode.BURST else PhotoReviewMode.SIMILAR
+                                            subscreen = AppSubscreen.PhotoCompare(mode, id, PhotoCompareSource.INBOX)
                                         },
                                         onConfirmCandidates = ::confirmInboxCandidates,
                                         onClear = vm::clearReviewInbox,
                                     )
-                                    showSimilarResults -> {
-                                        if (photoReviewMode == PhotoReviewMode.BURST) {
-                                            BurstPhotoResultsScreen(
-                                                groups = state.burstGroups, selectedUris = state.selected,
-                                                onBack = ::closeSimilarReview,
-                                                onCompare = { similarCompareId = it },
-                                                onReview = ::reviewSimilarCandidates,
-                                            )
-                                        } else {
-                                            SimilarPhotoResultsScreen(
-                                                groups = state.similarGroups, selectedUris = state.selected,
-                                                onBack = ::closeSimilarReview,
-                                                onCompare = { similarCompareId = it },
-                                                onReview = ::reviewSimilarCandidates,
-                                            )
-                                        }
-                                    }
-                                    showSoftFocusResults -> SoftFocusResultsScreen(
-                                        candidates = state.softFocusCandidates,
-                                        selectedUris = state.selected,
-                                        onBack = ::closeSimilarReview,
-                                        onCompare = { similarCompareId = it },
+                                    is AppSubscreen.PhotoResults -> PhotoResultsContent(
+                                        route.mode, state,
+                                        onBack = ::closeSubscreen,
+                                        onCompare = { subscreen = AppSubscreen.PhotoCompare(route.mode, it, PhotoCompareSource.RESULTS) },
                                         onOpenMedia = onOpenMedia,
                                         onReview = ::reviewSimilarCandidates,
                                     )
-                                    showPhotoAnalysis -> PhotoAnalysisScreen(
+                                    AppSubscreen.PhotoAnalysis -> PhotoAnalysisScreen(
                                         state = state,
-                                        onBack = { showPhotoAnalysis = false },
+                                        onBack = ::closeSubscreen,
                                         onStart = vm::startPhotoAnalysis,
                                         onPause = vm::pausePhotoAnalysis,
                                         onResume = vm::resumePhotoAnalysis,
@@ -476,34 +377,27 @@ internal fun GalliPickApp(
                                         refresh = vm::refresh,
                                         onOpenResults = {
                                             vm.prepareSimilarReview()
-                                            photoReviewMode = PhotoReviewMode.SIMILAR
-                                            similarCompareId = null
-                                            showSimilarResults = true
+                                            subscreen = AppSubscreen.PhotoResults(PhotoReviewMode.SIMILAR)
                                         },
                                         onOpenBurstResults = {
                                             vm.prepareBurstReview()
-                                            photoReviewMode = PhotoReviewMode.BURST
-                                            similarCompareId = null
-                                            showSimilarResults = true
+                                            subscreen = AppSubscreen.PhotoResults(PhotoReviewMode.BURST)
                                         },
                                         onOpenSoftFocusResults = {
                                             vm.prepareSimilarReview()
-                                            photoReviewMode = PhotoReviewMode.SOFT_FOCUS
-                                            similarCompareId = null
-                                            showSimilarResults = false
-                                            showSoftFocusResults = true
+                                            subscreen = AppSubscreen.PhotoResults(PhotoReviewMode.SOFT_FOCUS)
                                         },
                                     )
-                                    showCleanupHistory -> CleanupHistoryScreen(
+                                    AppSubscreen.CleanupHistory -> CleanupHistoryScreen(
                                         entries = state.cleanupHistory,
-                                        onBack = { showCleanupHistory = false },
+                                        onBack = ::closeSubscreen,
                                         onDelete = vm::deleteCleanupHistory,
                                         onClear = vm::clearCleanupHistory,
-                                        onOpenTrash = { showTrash = true },
+                                        onOpenTrash = { subscreen = AppSubscreen.Trash(fromHistory = true) },
                                     )
-                                    showFolderStorage -> FolderStorageScreen(
+                                    AppSubscreen.FolderStorage -> FolderStorageScreen(
                                         state = state,
-                                        onBack = { showFolderStorage = false },
+                                        onBack = ::closeSubscreen,
                                         onOpenFolder = { path ->
                                             navigateFiles(com.hebi.gallipick.domain.MediaFilter(
                                                 folder = path,
@@ -514,7 +408,7 @@ internal fun GalliPickApp(
                                         requestAccess = onRequestPermission,
                                         refresh = vm::refresh,
                                     )
-                                    else -> when (destination) {
+                                    AppSubscreen.Main -> when (destination) {
                                         Destination.HOME -> HomeScreen(
                                             state, onRequestPermission, navigateFiles, ::openDuplicates,
                                             { navigate(Destination.CLEANUP) }, ::openReviewInbox,
@@ -632,6 +526,28 @@ internal fun GalliPickApp(
             onDismissResult()
         },
     )
+}
+
+@Composable
+private fun PhotoResultsContent(
+    mode: PhotoReviewMode,
+    state: AppUiState,
+    onBack: () -> Unit,
+    onCompare: (String) -> Unit,
+    onOpenMedia: (MediaItem) -> Unit,
+    onReview: () -> Unit,
+) {
+    when (mode) {
+        PhotoReviewMode.SIMILAR -> SimilarPhotoResultsScreen(
+            state.similarGroups, state.selected, onBack, onCompare, onReview,
+        )
+        PhotoReviewMode.BURST -> BurstPhotoResultsScreen(
+            state.burstGroups, state.selected, onBack, onCompare, onReview,
+        )
+        PhotoReviewMode.SOFT_FOCUS -> SoftFocusResultsScreen(
+            state.softFocusCandidates, state.selected, onBack, onCompare, onOpenMedia, onReview,
+        )
+    }
 }
 
 @Composable
