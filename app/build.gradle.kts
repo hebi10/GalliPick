@@ -46,6 +46,16 @@ val cloudConfigResourceNames = listOf(
 val playCloudPilot = providers.gradleProperty("gallipickPlayCloudPilot").map { value ->
     value.toBooleanStrictOrNull() ?: throw GradleException("gallipickPlayCloudPilot must be true or false.")
 }.getOrElse(false)
+val buildBenchmark = providers.gradleProperty("gallipickBuildBenchmark").orNull
+require(buildBenchmark == null || buildBenchmark in setOf("localOnly", "playCloud")) {
+    "gallipickBuildBenchmark must be localOnly or playCloud."
+}
+val minifyBenchmark = providers.gradleProperty("gallipickMinifyBenchmark").map { value ->
+    value.toBooleanStrictOrNull() ?: throw GradleException("gallipickMinifyBenchmark must be true or false.")
+}.getOrElse(false)
+require(!minifyBenchmark || buildBenchmark != null) {
+    "gallipickMinifyBenchmark requires gallipickBuildBenchmark."
+}
 val cloudEnvironment = providers.gradleProperty("gallipickCloudEnvironment").getOrElse("development")
 if (cloudEnvironment !in setOf("development", "production")) {
     throw GradleException("gallipickCloudEnvironment must be development or production.")
@@ -256,6 +266,24 @@ android {
             matchingFallbacks += listOf("release")
             isDebuggable = false
         }
+        if (buildBenchmark != null) {
+            create("releaseBenchmark") {
+                initWith(getByName("playPreparation"))
+                applicationIdSuffix = ".benchmark"
+                signingConfig = null
+                matchingFallbacks.clear()
+                matchingFallbacks.add("release")
+                isMinifyEnabled = minifyBenchmark
+                isShrinkResources = minifyBenchmark
+                if (minifyBenchmark) {
+                    proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+                }
+                if (buildBenchmark == "playCloud") {
+                    resValue("bool", "gallipick_ads_preview", "true")
+                    cloudConfigResourceNames.forEach { name -> resValue("string", name, "") }
+                }
+            }
+        }
         getByName("release") {
             resValue("bool", "gallipick_ads_preview", (playCloudPilot && !adsReleaseEnabled).toString())
             playCloudFirebaseConfig.forEach { (name, value) -> resValue("string", name, value) }
@@ -273,6 +301,12 @@ android {
         getByName("playPreparation") {
             java.srcDir("src/localOnly/java")
             manifest.srcFile("src/noAds/AndroidManifest.xml")
+        }
+        if (buildBenchmark != null) {
+            getByName("releaseBenchmark") {
+                java.srcDir(if (buildBenchmark == "playCloud") "src/cloud/java" else "src/localOnly/java")
+                manifest.srcFile("src/noAds/AndroidManifest.xml")
+            }
         }
     }
     testOptions { unitTests.isReturnDefaultValues = true }
@@ -306,6 +340,7 @@ dependencies {
     cloudDependencies.forEach { dependency ->
         debugImplementation(dependency)
         if (playCloudPilot) add("releaseImplementation", dependency)
+        if (buildBenchmark == "playCloud") add("releaseBenchmarkImplementation", dependency)
     }
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
