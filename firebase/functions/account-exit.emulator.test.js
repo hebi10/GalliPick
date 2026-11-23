@@ -39,6 +39,7 @@ test('Firestore, Auth and Storage emulators delete only the verified owner and p
         const service = createAccountExitService({
             db, authAdmin: auth, getBucket: async () => bucket,
             project: 'gallipick-production', now: () => nowMs,
+            rolloutEnv: { GALLIPICK_ACCOUNT_EXIT_ROLLOUT: 'pilot', GALLIPICK_ACCOUNT_EXIT_PILOT_UID_HASHES: first },
         });
         const object = (root, owner, key) => `${root}/${owner}/${key}`;
         const primaryObjects = [
@@ -92,6 +93,8 @@ test('Firestore, Auth and Storage emulators delete only the verified owner and p
 
             const state = await service.request(authContext(firstUid, nowMs), confirmation('CLOUD'));
             assert.equal(state.status, 'REQUESTED');
+            await assert.rejects(service.request(authContext(secondUid, nowMs), confirmation('ACCOUNT')),
+                error => error.code === 'permission-denied');
             await assert.rejects(service.assertActive(authContext(firstUid, nowMs), 'write'),
                 error => error.code === 'permission-denied');
             const existing = await service.status(authContext(secondUid, nowMs));
