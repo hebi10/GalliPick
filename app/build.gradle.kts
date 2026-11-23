@@ -298,6 +298,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     val cloudDependencies = listOf(
         "com.google.firebase:firebase-auth:24.0.1",
+        "com.google.firebase:firebase-appcheck-playintegrity:19.0.2",
         "androidx.credentials:credentials:1.3.0",
         "androidx.credentials:credentials-play-services-auth:1.3.0",
         "com.google.android.libraries.identity.googleid:googleid:1.1.1",

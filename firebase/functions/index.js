@@ -38,6 +38,11 @@ const options = {
     concurrency: 4,
     timeoutSeconds: 120,
 };
+// Keep the Android rollout separate from admin web and server-to-server triggers.
+const androidCallableOptions = {
+    ...options,
+    enforceAppCheck: process.env.GALLIPICK_ANDROID_APP_CHECK_ENFORCE === 'true',
+};
 const topic = production ? 'gallipick-play-rtdn-production' : 'gallipick-play-rtdn-test';
 const PRODUCTION_BACKUP_BUCKET = 'gallipick-production.firebasestorage.app';
 const RESUMABLE_PROTOCOL_VERSION = 2;
@@ -152,7 +157,8 @@ async function billingPlan(plan, data, configured, auth) {
 }
 
 function endpoint(operation, billingRequest = false) {
-    const callOptions = production && operation === 'finish' ? { ...options, timeoutSeconds: 540 } : options;
+    const callOptions = production && operation === 'finish'
+        ? { ...androidCallableOptions, timeoutSeconds: 540 } : androidCallableOptions;
     return onCall(callOptions, async request => {
         try {
             if (!request.auth) throw new BackupError('unauthenticated', 'Sign in to start a backup.');
@@ -193,7 +199,7 @@ export const getBackupStatus = endpoint('status');
 export const getCloudPlan = endpoint('getPlan', true);
 export const verifyCloudSubscription = endpoint('verify', true);
 
-export const secretCloud = onCall({ ...options, timeoutSeconds: 540 }, async request => {
+export const secretCloud = onCall({ ...androidCallableOptions, timeoutSeconds: 540 }, async request => {
     try {
         if (!request.auth) throw new BackupError('unauthenticated', 'Sign in to use secret cloud.');
         const version = request.data?.cloudProtocolVersion;
@@ -217,7 +223,7 @@ export const secretCloud = onCall({ ...options, timeoutSeconds: 540 }, async req
 
 // Deletion requests are blocked unless the recovery worker is explicitly enabled.
 // The worker never starts from a mobile client or an authenticated HTTP endpoint.
-export const requestAccountExit = onCall(options, async request => {
+export const requestAccountExit = onCall(androidCallableOptions, async request => {
     try {
         if (!production || process.env.GALLIPICK_ACCOUNT_EXIT_ENABLED !== 'true' ||
             process.env.GALLIPICK_ACCOUNT_EXIT_WORKER_ENABLED !== 'true') {
@@ -230,7 +236,7 @@ export const requestAccountExit = onCall(options, async request => {
     }
 });
 
-export const resumeCloudAfterDeletion = onCall(options, async request => {
+export const resumeCloudAfterDeletion = onCall(androidCallableOptions, async request => {
     try {
         if (!production || process.env.GALLIPICK_ACCOUNT_EXIT_ENABLED !== 'true') {
             throw new BackupError('failed-precondition', 'Cloud backup reactivation is unavailable.');
@@ -242,7 +248,7 @@ export const resumeCloudAfterDeletion = onCall(options, async request => {
     }
 });
 
-export const getAccountExitStatus = onCall(options, async request => {
+export const getAccountExitStatus = onCall(androidCallableOptions, async request => {
     try {
         if (!production) throw new BackupError('failed-precondition', 'Account deletion is unavailable.');
         return await accountExitService().status(request.auth);
