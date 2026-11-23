@@ -1,127 +1,67 @@
 # GalliPick
 
-사진·동영상을 조건으로 찾고 완전히 같은 사본을 안전하게 정리하는 Android 앱입니다.
+GalliPick은 사진과 동영상을 검색하고, 중복 파일과 유사 사진을 검토해 정리하는 Android 앱입니다.
 
-## 현재 구현·검증 상태 (2026-11-07)
+현재 소스 버전은 **v0.2.26** (`versionCode 37`)이며, 패키지는 `com.hebi.gallipick`입니다. Google Play의 트랙별 버전, 심사 및 테스터 제공 상태는 Play Console에서 확인합니다. [버전 설정](app/build.gradle.kts) · [릴리스 노트](docs/play-store/release-notes-ko.txt)
 
-- 디자인 8-A~8-G는 [PR #45~#51](https://github.com/hebi10/GalliPick/pulls?q=is%3Apr+is%3Amerged)로 `main`에 병합되었습니다. [Android verification](https://github.com/hebi10/GalliPick/actions/runs/42357166164), [기기 테스트](https://github.com/hebi10/GalliPick/actions/runs/42357166151), [5개 환경·155장 화면 감사](https://github.com/hebi10/GalliPick/actions/runs/42357162580)가 성공했습니다.
-- **v0.2.6 / versionCode 17을 기존 Google Play 비공개 테스트 `alpha`에 제출했습니다.** [복구 배포 #42381354767](https://github.com/hebi10/GalliPick/actions/runs/42381354767)의 `status=committed`, `api_accepted=true`, `track_verified=true`를 확인했습니다. 기존 서명키를 유지하고, 내부·공개·프로덕션 트랙은 변경하지 않았습니다. Google 심사 승인·테스터 설치 가능 여부는 별도 확인이 필요합니다.
-- [8-G 최종 캡처 자료](https://drive.google.com/drive/folders/1RHDWY02uR5tYmorOH-ptFqwg4vR7hkU7)와 [8단계 기획서](https://docs.google.com/document/d/18IF_iIwytQZv5xVV62yZ3ZV4Onk6ytwBy5gkca8Md3Y/edit)에서 실제 화면과 보존 정책을 확인할 수 있습니다.
-- 남은 항목은 [실기기 QA #40](https://github.com/hebi10/GalliPick/issues/40), [테스터 설치·심사 확인 #42](https://github.com/hebi10/GalliPick/issues/42)입니다. 자동 에뮬레이터 검증을 실제 삼성 기기 검증으로 간주하지 않습니다.
+## 주요 기능
 
-## Google Play 자동 배포
+- **파일 탐색** — 파일명·폴더로 검색하고 미디어 종류, 날짜, 크기, 영상 길이 등으로 필터링합니다. 사진을 확대하거나 동영상을 재생하고, 자주 쓰는 조건을 저장할 수 있습니다.
+- **완전히 같은 파일 찾기** — 크기가 같은 후보를 원본 전체의 SHA-256 해시로 비교합니다. 남길 파일과 휴지통 대상을 확인하고, 보호 파일과 즐겨찾기를 정리 대상에서 제외합니다.
+- **유사 사진 비교** — 사진의 시각적 특징을 pHash로 계산해 비슷한 사진을 묶습니다. 연속 촬영 묶음과 대표 컷 추천을 제공하며, 정리 대상은 사용자가 사진을 비교한 뒤 선택합니다. [유사 사진 검토 설계](docs/design-stage9c-similar-photo-review-2026-11-08.md)
+- **사진 속 글자 검색** — 사용자가 기기에서 한국어·영문 OCR 색인을 시작합니다. 앱이 접근할 수 있는 색인된 사진에서 글자를 검색하며, 설정에서 색인을 초기화할 수 있습니다. [OCR 검색 설계](docs/design-stage13a-local-ocr-search-2026-11-09.md)
+- **휴지통과 복원** — 이동할 파일과 남길 중복 사본을 확인한 뒤 Android에 승인을 요청합니다. 앱의 휴지통에서 복원을 요청할 수 있으며, 기기 휴지통의 보관과 최종 제거는 Android가 관리합니다. 파일은 한 번에 최대 500개까지 선택할 수 있습니다.
 
-[Play 배포 자동화](docs/play-store/automation.md)의 `Play testing deployment`는 기존 고정 서명키로 APK/AAB를 검증한 뒤 지정한 테스트 트랙에만 AAB를 제출합니다. 수동 기본값은 `mode=build`·`target=internal`이며, 실제 제출에는 `mode=deploy`를 선택합니다. `main` 버전 증가 커밋에 `[deploy-internal]`이 있으면 내부 테스트만, `[deploy-closed]`가 있으면 기존 비공개 테스트 `alpha`만 대상으로 합니다. 버전 태그 배포는 내부 테스트만 사용합니다.
+## 빌드 구성
 
-서명 설정 갱신 후 [내부 테스트 check #3의 두 번째 시도](https://github.com/hebi10/GalliPick/actions/runs/41790941768)가 성공했습니다. [서명 빌드 #4](https://github.com/hebi10/GalliPick/actions/runs/41799541269)에서 APK·AAB 생성과 검증도 통과했습니다. 기존 0.1.7/code 8 초안을 출시 처리한 뒤 새 0.1.8/code 9를 내부 테스트에 배포했습니다.
+| 구성 | 클라우드 | 광고 |
+| --- | --- | --- |
+| 기본 `release` · `playPreparation` | `localOnly` 연결을 사용하며 Firebase 계정 연결 없이 기기 내 정리 기능을 제공합니다. | 기본값은 광고 요청 비활성화입니다. `noAds` 매니페스트가 광고 ID 관련 권한 두 가지를 제거합니다. |
+| Play Cloud `release` | `gallipickPlayCloudPilot=true`와 해당 환경의 Firebase 설정이 필요합니다. 개발 환경이 기본이며, 운영 환경은 `gallipickCloudEnvironment=production`으로 명시합니다. | 광고를 활성화하지 않은 경우 홈의 미리보기 배너를 앱에서 표시할 수 있습니다. |
+| 광고 활성화 `release` | Play Cloud와 별도로 빌드에서 설정합니다. | `gallipickAdsEnabled=true`와 GalliPick AdMob 앱·배너 ID가 필요합니다. 동의 상태와 서버에서 확인한 광고 제거 권한에 따라 홈 배너를 요청합니다. |
 
-[내부 테스트 배포 #5](https://github.com/hebi10/GalliPick/actions/runs/41801195257)는 같은 소스의 검사·서명 APK/AAB 빌드·새 AAB 업로드·API commit과 재조회를 모두 통과했습니다. Play Console에서도 2026-11-04에 활성·최신 0.1.8/code 9·내부 테스터에게 제공됨을 확인했습니다. 당시 다음 업로드의 최소 versionCode는 10이었습니다. API 제출 수락과 Google 심사 승인·테스터 제공 상태는 구분합니다.
+`localOnly`와 `noAds`는 소스 및 매니페스트 구성입니다. 공통 매니페스트에는 인터넷 권한이 선언되어 있고, Google Mobile Ads와 Play Billing 의존성은 공통으로 포함됩니다. 일반 `debug`는 개발용 클라우드 소스를 포함하며 광고 요청은 기본으로 꺼져 있습니다. [Gradle 설정](app/build.gradle.kts) · [공통 매니페스트](app/src/main/AndroidManifest.xml) · [광고 운영 안내](docs/ads-01-admob-play-console.md)
 
-고양이 런처와 Google Play 등록용 아이콘은 [전용 아이콘 생성·업로드 자동화](.github/workflows/play-store-icon.yml)로 관리합니다. 비공개 테스트 배포는 버전 증가와 단독 `[deploy-closed]` 마커 또는 `main`에서 수동 `target=closed`를 선택한 경우만 가능합니다. Google Play API 제출 수락은 심사 승인·테스터 설치 가능 상태와 구분합니다.
+## 클라우드와 시크릿 보관함
 
-2026-11-05 [아이콘 업로드](https://github.com/hebi10/GalliPick/actions/runs/41964686350)는 한국어 스토어 아이콘 한 장의 API 수정·별도 조회를 통과했습니다. 이어 [내부 테스트 v0.1.9/code 10 배포](https://github.com/hebi10/GalliPick/actions/runs/41965227662)에서는 기존 서명키 검사·Android 테스트·서명 APK/AAB 검증·Google Play 내부 테스트 제출이 모두 성공했습니다. 배포 보고서 `status=committed`, `api_accepted=true`, `track_verified=true`를 확인했으며, Google 심사 승인·Play Console 게시 상태·테스터 설치 가능 여부는 별도로 확인해야 합니다.
+Play Cloud 구성에는 Google 로그인, Play 구독의 서버 검증, 사진·동영상 원본 백업·조회·복원을 위한 코드가 포함됩니다. 서버가 검증한 활성 클라우드 구독에는 광고 제거 혜택이 포함되며, 광고 제거 전용 구독의 백업 할당량은 0입니다. 운영 앱에서 각 기능을 이용할 수 있는지는 Firebase 설정, 서버 배포 및 Play 상품 상태에 따라 달라집니다.
 
-## 서명 APK·AAB
+시크릿 보관함은 클라우드 탭에서 별도 비밀번호로 여는 공간입니다. 서버가 발급한 만료 시간이 있는 세션으로 원본에 접근합니다. 기기에서 수행하는 파일 정리, 클라우드 백업, 클라우드 데이터 삭제와 계정 탈퇴에는 각각 별도의 흐름이 있습니다.
 
-새 릴리스 소스 v0.2.6(code 17)의 서명 APK·AAB와 배포 보고서는 [Play testing deployment](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)에서 실제 성공한 실행의 **Artifacts**로 확인합니다. 기존 v0.2.5(code 16)는 [배포 #42231012844](https://github.com/hebi10/GalliPick/actions/runs/42231012844)에 보관되어 있습니다. 이전 버전은 [Play testing deployment](https://github.com/hebi10/GalliPick/actions/workflows/play-deploy.yml)의 실행 이력을 사용합니다. APK artifact에는 APK·체크섬, AAB artifact에는 AAB·체크섬·공개 빌드 근거가 포함되며 보관 기간은 14일입니다. 버전 태그 또는 별도 `Public APK release` 실행으로 게시하는 공개 APK는 [GitHub 릴리스](https://github.com/hebi10/GalliPick/releases)에서 확인합니다.
+| 확인 항목 | 문서 |
+| --- | --- |
+| 운영 설정과 백업·복원 검증 | [운영 클라우드 인수인계](docs/production-cloud-handoff-2026-11-18.md) |
+| 구독·업로드 운영 상태 | [읽기 전용 사전 점검](docs/gp-checkout-ops-02-readonly-preflight-2026-11-20.md) |
+| 보존·관리자 운영 정책 | [클라우드 수명주기 계획](docs/admin-cloud-lifecycle-plan-2026-11-20.md) |
+| 클라우드 데이터 삭제·회원 탈퇴 | [서버 구현 및 검증 범위](docs/gp-exit-03-05-server-implementation-2026-11-20.md) |
 
-## 중복 정리 개선 · v0.1.6
+## 실행과 검증
 
-- 파일을 `남길 파일`, `정리 후보`, `이동 대상 · 선택됨`으로 구분합니다. 남길 파일에는 직접 지정·보호·즐겨찾기·앱 추천 등 실제 이유를 표시합니다.
-- 묶음별 남길 파일과 정리 후보를 나눠 보여 줍니다. 남길 파일·보호 파일·즐겨찾기에는 정리 선택 상자를 표시하지 않습니다.
-- `정리 후보 N개 선택`은 현재 결과의 모든 묶음을 대상으로 합니다. 묶음별 후보 추가 선택과 구분하며 한 번에 최대 500개입니다. 선택만으로 파일을 이동하지 않습니다.
-- 남길 파일 변경 시 해당 묶음의 후보 선택만 해제합니다. 다른 묶음의 선택은 유지하며, 이전에 남기던 파일이 자동으로 이동 대상으로 선택되지는 않습니다.
-- 하단에 선택한 파일 수·용량과 `선택한 N개 휴지통으로 이동`을 표시합니다. 최종 확인창에서는 이동 대상과 묶음별로 확인한 남길 사본을 탭으로 검토한 뒤 Android 승인을 요청합니다.
-- 최종 확인 이후 파일이나 남길 사본의 상태가 바뀌면 다시 확인합니다. Android 승인 후에도 실제 휴지통 상태를 조회해 완료·변경 없음·확인 불가를 구분합니다.
+Android 11 이상에서 실행됩니다. 빌드에는 Java 17과 Android SDK 36이 필요합니다. 릴리스에 사용하는 인증서는 [고정 서명 설정](docs/signing.md)에서 확인하세요.
 
-## 테마와 파일 도구
-
-- 설정에서 기기 설정 따르기·라이트·다크 모드를 선택하고 저장합니다.
-- 파일 상단 첫 번째 행에는 전체/사진/동영상 종류와 그리드/목록 전환, 두 번째 도구 행에는 검색·정렬·조건·추가 작업이 표시됩니다. 용량 큰/작은 순, 영상 긴/짧은 순을 포함한 14가지 정렬을 제공합니다.
-- 아래로 스크롤하면 상단이 접히고 위로 올리면 다시 표시됩니다. 좁은 창과 큰 글씨에서도 도구와 파일 목록의 공간을 확보합니다.
-- 중복 파일은 남길 파일을 맨 앞에 둔 가로 목록으로 비교하고, 선택한 파일 하나만 크게 미리 봅니다. 남길 파일 변경은 별도 버튼으로 실행하며, 비교 영상은 한 번에 하나만 재생합니다.
-
-## 사용성·안전성 보완 · v0.1.2
-
-- 검색·필터 변경 시 선택을 해제하고, 앱 복귀 시 현재 접근 범위에서 동일 버전으로 확인된 선택만 복원합니다.
-- 파일·중복·휴지통 선택은 한 번에 최대 500개이며, 선택 단계에서 제한을 안내합니다. 최종 확인창에 파일명과 폴더 목록을 표시합니다.
-- 빠른 필터(10분 이상 영상·1 GiB 이상·1년 이전 영상), 보관 파일 직접 지정, 권한·조회 실패 재시도 화면을 제공합니다.
-- 선택이 없으면 삭제 패널을 접고 목록 위치를 유지합니다.
-- 앱 안에서 사진 확대·이동과 동영상 재생·탐색을 지원합니다. 사진 미리보기는 긴 변 최대 2,048px이며, 원본은 외부 앱에서도 열 수 있습니다.
-- MediaStore 볼륨 버전과 선택 당시 파일 버전을 함께 검증합니다. DB v1→v2 전환은 보호 설정과 기존 미디어를 유지합니다.
-- 조회 실패는 빈 성공으로 처리하지 않고 목록을 숨겨 재시도를 안내합니다. 실패한 조회로 기존 분석 체크포인트를 지우지 않습니다.
-- Room 카탈로그 관찰을 공유하고 해시 저장 후 중복 결과 갱신을 250ms 간격으로 합칩니다. 수만 파일의 실제 성능 개선 수치는 아직 측정하지 않았습니다.
-
-## 디자인 · 픽이
-
-초록 모자를 쓴 고양이 캐릭터와 크림·민트·복숭아색을 사용합니다. 런처 아이콘·테마 아이콘·홈 일러스트는 동일한 고양이 에셋을 기준으로 구성하고, 주요 탐색·미디어 아이콘은 생성된 이미지와 Material Rounded 아이콘을 혼합합니다. 다크 모드에서는 같은 브랜드 계열의 어두운 표면과 밝은 본문을 사용합니다. 안내 문구는 파일 상태와 작업 결과를 직접 설명합니다.
-
-생성 원본과 프롬프트 기록은 `assets/brand/`, 최적화된 Android 비트맵은 `app/src/main/res/drawable-nodpi/`에 있습니다. Android 13 이상의 테마 앱 아이콘용 단색 이미지도 제공합니다.
-
-## 현재 구현
-
-- 사진·영상, 파일명/경로 검색, 폴더, MIME 형식, 용량 범위, 영상 길이, 촬영/저장/수정 날짜, 화소 수, 방향, 즐겨찾기/보호 여부 필터.
-- 날짜·크기·길이·이름·화소 수 정렬과 조건 저장/적용/삭제, 마지막 조건 유지.
-- 크기가 같은 후보의 원본 전체 바이트 SHA-256 검사. 불완전 해시와 읽기 실패 파일은 중복으로 표시하지 않습니다.
-- 즐겨찾기·보호 파일을 제외한 사본 추천, 남길 사본과 휴지통 대상의 최종 상태 확인.
-- 파일·폴더 보호, 다중 선택, 앱 내부 사진 확대·영상 재생, 외부 원본 앱 열기, 메타데이터 보기.
-- 시스템 승인 휴지통 이동·복원. 한 번에 최대 500개. 영구 삭제 기능은 없습니다.
-- 실제 기기 저장 공간, 접근 가능한 미디어 통계, 큰 영상·오래된 스크린샷·화면 녹화 후보.
-- 일시정지/재개 가능한 WorkManager 검사와 완료 파일 해시 캐시.
-- 작은 화면 하단 탭, 넓은 화면 탐색 메뉴와 파일/상세 좌우 배치.
-
-## 실행
-
-Android 11 이상이 필요합니다. Java 17과 Android SDK 36으로 빌드합니다. 일반 debug·release 빌드에는 [고정 서명 설정](docs/signing.md)이 필요합니다.
+일회용 테스트 서명으로 디버그 검증을 실행할 수 있습니다.
 
 ```bash
-./gradlew testDebugUnitTest lintDebug lintRelease assembleRelease
+./gradlew -PgallipickTestSigning=true testDebugUnitTest lintDebug assembleDebug
 ```
-
-Windows PowerShell에서는 다음을 사용합니다.
 
 ```powershell
-.\gradlew.bat testDebugUnitTest lintDebug lintRelease assembleRelease
+.\gradlew.bat -PgallipickTestSigning=true testDebugUnitTest lintDebug assembleDebug
 ```
 
-릴리스 APK 경로는 `app/build/outputs/apk/release/app-release.apk`입니다. 패키지 `com.hebi.gallipick`, 앱 이름 `GalliPick`, v0.2.5/versionCode 16을 사용합니다. `.preview` 구분은 없습니다.
+PR 기본 CI는 [Android verification](.github/workflows/android.yml)에서 확인합니다. 기능 변경을 모두 반영한 동결 `main`의 [Android 기기 테스트](.github/workflows/device-tests.yml)와 그 결과를 [검증 기록](docs/verification.md)에서 확인할 수 있습니다.
 
-현재 릴리스는 기존 사용자 제공 JKS 키로 서명합니다. 기존 개발 키로 설치한 v0.1.5 또는 이전 v0.1.6 시험 APK는 서명이 달라 **새 APK 공개 후 한 번 삭제·재설치해야 합니다.** 로컬 필터·보호·분석 설정은 초기화될 수 있습니다. 이번 전환에 앱 데이터 이전이나 서명 키 회전 증명은 포함하지 않습니다. 이후에는 같은 JKS 키·패키지와 더 높은 versionCode로 업데이트합니다. 별도 preview 앱의 설정도 자동 이전되지 않습니다.
+## Google Play 수동 배포
 
-일반 CI는 `-PgallipickTestSigning=true`를 명시한 debug 검사를 수행하고 보고서를 보관합니다. [공개 APK 릴리스](docs/release.md)는 같은 커밋의 단위 검사·lint·Android 기기 검사 통과 후 고정 키로 release APK를 서명하고 GitHub Releases에 게시하도록 구성했습니다. 전환 전 기능 검증 기록과 새 JKS 기준의 검증·게시 상태는 [검증 기록](docs/verification.md)에서 구분해 확인합니다.
+1. 릴리스에 포함할 작업과 QA를 마치고, 동결한 `main`의 정확한 커밋으로 기본 CI와 전체 Android 기기 테스트를 통과합니다.
+2. 승인 후 [서명 AAB 빌드](.github/workflows/release-build.yml)에서 AAB, SHA-256, 빌드 매니페스트를 생성합니다.
+3. 내부 테스트 요청을 받으면 [검증된 AAB의 내부 테스트 제출](.github/workflows/play-internal-release.yml)을 실행합니다. 내부 테스트를 명시적으로 요청한 경우 [1회 승인 워크플로](.github/workflows/internal-release-once.yml)로 CI 확인, 최종 기기 QA, 서명, 내부 제출을 이어서 실행할 수 있습니다.
+4. 비공개 테스트를 별도로 승인받으면 내부 테스트가 완료된 동일 `versionCode`를 [비공개 테스트로 승격](.github/workflows/play-closed-release.yml)합니다.
 
-## 처음 사용
+자동 CI는 검사와 디버그 빌드를 실행합니다. 공개 테스트, 정식 출시, 스토어 등록정보 변경, Firebase 배포는 각각 승인된 범위에서 진행합니다. Play API 접수, Console 게시, 테스터 설치 가능 여부는 따로 확인합니다. [저장소 배포 정책](AGENTS.md)
 
-1. 홈에서 사진·동영상 접근을 허용합니다. 일부 파일 또는 한 종류만 허용하면 허용 범위만 표시됩니다.
-2. 파일 탭의 유형 선택과 정렬·검색·조건 도구에서 원하는 파일만 표시합니다. 자주 쓰는 조건은 이름을 붙여 저장합니다.
-3. 정리 탭의 `완전히 같은 파일 찾기`에서 중복 검사를 시작하고 남길 파일과 정리 후보를 확인합니다. 후보를 선택한 뒤 하단의 휴지통 이동 버튼을 누르고, 이동 대상·남길 사본과 Android 확인창을 검토합니다.
-4. 설정의 휴지통에서 복원을 요청할 수 있습니다. 보관 기간과 실제 파일 제거는 Android가 관리합니다.
+## 개인정보와 기기 접근
 
-## 개인정보와 안전
-
-인터넷 권한, 서버, 계정, 광고·분석 SDK를 사용하지 않습니다. 자동 백업도 꺼져 있습니다. 분석·보호 설정·필터는 기기에 저장됩니다.
-
-Android가 위치 메타데이터를 가린 파일을 원본으로 오인하지 않도록 정확한 중복 검사에는 `ACCESS_MEDIA_LOCATION`을 요청합니다. 이는 파일에 포함된 메타데이터 접근이며 실시간 GPS 추적을 사용하지 않습니다. 원본 읽기가 허용되지 않은 파일은 검사에서 건너뜁니다. 권한 거부 후에도 허용된 미디어의 정렬·검색을 사용할 수 있습니다.
-
-휴지통 요청 직전에 URI·크기·수정일·generation, 즐겨찾기·보호 상태를 확인합니다. 확인된 중복 묶음은 선택하지 않은 사본의 존재도 확인합니다. 휴지통으로 이동한 용량이 즉시 여유 공간으로 바뀌지는 않을 수 있습니다.
-
-확인창에 표시하는 용량은 선택한 파일의 합계입니다. Android 승인 후 상태를 확인하기 어려운 파일은 `확인 불가`로 집계합니다.
-
-## 현재 제한과 다음 단계
-
-- **유사 사진/pHash 및 유사 동영상 분석은 아직 구현하지 않았습니다.** 현재 중복은 완전 일치만 의미합니다.
-- 클라우드에만 있는 파일, 다른 앱의 비공개 저장소는 조회 대상이 아닙니다.
-- 미디어 카탈로그는 앱 복귀·새로고침·검사 시 다시 조회합니다. generation 기반 전체 증분 동기화와 목록 Paging은 후속 단계입니다.
-- 수만 파일과 실제 폴더블 성능은 실기기 검증이 필요합니다.
-- 작업은 약 2분 단위로 나누되, 파일 하나의 해시는 끝까지 읽습니다. Android 실행 제한으로 중단된 파일은 처음부터 다시 읽으며 반복 중단 3회 시 일시정지합니다. 매우 큰 단일 파일은 현재 버전에서 완료가 어려울 수 있습니다.
-- 스크린샷·화면 녹화 추천은 폴더/파일명 기준 후보입니다. 내용 인식이나 불필요한 파일 확정이 아닙니다.
-- 보관 추천은 보호·즐겨찾기·Camera 폴더·날짜 기준입니다. 화질/압축 손상이나 원본·편집본을 AI로 판정하지 않습니다.
-
-설계와 작업 계획은 `docs/superpowers/`에, 실제 검사 결과는 `docs/verification.md`에 기록합니다.
-
-## 플랫폼 참고
-
-- [MediaStore와 시스템 휴지통](https://developer.android.com/training/data-storage/shared/media)
-- [Android 14 선택된 사진 접근](https://developer.android.com/about/versions/14/changes/partial-photo-video-access)
-- [장시간 WorkManager 작업의 실행 제한](https://developer.android.com/develop/background-work/background-tasks/persistent/how-to/long-running)
-- [Android Gradle Plugin 8.13 호환성](https://developer.android.com/build/releases/agp-8-13-0-release-notes)
+- Android에서 허용한 사진·동영상만 표시합니다. 정확한 중복 검사에는 원본의 위치 메타데이터에 접근하기 위한 `ACCESS_MEDIA_LOCATION`이 필요하며, 실시간 위치 추적은 사용하지 않습니다.
+- 기기 내 분석·보호 설정·필터·OCR 색인은 로컬에 저장되며, Android 자동 백업은 꺼져 있습니다. 클라우드 원본은 Play Cloud 기능으로 별도 관리합니다.
+- 파일을 휴지통으로 이동하기 직전에 파일 버전과 보호 상태를 다시 확인합니다. 최종 결과를 조회해 완료·변경 없음·확인 불가를 구분합니다. [개인정보처리방침](docs/privacy.html)
