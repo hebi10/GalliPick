@@ -77,9 +77,11 @@ internal fun SecretCloudSection(
     requestAccess: () -> Unit,
 ) {
     val observedAccount by connection.session.account.collectAsStateWithLifecycle()
+    val accountStatus by connection.session.status.collectAsStateWithLifecycle()
     val account = observedAccount
     val vault = connection.secretVault
     when {
+        accountStatus.operation != null -> CloudAccountCard { CloudStatusMessage("계정 연결 상태를 확인하고 있습니다.") }
         account == null -> CloudAccountCard { CloudStatusMessage("Google 계정으로 로그인해 주세요.") }
         vault == null -> CloudAccountCard { CloudStatusMessage("현재 시크릿 클라우드 서버를 이용할 수 없습니다.") }
         else -> key(connection, account.uid, vault) {
@@ -326,7 +328,11 @@ private fun SecretVaultAccess(
                 if (!settingsRegistration) {
                     Text(if (setup) "비밀번호 설정" else "보관함 잠금 해제", style = MaterialTheme.typography.titleMedium)
                 }
-                if (setup) Text("8자 이상의 비밀번호를 입력해 주세요.", color = Muted)
+                if (setup) {
+                    Text("8자 이상의 비밀번호를 입력해 주세요.", color = Muted)
+                    Text("비밀번호는 앱의 보관함 접근을 보호합니다. 서버 원본은 Google 관리 키로 암호화해 저장합니다.",
+                        color = Muted)
+                }
                 VaultPasswordField(
                     password, { password = it; unlockError = null }, "비밀번호", enabled = unlock == null,
                 )

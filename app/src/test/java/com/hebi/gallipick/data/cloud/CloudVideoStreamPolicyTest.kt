@@ -45,6 +45,7 @@ class CloudVideoStreamPolicyTest {
             signedUrl = URI("https://storage.googleapis.com/verified-object?$secret"),
             generation = "1740000000000001",
             obtainedAtElapsedMs = 2000L,
+            mayRead = { true },
         )
         assertFalse(capability.shouldRenew(3000L))
         assertFalse(capability.shouldRenew(91_999L))

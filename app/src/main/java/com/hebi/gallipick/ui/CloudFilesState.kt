@@ -83,7 +83,7 @@ internal fun rememberCloudFilesState(
     val configuredBackup = connection.backupAvailability
     val observation = configuredBackup?.collectAsStateWithLifecycle()?.value?.takeIf { it.uid == uid }
     val waitingForAccess = uid != null && configuredBackup != null && observation == null && connection.billing != null
-    val backup = connection.backup.takeUnless { waitingForAccess }
+    val backup = connection.backup.takeUnless { waitingForAccess || status.operation != null }
     val accessIssue = observation?.checkFailure?.let(::cloudCatalogIssue)?.takeUnless {
         // The development server rejects accounts outside the pilot before returning a plan.
         !connection.usesProductionBackupPlan && it == CloudCatalogIssue.ACCOUNT_RESTRICTED &&
@@ -125,15 +125,15 @@ internal fun rememberCloudFilesState(
                 retryAccess = false
             }
         }
-        LaunchedEffect(uid) { CloudPhotoThumbnailStore.activate(null) }
+        LaunchedEffect(uid, status.operation) { CloudPhotoThumbnailStore.activate(null) }
         return CloudFilesUiState(
             enabled = configuredBackup != null || backup != null,
             accountUid = uid,
-            loading = retryAccess || waitingForAccess,
+            loading = retryAccess || waitingForAccess || status.operation != null,
             catalogIssue = accessIssue,
             retry = { retryAccess = true },
             detailAccess = detailAccess, accountEmail = accountLabel, detailNotice = detailNotice,
-            mayReadCatalog = observation?.mayReadCatalog == true,
+            mayReadCatalog = status.operation == null && observation?.mayReadCatalog == true,
         )
     }
     val network = rememberCloudNetworkStatus(enabled = true)

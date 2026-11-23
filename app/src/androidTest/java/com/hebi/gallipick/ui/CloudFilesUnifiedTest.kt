@@ -28,6 +28,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.lifecycle.lifecycleScope
 import com.hebi.gallipick.AppThemeMode
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.MediaAccess
@@ -57,6 +58,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -529,6 +531,34 @@ class CloudFilesUnifiedTest {
             staleResult.complete(listOf(saved))
         }
         compose.runOnIdle { assertEquals(listOf(nextOwnersFile), latest.get().snapshot?.originals) }
+    }
+
+    @Test fun accountPickerHidesOldCatalogBeforeAUidChange() {
+        val accounts = MutableStateFlow<CloudAccountIdentity?>(CloudAccountIdentity("owner", null, null))
+        val connection = fakeCatalogConnection(accounts)
+        val finishPicking = CompletableDeferred<Unit>()
+        val latest = observeCatalog(connection) { listOf(saved) }
+        compose.waitUntil(5_000) { latest.get().snapshot?.originals == listOf(saved) }
+        try {
+            compose.runOnIdle {
+                compose.activity.lifecycleScope.launch {
+                    connection.session.chooseAccount {
+                        finishPicking.await()
+                        "fixture-id-token"
+                    }
+                }
+            }
+            compose.waitUntil(5_000) { latest.get().detailAccess == DetailCloudAccess.CHECKING }
+            compose.runOnIdle {
+                assertEquals("owner", latest.get().accountUid)
+                assertEquals(null, latest.get().snapshot)
+                assertEquals(null, latest.get().backup)
+                assertFalse(latest.get().mayReadCatalog)
+            }
+        } finally {
+            finishPicking.complete(Unit)
+        }
+        compose.waitUntil(5_000) { latest.get().snapshot?.originals == listOf(saved) }
     }
 
     @Test fun libraryFolderSelectionOnlyShowsOriginalsInTheSelectedFolder() {

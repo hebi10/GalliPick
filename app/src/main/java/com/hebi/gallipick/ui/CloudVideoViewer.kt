@@ -1,14 +1,17 @@
 package com.hebi.gallipick.ui
 
+import android.media.AudioAttributes
+import android.media.MediaDataSource
 import android.media.MediaPlayer
-import android.net.Uri
 import android.os.SystemClock
-import android.widget.VideoView
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -46,6 +49,7 @@ import com.hebi.gallipick.data.cloud.CloudBackup
 import com.hebi.gallipick.data.cloud.CloudBackupException
 import com.hebi.gallipick.data.cloud.CloudBackupResult
 import com.hebi.gallipick.data.cloud.CloudOriginal
+import com.hebi.gallipick.data.cloud.CloudVideoRangeSource
 import com.hebi.gallipick.data.cloud.CloudVideoStreamCapability
 import com.hebi.gallipick.data.cloud.isCloudVideoStreamable
 import com.hebi.gallipick.data.cloud.safeCloudVideoPosition
@@ -55,9 +59,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * Plays a generation-pinned, short-lived signed Google Cloud Storage URL.
- * Android VideoView handles HTTP byte ranges. No VideoView URI is saved to
- * MediaStore, the app database, logs, or external intents.
+ * Plays a verified cloud original through a byte source that keeps the signed URL in the app.
  */
 @Composable
 internal fun CloudVideoViewer(
@@ -72,7 +74,7 @@ internal fun CloudVideoViewer(
     var capability by remember(uid, original.uploadId) { mutableStateOf<CloudVideoStreamCapability?>(null) }
     var loading by remember(uid, original.uploadId) { mutableStateOf(true) }
     var message by remember(uid, original.uploadId) { mutableStateOf<String?>(null) }
-    var player by remember(uid, original.uploadId) { mutableStateOf<VideoView?>(null) }
+    var player by remember(uid, original.uploadId) { mutableStateOf<MediaPlayer?>(null) }
     var ready by remember(uid, original.uploadId) { mutableStateOf(false) }
     var playing by remember(uid, original.uploadId) { mutableStateOf(false) }
     var buffering by remember(uid, original.uploadId) { mutableStateOf(false) }
@@ -101,7 +103,7 @@ internal fun CloudVideoViewer(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
-                    player?.pause()
+                    if (ready) runCatching { player?.pause() }
                     playing = false
                 }
                 Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_DESTROY -> {
@@ -114,14 +116,12 @@ internal fun CloudVideoViewer(
         lifecycle.addObserver(observer)
         onDispose {
             lifecycle.removeObserver(observer)
-            player?.stopPlayback()
             disconnect()
         }
     }
 
     LaunchedEffect(offline) {
         if (offline) {
-            player?.let { runCatching { it.stopPlayback() } }
             disconnect()
             loading = false
             message = "인터넷 연결이 필요합니다."
@@ -216,7 +216,8 @@ internal fun CloudVideoViewer(
                     if (activeCapability != null && !pausedByLifecycle) {
                         key(uid, original.uploadId, refresh) {
                             CloudVideoSurface(
-                                signedUrl = activeCapability.signedUrl.toString(),
+                                stream = activeCapability,
+                                sizeBytes = original.sizeBytes,
                                 initialPositionMs = positionMs,
                                 onView = { view -> player = view },
                                 onReady = { length ->
@@ -314,41 +315,40 @@ internal fun CloudVideoViewer(
 /** The streaming view owns exactly one private playback session. */
 @Composable
 private fun CloudVideoSurface(
-    signedUrl: String,
+    stream: CloudVideoStreamCapability,
+    sizeBytes: Long,
     initialPositionMs: Int,
-    onView: (VideoView?) -> Unit,
+    onView: (MediaPlayer?) -> Unit,
     onReady: (Int) -> Unit,
     onBuffering: (Boolean) -> Unit,
     onCompleted: () -> Unit,
     onFailed: () -> Unit,
 ) {
-    var owned by remember { mutableStateOf<VideoView?>(null) }
-    DisposableEffect(Unit) {
-        onDispose {
-            owned?.let { view ->
-                view.setOnPreparedListener(null)
-                view.setOnInfoListener(null)
-                view.setOnCompletionListener(null)
-                view.setOnErrorListener(null)
-                runCatching { view.stopPlayback() }
-                onView(null)
-            }
-            owned = null
+    var holder by remember { mutableStateOf<SurfaceHolder?>(null) }
+    var ratio by remember { mutableStateOf<Float?>(null) }
+    DisposableEffect(holder, stream) {
+        val display = holder ?: return@DisposableEffect onDispose {}
+        val range = CloudVideoRangeSource(stream, sizeBytes)
+        val source = object : MediaDataSource() {
+            override fun getSize(): Long = range.sizeBytes
+            override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int =
+                range.readAt(position, buffer, offset, size)
+            override fun close() = range.close()
         }
-    }
-    AndroidView(factory = { context ->
-        VideoView(context).also { view ->
-            owned = view
-            onView(view)
-            view.setMediaController(null)
-            view.setOnPreparedListener { player ->
+        val media = MediaPlayer()
+        try {
+            media.setAudioAttributes(AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE).build())
+            media.setOnVideoSizeChangedListener { _, width, height ->
+                if (width > 0 && height > 0) ratio = width.toFloat() / height
+            }
+            media.setOnPreparedListener { player ->
                 val length = player.duration.coerceAtLeast(0)
-                if (initialPositionMs > 0 && length > 0) {
-                    view.seekTo(safeCloudVideoPosition(initialPositionMs, length))
-                }
+                if (initialPositionMs > 0 && length > 0) player.seekTo(safeCloudVideoPosition(initialPositionMs, length))
                 onReady(length)
             }
-            view.setOnInfoListener { _, what, _ ->
+            media.setOnInfoListener { _, what, _ ->
                 when (what) {
                     MediaPlayer.MEDIA_INFO_BUFFERING_START -> onBuffering(true)
                     MediaPlayer.MEDIA_INFO_BUFFERING_END,
@@ -356,14 +356,33 @@ private fun CloudVideoSurface(
                 }
                 true
             }
-            view.setOnCompletionListener { onCompleted() }
-            view.setOnErrorListener { _, _, _ ->
+            media.setOnCompletionListener { onCompleted() }
+            media.setOnErrorListener { _, _, _ ->
                 onFailed()
                 true
             }
-            // Deny cross-origin redirects of a time-limited signed Storage URL.
-            view.setVideoURI(Uri.parse(signedUrl), mapOf("android-allow-cross-domain-redirect" to "0"))
+            media.setDataSource(source)
+            media.setDisplay(display)
+            media.setScreenOnWhilePlaying(true)
+            onView(media)
+            media.prepareAsync()
+        } catch (_: Exception) {
+            onFailed()
         }
-    }, modifier = Modifier.fillMaxSize()
+        onDispose {
+            range.close()
+            onView(null)
+            runCatching { media.release() }
+        }
+    }
+    AndroidView(factory = { context ->
+        SurfaceView(context).apply {
+            this.holder.addCallback(object : SurfaceHolder.Callback {
+                override fun surfaceCreated(surface: SurfaceHolder) { holder = surface }
+                override fun surfaceChanged(surface: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+                override fun surfaceDestroyed(surface: SurfaceHolder) { holder = null }
+            })
+        }
+    }, modifier = (ratio?.let { Modifier.aspectRatio(it) } ?: Modifier.fillMaxSize())
         .semantics { contentDescription = "클라우드 동영상 재생 화면" })
 }

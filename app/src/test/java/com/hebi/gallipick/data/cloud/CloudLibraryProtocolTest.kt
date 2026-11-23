@@ -21,11 +21,17 @@ class CloudLibraryProtocolTest {
         assertNull(validateDownload(url.replace("generation=902", "generation=903")))
         assertNull(validateDownload(url.replace("&generation=902", "")))
         assertNull(validateDownload("$url&generation=903"))
-        assertNull(validateDownload(url.replace("X-Goog-Expires=120", "X-Goog-Expires=301")))
+        assertNull(validateDownload(url.replace("X-Goog-Expires=120", "X-Goog-Expires=121")))
         val resumable = url.replace("/$sha256-3?", "/v2/files/$sha256-3?")
         assertNull(validateDownload(resumable))
         assertNotNull(validateDownload(resumable, resumable = true))
         assertNull(validateDownload(url, resumable = true))
+    }
+
+    @Test
+    fun downloadTargetRedactsTheBearerUrlAndObjectGeneration() {
+        val target = CloudDownloadTarget(checkNotNull(validateDownload(url)), "902")
+        assertEquals("CloudDownloadTarget(redacted)", target.toString())
     }
 
     @Test
