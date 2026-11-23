@@ -1,6 +1,6 @@
 # 공개 APK 릴리스
 
-Google Play 테스트 자동 제출은 [Play 배포 자동화](play-store/automation.md)의 별도 `Play testing deployment` workflow를 사용합니다. `v*` 태그는 항상 내부 테스트(`internal`)에 배포하고, 수동 실행은 `mode=build`·`target=internal`이 기본값입니다. 수동 제출에는 `mode=deploy`를 선택하며 비공개 테스트는 main에서 수동 `target=closed`로 선택한 경우에만 사용합니다. 내부 테스트에는 `PLAY_CLOSED_TRACK`이 필요하지 않습니다. 아래 공개 APK·AAB 준비 workflow도 유지하며, Play 자동 배포는 기존 서명키와 앱에 한정한 배포 계정 설정이 필요합니다.
+Google Play 테스트 배포는 [AGENTS.md](../AGENTS.md)의 [현행 수동 절차](play-store/automation.md#현행-수동-배포-절차)를 따릅니다. OPS-03 서명 AAB와 OPS-04 내부 제출은 승인된 main SHA의 같은 산출물을 사용합니다. 내부 테스트 배포 1회 승인 시 OPS-09가 기기 QA부터 내부 제출까지 순차 처리합니다. 비공개 테스트는 별도 승인 후 OPS-05에서 기존 내부 테스트 버전을 승격합니다. GitHub Releases 공개 APK는 승인 후 `Public APK release`를 수동으로 실행합니다. 아래 과거 실행과 태그·push 예시는 해당 시점의 기록입니다.
 
 서명 설정을 갱신한 뒤 [check #3의 두 번째 시도](https://github.com/hebi10/GalliPick/actions/runs/41790941768)에서 실제 개인 키·고정 인증서·WIF·내부 트랙 접근 검사가 모두 성공했습니다. [build #4](https://github.com/hebi10/GalliPick/actions/runs/41799541269)는 0.1.7/code 8의 서명 APK·AAB 생성과 검증을 완료했습니다. 기존 0.1.7/code 8 내부 테스트 초안을 출시 처리하여 이전 초안 차단 사항을 해결했습니다.
 
@@ -24,7 +24,7 @@ Google Play 테스트 자동 제출은 [Play 배포 자동화](play-store/automa
 
 실행은 시작 시점의 정확한 소스 커밋을 고정합니다. 단위 검사·lint와 Android 16/API 36 기기 검사가 모두 성공한 뒤 release job이 고정 키로 빌드합니다. APK 메타데이터·서명 검증 후 같은 커밋을 가리키는 태그를 생성합니다. 이미 태그가 있으면 그 대상 커밋이 일치해야 하며 덮어쓰지 않습니다.
 
-## 태그 실행
+## 과거 태그 실행 방식
 
 앱 버전과 같은 `vMAJOR.MINOR.PATCH` 태그를 main에 포함된 커밋으로 push해도 같은 절차가 실행됩니다. 태그를 잘못된 버전이나 main 밖의 커밋으로 만들면 중단합니다. 수동 실행에서 GitHub Actions 토큰으로 만든 태그는 별도의 릴리스 실행을 다시 시작하지 않습니다.
 

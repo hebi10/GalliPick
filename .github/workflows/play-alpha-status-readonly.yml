@@ -1,8 +1,5 @@
 name: GalliPick Play alpha read-only status check
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/play-status-v026-readonly.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,7 +9,10 @@ concurrency:
   cancel-in-progress: false
 jobs:
   inspect:
-    if: github.repository == 'hebi10/GalliPick' && github.ref == 'refs/heads/main'
+    if: >-
+      github.repository == 'hebi10/GalliPick' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -42,11 +42,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/release/play_publish.py check --track "$PLAY_CLOSED_TRACK" --report play-status-v026.json
+          python3 scripts/release/play_publish.py check --track "$PLAY_CLOSED_TRACK" --report play-alpha-status.json
           python3 - <<'PY'
           import json
           from pathlib import Path
-          result=json.loads(Path("play-status-v026.json").read_text(encoding="utf-8"))
+          result = json.loads(Path("play-alpha-status.json").read_text(encoding="utf-8"))
           assert result.get("status") == "checked" and result.get("track") == "alpha"
           print("Uploaded or published codes:", result.get("used_version_codes"))
           for track in result.get("tracks", []):
@@ -56,7 +56,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: GalliPick-v0.2.6-play-status-readonly
-          path: play-status-v026.json
+          name: GalliPick-play-alpha-status-readonly
+          path: play-alpha-status.json
           retention-days: 14
           if-no-files-found: warn
