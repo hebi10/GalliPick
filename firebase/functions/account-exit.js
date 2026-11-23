@@ -13,6 +13,7 @@ const RETRY_MS = 2 * 60 * 1000;
 const MAX_RETRIES = 10;
 const OBJECT_PAGE_SIZE = 40;
 const DOC_PAGE_SIZE = 100;
+const MAX_PILOT_OWNERS = 10;
 const sha = value => createHash('sha256').update(value).digest('hex');
 const validOwner = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const validMillis = value => Number.isSafeInteger(value) && value >= 0 && value < Number.MAX_SAFE_INTEGER - ACCOUNT_EXIT_MAX_MS;
@@ -93,6 +94,22 @@ function activeExit(record, operation = 'read') {
     if (record.status === 'RESUMED') return false;
     if (record.status === 'COMPLETED') return operation === 'write';
     return true;
+}
+
+function exitRollout(env) {
+    const configuredHashes = env.GALLIPICK_ACCOUNT_EXIT_PILOT_UID_HASHES?.trim() ?? '';
+    const mode = env.GALLIPICK_ACCOUNT_EXIT_ROLLOUT;
+    if (mode === 'general' && configuredHashes === '') return { mode };
+    if (mode !== 'pilot' || configuredHashes.length > MAX_PILOT_OWNERS * 66) return null;
+    const owners = configuredHashes.split(',').map(hash => hash.trim());
+    return owners.length <= MAX_PILOT_OWNERS && owners.every(validOwner)
+        ? { mode, owners: new Set(owners) } : null;
+}
+
+export async function mayProcessBackupAfterAccountExit(db, transaction, owner) {
+    if (!validOwner(owner)) return false;
+    const snapshot = await transaction.get(db.doc(`${ACCOUNT_EXIT_COLLECTION}/${owner}`));
+    return !activeExit(snapshot.data(), 'write');
 }
 
 function isNotFound(error) {
@@ -231,11 +248,13 @@ async function nextDeletionStep({ db, bucket, authAdmin }, ref, record) {
     throw new BackupError('failed-precondition', 'Unknown account deletion stage.');
 }
 
-export function createAccountExitService({ db, authAdmin, getBucket, project, now = Date.now }) {
+export function createAccountExitService({ db, authAdmin, getBucket, project, rolloutEnv = {}, now = Date.now }) {
     if (project !== PRODUCTION_PROJECT || !db || !authAdmin || typeof getBucket !== 'function') {
         throw new BackupError('failed-precondition', 'A scoped production deletion service is required.');
     }
+    const rollout = exitRollout(rolloutEnv);
     const ownerRef = owner => db.doc(`${ACCOUNT_EXIT_COLLECTION}/${owner}`);
+    const allowsOwner = owner => rollout?.mode === 'general' || rollout?.owners?.has(owner) === true;
 
     async function status(auth) {
         const owner = ownerFromAuth(auth);
@@ -266,6 +285,8 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
 
     async function request(auth, input) {
         const owner = ownerFromAuth(auth);
+        if (!rollout) throw new BackupError('failed-precondition', 'Account deletion rollout is not configured.');
+        if (!allowsOwner(owner)) throw new BackupError('permission-denied', 'Account deletion is unavailable for this account.');
         const timestamp = now();
         if (!validMillis(timestamp)) throw new BackupError('failed-precondition', 'Invalid server time.');
         requireRecentSignIn(auth, timestamp);
@@ -350,6 +371,7 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
     }
 
     async function processOne(ref, { steps = 4 } = {}) {
+        if (!allowsOwner(ref.id)) return { claimed: false };
         const timestamp = now();
         const claimed = await claim(ref, timestamp);
         if (!claimed) return { claimed: false };
@@ -390,14 +412,17 @@ export function createAccountExitService({ db, authAdmin, getBucket, project, no
     }
 
     async function processDue({ maximumAccounts = 3 } = {}) {
+        if (!rollout) return { processed: 0, outcomes: [] };
         const timestamp = now();
-        const candidates = await db.collection(ACCOUNT_EXIT_COLLECTION)
-            .where('nextAttemptAtMs', '<=', timestamp).limit(Math.min(maximumAccounts * 8, 24)).get();
+        const candidates = rollout.mode === 'pilot' ? [...rollout.owners].map(ownerRef)
+            : (await db.collection(ACCOUNT_EXIT_COLLECTION)
+                .where('nextAttemptAtMs', '<=', timestamp).limit(Math.min(maximumAccounts * 8, 24)).get())
+                .docs.map(candidate => candidate.ref);
         const outcomes = [];
-        for (const candidate of candidates.docs) {
+        for (const ref of candidates) {
             if (outcomes.length >= maximumAccounts) break;
             try {
-                const processed = await processOne(candidate.ref);
+                const processed = await processOne(ref);
                 if (processed.claimed) outcomes.push({ status: processed.status });
             } catch {
                 outcomes.push({ status: 'RETRY' });
