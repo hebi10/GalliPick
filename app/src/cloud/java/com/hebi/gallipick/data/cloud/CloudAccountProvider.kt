@@ -2,6 +2,7 @@ package com.hebi.gallipick.data.cloud
 
 import android.app.Activity
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
@@ -18,6 +19,8 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingExcept
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseOptions
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
@@ -29,6 +32,7 @@ import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal fun createCloudAccountConnection(context: Context): CloudAccountConnection {
     val appId = context.getString(R.string.cloud_firebase_app_id)
@@ -48,6 +52,12 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
         .setProjectId(projectId)
         .build()
     val firebaseApp = FirebaseApp.initializeApp(context, options, "gallipick-cloud-${runtime.projectId}")
+    val appCheck = if ((context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
+        FirebaseAppCheck.getInstance(firebaseApp).apply {
+            installAppCheckProviderFactory(PlayIntegrityAppCheckProviderFactory.getInstance())
+        }
+    } else null
+    val appCheckToken: suspend () -> String? = { appCheck?.let { cloudAppCheckToken(it) } }
     val credentials = CredentialManager.create(context)
     val auth = FirebaseAuth.getInstance(firebaseApp)
     val session = CloudAccountSession(FirebaseCloudAccountBackend(auth, credentials))
@@ -55,6 +65,7 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
         endpoint = runtime.functionsEndpoint,
         buckets = setOf(runtime.storageBucket),
         productionProtocol = runtime.backupUsesServerPlan,
+        appCheckToken = appCheckToken,
     )
     val backupAccess = if (runtime.backupEnabled || runtime.backupUsesServerPlan) {
         CloudBackupAccessState(development = !runtime.backupUsesServerPlan) { auth.currentUser?.uid }.also { state ->
@@ -90,6 +101,7 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
                 buckets = setOf(runtime.storageBucket),
                 productionProtocol = runtime.backupUsesServerPlan,
                 vaultSessionToken = vaultToken,
+                appCheckToken = appCheckToken,
             ),
             productionAccess = backupAccess,
         )
@@ -103,6 +115,14 @@ internal fun createCloudAccountConnection(context: Context): CloudAccountConnect
     return CloudAccountConnection(session, backup, billing = billing, productionBackupAccess = backupAccess,
         secretVault = vault, accountExit = accountExit) { activity ->
         googleIdToken(credentials, activity, webClientId)
+    }
+}
+
+private suspend fun cloudAppCheckToken(appCheck: FirebaseAppCheck): String? = withTimeoutOrNull(5_000L) {
+    suspendCancellableCoroutine { continuation ->
+        appCheck.getAppCheckToken(false).addOnCompleteListener { task ->
+            if (continuation.isActive) continuation.resume(if (task.isSuccessful) task.result.token else null)
+        }
     }
 }
 

@@ -79,6 +79,7 @@ internal class CloudBackupTransport(
     private val buckets: Set<String>,
     private val productionProtocol: Boolean = false,
     private val vaultSessionToken: (() -> String)? = null,
+    private val appCheckToken: (suspend () -> String?)? = null,
 ) {
     val isPrivateVault = vaultSessionToken != null
 
@@ -367,10 +368,12 @@ internal class CloudBackupTransport(
             "secretCloud"
         }
         val body = JSONObject().put("data", data).toString().toByteArray(Charsets.UTF_8)
+        val attestation = appCheckToken?.invoke()?.takeIf { it.isNotBlank() }
         return exchange(URL("$endpoint/$destination"), readTimeoutMillis = readTimeoutMillis) { connection, ensureActive ->
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             connection.setRequestProperty("Authorization", "Bearer $token")
+            attestation?.let { connection.setRequestProperty("X-Firebase-AppCheck", it) }
             connection.doOutput = true
             connection.setFixedLengthStreamingMode(body.size)
             connection.outputStream.use { it.write(body) }
