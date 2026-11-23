@@ -8,6 +8,7 @@ import { ACCOUNT_EXIT_COLLECTION, ACCOUNT_EXIT_GRACE_MS, accountExitPaths,
 const SHA = value => createHash('sha256').update(value).digest('hex');
 const minute = 60_000;
 const startedAt = 1_800_000_000_000;
+const generalRollout = { GALLIPICK_ACCOUNT_EXIT_ROLLOUT: 'general' };
 const googleAuth = (uid = 'member-one', signInMs = startedAt) => ({
     uid, token: { auth_time: Math.floor(signInMs / 1000), firebase: { sign_in_provider: 'google.com' } },
 });
@@ -101,10 +102,11 @@ function harness() {
     const deletedUsers = [];
     let time = startedAt;
     const admin = { async deleteUser(uid) { deletedUsers.push(uid); } };
-    const service = createAccountExitService({ db, authAdmin: admin, getBucket: async () => bucket,
-        project: 'gallipick-production', now: () => time });
+    const forRollout = rolloutEnv => createAccountExitService({ db, authAdmin: admin,
+        getBucket: async () => bucket, project: 'gallipick-production', rolloutEnv, now: () => time });
+    const service = forRollout(generalRollout);
     const tick = amount => { time += amount; };
-    return { db, bucket, admin, deletedUsers, service, tick, get time() { return time; } };
+    return { db, bucket, admin, deletedUsers, service, forRollout, tick, get time() { return time; } };
 }
 
 async function drainJob(h, uid = 'member-one', scope = 'ACCOUNT') {
@@ -170,6 +172,45 @@ test('self-service deletion requires a recent Google session and explicit scope 
     const repeat = await h.service.request(googleAuth(), confirmation('ACCOUNT'));
     assert.deepEqual(repeat, accepted);
     await assert.rejects(h.service.request(googleAuth(), confirmation('CLOUD')), errorCode('failed-precondition'));
+});
+
+test('missing or inconsistent rollout configuration keeps admissions and the worker closed', async () => {
+    const h = harness();
+    const accepted = await h.service.request(googleAuth(), confirmation('ACCOUNT'));
+    h.tick(ACCOUNT_EXIT_GRACE_MS);
+    for (const rolloutEnv of [{}, { GALLIPICK_ACCOUNT_EXIT_ROLLOUT: 'pilot' }, {
+        GALLIPICK_ACCOUNT_EXIT_ROLLOUT: 'pilot', GALLIPICK_ACCOUNT_EXIT_PILOT_UID_HASHES: `${SHA('member-one')},invalid`,
+    }, { ...generalRollout, GALLIPICK_ACCOUNT_EXIT_PILOT_UID_HASHES: SHA('member-one') }]) {
+        const blocked = h.forRollout(rolloutEnv);
+        await assert.rejects(blocked.request(googleAuth('member-two', h.time), confirmation('ACCOUNT')),
+            errorCode('failed-precondition'));
+        assert.deepEqual(await blocked.processDue(), { processed: 0, outcomes: [] });
+        assert.deepEqual(await blocked.status(googleAuth()), accepted);
+    }
+    assert.deepEqual(h.deletedUsers, []);
+});
+
+test('pilot requests and processing remain scoped to the server allowlist', async () => {
+    const h = harness();
+    const disallowed = 'member-two';
+    const other = seedUserData(h, disallowed);
+    const pending = await h.service.request(googleAuth(disallowed), confirmation('ACCOUNT'));
+    const pilot = h.forRollout({
+        GALLIPICK_ACCOUNT_EXIT_ROLLOUT: 'pilot',
+        GALLIPICK_ACCOUNT_EXIT_PILOT_UID_HASHES: SHA('member-one'),
+    });
+    await assert.rejects(pilot.request(googleAuth(disallowed), confirmation('ACCOUNT')),
+        errorCode('permission-denied'));
+    const accepted = await pilot.request(googleAuth(), confirmation('CLOUD'));
+    assert.equal(accepted.status, 'REQUESTED');
+    h.tick(ACCOUNT_EXIT_GRACE_MS);
+    const otherRef = h.db.doc(`${ACCOUNT_EXIT_COLLECTION}/${other}`);
+    assert.deepEqual(await pilot.processOne(otherRef), { claimed: false });
+    assert.equal((await pilot.processDue({ maximumAccounts: 1 })).processed, 1);
+    assert.equal((await pilot.status(googleAuth())).status, 'IN_PROGRESS');
+    assert.deepEqual(await pilot.status(googleAuth(disallowed)), pending);
+    assert.ok([...h.bucket.objects.keys()].some(key => key.includes(other)));
+    assert.deepEqual(h.deletedUsers, []);
 });
 
 test('request blocks Cloud APIs immediately without affecting another account', async () => {

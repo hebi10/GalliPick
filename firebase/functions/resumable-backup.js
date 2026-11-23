@@ -56,7 +56,7 @@ function withoutReservation(usage, sizeBytes) {
 
 export function createResumableBackupService({ db, getBucket, authorizeOwner, allocationCollection, catalogCollection,
     objectPrefix, privateVault = false, uploadQuota, ownerLimit, maxOwnerFiles, catalogDocumentId, uploadsPaused = false,
-    globalAllocation, enqueueVerification, checkQuotaOnPublish = false, now = Date.now }) {
+    globalAllocation, enqueueVerification, checkQuotaOnPublish = false, mayProcessOwner, now = Date.now }) {
     if (!Number.isSafeInteger(ownerLimit) || ownerLimit <= 0 || ownerLimit > PRODUCTION_CLOUD_MAX_BYTES
         || !Number.isSafeInteger(maxOwnerFiles) || maxOwnerFiles <= 0 || !catalogDocumentId
         || typeof authorizeOwner !== 'function' || typeof uploadQuota !== 'function'
@@ -201,6 +201,11 @@ export function createResumableBackupService({ db, getBucket, authorizeOwner, al
             const timestamp = now();
             if (!record || record.transferId !== transferId || record.leaseUntilMs > timestamp) return null;
             if (action === 'verify' && record.state !== 'VERIFYING') return null;
+            if (mayProcessOwner && !await mayProcessOwner(transaction, owner)) {
+                // The account deletion worker owns cleanup from this point.
+                transaction.set(jobRef(owner, uploadId), keyForJob(record, owner, finishedJob));
+                return null;
+            }
             if (action === 'cleanup') {
                 if ((!['VERIFIED', 'FAILED', 'DISCARDING'].includes(record.state)
                     && (record.state !== 'RESUMABLE' || record.expiresAtMs > timestamp)) || record.cleaned === true) return null;

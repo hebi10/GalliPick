@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import test from 'node:test';
+import { ACCOUNT_EXIT_COLLECTION, mayProcessBackupAfterAccountExit } from './account-exit.js';
 import { createResumableBackupService, RESUMABLE_PART_BYTES } from './resumable-backup.js';
 import { composeVerifiedOriginal, storageKeys } from './resumable-storage.js';
 
@@ -111,7 +112,7 @@ function harness() {
             uploadQuota: async () => quota, ownerLimit: limit, maxOwnerFiles: 20_000, catalogDocumentId: '__name__',
             enqueueVerification: async job => { jobs.push(job); }, now: () => time, ...options });
     }
-    return { service, jobs, signed, records, objects, put, deleted, compositions, bucket,
+    return { db, service, jobs, signed, records, objects, put, deleted, compositions, bucket,
         advance: duration => { time += duration; }, setQuota: value => { quota = value; } };
 }
 
@@ -153,6 +154,38 @@ test('worker verifies SHA-256 before create-only compose and authorizes only gen
     assert.equal(fixture.signed.at(-1).options.queryParams.generation, result.generation);
     await assert.rejects(service.download(other, request), { code: 'not-found' });
     assert.equal(fixture.compositions.length, 1);
+});
+
+test('deletion blocks a paused composition while another account can finish its upload', async () => {
+    const fixture = harness();
+    const service = fixture.service({ mayProcessOwner: (transaction, owner) =>
+        mayProcessBackupAfterAccountExit(fixture.db, transaction, owner) });
+    let uploadId;
+    let generation;
+    let partName;
+    for (const owner of [primary, other]) {
+        ({ uploadId } = await service.begin(owner, media));
+        await service.getPart(owner, { uploadId, partIndex: 0 });
+        const recentPart = fixture.signed.at(-1).name;
+        const object = fixture.put(recentPart, video);
+        if (owner === primary) {
+            generation = object.generation;
+            partName = recentPart;
+        }
+        await service.finish(owner, { uploadId });
+    }
+    const recordKey = `LargeCatalog/${primary}/originals/${uploadId}`;
+    fixture.records.set(recordKey, { ...fixture.records.get(recordKey), composing: true, generations: [generation] });
+    fixture.records.set(`${ACCOUNT_EXIT_COLLECTION}/${primary}`, { scope: 'ACCOUNT', status: 'REQUESTED' });
+
+    await service.processPending({ timeBudgetMs: 10_000 });
+
+    assert.equal(fixture.records.get(recordKey).state, 'VERIFYING');
+    assert.equal(fixture.records.get(`LargeCatalogJobs/${primary}-${uploadId}`).dueAtMs, Number.MAX_SAFE_INTEGER);
+    assert.deepEqual(fixture.objects.get(partName).data, video);
+    assert.equal((await service.status(other, { uploadId })).state, 'VERIFIED');
+    assert.equal(fixture.compositions.length, 1);
+    assert.ok(fixture.compositions[0].startsWith(`${prefix}/${other}/`));
 });
 
 test('bad bytes never produce a catalogue original and cleanup frees only this reservation', async () => {

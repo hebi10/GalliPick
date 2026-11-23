@@ -22,8 +22,10 @@ PR: https://github.com/hebi10/GalliPick/pull/148
 - 공통 확인: `acknowledgesPermanentDeletion=true`, `acknowledgesPlayCancellation=true` (구독 자동 갱신은 따로 취소해야 함을 인지).
 - 서버에서 Google 제공자와 로그인 재인증 시간을 확인한다. 10분보다 오래된 로그인에는 새 Google 인증을 요구한다.
 - 중복 동일 요청은 같은 상태를 반환하고 범위가 다른 진행 중 요청은 거부한다.
-- 신규 요청은 **두 환경 변수 모두 켜져 있을 때만** 접수: `GALLIPICK_ACCOUNT_EXIT_ENABLED=true`, `GALLIPICK_ACCOUNT_EXIT_WORKER_ENABLED=true`. 둘 다 기본값은 비활성.
-- 백엔드 Functions 호출과 실제 Android 연동은 별개다. 현재 Android 탈퇴 모달은 아직 이메일 요청 흐름이므로 새 API 연결은 후속 UI 작업에서 수행한다.
+- 신규 요청은 `GALLIPICK_ACCOUNT_EXIT_ENABLED=true`와 `GALLIPICK_ACCOUNT_EXIT_WORKER_ENABLED=true`에 더해 유효한 `GALLIPICK_ACCOUNT_EXIT_ROLLOUT` 설정이 있어야 접수한다. 기본 상태에서는 새 접수와 삭제 실행이 모두 비활성이다.
+- `pilot`은 `GALLIPICK_ACCOUNT_EXIT_PILOT_UID_HASHES`에 지정한 시험용 Firebase UID의 SHA-256 해시만 허용한다. 쉼표로 구분한 소문자 16진수 해시를 최대 10개까지 설정한다. 요청과 워커가 동일 허용 목록을 검사하며, 검증이 끝날 때까지 보류 중인 시험 계정의 해시를 유지한다.
+- 일반 접수는 `general`을 명시하고 시험용 허용 목록을 비웠을 때만 가능하다. 장애 대응 시 접수 플래그를 끄면 기존 작업은 계속 처리할 수 있다. 파괴적 실행 자체를 정지하려면 워커를 비활성화한다.
+- Android 요청·상태 화면은 PR #150에서 API와 연결했다. 운영 파일럿에서는 Play 서명 앱으로 접수·상태·재활성화가 동작하는지 확인한다.
 
 ## 3. 삭제 단계
 
@@ -45,6 +47,7 @@ PR: https://github.com/hebi10/GalliPick/pull/148
 - 클라우드 `ACCOUNT` 삭제는 Play 구독 취소를 자동 대행하지 않음. Play에서 자동결제를 별도로 해지해야 한다는 경고가 필요하다. 기기에 남아 있는 Android 원본·휴지통은 삭제 대상이 아니다.
 - 프로덕션에서 보유한 라이선스 시험과 실제 유료 환경은 동시 정리 대상이지만 `gallipick-dev` 별도 Firebase 프로젝트는 변경하지 않는다.
 - 브라우저/Android 클라이언트는 Firestore·Storage 직접 삭제 권한이 없으며 서버 인증 경로만 이용한다.
+- 운영 삭제 스케줄러는 전용 `gallipick-account-exit` 서비스 계정으로 실행한다. 배포 전에 이 계정을 구성하고 필요한 Firestore·Storage·Firebase Auth 권한만 부여한다. 삭제 기능을 운영에 적용할 때는 백업·결제 callable, 분할 업로드 워커, Play RTDN의 삭제 잠금 지원 버전을 함께 확인한다.
 
 ## 5. 합성 QA
 
@@ -54,9 +57,9 @@ Node test `cloud-billing.test.js`: 삭제 요청 중 업로드 할당량 0·Clou
 
 ## 6. 아직 필요한 작업
 
-- **API와 Android UI 연결**: 현재 이메일 탈퇴 요청을 서버 상태/실시간 재인증/요청 API로 전환하고 오류·취소·다른 Google 계정 안전 처리.
+- **Android 운영 검증**: 서버 상태·Google 재인증·요청 API를 확인하고 오류·취소·다른 계정 전환 시 안전하게 처리되는지 검증.
 - **운영 QA**: Firebase Emulator 및 합성 Storage/Firestore에서 실제 Admin SDK recursiveDelete·GCS version 삭제 검증. 운영 프로젝트 IAM은 필요한 최소 권한만 부여. Play 구독 갱신/환불/보류·기기 원본 보호 확인.
-- **운영 기능 활성화**: 보안 검토·고객 고지·Play Console 계정 삭제 안내 확인 후 Firebase Functions 배포 및 두 플래그 승인. 플래그를 미리 활성화하지 않는다.
+- **운영 기능 활성화**: 보안 검토·고객 고지·Play Console 계정 삭제 안내 확인 후 Functions를 배포한다. 전용 서비스 계정 권한과 시험 계정 허용 범위를 확인한 뒤 접수와 실행을 순서대로 활성화한다.
 - **구독 종료 자동 만료 삭제**: GP-LIFECYCLE-02~03의 PURGE_DUE 대상과 이번 **사용자 직접 탈퇴 요청**은 별개. 7일 접근·14일 자동 삭제 스케줄러는 이후 독립 PR에서 안전하게 연결.
 - **관리자 웹**: 처리 실패 MANUAL_REVIEW·작업 현황·사용자 요청 확인 및 최소권한 관리자 조치는 GP-ADMIN 후속 개발.
 

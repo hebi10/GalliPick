@@ -17,7 +17,7 @@ import { PRODUCTION_CLOUD_MAX_BYTES } from './monetization-entitlements.js';
 import { createSecretCloud } from './secret-cloud.js';
 import { createResumableBackupService } from './resumable-backup.js';
 import { cloudOperationAccess } from './cloud-api-access.js';
-import { createAccountExitService } from './account-exit.js';
+import { createAccountExitService, mayProcessBackupAfterAccountExit } from './account-exit.js';
 import { createAdminOverviewService } from './admin-overview.js';
 import { createAdminMembersService } from './admin-members.js';
 import { createAdminManualGrantService } from './admin-manual-grants.js';
@@ -48,7 +48,7 @@ function accountExitService() {
         db: getFirestore(app),
         authAdmin: getAuth(app),
         getBucket: () => checkedBucket(PRODUCTION_BACKUP_BUCKET, true),
-        project,
+        project, rolloutEnv: process.env,
     });
 }
 
@@ -111,6 +111,8 @@ function scopedBackup({ db, backup, billing, scope, objectPrefix, privateVault, 
         catalogCollection: `${scope}${privateVault ? 'Vault' : ''}ResumableAccounts`,
         catalogDocumentId: FieldPath.documentId(), uploadsPaused: resumablePaused,
         checkQuotaOnPublish,
+        mayProcessOwner: production ? (transaction, owner) =>
+            mayProcessBackupAfterAccountExit(db, transaction, owner) : undefined,
     }) : undefined;
     const vault = privateVault ? createSecretCloud({ db, authorizeOwner, backup, resumable,
         credentialCollection: `${scope}VaultCredentials` }) : undefined;
@@ -295,6 +297,8 @@ export const recheckCloudExpiryWithPlay = onSchedule({
 
 export const processAccountExits = onSchedule({
     ...options, schedule: 'every 15 minutes', timeoutSeconds: 540, memory: '512MiB',
+    serviceAccount: production ? 'gallipick-account-exit@gallipick-production.iam.gserviceaccount.com'
+        : options.serviceAccount,
     maxInstances: 1, concurrency: 1,
 }, async () => {
     if (!production || process.env.GALLIPICK_ACCOUNT_EXIT_WORKER_ENABLED !== 'true') return;
