@@ -1,5 +1,15 @@
 # Play 테스트 배포 자동화
 
+## 현행 수동 배포 절차
+
+최종 작업과 QA를 완료한 뒤, 승인받은 동결 main SHA에서 OPS-03으로 서명 AAB를 만들고 OPS-04로 동일 AAB를 내부 테스트에 제출합니다. 내부 테스트 배포를 명시적으로 승인받은 경우 OPS-09에서 기본 CI 확인, 기기 QA, 서명 빌드, 내부 제출을 순차 실행할 수 있습니다. 비공개 테스트는 별도 승인 후 OPS-05로 내부 테스트에서 확인된 동일 versionCode를 기존 비공개 트랙에 승격합니다. 스토어 이미지·아이콘에도 OPS-06 별도 승인이 필요합니다.
+
+배포 경로와 승인 조건은 [AGENTS.md](../../AGENTS.md)와 [GitHub Actions 인벤토리](../github-actions-inventory.md)를 따릅니다. `v*` 태그, main push, `[deploy-internal]`, `[deploy-closed]`는 배포를 시작할 수 없으며 레거시 `play-deploy.yml`의 `deploy` 모드는 차단됩니다.
+
+## 과거 자동 배포 기록
+
+아래 실행 모드, 태그·커밋 예시, 설정 및 트랙 상태는 당시 절차를 보존한 기록입니다. 현재 배포에는 위 수동 절차를 사용합니다.
+
 `Play testing deployment`는 같은 소스에서 고정 키로 서명한 APK·AAB를 검증하고, 기본 대상으로 GalliPick 내부 테스트(`internal`)에 AAB 업데이트를 제출합니다. 비공개 테스트(`closed`)는 `main`에서 수동 실행하거나, 별도의 `[deploy-closed]` 릴리스 의도가 명시된 `main` 버전 증가 커밋에서만 사용합니다. 대상 패키지는 `com.hebi.gallipick` 하나입니다. 기존 `Public APK release`의 GitHub Releases APK 공개 흐름도 그대로 사용합니다.
 
 ## 실행 모드
