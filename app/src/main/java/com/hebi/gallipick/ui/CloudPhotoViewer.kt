@@ -55,11 +55,13 @@ internal object CloudPhotoThumbnailStore {
         override fun sizeOf(key: String, bitmap: Bitmap): Int = bitmap.allocationByteCount
     }
     private var ownerUid: String? = null
+    private var session = 0L
 
     @Synchronized fun activate(uid: String?) {
         if (ownerUid != uid) {
             images.evictAll()
             ownerUid = uid
+            session++
         }
     }
 
@@ -68,15 +70,15 @@ internal object CloudPhotoThumbnailStore {
 
     suspend fun load(uid: String, original: CloudOriginal, backup: CloudBackup): Bitmap? {
         if (!cloudPhotoSupportsThumbnail(original)) return null
-        // A stale request from an old account must never evict the new owner's cache.
-        if (!isOwner(uid)) return null
+        // Requests started before an account switch must not repopulate the cache after switching back.
+        val requestSession = synchronized(this) { if (ownerUid == uid) session else null } ?: return null
         peek(uid, original)?.let { return it }
         return requests.withPermit {
-            if (!isOwner(uid)) return@withPermit null
+            if (!isCurrent(uid, requestSession)) return@withPermit null
             peek(uid, original)?.let { return@withPermit it }
             val bitmap = backup.previewPhoto(original, uid, maxEdgePx = 384)
             synchronized(this) {
-                if (ownerUid == uid) {
+                if (ownerUid == uid && session == requestSession) {
                     images.put(original.uploadId, bitmap)
                     bitmap
                 } else null
@@ -84,7 +86,8 @@ internal object CloudPhotoThumbnailStore {
         }
     }
 
-    @Synchronized private fun isOwner(uid: String): Boolean = ownerUid == uid
+    @Synchronized private fun isCurrent(uid: String, requestSession: Long): Boolean =
+        ownerUid == uid && session == requestSession
 }
 
 @Composable

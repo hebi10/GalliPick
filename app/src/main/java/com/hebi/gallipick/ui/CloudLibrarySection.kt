@@ -62,6 +62,11 @@ internal fun CloudLibrarySection(
 ) {
     val backup = connection.backup ?: return
     val account by connection.session.account.collectAsStateWithLifecycle()
+    val status by connection.session.status.collectAsStateWithLifecycle()
+    if (status.operation != null) {
+        CloudStatusMessage("계정 연결 상태를 확인하고 있습니다.")
+        return
+    }
     val uid = account?.uid ?: return
     val activity = LocalActivity.current
     val scope = LocalLifecycleOwner.current.lifecycleScope

@@ -184,6 +184,7 @@ internal class CloudBackup(
         return forAccount(expectedUid, 40_000L, namespace) { check ->
             val token = tokenFor(expectedUid)
             check()
+            val requestedAt = SystemClock.elapsedRealtime()
             val target = transport.getDownload(expectedUid, token, original, namespace)
             check()
             transport.verifyVideoRange(target, original, check)
@@ -191,7 +192,8 @@ internal class CloudBackup(
             CloudVideoStreamCapability(
                 signedUrl = target.url,
                 generation = target.generation,
-                obtainedAtElapsedMs = SystemClock.elapsedRealtime(),
+                obtainedAtElapsedMs = requestedAt,
+                mayRead = { accessFor(expectedUid)?.namespace == namespace },
             )
         }
     }

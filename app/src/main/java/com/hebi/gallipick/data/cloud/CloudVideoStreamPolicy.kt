@@ -10,6 +10,7 @@ internal class CloudVideoStreamCapability(
     val signedUrl: URI,
     val generation: String,
     private val obtainedAtElapsedMs: Long,
+    val mayRead: () -> Boolean,
 ) {
     fun shouldRenew(nowElapsedMs: Long): Boolean =
         nowElapsedMs < obtainedAtElapsedMs || nowElapsedMs - obtainedAtElapsedMs >= 90_000L
@@ -35,8 +36,11 @@ internal fun validCloudVideoRange(
     contentEncoding: String?,
     expectedGeneration: String,
     sizeBytes: Long,
+    from: Long = 0,
+    through: Long = 0,
 ): Boolean = status == 206 &&
-    contentRange == "bytes 0-0/$sizeBytes" &&
-    contentLength?.toLongOrNull() == 1L &&
+    from in 0 until sizeBytes && through in from until sizeBytes &&
+    contentRange == "bytes $from-$through/$sizeBytes" &&
+    contentLength?.toLongOrNull() == through - from + 1 &&
     responseGeneration == expectedGeneration &&
     (contentEncoding == null || contentEncoding.equals("identity", ignoreCase = true))

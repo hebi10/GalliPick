@@ -54,8 +54,11 @@ internal fun normalizeCloudFolderPath(raw: String): String? {
     return parts.joinToString("/")
 }
 
-internal data class CloudDownloadTarget(val url: URI, val generation: String)
+internal data class CloudDownloadTarget(val url: URI, val generation: String) {
+    override fun toString(): String = "CloudDownloadTarget(redacted)"
+}
 
+private const val MAX_SIGNED_DOWNLOAD_SECONDS = 120
 private val generationId = Regex("[1-9][0-9]{0,19}")
 private val signedAt = Regex("[0-9]{8}T[0-9]{6}Z")
 private val signatureHex = Regex("[0-9a-fA-F]{128,1024}")
@@ -83,7 +86,7 @@ internal fun validateBackupDownload(
         query["X-Goog-Credential"].isNullOrBlank() || query["X-Goog-SignedHeaders"] != "host" ||
         query["X-Goog-Date"]?.let(signedAt::matches) != true ||
         query["X-Goog-Signature"]?.let(signatureHex::matches) != true ||
-        query["X-Goog-Expires"]?.toIntOrNull()?.let { it in 1..300 } != true
+        query["X-Goog-Expires"]?.toIntOrNull()?.let { it in 1..MAX_SIGNED_DOWNLOAD_SECONDS } != true
     ) return null
     return uri
 }
