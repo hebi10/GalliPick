@@ -1,0 +1,56 @@
+name: Android package benchmarks
+
+on:
+  pull_request:
+    paths:
+      - 'app/build.gradle.kts'
+      - 'scripts/performance/gp_build.py'
+      - 'scripts/performance/test_gp_build.py'
+      - '.github/workflows/gp-build-benchmark.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Package metrics (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [localOnly, devCloud, playCloud]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Install SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Test package metrics parser
+        run: python3 -B -m unittest discover -s scripts/performance -p 'test_gp_build.py'
+      - name: Measure APK, AAB and runtime dependencies
+        env:
+          BUILD_PROFILE: ${{ matrix.profile }}
+        run: python3 scripts/performance/gp_build.py --profiles "$BUILD_PROFILE" --r8
+      - name: Upload measurements
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-metrics-${{ matrix.profile }}
+          path: |
+            build/gp-build/metrics.json
+            build/gp-build/*-runtime.txt
+          if-no-files-found: error
+          retention-days: 14
