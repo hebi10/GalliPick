@@ -3,6 +3,7 @@ package com.hebi.gallipick.ui
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -112,6 +113,28 @@ class ReferenceNavigationFlowTest {
         tab("파일").performClick()
         tab("파일").assertIsSelected()
         compose.onNodeWithContentDescription("정리로 돌아가기").assertDoesNotExist()
+    }
+
+    @Test fun savedHistoryTrashReturnsToHistoryAndThenItsTab() {
+        val vm = AppViewModel(compose.activity.application)
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            GalliPickTheme { GalliPickApp(vm, {}, {}, {}, {}) }
+        }
+
+        tab("정리").performClick()
+        compose.onNodeWithContentDescription("정리 기록 열기").performScrollTo().performClick()
+        compose.onNodeWithText("휴지통·복원").performClick()
+        screenTitle("휴지통").assertIsDisplayed()
+        restoration.emulateSavedInstanceStateRestore()
+        screenTitle("휴지통").assertIsDisplayed()
+        tab("정리").assertIsSelected()
+
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        screenTitle("정리 기록").assertIsDisplayed()
+        compose.onNodeWithContentDescription("정리로 돌아가기").performClick()
+        screenTitle("정리").assertIsDisplayed()
+        tab("정리").assertIsSelected()
     }
 
     @Test fun photoAnalysisIsChildOfCleanupAndBackReturnsWithoutFifthTab() {
