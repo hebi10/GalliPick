@@ -121,7 +121,7 @@ private fun BillingCatalogCard(
 }
 
 @Composable
-private fun BillingPlanRow(
+internal fun BillingPlanRow(
     label: String,
     offer: CloudBillingOffer?,
     selected: Boolean,
@@ -165,7 +165,7 @@ private fun BillingPlanRow(
 }
 
 @Composable
-private fun BillingPlanDivider() {
+internal fun BillingPlanDivider() {
     HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = Line)
 }
 
@@ -262,7 +262,7 @@ internal fun BillingPlanDetails(plan: CloudBillingPlan, autoRenewing: Boolean?) 
     }
 }
 
-private fun billingTermLabel(label: String, basePlanId: String?): String = when (basePlanId) {
+internal fun billingTermLabel(label: String, basePlanId: String?): String = when (basePlanId) {
     "monthly" -> "$label · 월간"
     "annual" -> "$label · 연간"
     else -> label
