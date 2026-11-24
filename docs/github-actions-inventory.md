@@ -14,7 +14,7 @@
 | `gp-exit-emulator-qa.yml` | 계정 삭제 관련 PR, 수동 | 합성 계정의 삭제를 Firebase 에뮬레이터에서 검증 | — | [11-23 성공](https://github.com/hebi10/GalliPick/actions/runs/45136023366) |
 | `gp-admin-readonly.yml` | 관리자 웹·관련 함수 PR, 수동 | Hosting 구성과 관리자 웹의 읽기 전용 계약 검증 | — | [11-20 성공](https://github.com/hebi10/GalliPick/actions/runs/44677628231) |
 | `gp-checkout-readonly-audit.yml` | 관련 PR, 수동 | PR에서 오프라인 계약만 검사. 승인 입력과 정확한 main SHA가 있는 수동 실행에서 Play 구독·Firebase 함수 메타데이터 조회 | Play WIF, Firebase 읽기 전용 WIF | [11-20 오프라인 성공](https://github.com/hebi10/GalliPick/actions/runs/44697708231), [수동 실패](https://github.com/hebi10/GalliPick/actions/runs/44701173321) |
-| `gp-cloud-internal-preflight-readonly.yml` | 해당 워크플로·지원 스크립트 변경 main push, 수동 | 개발용 Cloud OAuth·Play 재고의 고정 프리플라이트. v0.2.13/code24 검사 근거는 아래 참조 | 개발 Cloud 설정, Play WIF | [11-16 성공](https://github.com/hebi10/GalliPick/actions/runs/43827102310) |
+| `gp-cloud-internal-preflight-readonly.yml` | main 수동 | 운영 프로젝트의 Play 서명용 Android·웹 OAuth 소유권과 현재 main 버전의 Play 업로드 가능 여부 조회 | 운영 Cloud 설정, Play WIF | [11-16 이전 개발용 검사](https://github.com/hebi10/GalliPick/actions/runs/43827102310) |
 | `gp-perf-00-sqlite.yml` | 성능 스크립트 관련 PR, 수동 | 합성 SQLite 데이터 성능 기준치 | — | [11-18 성공](https://github.com/hebi10/GalliPick/actions/runs/44255830841) |
 | `gp-build-benchmark.yml` | Android 빌드 설정·벤치마크 관련 PR, 수동 | Android package benchmarks. 세 빌드 프로필의 APK·AAB 크기, 런타임 의존성과 R8 결과를 기록 | — | [11-23 PR 실행](https://github.com/hebi10/GalliPick/actions/runs/45151637426) |
 | `cloud-files-07-visual-qa.yml` | 지정된 기능 브랜치 대상 관련 PR, 수동 | Cloud 갤러리 캡처용 APK와 합성 파일 기반 시각 QA | — | [11-17 성공](https://github.com/hebi10/GalliPick/actions/runs/44055565983) |
@@ -53,6 +53,6 @@
 
 - `play-v026-resumable-recovery.yml`은 **v0.2.6/code17**의 alpha 업로드 전용입니다. [11-07 실행](https://github.com/hebi10/GalliPick/actions/runs/42381354767)에서 해당 업로드 단계가 성공했고 현재 코드에서는 `false` 가드로 복구 job이 비활성화되어 있었습니다. AAB run·해시·code17에 고정되어 있으며 그 이후 버전이 있는 경우도 거부합니다. 저장소 내 호출자가 없어 활성 목록에서 제거했습니다.
 - `play-status-v026-readonly.yml`은 이전 버전명이 파일과 보고서에 남아 있었지만 실제로 기존 alpha와 전체 versionCode를 조회합니다. 같은 조회를 제공하는 `play-deploy`의 check는 서명 키 점검도 수행하며, OPS-05의 check는 기존 내부 테스트 AAB 증빙을 요구합니다. 서명 키 없이 alpha를 조회하는 역할을 `play-alpha-status-readonly.yml`에 계승하고, 변경 시 push 실행은 제거했습니다. Play 조회 도구는 임시 edit를 만든 뒤 폐기하며 트랙이나 AAB를 커밋하지 않습니다.
-- `gp-cloud-internal-preflight-readonly.yml`은 versionCode 24 시점의 개발 Cloud OAuth와 Play 재고를 함께 확인하는 별도 진단입니다. 배포 진입점이 아니며 운영 Cloud나 최신 버전의 검증으로 재사용하려면 적용 대상을 새로 확인합니다.
+- `gp-cloud-internal-preflight-readonly.yml`은 운영 Firebase 설정에 등록된 Play 서명용 Android OAuth와 웹 OAuth가 운영 프로젝트 소유인지 확인합니다. 후보 버전은 main의 Gradle 선언에서 읽으며, 이미 사용한 versionCode 또는 미완료 내부 릴리스가 있으면 차단합니다. 과거 versionCode 24 개발용 검사는 위 실행 기록에 남아 있습니다. 이 워크플로는 Play 정책·실기기 로그인 검증 및 승인된 서명 빌드와 게시 절차와 별개입니다.
 
 과거 두 YAML은 [정리 전 커밋](https://github.com/hebi10/GalliPick/tree/4e3ddc0ff89e8462e3a9b58e0e5206a1dc52ac0f/.github/workflows)에서 열 수 있습니다. 원본이 필요하면 해당 커밋의 파일을 Git에서 확인합니다. 활성 경로 복원이 필요한 경우 이전 파일의 범위와 승인 가드를 검토한 PR을 사용하고, 역사적 코드17 복구 실행 기록은 위 Actions 링크를 참조합니다.

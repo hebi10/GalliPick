@@ -1,12 +1,6 @@
-name: GP-CLOUD internal Play preflight (read-only)
+name: GP-CLOUD production Play preflight (read-only)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/gp-cloud-internal-preflight-readonly.yml'
-      - 'scripts/release/cloud_play_preflight.py'
-      - 'scripts/release/test_cloud_play_preflight.py'
   workflow_dispatch:
 
 permissions:
@@ -38,7 +32,7 @@ jobs:
 
       - name: Verify exact release source, Play OAuth and public cloud privacy
         env:
-          CLOUD_CONFIG_BASE64: ${{ secrets.GALLIPICK_PLAY_CLOUD_CONFIG_BASE64 }}
+          CLOUD_CONFIG_BASE64: ${{ secrets.GALLIPICK_PLAY_PRODUCTION_CLOUD_CONFIG_BASE64 }}
           PLAY_APP_SIGNING_SHA1: ${{ vars.GALLIPICK_PLAY_APP_SIGNING_SHA1 }}
         run: |
           set -euo pipefail
@@ -85,14 +79,17 @@ jobs:
           cloud = json.loads(Path("cloud-preflight/cloud.json").read_text(encoding="utf-8"))
           play = json.loads(Path("cloud-preflight/verified-internal.json").read_text(encoding="utf-8"))
           summary = [
-              "## GalliPick Cloud internal preflight (READ ONLY)",
+              "## GalliPick production Cloud internal preflight (READ ONLY)",
               "- Current main SHA: `" + cloud["source_sha"] + "`",
               "- Google Play application ID: `" + play["package"] + "`",
               "- Internal track exists: yes",
-              "- Signed app OAuth config: verified for development cloud pilot",
+              "- Production Firebase configuration: Play-signing Android and web OAuth clients both owned by `"
+              + cloud["firebase_project_id"] + "`",
               "- Public cloud privacy: verified",
               "- Existing highest uploaded versionCode: `" + str(play["highest_uploaded_version_code"]) + "`",
-              "- New versionCode `24`: available for upload (at the time of this check)",
+              "- Candidate `" + play["target_version_name"] + " (" + str(play["target_version_code"])
+              + ")`: available for upload (at the time of this check)",
+              "- Sign-in on a Play-signed installation: **NOT tested**",
               "- Google Play Data Safety/App Access declarations: **NOT verified by API**",
               "- Signed AAB: **NOT built**",
               "- Play edit: **not committed**; Play track/bundles unchanged",
