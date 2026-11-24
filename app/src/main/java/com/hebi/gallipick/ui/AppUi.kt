@@ -219,7 +219,7 @@ internal fun GalliPickApp(
         AppSubscreen.PhotoAnalysis
     } else subscreen
     LaunchedEffect(subscreen, visibleSubscreen) {
-        if (subscreen != visibleSubscreen) {
+        if (subscreen != visibleSubscreen && !rewardedAnalysis.canShowResultsNow()) {
             vm.clearSelection()
             subscreen = visibleSubscreen
         }

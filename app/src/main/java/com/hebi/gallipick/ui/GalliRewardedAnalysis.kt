@@ -39,7 +39,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private const val GOOGLE_REWARDED_TEST_UNIT = "ca-app-pub-3940256099942544/5224354917"
 
-internal data class RewardedAnalysisAccess(val canShowResults: Boolean, val requestResults: () -> Unit)
+internal data class RewardedAnalysisAccess(
+    val canShowResults: Boolean,
+    val requestResults: () -> Unit,
+    val canShowResultsNow: () -> Boolean = { canShowResults },
+)
 
 @Composable
 internal fun rememberRewardedAnalysisAccess(
@@ -66,15 +70,15 @@ internal fun rememberRewardedAnalysisAccess(
         lifecycle.currentState == Lifecycle.State.RESUMED
     fun accountChanging() = status?.value?.operation != null
     fun currentAccount() = RewardedAnalysisAccount(account?.value?.uid, status?.value?.generation ?: 0L)
-    fun removal(): AdRemovalStatus {
-        val current = currentAccount()
-        return if (accountChanging() || currentAds.entitlementUid != current.uid ||
-            currentAds.entitlementGeneration != current.generation ||
-            (current.uid != null && connection?.billing == null)
-        ) AdRemovalStatus.VERIFYING else currentAds.removal
-    }
-    fun canRequestAd() = currentAds.configured && currentAds.sdkReady && currentAds.consentGranted &&
-        currentAds.canRequestAdsNow() && removal() == AdRemovalStatus.NOT_PURCHASED
+    fun removalFor(adsSession: GalliAdsSession, owner: RewardedAnalysisAccount, changing: Boolean): AdRemovalStatus =
+        if (changing || adsSession.entitlementUid != owner.uid || adsSession.entitlementGeneration != owner.generation ||
+            (owner.uid != null && connection?.billing == null)
+        ) AdRemovalStatus.VERIFYING else adsSession.removal
+
+    fun canOfferAd(adsSession: GalliAdsSession, removal: AdRemovalStatus) =
+        adsSession.configured && adsSession.sdkReady && adsSession.consentGranted && removal == AdRemovalStatus.NOT_PURCHASED
+    fun removalNow() = removalFor(currentAds, currentAccount(), accountChanging())
+    fun canRequestAd() = canOfferAd(currentAds, removalNow()) && currentAds.canRequestAdsNow()
 
     LaunchedEffect(observedAccount) { session.accountChanged(currentAccount()) }
     val host = remember(activity) { Any() }
@@ -134,10 +138,10 @@ internal fun rememberRewardedAnalysisAccess(
     if (canOffer) {
         val offer = phase as? RewardedAnalysisPhase.Offer
         if (offer != null || phase is RewardedAnalysisPhase.Loading) {
-            val status = removal()
+            val removal = removalFor(ads, observedAccount, observedStatus?.operation != null)
             RewardedAnalysisDialog(
-                status = status,
-                canWatch = canRequestAd(),
+                status = removal,
+                canWatch = canOfferAd(ads, removal),
                 loading = phase is RewardedAnalysisPhase.Loading,
                 retry = offer?.retry == true,
                 onDismiss = session::close,
@@ -145,7 +149,7 @@ internal fun rememberRewardedAnalysisAccess(
                     if (resumed() && offerAllowed && !accountChanging()) {
                         val current = currentAccount()
                         when {
-                            removal() == AdRemovalStatus.VERIFIED_AD_FREE -> {
+                            removalNow() == AdRemovalStatus.VERIFIED_AD_FREE -> {
                                 if (session.enterVerified(current)) onOpenResults()
                             }
                             canRequestAd() -> session.approveViewing(current)
@@ -157,12 +161,14 @@ internal fun rememberRewardedAnalysisAccess(
         }
     }
     return RewardedAnalysisAccess(
-        canShowResults = !accountChanging() &&
-            session.phase.value == RewardedAnalysisPhase.Active(currentAccount()),
+        canShowResults = observedStatus?.operation == null && phase == RewardedAnalysisPhase.Active(observedAccount),
+        canShowResultsNow = {
+            !accountChanging() && session.phase.value == RewardedAnalysisPhase.Active(currentAccount())
+        },
         requestResults = {
             if (resumed() && offerAllowed && !accountChanging()) {
                 val current = currentAccount()
-                if (removal() == AdRemovalStatus.VERIFIED_AD_FREE) {
+                if (removalNow() == AdRemovalStatus.VERIFIED_AD_FREE) {
                     if (session.enterVerified(current)) onOpenResults()
                 } else session.offer(current)
             }
