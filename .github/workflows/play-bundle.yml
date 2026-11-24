@@ -65,10 +65,8 @@ jobs:
       - name: Prepare the selected Firebase build configuration
         if: inputs.cloud_pilot || inputs.cloud_production
         env:
-          DEVELOPMENT_CONFIG_BASE64: ${{ (inputs.cloud_pilot || inputs.cloud_production) && secrets.GALLIPICK_PLAY_CLOUD_CONFIG_BASE64 || '' }}
+          DEVELOPMENT_CONFIG_BASE64: ${{ inputs.cloud_pilot && secrets.GALLIPICK_PLAY_CLOUD_CONFIG_BASE64 || '' }}
           PRODUCTION_CONFIG_BASE64: ${{ inputs.cloud_production && secrets.GALLIPICK_PLAY_PRODUCTION_CLOUD_CONFIG_BASE64 || '' }}
-          EXTERNAL_ANDROID_OAUTH_CLIENT_ID: ${{ vars.GALLIPICK_PLAY_PRODUCTION_EXTERNAL_ANDROID_OAUTH_CLIENT_ID }}
-          EXTERNAL_WEB_OAUTH_CLIENT_ID: ${{ vars.GALLIPICK_PLAY_PRODUCTION_EXTERNAL_WEB_OAUTH_CLIENT_ID }}
           PLAY_APP_SIGNING_SHA1: ${{ vars.GALLIPICK_PLAY_APP_SIGNING_SHA1 }}
         shell: bash
         run: |
@@ -85,35 +83,6 @@ jobs:
           mkdir -p app/src/release
           printf '%s' "$config" | base64 --decode > app/src/release/google-services.json
 
-          if [[ "$CLOUD_ENVIRONMENT" == production ]]; then
-            proof="$(python3 - "$PLAY_APP_SIGNING_SHA1" <<'PY'
-          import json
-          import sys
-
-          with open("app/src/release/google-services.json", encoding="utf-8") as stream:
-              config = json.load(stream)
-          package = "com.hebi.gallipick"
-          sha1 = sys.argv[1].replace(":", "").lower()
-          matches = any(
-              item.get("client_type") == 1
-              and item.get("android_info", {}).get("package_name") == package
-              and item.get("android_info", {}).get("certificate_hash", "").replace(":", "").lower() == sha1
-              for client in config["client"]
-              if client.get("client_info", {}).get("android_client_info", {}).get("package_name") == package
-              for item in client.get("oauth_client", [])
-          )
-          print("direct" if matches else "external")
-          PY
-            )"
-            if [[ "$proof" == external ]]; then
-              if [[ -z "$DEVELOPMENT_CONFIG_BASE64" || -z "$EXTERNAL_ANDROID_OAUTH_CLIENT_ID" || -z "$EXTERNAL_WEB_OAUTH_CLIENT_ID" ]]; then
-                echo 'Development OAuth evidence or one of the approved external OAuth client IDs is missing.' >&2
-                exit 1
-              fi
-              mkdir -p "$RUNNER_TEMP/gallipick-android-oauth"
-              printf '%s' "$DEVELOPMENT_CONFIG_BASE64" | base64 --decode > "$RUNNER_TEMP/gallipick-android-oauth/google-services.json"
-            fi
-          fi
       - name: Restore fixed signing key privately
         env:
           GALLIPICK_SIGNING_BUNDLE_BASE64: ${{ secrets.GALLIPICK_SIGNING_BUNDLE_BASE64 }}
@@ -146,9 +115,6 @@ jobs:
           ORG_GRADLE_PROJECT_gallipickPlayCloudPilot: ${{ inputs.cloud_pilot || inputs.cloud_production }}
           ORG_GRADLE_PROJECT_gallipickCloudEnvironment: ${{ env.CLOUD_ENVIRONMENT }}
           ORG_GRADLE_PROJECT_gallipickPlayAppSigningSha1: ${{ vars.GALLIPICK_PLAY_APP_SIGNING_SHA1 }}
-          ORG_GRADLE_PROJECT_gallipickPlayExternalAndroidOAuthClientId: ${{ vars.GALLIPICK_PLAY_PRODUCTION_EXTERNAL_ANDROID_OAUTH_CLIENT_ID }}
-          ORG_GRADLE_PROJECT_gallipickPlayExternalWebOAuthClientId: ${{ vars.GALLIPICK_PLAY_PRODUCTION_EXTERNAL_WEB_OAUTH_CLIENT_ID }}
-          ORG_GRADLE_PROJECT_gallipickPlayAndroidOAuthReferenceFile: ${{ runner.temp }}/gallipick-android-oauth/google-services.json
         run: gradle --no-daemon --no-configuration-cache :app:verifyGalliPickSigning :app:testDebugUnitTest :app:lintRelease :app:bundleRelease --max-workers=2
       - name: Verify and stage Play bundle
         shell: bash
@@ -171,4 +137,4 @@ jobs:
         run: python3 scripts/release/signing_bundle.py cleanup
       - name: Remove the temporary Firebase configuration
         if: always() && (inputs.cloud_pilot || inputs.cloud_production)
-        run: rm -f -- app/src/release/google-services.json "$RUNNER_TEMP/gallipick-android-oauth/google-services.json"
+        run: rm -f -- app/src/release/google-services.json
