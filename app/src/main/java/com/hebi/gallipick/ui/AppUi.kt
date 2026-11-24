@@ -85,6 +85,8 @@ internal fun GalliPickApp(
     adPreviewEnabled: Boolean = false,
     onConfirmExit: () -> Unit = {},
     mediaPermissionSettingsRequired: Boolean = false,
+    rewardedAds: GalliAdsSession = GalliAdsSession(),
+    cleanupApprovalPending: Boolean = false,
 ) {
     val state by vm.ui.collectAsState()
     val activity = LocalActivity.current
@@ -122,9 +124,13 @@ internal fun GalliPickApp(
     fun closeSubscreen() {
         val current = subscreen
         if (current is AppSubscreen.PhotoResults) vm.clearSelection()
+        if (current == AppSubscreen.PhotoAnalysis ||
+            current == AppSubscreen.PhotoResults(PhotoReviewMode.SOFT_FOCUS)
+        ) vm.rewardedAnalysis.close()
         subscreen = current.parent()
     }
     fun navigate(destinationValue: Destination) {
+        vm.rewardedAnalysis.close()
         if (destination == Destination.FILES && destinationValue != Destination.FILES) closeFilesSearch()
         if (adRemovalOrigin == Destination.FILES && destinationValue != Destination.FILES) {
             resumeFileDetailVersion = null
@@ -194,6 +200,29 @@ internal fun GalliPickApp(
         val candidates = vm.selectedSimilarCandidates()
         if (candidates.isEmpty()) vm.showMessage("이동할 사진을 직접 선택해 주세요.")
         else onTrash(candidates)
+    }
+    val inSoftFocusResults = subscreen.isSoftFocusReview()
+    val rewardedAnalysis = rememberRewardedAnalysisAccess(
+        activity = activity,
+        connection = cloudConnection,
+        ads = rewardedAds,
+        session = vm.rewardedAnalysis,
+        canOffer = destination == Destination.CLEANUP && subscreen == AppSubscreen.PhotoAnalysis &&
+            result == null && !cleanupApprovalPending && state.selected.isEmpty() &&
+            state.canOpenPhotoAnalysisResults && state.softFocusCandidates.isNotEmpty(),
+        onOpenResults = {
+            vm.prepareSimilarReview()
+            subscreen = AppSubscreen.PhotoResults(PhotoReviewMode.SOFT_FOCUS)
+        },
+    )
+    val visibleSubscreen = if (inSoftFocusResults && !rewardedAnalysis.canShowResults) {
+        AppSubscreen.PhotoAnalysis
+    } else subscreen
+    LaunchedEffect(subscreen, visibleSubscreen) {
+        if (subscreen != visibleSubscreen && !rewardedAnalysis.canShowResultsNow()) {
+            vm.clearSelection()
+            subscreen = visibleSubscreen
+        }
     }
     val secondaryScreenVisible = subscreen != AppSubscreen.Main
     val mainTabVisible = !secondaryScreenVisible && result == null &&
@@ -280,7 +309,7 @@ internal fun GalliPickApp(
                                 AppDestinationRail(destination, ::navigate, destinations = destinations)
                             }
                             Box(Modifier.weight(1f).fillMaxHeight()) {
-                                when (val route = subscreen) {
+                                when (val route = visibleSubscreen) {
                                     is AppSubscreen.Trash -> TrashScreen(
                                         state = state, onRestore = onRestore, onBack = ::closeSubscreen,
                                         onRequestPermission = onRequestPermission, onRetry = vm::refresh,
@@ -311,6 +340,7 @@ internal fun GalliPickApp(
                                                 route.mode, state,
                                                 onBack = {
                                                     vm.clearSelection()
+                                                    if (route.mode == PhotoReviewMode.SOFT_FOCUS) vm.rewardedAnalysis.close()
                                                     subscreen = if (route.source == PhotoCompareSource.INBOX) {
                                                         AppSubscreen.ReviewInbox
                                                     } else AppSubscreen.PhotoAnalysis
@@ -383,10 +413,7 @@ internal fun GalliPickApp(
                                             vm.prepareBurstReview()
                                             subscreen = AppSubscreen.PhotoResults(PhotoReviewMode.BURST)
                                         },
-                                        onOpenSoftFocusResults = {
-                                            vm.prepareSimilarReview()
-                                            subscreen = AppSubscreen.PhotoResults(PhotoReviewMode.SOFT_FOCUS)
-                                        },
+                                        onOpenSoftFocusResults = rewardedAnalysis.requestResults,
                                     )
                                     AppSubscreen.CleanupHistory -> CleanupHistoryScreen(
                                         entries = state.cleanupHistory,

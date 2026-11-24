@@ -160,6 +160,8 @@ class MainActivity : ComponentActivity() {
                 onBillingScreenVisible = { billingScreenVisible = it },
                 adsPrivacyOptionsRequired = adsSession.privacyOptionsRequired,
                 onAdsPrivacyOptions = adsSession.openPrivacyOptions,
+                rewardedAds = adsSession,
+                cleanupApprovalPending = pending != null,
             )
 
             pending?.let { request ->
