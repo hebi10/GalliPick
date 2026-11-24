@@ -3,20 +3,11 @@ package com.hebi.gallipick.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items as listItems
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -26,15 +17,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hebi.gallipick.AppUiState
 import com.hebi.gallipick.AppSettings
@@ -549,95 +535,28 @@ internal fun FilesScreenContent(
                                         screenWidth - detailWidth - 14.dp
                                     else if (ocrSidebar) screenWidth - sidebarWidth - 14.dp
                                     else screenWidth
-                                    val dragItems = remember(visibleDeviceItems) { visibleDeviceItems.associateBy(MediaItem::uri) }
-                                    if (gridView) {
-                                        if (state.fileGridColumns != null) {
-                                            val applied = resolvedFileGridColumns(
-                                                state.fileGridColumns, availableGridWidth, fontScale, tabletGrid,
-                                            )
-                                            Text("한 줄 ${applied}개 표시 · 설정 ${state.fileGridColumns}개",
-                                                color = Muted, style = MaterialTheme.typography.bodySmall)
-                                        }
-                                        LazyVerticalGrid(
-                                            columns = fileGridCells(state.fileGridColumns, availableGridWidth, fontScale, tabletGrid),
-                                            state = gridState,
-                                            modifier = Modifier.weight(1f)
-                                                .fileDragSelection(gridState, dragSelectionSession, dragItems,
-                                                    state.selected, actions.addSelected)
-                                                .semantics { contentDescription = "미디어 파일 목록" },
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                                            contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
-                                        ) {
-                                            if (fileSections.isNotEmpty()) {
-                                                fileSections.forEach { group ->
-                                                    item(key = "section:${group.title}", span = { GridItemSpan(maxLineSpan) }) {
-                                                        FileSectionHeader(group.title, group.items.size, activeFilter.dateField.takeIf { group.isDate },
-                                                            group.isDate && group.items.any { it.dateTakenMs <= 0 && it.dateAddedMs > 0 })
-                                                    }
-                                                    items(group.items, key = { it.uri }) { item ->
-                                                        MediaTile(item, item.uri in state.selected,
-                                                            { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
-                                                            activeFilter.sortField, tabletGrid = tabletGrid,
-                                                            selectionMode = selectionMode,
-                                                            ocrText = if (searchMode == FileSearchMode.OCR)
-                                                                ocrRows[item.uri]?.recognizedText else null,
-                                                            ocrQuery = ocrQuery, hasCloudOriginal = item.uri in backedUpDeviceUris)
-                                                    }
-                                                }
-                                            } else {
-                                                items(filtered, key = { it.uri }) { item ->
-                                                    MediaTile(item, item.uri in state.selected,
-                                                        { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
-                                                        activeFilter.sortField, tabletGrid = tabletGrid,
-                                                        selectionMode = selectionMode,
-                                                        ocrText = if (searchMode == FileSearchMode.OCR)
-                                                            ocrRows[item.uri]?.recognizedText else null,
-                                                        ocrQuery = ocrQuery, hasCloudOriginal = item.uri in backedUpDeviceUris)
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        val listState = rememberLazyListState()
-                                        LazyColumn(
-                                            state = listState,
-                                            modifier = Modifier.weight(1f)
-                                                .fileDragSelection(listState, dragSelectionSession, dragItems,
-                                                    state.selected, actions.addSelected)
-                                                .semantics { contentDescription = "미디어 파일 목록" },
-                                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                                            contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
-                                        ) {
-                                            if (fileSections.isNotEmpty()) {
-                                                fileSections.forEach { group ->
-                                                    item(key = "section:${group.title}") {
-                                                        FileSectionHeader(group.title, group.items.size, activeFilter.dateField.takeIf { group.isDate },
-                                                            group.isDate && group.items.any { it.dateTakenMs <= 0 && it.dateAddedMs > 0 })
-                                                    }
-                                                    listItems(group.items, key = { it.uri }) { item ->
-                                                        MediaTile(item, item.uri in state.selected,
-                                                            { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
-                                                            activeFilter.sortField, listView = true,
-                                                            selectionMode = selectionMode,
-                                                            dateMs = MediaQuery.dateOf(item, activeFilter.dateField),
-                                                            ocrText = if (searchMode == FileSearchMode.OCR)
-                                                                ocrRows[item.uri]?.recognizedText else null,
-                                                            ocrQuery = ocrQuery, hasCloudOriginal = item.uri in backedUpDeviceUris)
-                                                    }
-                                                }
-                                            } else {
-                                                listItems(filtered, key = { it.uri }) { item ->
-                                                    MediaTile(item, item.uri in state.selected,
-                                                        { actions.toggleSelection(item.uri) }, { detailVersion = item.detailVersion() },
-                                                        activeFilter.sortField, listView = true,
-                                                        selectionMode = selectionMode,
-                                                        ocrText = if (searchMode == FileSearchMode.OCR)
-                                                            ocrRows[item.uri]?.recognizedText else null,
-                                                        ocrQuery = ocrQuery, hasCloudOriginal = item.uri in backedUpDeviceUris)
-                                                }
-                                            }
-                                        }
-                                    }
+                                    DeviceFilesList(
+                                        gridView = gridView,
+                                        requestedColumns = state.fileGridColumns,
+                                        availableGridWidth = availableGridWidth,
+                                        fontScale = fontScale,
+                                        tabletGrid = tabletGrid,
+                                        gridState = gridState,
+                                        visibleDeviceItems = visibleDeviceItems,
+                                        filtered = filtered,
+                                        fileSections = fileSections,
+                                        activeFilter = activeFilter,
+                                        actions = actions,
+                                        selectedUris = state.selected,
+                                        selectionMode = selectionMode,
+                                        dragSelectionSession = dragSelectionSession,
+                                        backedUpDeviceUris = backedUpDeviceUris,
+                                        showOcrText = searchMode == FileSearchMode.OCR,
+                                        ocrRows = ocrRows,
+                                        ocrQuery = ocrQuery,
+                                        onOpen = { detailVersion = it.detailVersion() },
+                                        modifier = Modifier.weight(1f),
+                                    )
                                 }
                             }
                         }
@@ -805,219 +724,10 @@ private fun FileCloudCatalogErrorDialog(issue: CloudCatalogIssue, dismiss: () ->
     )
 }
 
-@Composable
-internal fun FileSectionHeader(title: String, count: Int, dateField: DateField?, includesAddedDate: Boolean = false) {
-    if (dateField != null) {
-        DateGroupHeader(title, count, dateField, includesAddedDate)
-    } else {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(title, modifier = Modifier.weight(1f).semantics { heading() },
-                style = MaterialTheme.typography.titleSmall, color = Ink)
-            Text("${count}개", style = MaterialTheme.typography.bodySmall, color = Muted)
-        }
-    }
-}
-
-@Composable
-internal fun DateGroupHeader(date: String, count: Int, field: DateField, includesAddedDate: Boolean = false) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(date, modifier = Modifier.semantics { heading() },
-                style = MaterialTheme.typography.titleSmall, color = Ink)
-            if (field == DateField.CAPTURED && includesAddedDate) {
-                Text("촬영 정보가 없는 기기 파일은 추가일 기준", style = MaterialTheme.typography.bodySmall, color = Muted)
-            }
-        }
-        Text("${count}개", style = MaterialTheme.typography.bodySmall, color = Muted)
-    }
-}
-
-@Composable
-private fun FilesFooterSummary(
-    summary: String,
-    selectable: List<MediaItem>,
-    selectAll: (List<MediaItem>) -> Unit,
-) {
-    Column {
-        Row(
-            Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = Muted,
-                modifier = Modifier.weight(1f, fill = false)
-                    .semantics { contentDescription = "파일 목록 요약" },
-            )
-            if (selectable.isNotEmpty()) TextAction("현재 결과 ${selectable.size}개 선택", { selectAll(selectable) })
-        }
-        if (selectable.size == SelectionPolicy.MAX_SELECTION_SIZE) {
-            Text("한 번에 최대 ${SelectionPolicy.MAX_SELECTION_SIZE}개까지 선택할 수 있습니다.",
-                style = MaterialTheme.typography.bodySmall, color = Muted)
-        }
-    }
-}
-
 internal fun MediaItem.detailVersion(): Triple<String, String, String> = Triple(uri, fingerprint, volumeVersion)
 
 private fun MediaItem.matchesDetailVersion(version: Triple<String, String, String>): Boolean =
     uri == version.first && fingerprint == version.second && volumeVersion == version.third
-
-internal fun tabletMediaGridColumns(availableWidth: androidx.compose.ui.unit.Dp, fontScale: Float): Int {
-    val minimumTileWidth = 212f * fontScale.coerceIn(1f, 1.5f)
-    return (availableWidth.value / minimumTileWidth).toInt().coerceIn(1, 5)
-}
-
-@Composable
-internal fun MediaTile(
-    item: MediaItem,
-    selected: Boolean,
-    toggle: () -> Unit,
-    detail: () -> Unit,
-    sortField: SortField,
-    listView: Boolean = false,
-    dateMs: Long = item.capturedAt,
-    tabletGrid: Boolean = false,
-    ocrText: String? = null,
-    ocrQuery: String = "",
-    hasCloudOriginal: Boolean = false,
-    allowSelection: Boolean = true,
-    selectionMode: Boolean,
-) {
-    var tileFocused by remember(item.uri) { mutableStateOf(false) }
-    val selectable = allowSelection && !item.isTrashed && item.canTrash()
-    val showSelection = selectionMode && allowSelection
-    val tileAction = Modifier.onFocusChanged { tileFocused = it.isFocused }.then(
-        if (selectionMode && selectable) {
-            Modifier.semantics { contentDescription = "${item.displayName} 선택" }
-                .toggleable(value = selected, role = Role.Checkbox, onValueChange = { toggle() })
-        } else {
-            val selectionAction = if (selectable) Modifier.semantics {
-                onLongClick(label = "선택 시작") {
-                    toggle()
-                    true
-                }
-            } else Modifier
-            selectionAction.clickable(
-                role = Role.Button,
-                onClickLabel = "파일 상세 열기",
-                onClick = detail,
-            )
-        },
-    )
-    val showOutline = (selected && showSelection) || tileFocused
-    if (listView) {
-        Row(
-            Modifier.fillMaxWidth().galliCardSurface()
-                .then(if (showOutline) Modifier.border(
-                    2.dp, Primary, RoundedCornerShape(GalliUiMetrics.cardCorner),
-                ) else Modifier)
-                .then(tileAction).padding(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Box(Modifier.size(76.dp)) {
-                MediaThumbnail(item, Modifier.fillMaxSize(), contentDescription = null)
-                if (showSelection) SelectionIndicator(selected, selectable,
-                    Modifier.align(Alignment.TopStart).padding(4.dp))
-                if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(item.displayName, style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(bytesLabel(item.sizeBytes) + " · " + dateLabel(dateMs).substringBefore(" "),
-                    style = MaterialTheme.typography.bodySmall, color = Muted)
-                if (ocrText != null) {
-                    Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery),
-                        style = MaterialTheme.typography.labelSmall, color = Muted,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                if (item.kind == MediaKind.VIDEO) {
-                    Text(durationLabel(item.durationMs), style = MaterialTheme.typography.labelSmall, color = Muted)
-                }
-            }
-        }
-    } else {
-        Column(Modifier.fillMaxWidth().then(
-            if (tabletGrid) Modifier.testTag("tablet-media-${item.id}") else Modifier,
-        ).then(tileAction), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
-                MediaThumbnail(item, Modifier.fillMaxSize(), contentDescription = null)
-                if (showOutline) {
-                    Box(Modifier.matchParentSize().border(2.dp, Primary)
-                        .padding(2.dp).border(1.dp, AppSurface))
-                }
-                if (showSelection) SelectionIndicator(selected, selectable,
-                    Modifier.align(Alignment.TopStart).padding(4.dp).testTag("grid-selection-indicator"))
-                if (hasCloudOriginal) CloudFileBadge(Modifier.align(Alignment.TopEnd).padding(4.dp))
-                if (item.kind == MediaKind.VIDEO) {
-                    Text(durationLabel(item.durationMs), color = MaterialTheme.colorScheme.onPrimary,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
-                            .background(Ink, RoundedCornerShape(8.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp))
-                }
-                if (item.isFavorite || item.isProtected) {
-                    GalliIcon(
-                        if (item.isFavorite) Icons.Outlined.Star else Icons.Outlined.Shield,
-                        if (item.isFavorite) "즐겨찾기" else "보호됨",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
-                            .background(Ink, RoundedCornerShape(8.dp)).padding(4.dp).size(16.dp),
-                    )
-                }
-            }
-            Text(item.displayName, style = if (tabletGrid) MaterialTheme.typography.bodySmall
-                else MaterialTheme.typography.labelSmall, maxLines = if (tabletGrid) 2 else 1,
-                overflow = if (tabletGrid) TextOverflow.Ellipsis else TextOverflow.MiddleEllipsis,
-                modifier = Modifier.fillMaxWidth())
-            if (tabletGrid) {
-                Text(bytesLabel(item.sizeBytes), style = MaterialTheme.typography.labelSmall,
-                    color = Muted, maxLines = 1)
-            }
-            if (ocrText != null) {
-                Text("인식된 글자: " + PhotoOcrIndexPolicy.snippet(ocrText, ocrQuery, 72),
-                    style = MaterialTheme.typography.labelSmall, color = Muted,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-internal fun SelectionBar(
-    selected: List<MediaItem>,
-    clear: () -> Unit,
-    trash: () -> Unit,
-    clearOnSearchChange: Boolean = false,
-) {
-    if (selected.isEmpty()) return
-    Column(Modifier.fillMaxWidth().galliCardSurface(backgroundColor = Panel).padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        FlowRow(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f).widthIn(min = 96.dp).align(Alignment.CenterVertically)) {
-                Text("${selected.size}개 선택", style = MaterialTheme.typography.titleSmall)
-                Text(bytesLabel(selected.sumOf { it.sizeBytes }), style = MaterialTheme.typography.bodySmall, color = Muted)
-            }
-            TextAction("해제", clear, Modifier.align(Alignment.CenterVertically))
-            ActionButton("휴지통으로", trash, Modifier.align(Alignment.CenterVertically), filled = true, icon = Icons.Outlined.DeleteOutline)
-        }
-        Text("즐겨찾기·보호 파일 제외 · 이동 전 Android 확인", color = Muted, style = MaterialTheme.typography.labelSmall)
-        if (clearOnSearchChange) Text("검색 조건이나 저장 위치를 바꾸면 해제됩니다.",
-            color = Muted, style = MaterialTheme.typography.labelSmall)
-    }
-}
 
 @Composable
 internal fun SavePresetDialog(save: (String) -> Unit, dismiss: () -> Unit) {

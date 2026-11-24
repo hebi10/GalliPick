@@ -91,3 +91,8 @@ internal fun fileGridCells(requested: Int?, availableWidth: Dp, fontScale: Float
     }
     return GridCells.Fixed(resolvedFileGridColumns(requested, availableWidth, fontScale, tablet))
 }
+
+internal fun tabletMediaGridColumns(availableWidth: Dp, fontScale: Float): Int {
+    val minimumTileWidth = 212f * fontScale.coerceIn(1f, 1.5f)
+    return (availableWidth.value / minimumTileWidth).toInt().coerceIn(1, 5)
+}
