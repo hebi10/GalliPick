@@ -21,6 +21,12 @@ val sampleBannerAdUnitId = "ca-app-pub-3940256099942544/9214589741"
 val adsDebugTest = providers.gradleProperty("gallipickAdsTest")
     .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickAdsTest must be true or false") }
     .getOrElse(false)
+val rewardedAdsDebugTest = providers.gradleProperty("gallipickRewardedAdsTest")
+    .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickRewardedAdsTest must be true or false") }
+    .getOrElse(false)
+require(!rewardedAdsDebugTest || adsDebugTest) {
+    "gallipickRewardedAdsTest requires gallipickAdsTest=true."
+}
 val adsDebugPreview = providers.gradleProperty("gallipickAdsPreview")
     .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickAdsPreview must be true or false") }
     .getOrElse(false)
@@ -221,6 +227,7 @@ android {
         versionName = "0.2.26"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resValue("bool", "gallipick_ads_preview", "false")
+        resValue("bool", "gallipick_rewarded_ads_test", "false")
     }
     signingConfigs {
         create("galliPick") {
@@ -240,6 +247,7 @@ android {
     buildTypes {
         debug {
             resValue("bool", "gallipick_ads_enabled", adsDebugTest.toString())
+            resValue("bool", "gallipick_rewarded_ads_test", rewardedAdsDebugTest.toString())
             resValue("bool", "gallipick_ads_preview", (adsDebugPreview && !adsDebugTest).toString())
             resValue("string", "gallipick_admob_app_id", sampleAdMobAppId)
             resValue("string", "gallipick_admob_banner_unit_id", sampleBannerAdUnitId)

@@ -19,6 +19,13 @@ import com.hebi.gallipick.MediaAccess
 import com.hebi.gallipick.domain.MediaKind
 import com.hebi.gallipick.domain.PhotoAnalysisPhase
 
+internal val AppUiState.canOpenPhotoAnalysisResults: Boolean
+    get() = access != MediaAccess.NONE && catalogError == null && !loading &&
+        photoAnalysis.phase == PhotoAnalysisPhase.COMPLETE && hasAnalyzablePhotos
+
+private val AppUiState.hasAnalyzablePhotos: Boolean
+    get() = items.any { it.kind == MediaKind.PHOTO && !it.isTrashed }
+
 @Composable
 internal fun PhotoAnalysisScreen(
     state: AppUiState,
@@ -33,10 +40,8 @@ internal fun PhotoAnalysisScreen(
     onOpenSoftFocusResults: () -> Unit = {},
 ) {
     val scan = state.photoAnalysis
-    val hasPhotos = state.items.any { it.kind == MediaKind.PHOTO && !it.isTrashed }
-    val resultsAvailable = state.access != MediaAccess.NONE &&
-        state.catalogError == null && !state.loading && hasPhotos &&
-        scan.phase == PhotoAnalysisPhase.COMPLETE
+    val hasPhotos = state.hasAnalyzablePhotos
+    val resultsAvailable = state.canOpenPhotoAnalysisResults
 
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val compact = maxWidth < 350.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)

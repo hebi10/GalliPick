@@ -20,6 +20,12 @@ internal sealed interface AppSubscreen {
     ) : AppSubscreen
 }
 
+internal fun AppSubscreen.isSoftFocusReview(): Boolean = when (this) {
+    is AppSubscreen.PhotoResults -> mode == PhotoReviewMode.SOFT_FOCUS
+    is AppSubscreen.PhotoCompare -> mode == PhotoReviewMode.SOFT_FOCUS
+    else -> false
+}
+
 internal fun AppSubscreen.parent(): AppSubscreen = when (this) {
     is AppSubscreen.Trash -> if (fromHistory) AppSubscreen.CleanupHistory else AppSubscreen.Main
     is AppSubscreen.PhotoResults -> AppSubscreen.PhotoAnalysis
