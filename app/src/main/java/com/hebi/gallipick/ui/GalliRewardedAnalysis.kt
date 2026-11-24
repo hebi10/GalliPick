@@ -1,6 +1,7 @@
 package com.hebi.gallipick.ui
 
 import android.app.Activity
+import android.view.ViewTreeObserver
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,11 +10,16 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -28,7 +34,7 @@ import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAd
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAdEventCallback
 import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val GOOGLE_REWARDED_TEST_UNIT = "ca-app-pub-3940256099942544/5224354917"
@@ -46,8 +52,11 @@ internal fun rememberRewardedAnalysisAccess(
 ): RewardedAnalysisAccess {
     if (!ads.rewardedTestEnabled) return RewardedAnalysisAccess(true, onOpenResults)
 
-    val account = connection?.session?.account
-    val uid = account?.collectAsState()?.value?.uid
+    val cloud = connection?.session
+    val account = cloud?.account
+    val status = cloud?.status
+    val observedStatus = status?.collectAsState()?.value
+    val observedAccount = RewardedAnalysisAccount(account?.collectAsState()?.value?.uid, observedStatus?.generation ?: 0L)
     val phase by session.phase.collectAsState()
     val currentAds by rememberUpdatedState(ads)
     val offerAllowed by rememberUpdatedState(canOffer)
@@ -55,26 +64,43 @@ internal fun rememberRewardedAnalysisAccess(
     val lifecycleState by lifecycle.currentStateFlow.collectAsState()
     fun resumed() = activity != null && !activity.isFinishing && !activity.isDestroyed &&
         lifecycle.currentState == Lifecycle.State.RESUMED
+    fun accountChanging() = status?.value?.operation != null
+    fun currentAccount() = RewardedAnalysisAccount(account?.value?.uid, status?.value?.generation ?: 0L)
     fun removal(): AdRemovalStatus {
-        val currentUid = account?.value?.uid
-        return if (currentAds.entitlementUid != currentUid || (currentUid != null && connection?.billing == null)) {
-            AdRemovalStatus.VERIFYING
-        } else currentAds.removal
+        val current = currentAccount()
+        return if (accountChanging() || currentAds.entitlementUid != current.uid ||
+            currentAds.entitlementGeneration != current.generation ||
+            (current.uid != null && connection?.billing == null)
+        ) AdRemovalStatus.VERIFYING else currentAds.removal
     }
     fun canRequestAd() = currentAds.configured && currentAds.sdkReady && currentAds.consentGranted &&
         currentAds.canRequestAdsNow() && removal() == AdRemovalStatus.NOT_PURCHASED
 
-    LaunchedEffect(account) {
-        if (account == null) session.accountChanged(null)
-        else account.collect { session.accountChanged(it?.uid) }
+    LaunchedEffect(observedAccount) { session.accountChanged(currentAccount()) }
+    val host = remember(activity) { Any() }
+    val view = LocalView.current
+    var windowFocused by remember(view) { mutableStateOf(view.hasWindowFocus()) }
+    DisposableEffect(view) {
+        val observer = view.viewTreeObserver
+        val listener = ViewTreeObserver.OnWindowFocusChangeListener { windowFocused = it }
+        observer.addOnWindowFocusChangeListener(listener)
+        onDispose { if (observer.isAlive) observer.removeOnWindowFocusChangeListener(listener) }
+    }
+    val viewing = phase as? RewardedAnalysisPhase.Viewing
+    LaunchedEffect(host, viewing?.attempt, windowFocused, lifecycleState) {
+        if (viewing != null && viewing.host !== host && windowFocused && resumed()) {
+            // A late dismissal from the old activity may still arrive after foregrounding.
+            delay(750)
+            if (resumed() && view.hasWindowFocus()) session.recoverViewing(viewing.attempt, host)
+        }
     }
     LaunchedEffect(canOffer) {
         if (!canOffer && session.phase.value !is RewardedAnalysisPhase.Active) session.close()
     }
     LaunchedEffect(activity, (phase as? RewardedAnalysisPhase.Loading)?.attempt) {
         val attempt = (phase as? RewardedAnalysisPhase.Loading)?.attempt ?: return@LaunchedEffect
-        if (!session.beginLoading(attempt, account?.value?.uid)) return@LaunchedEffect
-        if (activity == null || !resumed() || !offerAllowed || !canRequestAd() || attempt.uid != account?.value?.uid) {
+        if (!session.beginLoading(attempt, currentAccount())) return@LaunchedEffect
+        if (activity == null || !resumed() || !offerAllowed || !canRequestAd()) {
             session.fail(attempt)
             return@LaunchedEffect
         }
@@ -90,17 +116,19 @@ internal fun rememberRewardedAnalysisAccess(
             null
         }
         if (ad == null || !resumed() || !offerAllowed || !canRequestAd() ||
-            !session.beginViewing(attempt, account?.value?.uid)
+            !session.beginViewing(attempt, currentAccount(), host)
         ) {
             ad?.destroy()
             session.fail(attempt)
             return@LaunchedEffect
         }
-        showRewardedAnalysisAd(activity, ad, session, attempt) { account?.value?.uid }
+        showRewardedAnalysisAd(activity, ad, session, attempt) {
+            currentAccount().takeUnless { accountChanging() }
+        }
     }
-    LaunchedEffect(phase, uid, canOffer, lifecycleState) {
+    LaunchedEffect(phase, observedAccount, observedStatus?.operation, canOffer, lifecycleState) {
         val ready = phase as? RewardedAnalysisPhase.Ready ?: return@LaunchedEffect
-        if (canOffer && resumed() && session.claim(ready.attempt, account?.value?.uid)) onOpenResults()
+        if (canOffer && resumed() && !accountChanging() && session.claim(ready.attempt, currentAccount())) onOpenResults()
     }
 
     if (canOffer) {
@@ -114,13 +142,13 @@ internal fun rememberRewardedAnalysisAccess(
                 retry = offer?.retry == true,
                 onDismiss = session::close,
                 onConfirm = {
-                    if (resumed() && offerAllowed) {
-                        val currentUid = account?.value?.uid
+                    if (resumed() && offerAllowed && !accountChanging()) {
+                        val current = currentAccount()
                         when {
                             removal() == AdRemovalStatus.VERIFIED_AD_FREE -> {
-                                if (session.enterVerified(currentUid)) onOpenResults()
+                                if (session.enterVerified(current)) onOpenResults()
                             }
-                            canRequestAd() -> session.approveViewing(currentUid)
+                            canRequestAd() -> session.approveViewing(current)
                             else -> currentAds.refreshVerification()
                         }
                     }
@@ -129,13 +157,14 @@ internal fun rememberRewardedAnalysisAccess(
         }
     }
     return RewardedAnalysisAccess(
-        canShowResults = session.phase.value == RewardedAnalysisPhase.Active(uid),
+        canShowResults = !accountChanging() &&
+            session.phase.value == RewardedAnalysisPhase.Active(currentAccount()),
         requestResults = {
-            if (resumed() && offerAllowed) {
-                val currentUid = account?.value?.uid
+            if (resumed() && offerAllowed && !accountChanging()) {
+                val current = currentAccount()
                 if (removal() == AdRemovalStatus.VERIFIED_AD_FREE) {
-                    if (session.enterVerified(currentUid)) onOpenResults()
-                } else session.offer(currentUid)
+                    if (session.enterVerified(current)) onOpenResults()
+                } else session.offer(current)
             }
         },
     )
@@ -146,7 +175,7 @@ private fun showRewardedAnalysisAd(
     ad: RewardedAd,
     session: RewardedAnalysisSession,
     attempt: RewardedAnalysisAttempt,
-    currentUid: () -> String?,
+    currentAccount: () -> RewardedAnalysisAccount?,
 ) {
     fun release() {
         ad.adEventCallback = null
@@ -156,7 +185,7 @@ private fun showRewardedAnalysisAd(
         ad.adEventCallback = object : RewardedAdEventCallback {
             override fun onAdDismissedFullScreenContent() {
                 activity.runOnUiThread {
-                    session.dismissAd(attempt, currentUid())
+                    currentAccount()?.let { session.dismissAd(attempt, it) } ?: session.fail(attempt)
                     release()
                 }
             }
@@ -168,7 +197,9 @@ private fun showRewardedAnalysisAd(
                 }
             }
         }
-        ad.show(activity) { activity.runOnUiThread { session.earn(attempt, currentUid()) } }
+        ad.show(activity) {
+            activity.runOnUiThread { currentAccount()?.let { session.earn(attempt, it) } }
+        }
     } catch (_: Exception) {
         session.fail(attempt)
         release()

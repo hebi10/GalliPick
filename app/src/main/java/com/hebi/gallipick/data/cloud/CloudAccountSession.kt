@@ -26,6 +26,7 @@ internal fun firebaseGoogleSignInFailure(errorCode: String?): CloudAccountNotice
 internal data class CloudAccountStatus(
     val operation: CloudAccountOperation? = null,
     val notice: CloudAccountNotice? = null,
+    val generation: Long = 0,
 )
 
 internal class CloudAccountFailure(val notice: CloudAccountNotice) : Exception()
@@ -68,17 +69,18 @@ internal class CloudAccountSession(private val backend: CloudAccountBackend?) {
     ) {
         val connected = backend ?: return
         if (!operationLock.tryLock()) return
-        currentStatus.value = CloudAccountStatus(operation = operation)
+        val settledStatus = CloudAccountStatus(generation = currentStatus.value.generation + 1)
+        currentStatus.value = settledStatus.copy(operation = operation)
         try {
             perform(connected)
-            currentStatus.value = CloudAccountStatus()
+            currentStatus.value = settledStatus
         } catch (error: CancellationException) {
-            currentStatus.value = CloudAccountStatus()
+            currentStatus.value = settledStatus
             throw error
         } catch (error: CloudAccountFailure) {
-            currentStatus.value = CloudAccountStatus(notice = error.notice)
+            currentStatus.value = settledStatus.copy(notice = error.notice)
         } catch (_: Exception) {
-            currentStatus.value = CloudAccountStatus(notice = fallbackNotice)
+            currentStatus.value = settledStatus.copy(notice = fallbackNotice)
         } finally {
             operationLock.unlock()
         }
