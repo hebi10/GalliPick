@@ -31,6 +31,14 @@ GitHub Actions의 **Android package benchmarks**는 빌드 설정이나 측정 �
 ./gradlew -PgallipickBuildBenchmark=playCloud -PgallipickMinifyBenchmark=true :app:assembleReleaseBenchmark :app:bundleReleaseBenchmark
 ```
 
-기본 서명 릴리스와 `playPreparation` 설정에는 이 실험 옵션이 적용되지 않습니다. 위 비교는 패키지 크기 측정까지 지원합니다. 설치 공간과 cold/warm 시작 시간은 동일 기기, OS, 테스트 데이터에서 별도로 기록합니다. 축소 빌드의 Room 데이터 읽기·갱신, Compose 화면과 OCR, 로컬 파일 열기 및 복원을 확인하고 Google 로그인·App Check, Billing 테스트 구매, AdMob 테스트 광고와 UMP 동의, 클라우드 백업·복원은 해당 테스트 서명 및 환경을 마련해 기기에서 검증합니다. 기본 릴리스 축소 판단에는 패키지 실측과 이 회귀 결과가 모두 필요합니다.
+기본 서명 릴리스와 `playPreparation` 설정에는 이 실험 옵션이 적용되지 않습니다.
+
+## 기기 설치 공간과 시작 시간
+
+[Android package benchmarks](https://github.com/hebi10/GalliPick/actions/workflows/gp-build-benchmark.yml)를 수동 실행할 때 `measure_device`를 선택합니다. 별도 Android 36 에뮬레이터에 임시 테스트 키로 서명한 Play Cloud 기준 APK와 R8 APK를 차례로 설치합니다. 두 APK에서 홈, 파일 탭, 필터 열기·닫기를 검증합니다. 저장 공간과 시작 시간은 `play-cloud-device-metrics` 아티팩트의 `metrics.json`에 남습니다.
+
+- 설치 코드와 첫 화면 검증 후 생긴 앱 데이터의 디스크 사용량을 `du -sk` 기준 KiB로 각각 기록합니다. 에뮬레이터에 직접 설치한 APK의 측정이며 Play 기기별 다운로드 크기나 Android 설정의 저장 공간 합계와는 집계 범위가 다릅니다.
+- 첫 화면 검증으로 초기 설정을 마친 뒤, 프로세스를 종료한 cold start와 같은 프로세스에서 Activity를 다시 만든 warm start를 각 5회 측정합니다. Android가 표시한 시작 유형을 검사하고 `am start -W`의 첫 화면 표시 시간 `TotalTime` 원본과 중앙값을 기록합니다. 실제 기기 및 사진이 많은 환경의 시작 시간은 해당 환경에서 추가로 측정해야 합니다.
+- 실험 빌드의 Room 데이터 읽기·갱신, OCR, 로컬 미디어 열기·복원은 추가 기기 검증이 필요합니다. Google 로그인·App Check, Billing 테스트 구매, AdMob 테스트 광고·UMP 동의, 클라우드 백업·복원은 서비스에 연결된 별도 테스트 서명과 환경에서 검증합니다. 기본 릴리스 축소는 이 회귀 검증까지 완료한 후 판단합니다.
 
 [작업 이슈 #131](https://github.com/hebi10/GalliPick/issues/131) · [Android DEX 형식](https://source.android.com/docs/core/runtime/dex-format) · [Android 코드 및 리소스 최적화](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization)

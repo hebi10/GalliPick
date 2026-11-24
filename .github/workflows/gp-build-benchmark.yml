@@ -8,12 +8,18 @@ on:
       - 'scripts/performance/test_gp_build.py'
       - '.github/workflows/gp-build-benchmark.yml'
   workflow_dispatch:
+    inputs:
+      measure_device:
+        description: Compare Play Cloud APKs on an emulator instead of measuring archives
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   measure:
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.measure_device }}
     name: Package metrics (${{ matrix.profile }})
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -52,5 +58,76 @@ jobs:
           path: |
             build/gp-build/metrics.json
             build/gp-build/*-runtime.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  device:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.measure_device }}
+    name: Play Cloud baseline and R8 device benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Install compile SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Test device metrics parser
+        run: python3 -B -m unittest discover -s scripts/performance -p 'test_gp_device.py'
+      - name: Build and sign isolated APKs with an ephemeral key
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_tools="$ANDROID_HOME/build-tools/35.0.0"
+          key_dir="$(mktemp -d)"
+          trap 'rm -rf "$key_dir"' EXIT
+          keytool -genkeypair -keyalg RSA -keysize 2048 -validity 2 -dname 'CN=GalliPick Device Benchmark' \
+            -keystore "$key_dir/benchmark.p12" -storetype PKCS12 -alias benchmark -storepass android -keypass android
+          mkdir -p build/gp-device
+          for mode in baseline r8; do
+            minified=false
+            if [[ "$mode" == r8 ]]; then minified=true; fi
+            ./gradlew --no-daemon --stacktrace --max-workers=2 :app:clean :app:assembleReleaseBenchmark \
+              -PgallipickBuildBenchmark=playCloud -PgallipickMinifyBenchmark="$minified" \
+              -PgallipickTestSigning=true -PgallipickPlayCloudPilot=false -PgallipickCloudEnvironment=development \
+              -PgallipickAdsEnabled=false -PgallipickAdsTest=false -PgallipickAdsPreview=false
+            unsigned=(app/build/outputs/apk/releaseBenchmark/*.apk)
+            [[ ${#unsigned[@]} -eq 1 && -f "${unsigned[0]}" ]]
+            [[ "$(apkanalyzer manifest application-id "${unsigned[0]}")" == com.hebi.gallipick.benchmark ]]
+            "$build_tools/zipalign" -f -P 16 4 "${unsigned[0]}" "$key_dir/aligned.apk"
+            "$build_tools/apksigner" sign --ks "$key_dir/benchmark.p12" --ks-pass pass:android \
+              --out "build/gp-device/$mode.apk" "$key_dir/aligned.apk"
+            "$build_tools/apksigner" verify "build/gp-device/$mode.apk"
+          done
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: python3 scripts/performance/gp_device.py
+      - name: Upload device measurements
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-cloud-device-metrics
+          path: build/gp-device/metrics.json
           if-no-files-found: error
           retention-days: 14
