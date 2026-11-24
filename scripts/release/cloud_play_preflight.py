@@ -17,26 +17,30 @@ import sys
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
+from signing_bundle import ReleaseError
+from verify_apk import TAG_PATTERN, parse_source_version
+
 PACKAGE = "com.hebi.gallipick"
-PROJECT = "gallipick-dev"
+PROJECT = "gallipick-production"
 PUBLIC_PRIVACY = "https://hebi10.github.io/GalliPick/privacy.html"
-EXPECTED_VERSION = "0.2.13"
-EXPECTED_CODE = 24
 
 
 class PreflightError(Exception):
     pass
 
 
-def check_main_source(source: str, sha: str, ref: str, expected: str) -> None:
+def check_main_source(source: str, sha: str, ref: str, expected: str) -> tuple[str, int]:
     if ref != "refs/heads/main" or not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise PreflightError("Cloud preflight requires an exact main commit")
     if sha != expected:
         raise PreflightError("Checked-out source and GitHub event SHA disagree")
-    versions = re.findall(r'^\s*versionName\s*=\s*"([^"]+)"', source, re.M)
-    codes = re.findall(r"^\s*versionCode\s*=\s*(\d+)", source, re.M)
-    if versions != [EXPECTED_VERSION] or codes != [str(EXPECTED_CODE)]:
-        raise PreflightError("Cloud preflight is pinned to GalliPick 0.2.13 (24)")
+    try:
+        version, code = parse_source_version(source)
+    except ReleaseError as error:
+        raise PreflightError(str(error)) from None
+    if not re.fullmatch(TAG_PATTERN, f"v{version}"):
+        raise PreflightError("Cloud preflight requires a MAJOR.MINOR.PATCH app version")
+    return version, code
 
 
 def check_firebase_cloud_configuration(encoded: str, certificate_sha1: str) -> None:
@@ -48,7 +52,11 @@ def check_firebase_cloud_configuration(encoded: str, certificate_sha1: str) -> N
         if not 20 < len(raw) <= 512_000:
             raise ValueError()
         obj = json.loads(raw)
-        if obj["project_info"]["project_id"] != PROJECT:
+        project = obj["project_info"]
+        if project["project_id"] != PROJECT:
+            raise ValueError()
+        project_number = project["project_number"]
+        if not isinstance(project_number, str) or not re.fullmatch(r"\d+", project_number):
             raise ValueError()
         clients = [
             item for item in obj["client"]
@@ -58,22 +66,29 @@ def check_firebase_cloud_configuration(encoded: str, certificate_sha1: str) -> N
             raise ValueError()
         client = clients[0]
         oauth = client["oauth_client"]
-        if not any(
-            item.get("client_type") == 1
+        android_clients = [
+            item for item in oauth
+            if item.get("client_type") == 1
             and item.get("android_info", {}).get("package_name") == PACKAGE
             and item.get("android_info", {}).get("certificate_hash", "").replace(":", "").lower() == normalized
-            for item in oauth
-        ):
+        ]
+        web_clients = [item for item in oauth if item.get("client_type") == 3]
+        if len(android_clients) != 1 or len(web_clients) != 1:
             raise ValueError()
-        if not any(item.get("client_type") == 3
-                   and item.get("client_id", "").endswith(".apps.googleusercontent.com")
-                   for item in oauth):
+        android_id = android_clients[0]["client_id"]
+        web_id = web_clients[0]["client_id"]
+        own_client = re.compile(rf"{project_number}-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com")
+        if android_id == web_id or not all(own_client.fullmatch(client_id) for client_id in (android_id, web_id)):
             raise ValueError()
-        if not client["api_key"][0]["current_key"] or not client["client_info"]["mobilesdk_app_id"]:
+        app_id = client["client_info"]["mobilesdk_app_id"]
+        if not re.fullmatch(rf"1:{project_number}:android:[0-9a-fA-F]+", app_id):
+            raise ValueError()
+        api_key = client["api_key"][0]["current_key"]
+        if not isinstance(api_key, str) or not api_key.strip():
             raise ValueError()
     except (ValueError, TypeError, KeyError, IndexError, AttributeError, binascii.Error):
         raise PreflightError(
-            "Firebase project, Android package, Play app-signing SHA-1 or OAuth configuration is invalid"
+            "Production Firebase must contain its own Android and web OAuth clients for the Play-signed app"
         ) from None
 
 
@@ -81,12 +96,12 @@ def check_public_privacy(page: bytes) -> None:
     if len(page) > 300_000:
         raise PreflightError("Privacy notice unexpectedly large")
     text = page.decode("utf-8", errors="strict")
-    for required in ("GalliPick 개인정보처리방침", "2026년 11월 16일", "Firebase", "클라우드", "Google"):
+    for required in ("GalliPick 개인정보처리방침", PACKAGE, "Firebase", "클라우드", "Google"):
         if required not in text:
             raise PreflightError("Public privacy page is missing required cloud disclosures")
 
 
-def check_play_inventory(report: dict, code: int = EXPECTED_CODE) -> dict:
+def check_play_inventory(report: dict, version: str, code: int) -> dict:
     if not isinstance(report, dict) or report.get("package") != PACKAGE or report.get("track") != "internal" \
         or report.get("mode") != "check" or report.get("status") != "checked" \
         or report.get("api_accepted") is not False:
@@ -109,11 +124,11 @@ def check_play_inventory(report: dict, code: int = EXPECTED_CODE) -> dict:
         ):
             raise PreflightError("Internal track has a draft or incomplete release")
     if codes and max(codes) >= code:
-        raise PreflightError("VersionCode 24 is already used or is not higher than uploaded codes")
+        raise PreflightError(f"VersionCode {code} is already used or is not higher than uploaded codes")
     return {
         "package": PACKAGE,
         "track": "internal",
-        "target_version_name": EXPECTED_VERSION,
+        "target_version_name": version,
         "target_version_code": code,
         "used_version_codes": codes,
         "highest_uploaded_version_code": max(codes, default=0),
@@ -139,7 +154,9 @@ def main() -> int:
     try:
         source = Path("app/build.gradle.kts").read_text(encoding="utf-8")
         checked_out = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-        check_main_source(source, os.getenv("GITHUB_SHA", ""), os.getenv("GITHUB_REF", ""), checked_out)
+        version, code = check_main_source(
+            source, os.getenv("GITHUB_SHA", ""), os.getenv("GITHUB_REF", ""), checked_out
+        )
         if opts.mode == "cloud":
             check_firebase_cloud_configuration(
                 os.getenv("CLOUD_CONFIG_BASE64", ""),
@@ -157,13 +174,17 @@ def main() -> int:
                 "source_verified": True,
                 "cloud_config_verified": True,
                 "play_signing_oauth_verified": True,
+                "firebase_project_id": PROJECT,
+                "production_owned_oauth_verified": True,
                 "public_privacy_verified": True,
                 "play_uploaded": False,
             }
         else:
             if not opts.play_report or not opts.play_report.is_file():
                 raise PreflightError("Missing Google Play CHECK report")
-            report = check_play_inventory(json.loads(opts.play_report.read_text(encoding="utf-8")))
+            report = check_play_inventory(
+                json.loads(opts.play_report.read_text(encoding="utf-8")), version, code
+            )
             report["source_sha"] = checked_out
         write_json(opts.output, report)
         print("GalliPick cloud internal preflight:", opts.mode, "verified; Play unchanged.")
