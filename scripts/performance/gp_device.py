@@ -83,11 +83,18 @@ def smoke_test():
     wait_for_control("파일 조건 선택")
 
 
-def storage_kib():
+def benchmark_installed():
+    return f"package:{PACKAGE}" in adb("shell", "pm", "list", "packages", PACKAGE).splitlines()
+
+
+def installed_code_path():
     installed = re.fullmatch(r"package:(/data/app/[\w./~+=-]+/base\.apk)", adb("shell", "pm", "path", PACKAGE))
     if not installed:
         raise ValueError("Expected the benchmark package to contain exactly one installed APK.")
-    code = str(PurePosixPath(installed[1]).parent)
+    return str(PurePosixPath(installed[1]).parent)
+
+
+def storage_kib(code):
     data = f"/data/user/0/{PACKAGE}"
     metrics = {}
     for name, path in (("code", code), ("credential_encrypted_app_data", data)):
@@ -100,14 +107,14 @@ def storage_kib():
 
 def measure(apk):
     print(f"Measuring {apk.stem}", flush=True)
-    if adb("install", "-g", str(apk)).splitlines()[-1:] != ["Success"]:
-        raise ValueError(f"Could not install {apk.name}.")
+    adb("install", "--no-incremental", "-g", str(apk))
     try:
+        code = installed_code_path()
         # Exercise first-run setup before timing repeated app launches.
         launch("COLD")
         smoke_test()
         adb("shell", "am", "force-stop", PACKAGE)
-        installed = storage_kib()
+        installed = storage_kib(code)
         cold = []
         warm = []
         for _ in range(STARTUP_SAMPLES):
@@ -118,8 +125,10 @@ def measure(apk):
             if pid != adb("shell", "pidof", PACKAGE):
                 raise ValueError("The benchmark app process changed during a warm start.")
     finally:
-        if adb("uninstall", PACKAGE) != "Success":
-            raise ValueError("Could not remove the isolated benchmark app.")
+        if benchmark_installed():
+            adb("uninstall", PACKAGE)
+            if benchmark_installed():
+                raise ValueError("Could not remove the isolated benchmark app.")
     return {
         "mode": apk.stem,
         "apk_sha256": hashlib.sha256(apk.read_bytes()).hexdigest(),
@@ -135,7 +144,7 @@ def measure(apk):
 def main():
     if adb("shell", "getprop", "ro.kernel.qemu") != "1":
         raise ValueError("Run this benchmark on a disposable Android emulator.")
-    if f"package:{PACKAGE}" in adb("shell", "pm", "list", "packages", PACKAGE).splitlines():
+    if benchmark_installed():
         raise ValueError("Use a disposable emulator without the benchmark app already installed.")
     adb("root")
     adb("wait-for-device")
