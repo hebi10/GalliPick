@@ -100,17 +100,40 @@ def find_control(hierarchy, label):
 
 
 def wait_for_control(label):
-    deadline = time.monotonic() + 35
+    deadline = time.monotonic() + 60
+    last_hierarchy = None
+    last_error = None
     while time.monotonic() < deadline:
-        adb("shell", "rm", "-f", UI_DUMP)
         try:
-            adb("shell", "uiautomator", "dump", UI_DUMP)
-            point = find_control(adb("shell", "cat", UI_DUMP), label)
-        except (subprocess.CalledProcessError, ElementTree.ParseError):
+            adb("shell", "rm", "-f", UI_DUMP, timeout=10)
+            adb("shell", "uiautomator", "dump", UI_DUMP, timeout=15)
+            last_hierarchy = adb("shell", "cat", UI_DUMP, timeout=10)
+            point = find_control(last_hierarchy, label)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ElementTree.ParseError) as error:
+            last_error = type(error).__name__
             point = None
         if point is not None:
             return point
         time.sleep(0.4)
+    # Keep the original acceptance condition. Capture only disposable emulator UI
+    # metadata and activity focus, not device/user files or arbitrary logcat data.
+    if last_hierarchy:
+        try:
+            nodes = list(ElementTree.fromstring(last_hierarchy).iter("node"))
+            packages = sorted({node.get("package") or "" for node in nodes})
+            controls = sorted({node.get("text") or node.get("content-desc") or ""
+                               for node in nodes if node.get("package") == PACKAGE})
+            print(f"Benchmark UI packages: {packages!r}; app controls: {controls[:30]!r}", flush=True)
+        except ElementTree.ParseError:
+            pass
+    if last_error:
+        print(f"Last UI automation error: {last_error}", flush=True)
+    try:
+        focus = adb("shell", "dumpsys", "window", "windows", timeout=10)
+        print("\n".join(line.strip() for line in focus.splitlines()
+                        if "mCurrentFocus=" in line or "mFocusedApp=" in line)[:2000], flush=True)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        pass
     raise ValueError(f"The benchmark app did not display {label!r}.")
 
 

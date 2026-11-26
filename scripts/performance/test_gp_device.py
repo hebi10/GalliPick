@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
-from gp_device import ACTIVITY, PACKAGE, ensure_rooted_emulator, find_control, installed_code_path, launch, measure, startup_time, storage_kib
+from gp_device import ACTIVITY, PACKAGE, ensure_rooted_emulator, find_control, installed_code_path, launch, measure, startup_time, storage_kib, wait_for_control
 
 
 class DeviceMetricsTest(TestCase):
@@ -71,6 +71,24 @@ class DeviceMetricsTest(TestCase):
         self.assertEqual(find_control(hierarchy, "파일"), (15, 25))
         self.assertEqual(find_control(hierarchy, "필터 닫기"), (25, 35))
         self.assertIsNone(find_control(hierarchy, "정리"))
+
+    def test_ui_dump_retries_timeout_but_requires_exact_app_control(self):
+        hierarchy = f'<hierarchy><node package="{PACKAGE}" text="GalliPick" bounds="[0,0][20,30]" /></hierarchy>'
+        with (
+            patch("gp_device.adb", side_effect=["", subprocess.TimeoutExpired("dump", 15), "", "", hierarchy]),
+            patch("gp_device.time.sleep"),
+        ):
+            self.assertEqual(wait_for_control("GalliPick"), (10, 15))
+
+    def test_ui_timeout_does_not_accept_another_packages_label(self):
+        hierarchy = '<hierarchy><node package="another.app" text="GalliPick" bounds="[0,0][20,30]" /></hierarchy>'
+        with (
+            patch("gp_device.adb", side_effect=["", "", hierarchy, "mCurrentFocus=other"]),
+            patch("gp_device.time.monotonic", side_effect=[0, 0, 61]),
+            patch("gp_device.time.sleep"),
+            self.assertRaisesRegex(ValueError, "did not display"),
+        ):
+            wait_for_control("GalliPick")
 
     def test_storage_keeps_installed_code_and_app_data_separate(self):
         code = f"/data/app/~~stub==/{PACKAGE}-stub=="

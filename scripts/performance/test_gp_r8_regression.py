@@ -1,9 +1,10 @@
 from copy import deepcopy
 from unittest import TestCase
+from unittest.mock import patch
 
 from gp_r8_regression import (
     PHOTO_A, PHOTO_B, PHOTO_C, VIDEO, DUPLICATE_WORKER, OCR_WORKER,
-    verify_baseline, verify_upgrade, verify_final,
+    verify_baseline, verify_upgrade, verify_final, verify_original_files,
 )
 
 
@@ -13,7 +14,7 @@ def baseline():
         "schema_version": 8,
         "media": {name: "uri:" + name for name in expected},
         "protected": ["uri:" + PHOTO_A],
-        "hashes": expected.copy(),
+        "hashes": {name: digest for name, digest in expected.items() if name != VIDEO},
         "ocr": {},
         "scan_phase": ("COMPLETE",),
         "ocr_phase": None,
@@ -30,6 +31,19 @@ class RegressionEvidenceTest(TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 verify_baseline(altered, expected)
 
+    def test_singleton_video_is_not_a_duplicate_candidate_but_original_is_checked(self):
+        state, expected = baseline()
+        verify_baseline(state, expected)
+        with self.assertRaisesRegex(ValueError, "singleton video"):
+            verify_baseline(dict(state, hashes=expected.copy()), expected)
+        remote = {name: "/fixture/" + name for name in expected}
+        with patch("gp_r8_regression.adb", side_effect=["same  photo-a", "same  photo-b", "video  clip"]) as command:
+            verify_original_files(remote, expected)
+            self.assertEqual(command.call_count, 3)
+        with patch("gp_r8_regression.adb", side_effect=["same  photo-a", "same  photo-b", "changed  clip"]):
+            with self.assertRaisesRegex(ValueError, "Synthetic original was changed"):
+                verify_original_files(remote, expected)
+
     def test_upgrade_rejects_reset_settings_or_lost_protection_cache_and_work(self):
         state, _ = baseline()
         prefs = {"file_list_view": "true"}
@@ -45,7 +59,8 @@ class RegressionEvidenceTest(TestCase):
         before, expected = baseline()
         expected[PHOTO_C] = "same"
         after = deepcopy(before)
-        after["hashes"] = expected.copy()
+        after["hashes"] = {name: digest for name, digest in expected.items() if name != VIDEO}
+        after["media"][PHOTO_C] = "uri:" + PHOTO_C
         after["ocr_phase"] = ("COMPLETE",)
         after["work"] += [("new", DUPLICATE_WORKER, 2), ("ocr", OCR_WORKER, 2)]
         after["ocr"] = {name: ("SUCCESS", "RECEIPT 2026 서울 여행") for name in (PHOTO_A, PHOTO_B, PHOTO_C)}
