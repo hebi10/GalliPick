@@ -25,13 +25,18 @@ GitHub Actions의 **Android package benchmarks**는 빌드 설정이나 측정 �
 
 ## R8 검증
 
-`--r8`은 `releaseBenchmark` 전용 `gallipickMinifyBenchmark=true`를 지정합니다. R8 코드 축소와 리소스 축소가 함께 적용되며 Android Gradle Plugin의 `proguard-android-optimize.txt`와 라이브러리 소비자 규칙을 사용합니다. 앱 전용 keep 규칙은 재현된 오류와 `app/build/outputs/mapping/releaseBenchmark/` 분석에 근거해 추가합니다. 다음 프로필 빌드에서 이 디렉터리를 지우므로 분석에 사용할 매핑은 각 빌드 직후 복사합니다.
+`--r8`은 `releaseBenchmark` 전용 `gallipickMinifyBenchmark=true`를 지정합니다. R8 코드 축소와 리소스 축소가 함께 적용되며 Android Gradle Plugin의 `proguard-android-optimize.txt`, 앱 전용 `app/proguard-rules.pro` 및 라이브러리 소비자 규칙을 사용합니다. 앱 전용 keep 규칙은 재현된 오류와 `app/build/outputs/mapping/releaseBenchmark/` 분석에 근거해 추가합니다. 다음 프로필 빌드에서 이 디렉터리를 지우므로 분석에 사용할 매핑은 각 빌드 직후 복사합니다.
 
 ```sh
 ./gradlew -PgallipickBuildBenchmark=playCloud -PgallipickMinifyBenchmark=true :app:assembleReleaseBenchmark :app:bundleReleaseBenchmark
 ```
 
-기본 서명 릴리스와 `playPreparation` 설정에는 이 실험 옵션이 적용되지 않습니다.
+## GP-R8-02 릴리스 설정 전환 (검증 브랜치)
+
+- 실제 `release`의 코드 축소·난독화·최적화 및 리소스 축소를 활성화하고, 최적화 시험 변형과 동일한 규칙 파일을 사용합니다. `gallipickMinifyBenchmark`는 기존대로 시험 변형에만 적용됩니다.
+- `debug` 및 기존의 미서명 로컬 전용 `playPreparation`은 축소하지 않습니다. APK/AAB 비교의 비최적화 기준선도 유지합니다. AGP 8.13.2의 기존 R8 동작을 사용하며 새로운 의존성·AGP 업그레이드·전역 keep 규칙을 추가하지 않습니다.
+- `:app:verifyGalliPickR8Configuration`은 실제 Gradle DSL의 각 빌드 유형별 축소 플래그와 적용 규칙 목록을 확인하며 운영 키나 Firebase 비밀값 없이 실행합니다. 기존 패키지 벤치마크의 각 프로필에서 검사합니다.
+- GP-R8-01 병합, GP-R8-03~04 호환성 및 운영 연동 회귀 검증 전에는 이 변경을 main에 병합하거나 배포하지 않습니다. GP-R8-05에서 Google Play 최적화 비율을 별도 확인합니다.
 
 ## 기기 설치 공간과 시작 시간
 
@@ -39,6 +44,6 @@ GitHub Actions의 **Android package benchmarks**는 빌드 설정이나 측정 �
 
 - 설치 코드와 첫 화면 검증 후 생긴 앱 데이터의 디스크 사용량을 `du -sk` 기준 KiB로 각각 기록합니다. 에뮬레이터에 직접 설치한 APK의 측정이며 Play 기기별 다운로드 크기나 Android 설정의 저장 공간 합계와는 집계 범위가 다릅니다.
 - 첫 화면 검증으로 초기 설정을 마친 뒤, 프로세스를 종료한 cold start와 같은 프로세스에서 Activity를 다시 만든 warm start를 각 5회 측정합니다. Android가 표시한 시작 유형을 검사하고 `am start -W`의 첫 화면 표시 시간 `TotalTime` 원본과 중앙값을 기록합니다. 실제 기기 및 사진이 많은 환경의 시작 시간은 해당 환경에서 추가로 측정해야 합니다.
-- 실험 빌드의 Room 데이터 읽기·갱신, OCR, 로컬 미디어 열기·복원은 추가 기기 검증이 필요합니다. Google 로그인·App Check, Billing 테스트 구매, AdMob 테스트 광고·UMP 동의, 클라우드 백업·복원은 서비스에 연결된 별도 테스트 서명과 환경에서 검증합니다. 기본 릴리스 축소는 이 회귀 검증까지 완료한 후 판단합니다.
+- 실험 빌드의 Room 데이터 읽기·갱신, OCR, 로컬 미디어 열기·복원은 추가 기기 검증이 필요합니다. Google 로그인·App Check, Billing 테스트 구매, AdMob 테스트 광고·UMP 동의, 클라우드 백업·복원은 서비스에 연결된 별도 테스트 서명과 환경에서 검증합니다. 기본 릴리스 축소 설정의 main 반영 및 배포는 이 회귀 검증까지 완료한 후 판단합니다.
 
 [작업 이슈 #131](https://github.com/hebi10/GalliPick/issues/131) · [Android DEX 형식](https://source.android.com/docs/core/runtime/dex-format) · [Android 코드 및 리소스 최적화](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization)
