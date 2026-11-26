@@ -5,6 +5,10 @@ on:
       - '.github/workflows/play-internal-release.yml'
       - '.github/workflows/ops04-safety.yml'
       - 'scripts/ops04/**'
+      - 'scripts/release/r8_release_gate.py'
+      - 'scripts/release/r8_test_fixture.py'
+      - 'scripts/release/signing_bundle.py'
+      - 'scripts/performance/gp_dex_metrics.py'
   workflow_dispatch:
 permissions:
   contents: read

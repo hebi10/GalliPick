@@ -35,7 +35,7 @@
 | --- | --- | --- | --- |
 | `internal-release-once.yml` | OPS-09. 기본 CI 확인 후 `device-tests` → `release-build`와 실제 빌더 → `play-internal-release` 순서 | GitHub Actions 쓰기 권한. 내부 테스트 1회 승인과 동결 main SHA | [11-21 성공](https://github.com/hebi10/GalliPick/actions/runs/44888619144) |
 | `release-build.yml` | OPS-03. 승인과 동일 SHA의 Android 기본 CI·전체 기기 QA를 확인하고 `play-bundle` 디스패치. OPS-09에서 호출 | GitHub Actions 쓰기 권한. 승인된 배치·main SHA·버전 | [11-21 성공](https://github.com/hebi10/GalliPick/actions/runs/44890071069) |
-| `play-bundle.yml` | 고정 인증서로 AAB 빌드 및 SHA-256·매니페스트 업로드. OPS-03의 빌더 | 서명 키, 선택한 Cloud 설정. 운영 Cloud는 승인된 main SHA 필요 | [11-21 성공](https://github.com/hebi10/GalliPick/actions/runs/44890081403) |
+| `play-bundle.yml` | 고정 인증서로 AAB 빌드 및 SHA-256·매니페스트·R8 최적화 증빙 생성. OPS-03의 빌더 | 서명 키, 선택한 Cloud 설정. 운영 Cloud는 승인된 main SHA 필요 | [11-21 성공](https://github.com/hebi10/GalliPick/actions/runs/44890081403) |
 | `play-internal-release.yml` | OPS-04. 승인된 기존 AAB 검증 및 internal 게시. OPS-09에서 호출 | Play WIF, `google-play` 환경. 기대 SHA·빌드 run ID·해시·버전 및 게시 승인 | [11-21 성공](https://github.com/hebi10/GalliPick/actions/runs/44890733483) |
 | `play-closed-release.yml` | OPS-05. 기존 internal AAB를 검사하고 승인 시 동일 code를 기존 비공개 트랙에 승격 | Play WIF 또는 JSON. 배치·기대 SHA·해시·기존 트랙 및 승격 승인 | [11-21 code37 조회 성공](https://github.com/hebi10/GalliPick/actions/runs/44891091789) |
 | `play-alpha-status-readonly.yml` | main에서 기존 alpha와 전체 Play 트랙·업로드 코드 조회, 조회 보고서만 생성 | Play WIF와 `PLAY_CLOSED_TRACK=alpha` | [11-17 이전 파일명으로 성공](https://github.com/hebi10/GalliPick/actions/runs/44156727727) |
