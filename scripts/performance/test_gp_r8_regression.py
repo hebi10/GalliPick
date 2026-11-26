@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from gp_r8_regression import (
     PHOTO_A, PHOTO_B, PHOTO_C, VIDEO, DUPLICATE_WORKER, OCR_WORKER,
-    verify_baseline, verify_upgrade, verify_final, verify_original_files,
+    verify_baseline, verify_upgrade, verify_final, verify_original_files, active_video_position, PACKAGE,
 )
 
 
@@ -23,6 +23,20 @@ def baseline():
 
 
 class RegressionEvidenceTest(TestCase):
+    def test_video_requires_correct_dialog_and_enabled_playback_with_positive_progress(self):
+        def node(text, enabled="true", package=PACKAGE):
+            return f'<node package="{package}" text="{text}" enabled="{enabled}" bounds="[0,0][20,30]" />'
+        valid = node(VIDEO) + node("미리보기 닫기") + node("일시정지") + node("0:02 / 0:20")
+        self.assertEqual(active_video_position("<hierarchy>" + valid + "</hierarchy>"), 2)
+        for invalid in (valid.replace(VIDEO, "other.mp4"), valid.replace("일시정지", "재생"),
+                        valid.replace("0:02 / 0:20", "0:00 / 0:20"),
+                        valid.replace("0:02 / 0:20", "0:20 / 0:20"),
+                        valid.replace("0:02 / 0:20", "0:02 / 0:03"),
+                        valid.replace(node("일시정지"), node("일시정지", enabled="false")),
+                        valid.replace(node("0:02 / 0:20"), node("0:02 / 0:20", package="android"))):
+            with self.subTest(invalid=invalid):
+                self.assertIsNone(active_video_position("<hierarchy>" + invalid + "</hierarchy>"))
+
     def test_baseline_requires_real_hashes_and_protection(self):
         state, expected = baseline()
         verify_baseline(state, expected)

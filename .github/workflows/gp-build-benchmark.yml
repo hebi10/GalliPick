@@ -180,3 +180,11 @@ jobs:
             build/gp-device/regression.json
           if-no-files-found: error
           retention-days: 14
+      - name: Upload failed emulator UI diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-cloud-device-failure-diagnostics
+          path: build/gp-device/ui-failure/
+          if-no-files-found: ignore
+          retention-days: 14

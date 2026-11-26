@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 import time
 from xml.etree import ElementTree
 
-from gp_device import ROOT, OUTPUT, PACKAGE, UI_DUMP, adb, benchmark_installed, ensure_rooted_emulator, find_control, launch
+from gp_device import ROOT, OUTPUT, PACKAGE, UI_DUMP, adb, benchmark_installed, ensure_rooted_emulator, find_control, launch, prepare_interactive_emulator, capture_ui_failure
 
 
 PHOTO_DIR = "/sdcard/Pictures/GalliPick_R8_QA"
@@ -36,27 +36,70 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def wait_label(*labels, seconds=45):
+def dump_hierarchy():
+    adb("shell", "rm", "-f", UI_DUMP, timeout=10)
+    adb("shell", "uiautomator", "dump", UI_DUMP, timeout=15)
+    return adb("shell", "cat", UI_DUMP, timeout=10)
+
+
+def wait_label(*labels, seconds=45, enabled=False):
     deadline = time.monotonic() + seconds
+    hierarchy = None
+    last_error = None
     while time.monotonic() < deadline:
         try:
-            adb("shell", "rm", "-f", UI_DUMP, timeout=15)
-            adb("shell", "uiautomator", "dump", UI_DUMP, timeout=20)
-            hierarchy = adb("shell", "cat", UI_DUMP, timeout=15)
+            hierarchy = dump_hierarchy()
             for label in labels:
-                point = find_control(hierarchy, label)
+                point = find_control(hierarchy, label, enabled=enabled)
                 if point is not None:
                     return label, point
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ElementTree.ParseError):
-            pass
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ElementTree.ParseError) as error:
+            last_error = type(error).__name__
         time.sleep(0.5)
+    capture_ui_failure(f"Missing regression controls {labels!r}", hierarchy, last_error)
     raise ValueError(f"Expected benchmark controls {labels!r} were not displayed.")
 
 
-def tap(*labels, seconds=45):
-    label, (x, y) = wait_label(*labels, seconds=seconds)
+def tap(*labels, seconds=45, enabled=False):
+    label, (x, y) = wait_label(*labels, seconds=seconds, enabled=enabled)
     adb("shell", "input", "tap", str(x), str(y))
     return label
+
+
+def active_video_position(hierarchy):
+    """Require correct preview, enabled pause button and actual playback progress."""
+    if (find_control(hierarchy, VIDEO) is None
+            or find_control(hierarchy, "미리보기 닫기") is None
+            or find_control(hierarchy, "일시정지", enabled=True) is None):
+        return None
+    for node in ElementTree.fromstring(hierarchy).iter("node"):
+        if node.get("package") != PACKAGE:
+            continue
+        match = re.fullmatch(r"(\d+):([0-5]\d)\s*/\s*(\d+):([0-5]\d)", node.get("text", ""))
+        if match:
+            minutes, seconds, total_minutes, total_seconds = map(int, match.groups())
+            position, duration = minutes * 60 + seconds, total_minutes * 60 + total_seconds
+            if 0 < position < duration and duration >= 10:
+                return position
+    return None
+
+
+def wait_for_video_progress():
+    deadline = time.monotonic() + 30
+    hierarchy = None
+    last_error = None
+    while time.monotonic() < deadline:
+        try:
+            hierarchy = dump_hierarchy()
+            position = active_video_position(hierarchy)
+            if position is not None:
+                print(f"Optimized video playback advanced to {position} seconds.", flush=True)
+                return
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ElementTree.ParseError) as error:
+            last_error = type(error).__name__
+        time.sleep(0.25)
+    capture_ui_failure("Video did not show advancing playback", hierarchy, last_error)
+    raise ValueError("Optimized video did not demonstrate advancing playback.")
 
 
 def force_stop():
@@ -95,6 +138,22 @@ def create_ocr_photo(directory):
     )
     require(image.is_file() and image.stat().st_size > 1000, "Synthetic OCR photo was not rendered.")
     return image
+
+
+def create_video_fixture(directory):
+    # Use the existing H.264 clip, looped long enough to observe playback in UIAutomator.
+    source = ROOT / "app/src/androidTest/assets/preview-baseline.mp4"
+    video = directory / "preview-loop.mp4"
+    subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+                    "-stream_loop", "-1", "-i", str(source), "-t", "20",
+                    "-map", "0:v:0", "-an", "-c", "copy", str(video)],
+                   check=True, timeout=60)
+    duration = subprocess.check_output(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(video)], text=True, timeout=15)
+    require(video.is_file() and video.stat().st_size > 0 and 19 <= float(duration) <= 21,
+            "Looped video fixture does not have the expected duration.")
+    return video
 
 
 def publish_fixture(source, remote):
@@ -247,6 +306,7 @@ def main():
     require(not benchmark_installed(), "Refusing to replace a pre-existing benchmark installation.")
     require(not REPORT.exists(), "Refusing a stale regression report.")
     ensure_rooted_emulator()
+    prepare_interactive_emulator()
     for folder in (PHOTO_DIR, VIDEO_DIR):
         require(not path_exists(folder), f"Test media directory already exists: {folder}")
         adb("shell", "mkdir", "-p", folder)
@@ -256,7 +316,7 @@ def main():
     remote_paths[VIDEO] = f"{VIDEO_DIR}/{VIDEO}"
     with TemporaryDirectory() as temp:
         image = create_ocr_photo(Path(temp))
-        clip = ROOT / "app/src/androidTest/assets/preview-baseline.mp4"
+        clip = create_video_fixture(Path(temp))
         require(image.stat().st_size != clip.stat().st_size,
                 "The singleton video must have a different size from the duplicate photos.")
         expected = {}
@@ -295,10 +355,15 @@ def main():
             tap("미리보기 닫기")
             tap("닫기")
             tap(VIDEO)
+            wait_label("파일 상세")
+            wait_label(VIDEO)
             tap("미리보기")
-            wait_label("영상 미리보기: " + VIDEO)
-            tap("재생")
-            wait_label("일시정지", seconds=30)
+            wait_label("미리보기 닫기")
+            wait_label(VIDEO)
+            tap("재생", seconds=60, enabled=True)
+            wait_for_video_progress()
+            tap("일시정지", seconds=15, enabled=True)
+            wait_label("재생", enabled=True)
             tap("미리보기 닫기")
             tap("닫기")
             force_stop()
