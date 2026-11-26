@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import call, patch
 
-from gp_device import ACTIVITY, PACKAGE, ensure_rooted_emulator, find_control, installed_code_path, launch, measure, startup_time, storage_kib, wait_for_control, prepare_interactive_emulator
+from gp_device import ACTIVITY, PACKAGE, ensure_rooted_emulator, find_control, installed_code_path, launch, measure, startup_time, storage_kib, wait_for_control, prepare_interactive_emulator, launcher_anr_close_point, recover_launcher_anr
 
 
 class DeviceMetricsTest(TestCase):
@@ -112,6 +112,58 @@ class DeviceMetricsTest(TestCase):
         command.assert_called_once_with("shell", "getprop", "ro.kernel.qemu", timeout=15)
         with patch("gp_device.adb", side_effect=["1", "0", "", "", "false"]), self.assertRaisesRegex(ValueError, "lock screen"):
             prepare_interactive_emulator()
+
+    def launcher_dialog(self):
+        return """<hierarchy>
+          <node package="android" resource-id="android:id/alertTitle" text="Quickstep isn't responding" bounds="[1,1][100,50]" />
+          <node package="android" resource-id="android:id/aerr_close" text="Close app" enabled="true" clickable="true" bounds="[70,1143][1010,1269]" />
+        </hierarchy>"""
+
+    def test_launcher_recovery_requires_exact_system_dialog_and_identity(self):
+        hierarchy = self.launcher_dialog()
+        self.assertEqual(launcher_anr_close_point(hierarchy), (540, 1206))
+        for other in (hierarchy.replace("Quickstep", "GalliPick"),
+                      hierarchy.replace('package="android"', 'package="another.app"'),
+                      hierarchy.replace('android:id/aerr_close', 'android:id/aerr_wait'),
+                      hierarchy.replace('enabled="true"', 'enabled="false"')):
+            with self.subTest(other=other), patch("gp_device.adb") as command:
+                self.assertFalse(recover_launcher_anr(other))
+                command.assert_not_called()
+
+    def test_launcher_recovery_only_for_resumed_benchmark_and_launcher_anr(self):
+        window = ("mCurrentFocus=Window{34f374a u0 Application Not Responding: com.android.launcher3}\n"
+                  f"mFocusedApp=ActivityRecord{{10213527 u0 {PACKAGE}/{ACTIVITY} t8}}")
+        activity = f"topResumedActivity=ActivityRecord{{10213527 u0 {PACKAGE}/{ACTIVITY} t8}}"
+        for focus, resumed in ((window.replace("com.android.launcher3", PACKAGE), activity),
+                               (window, activity.replace(PACKAGE, "another.app")),
+                               (window.replace(PACKAGE, "another.app"), activity)):
+            with self.subTest(focus=focus, resumed=resumed), patch("gp_device.adb", side_effect=["1", "0", focus, resumed]) as command:
+                self.assertFalse(recover_launcher_anr(self.launcher_dialog()))
+                self.assertFalse(any(c.args[:3] == ("shell", "input", "tap") for c in command.call_args_list))
+        with patch("gp_device.adb", side_effect=["1", "0", window, activity, ""]) as command:
+            self.assertTrue(recover_launcher_anr(self.launcher_dialog()))
+            command.assert_called_with("shell", "input", "tap", "540", "1206", timeout=10)
+
+    def test_initial_smoke_recovers_once_but_still_requires_app_control(self):
+        dialog = self.launcher_dialog()
+        app = f'<hierarchy><node package="{PACKAGE}" text="GalliPick" bounds="[0,0][20,30]" /></hierarchy>'
+        with (patch("gp_device.adb", side_effect=["", "", dialog, "", "", dialog, "", "", app]),
+              patch("gp_device.recover_launcher_anr", return_value=True) as recover,
+              patch("gp_device.time.sleep")):
+            self.assertEqual(wait_for_control("GalliPick", recover_launcher=True), (10, 15))
+            recover.assert_called_once_with(dialog)
+
+    def test_initial_smoke_cannot_pass_with_only_launcher_recovery(self):
+        dialog = self.launcher_dialog()
+        with (patch("gp_device.adb", side_effect=["", "", dialog]),
+              patch("gp_device.recover_launcher_anr", return_value=True) as recover,
+              patch("gp_device.capture_ui_failure") as diagnose,
+              patch("gp_device.time.monotonic", side_effect=[0, 0, 1, 61]),
+              patch("gp_device.time.sleep"),
+              self.assertRaisesRegex(ValueError, "did not display")):
+            wait_for_control("GalliPick", recover_launcher=True)
+        recover.assert_called_once_with(dialog)
+        diagnose.assert_called_once()
 
     def test_storage_keeps_installed_code_and_app_data_separate(self):
         code = f"/data/app/~~stub==/{PACKAGE}-stub=="
