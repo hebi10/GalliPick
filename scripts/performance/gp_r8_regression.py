@@ -165,13 +165,29 @@ def worker_success(snapshot, worker):
     return {work_id for work_id, name, state in snapshot["work"] if name == worker and state == 2}
 
 
+def verify_duplicate_hashes(state, expected_hashes, stage):
+    # DuplicateScanWorker.plan hashes only size groups containing multiple files.
+    # The synthetic photos are identical; the solitary video is for preview and
+    # original-byte preservation, not an exact-duplicate candidate.
+    expected = {name: digest for name, digest in expected_hashes.items() if name != VIDEO}
+    invalid = [name for name, digest in expected.items() if state["hashes"].get(name) != digest]
+    require(not invalid, f"{stage} original-byte duplicate hashes are incorrect: {invalid!r}.")
+    require(VIDEO not in state["hashes"], f"{stage} unexpectedly hashed a singleton video.")
+
+
+def verify_original_files(remote_paths, expected_hashes):
+    # Independently check every fixture, including media excluded by the scan.
+    for name, digest in expected_hashes.items():
+        actual = adb("shell", "sha256sum", remote_paths[name]).split()[0]
+        require(actual == digest, f"Synthetic original was changed: {name}")
+
+
 def verify_baseline(state, expected_hashes):
     require(state["schema_version"] == 8, "Expected existing Room schema version 8.")
     require(set(expected_hashes).issubset(state["media"]), "Baseline did not load every fixture.")
     require(state["media"][PHOTO_A] in state["protected"], "Baseline did not persist protection.")
     require(state["scan_phase"] == ("COMPLETE",), "Baseline duplicate scan did not complete.")
-    require(all(state["hashes"].get(name) == digest for name, digest in expected_hashes.items()),
-            "Baseline original-byte hashes are incorrect.")
+    verify_duplicate_hashes(state, expected_hashes, "Baseline")
     require(worker_success(state, DUPLICATE_WORKER), "Baseline duplicate Worker did not succeed.")
 
 
@@ -192,8 +208,8 @@ def verify_final(before, after, expected_hashes):
     require(worker_success(after, DUPLICATE_WORKER) - worker_success(before, DUPLICATE_WORKER),
             "No new successful duplicate Worker in optimized app.")
     require(worker_success(after, OCR_WORKER), "Optimized OCR Worker did not succeed.")
-    require(all(after["hashes"].get(name) == digest for name, digest in expected_hashes.items()),
-            "Optimized original-byte hashes do not match synthetic fixtures.")
+    require(set(expected_hashes).issubset(after["media"]), "Optimized app did not load every fixture.")
+    verify_duplicate_hashes(after, expected_hashes, "Optimized")
     require(after["protected"] == before["protected"], "Optimized analysis changed protection.")
     for name in (PHOTO_A, PHOTO_B, PHOTO_C):
         status, value = after["ocr"].get(name, ("MISSING", ""))
@@ -241,6 +257,8 @@ def main():
     with TemporaryDirectory() as temp:
         image = create_ocr_photo(Path(temp))
         clip = ROOT / "app/src/androidTest/assets/preview-baseline.mp4"
+        require(image.stat().st_size != clip.stat().st_size,
+                "The singleton video must have a different size from the duplicate photos.")
         expected = {}
         for name, source in ((PHOTO_A, image), (PHOTO_B, image), (VIDEO, clip)):
             expected[name] = publish_fixture(source, remote_paths[name])
@@ -261,6 +279,7 @@ def main():
             before = database_snapshot()
             preferences_before = preference_snapshot()
             verify_baseline(before, expected)
+            verify_original_files(remote_paths, expected)
 
             print("GP-R8-04: replace baseline APK in place with the same-key optimized APK.", flush=True)
             fresh_install(optimized, replace_existing=True)
@@ -294,9 +313,7 @@ def main():
             force_stop()
             final = database_snapshot()
             verify_final(before, final, expected)
-            for name, digest in expected.items():
-                actual = adb("shell", "sha256sum", remote_paths[name]).split()[0]
-                require(actual == digest, f"Synthetic original was changed: {name}")
+            verify_original_files(remote_paths, expected)
 
             report = {
                 "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
