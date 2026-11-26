@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,7 +48,10 @@ import com.hebi.gallipick.data.cloud.CloudAccountConnection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 
 private const val CLOUD_AD_ENTITLEMENT_REFRESH_MS = 5 * 60 * 1000L
 private const val CLOUD_AD_ENTITLEMENT_RETRY_MS = 2_000L
@@ -61,6 +65,11 @@ internal data class GalliAdsSession(
     val removal: AdRemovalStatus = AdRemovalStatus.NOT_PURCHASED,
     val privacyOptionsRequired: Boolean = false,
     val openPrivacyOptions: () -> Unit = {},
+    val rewardedTestEnabled: Boolean = false,
+    val entitlementUid: String? = null,
+    val entitlementGeneration: Long = 0,
+    val canRequestAdsNow: () -> Boolean = { false },
+    val refreshVerification: () -> Unit = {},
 )
 
 /**
@@ -82,7 +91,25 @@ internal fun rememberGalliAdsSession(
     }
     if (!configured && !previewOnly) return GalliAdsSession()
 
-    val removal = rememberCloudAdRemovalStatus(cloudConnection, planObservation, billingScreenVisible)
+    val rewardedTestEnabled = remember(activity) {
+        activity.resources.getBoolean(R.bool.gallipick_rewarded_ads_test)
+    }
+    val uid = cloudConnection?.session?.account?.collectAsStateWithLifecycle()?.value?.uid
+    val rewardedAccountStatus = if (rewardedTestEnabled) {
+        cloudConnection?.session?.status?.collectAsStateWithLifecycle()?.value
+    } else null
+    val accountGeneration = rewardedAccountStatus?.generation ?: 0L
+    var refreshRequest by remember(activity) { mutableIntStateOf(0) }
+    val removal = if (rewardedAccountStatus?.operation != null) AdRemovalStatus.VERIFYING else {
+        rememberCloudAdRemovalStatus(
+            cloudConnection,
+            planObservation.takeUnless { rewardedTestEnabled },
+            billingScreenVisible,
+            refreshRequest,
+            uid,
+            accountGeneration,
+        )
+    }
     if (previewOnly) return GalliAdsSession(previewOnly = true, removal = removal)
     val consentInformation = remember(activity) {
         UserMessagingPlatform.getConsentInformation(activity)
@@ -100,7 +127,7 @@ internal fun rememberGalliAdsSession(
             ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
     }
 
-    DisposableEffect(activity, consentInformation) {
+    DisposableEffect(activity, consentInformation, refreshRequest) {
         var disposed = false
         consentInformation.requestConsentInfoUpdate(
             activity,
@@ -127,15 +154,27 @@ internal fun rememberGalliAdsSession(
         }
     }
 
-    LaunchedEffect(activity, canRequestAds, removal) {
+    LaunchedEffect(activity, canRequestAds, removal, refreshRequest) {
         if (canRequestAds && removal == AdRemovalStatus.NOT_PURCHASED && !initialized) {
-            withContext(Dispatchers.IO) {
-                MobileAds.initialize(
-                    activity,
-                    InitializationConfig.Builder(activity.getString(R.string.gallipick_admob_app_id)).build(),
-                ) { }
+            val config = InitializationConfig.Builder(activity.getString(R.string.gallipick_admob_app_id)).build()
+            initialized = if (rewardedTestEnabled) {
+                try {
+                    withTimeoutOrNull(30_000) {
+                        withContext(Dispatchers.IO) {
+                            suspendCancellableCoroutine<Unit> { continuation ->
+                                MobileAds.initialize(activity, config) { continuation.resume(Unit) }
+                            }
+                        }
+                    } != null
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    false
+                }
+            } else {
+                withContext(Dispatchers.IO) { MobileAds.initialize(activity, config) { } }
+                true
             }
-            initialized = true
         }
     }
 
@@ -145,6 +184,11 @@ internal fun rememberGalliAdsSession(
         sdkReady = initialized,
         removal = removal,
         privacyOptionsRequired = privacyRequired,
+        rewardedTestEnabled = rewardedTestEnabled,
+        entitlementUid = uid,
+        entitlementGeneration = accountGeneration,
+        canRequestAdsNow = { consentInformation.canRequestAds() },
+        refreshVerification = { refreshRequest++ },
         openPrivacyOptions = {
             if (privacyRequired) {
                 UserMessagingPlatform.showPrivacyOptionsForm(activity) { updateConsentStatus() }
@@ -158,18 +202,20 @@ internal fun rememberCloudAdRemovalStatus(
     connection: CloudAccountConnection?,
     planObservation: CloudAdPlanObservation?,
     billingScreenVisible: Boolean = false,
+    refreshRequest: Int = 0,
+    currentUid: String? = connection?.session?.account?.collectAsStateWithLifecycle()?.value?.uid,
+    accountGeneration: Long = 0,
 ): AdRemovalStatus {
     if (connection == null) return AdRemovalStatus.NOT_PURCHASED
     val billing = connection.billing ?: return AdRemovalStatus.NOT_PURCHASED
-    val account by connection.session.account.collectAsStateWithLifecycle()
-    val uid = account?.uid ?: return AdRemovalStatus.NOT_PURCHASED
+    val uid = currentUid ?: return AdRemovalStatus.NOT_PURCHASED
     val lifecycle = LocalLifecycleOwner.current.lifecycle
-    var lastObservation by remember(billing, uid) { mutableStateOf<CloudAdPlanObservation?>(null) }
-    var currentPlan by remember(billing, uid) { mutableStateOf<CloudAdPlanObservation?>(null) }
+    var lastObservation by remember(billing, uid, accountGeneration) { mutableStateOf<CloudAdPlanObservation?>(null) }
+    var currentPlan by remember(billing, uid, accountGeneration) { mutableStateOf<CloudAdPlanObservation?>(null) }
     val currentAccountObservation = planObservation?.takeIf { it.uid == uid }
     val newObservation = currentAccountObservation?.takeIf { it != lastObservation }
 
-    LaunchedEffect(lifecycle, billing, uid, currentAccountObservation, billingScreenVisible) {
+    LaunchedEffect(lifecycle, billing, uid, accountGeneration, currentAccountObservation, billingScreenVisible, refreshRequest) {
         if (newObservation != null) {
             lastObservation = newObservation
             currentPlan = newObservation

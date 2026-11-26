@@ -79,6 +79,27 @@ test('Play Cloud annual ACTIVE for any new subscribers is a hard stop', () => {
   }
 });
 
+test('Cloud base plans with an annual duration are checked regardless of their ID', () => {
+  const product = subscription('gallipick_cloud_10gb');
+  const yearly = { ...validPlan('annual', 99_000), basePlanId: 'yearly-v2' };
+  product.basePlans.push(yearly);
+
+  const selling = evaluatePlaySubscription(product.productId, product);
+  assert.equal(selling.ready, false);
+  assert.equal(selling.checks.annualBlocked.detail,
+    'CLOUD_ANNUAL_STILL_AVAILABLE_FOR_NEW_SUBSCRIBERS');
+
+  yearly.regionalConfigs[0].newSubscriberAvailability = false;
+  const legacy = evaluatePlaySubscription(product.productId, product);
+  assert.equal(legacy.ready, true);
+  assert.equal(legacy.checks.annualBlocked.detail, 'ACTIVE_LEGACY_ANNUAL_NOT_AVAILABLE_TO_NEW_SUBSCRIBERS');
+
+  delete yearly.autoRenewingBasePlanType;
+  yearly.prepaidBasePlanType = { billingPeriodDuration: 'P1Y' };
+  yearly.otherRegionsConfig.newSubscriberAvailability = true;
+  assert.equal(evaluatePlaySubscription(product.productId, product).ready, false);
+});
+
 test('Korean base-plan price, currency, location, renewal period and availability are checked', () => {
   const baseline = subscription('gallipick_cloud_10gb');
   const variants = [

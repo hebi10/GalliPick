@@ -1,0 +1,396 @@
+package com.hebi.gallipick.ui
+
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.hebi.gallipick.AppThemeMode
+import com.hebi.gallipick.AppUiState
+import com.hebi.gallipick.AppViewModel
+import com.hebi.gallipick.MediaAccess
+import com.hebi.gallipick.data.cloud.CloudAccountConnection
+import kotlinx.coroutines.launch
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun SettingsScreen(
+    state: AppUiState,
+    vm: AppViewModel,
+    requestAccess: () -> Unit,
+    openSettings: () -> Unit,
+    openTrash: () -> Unit,
+    adsPrivacyOptionsRequired: Boolean = false,
+    onAdsPrivacyOptions: () -> Unit = {},
+    openAdRemoval: (() -> Unit)? = null,
+    adRemoval: AdRemovalStatus = AdRemovalStatus.NOT_PURCHASED,
+    photoListView: Boolean = false,
+    onPhotoListViewChange: (Boolean) -> Unit = {},
+    cloudConnection: CloudAccountConnection? = null,
+) {
+    val uriHandler = LocalUriHandler.current
+    val cloudAccount = cloudConnection?.session?.account?.collectAsStateWithLifecycle()?.value
+    val settingsScroll = rememberScrollState()
+    var showSecretPasswordSettings by remember { mutableStateOf(false) }
+    var secretPasswordRegistered by remember(cloudAccount?.uid) { mutableStateOf(false) }
+    if (showSecretPasswordSettings) {
+        SecretCloudPasswordSettings(
+            connection = cloudConnection,
+            onClose = { showSecretPasswordSettings = false },
+            onRegistered = {
+                secretPasswordRegistered = true
+                showSecretPasswordSettings = false
+            },
+        )
+        return
+    }
+    var confirmClear by remember { mutableStateOf(false) }
+    var confirmClearOcr by remember { mutableStateOf(false) }
+    var showProtectedFolders by remember { mutableStateOf(false) }
+    val folders = remember(state.items, state.protectedFolders) {
+        val observed = state.items.groupBy { normalizeUiFolder(it.relativePath) }
+        (observed.keys + state.protectedFolders).associateWith { observed[it].orEmpty() }.toSortedMap()
+    }
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val compact = maxWidth < 440.dp * fontScale
+        val gridWidth = (maxWidth - 24.dp).coerceAtLeast(0.dp)
+        Column(
+            Modifier.fillMaxHeight().widthIn(max = 660.dp).fillMaxWidth()
+                .verticalScroll(settingsScroll)
+                .padding(horizontal = if (compact) 12.dp else 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
+        ) {
+            SectionTitle("설정", "화면·권한·파일 관리")
+            if (openAdRemoval != null) {
+                SettingsSection("광고 및 구독") {
+                    Text(
+                        "클라우드 구독 혜택과 결제 상태를 확인할 수 있습니다.",
+                        color = Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    ActionButton(
+                        if (adRemoval == AdRemovalStatus.VERIFIED_AD_FREE) "구독 관리" else "광고 제거",
+                        openAdRemoval,
+                        Modifier.fillMaxWidth(),
+                        icon = Icons.Outlined.CreditCard,
+                    )
+                }
+            }
+            SettingsGroupTitle("화면")
+            SettingsSection("파일 보기") {
+                Text("파일 보기 방식", style = MaterialTheme.typography.bodyMedium)
+                FlowRow(
+                    Modifier.fillMaxWidth().selectableGroup(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    FilterChip(
+                        selected = !photoListView,
+                        onClick = { onPhotoListViewChange(false) },
+                        label = { Text("격자") },
+                    )
+                    FilterChip(
+                        selected = photoListView,
+                        onClick = { onPhotoListViewChange(true) },
+                        label = { Text("목록") },
+                    )
+                }
+                if (!photoListView) {
+                    Text("한 줄에 표시할 파일 수", style = MaterialTheme.typography.bodyMedium)
+                    FlowRow(
+                        Modifier.fillMaxWidth().selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        listOf<Int?>(null, 3, 4, 5, 6).forEach { columns ->
+                            FilterChip(
+                                selected = state.fileGridColumns == columns,
+                                onClick = { vm.setFileGridColumns(columns) },
+                                label = { Text(columns?.let { "${it}개" } ?: "자동") },
+                            )
+                        }
+                    }
+                    Text("작은 화면에서는 표시 개수를 줄여 터치 영역을 확보합니다.",
+                        color = Muted, style = MaterialTheme.typography.bodySmall)
+                    val requested = state.fileGridColumns
+                    if (requested != null) {
+                        val applied = resolvedFileGridColumns(requested, gridWidth, fontScale, tablet = gridWidth >= 720.dp)
+                        if (applied < requested) {
+                            Text("현재 화면에서는 한 줄에 ${applied}개가 표시됩니다.",
+                                color = Muted, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+            SettingsSection("화면 테마") {
+                Text("기기 설정을 따르거나 모드를 직접 선택하세요.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Column(Modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    AppThemeMode.entries.forEach { mode ->
+                        val selected = state.themeMode == mode
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = GalliUiMetrics.touchTarget).clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) Panel else androidx.compose.ui.graphics.Color.Transparent)
+                                .selectable(selected = selected, role = Role.RadioButton, onClick = { vm.setThemeMode(mode) },
+                                    indication = null, interactionSource = remember { MutableInteractionSource() })
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            RadioButton(selected = selected, onClick = null)
+                            Text(when (mode) {
+                                AppThemeMode.SYSTEM -> "기기 설정 따르기"
+                                AppThemeMode.LIGHT -> "라이트 모드"
+                                AppThemeMode.DARK -> "다크 모드"
+                            }, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            }
+            SettingsGroupTitle("파일 관리")
+            SettingsSection("미디어 접근") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    GalliIcon(Icons.Outlined.Shield, null, Modifier.size(26.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(when (state.access) {
+                            MediaAccess.NONE -> "접근 권한 없음"
+                            MediaAccess.PARTIAL -> "일부 사진·동영상 접근 허용"
+                            MediaAccess.FULL -> "전체 사진·동영상 접근 허용"
+                        }, style = MaterialTheme.typography.bodyMedium)
+                        Text("기기 미디어 분석은 기기에서만 처리합니다. 클라우드 백업은 사용자가 별도로 선택해야 합니다.",
+                            color = Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                ActionButton("접근 범위 변경", requestAccess, Modifier.fillMaxWidth())
+                ActionButton("앱 권한 설정", openSettings, Modifier.fillMaxWidth())
+            }
+            SettingsSection("휴지통") {
+                Text("보관 중 ${state.trashed.size}개 · 파일 용량 ${bytesLabel(state.trashed.sumOf { it.sizeBytes })}", style = MaterialTheme.typography.bodyMedium)
+                Text("복원은 Android 시스템 확인을 거쳐 진행합니다. 영구 삭제 기능은 제공하지 않습니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                ActionButton("휴지통 열기", openTrash, Modifier.fillMaxWidth(), icon = Icons.Outlined.RestoreFromTrash)
+            }
+            SettingsSection("보호 폴더") {
+                Text("직접 보호한 폴더 ${state.protectedFolders.size}개", style = MaterialTheme.typography.bodyMedium)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    GalliIllustration(GalliScene.PROTECT, Modifier.size(44.dp))
+                    Text("폴더를 보호하면 해당 파일의 정리 선택이 차단됩니다. 즐겨찾기도 기본으로 보호합니다.", color = Muted,
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                }
+                if (folders.isEmpty()) Text("미디어를 불러오면 폴더가 표시됩니다.", color = Muted)
+                else ActionButton(
+                    if (showProtectedFolders) "폴더 목록 접기" else "보호 폴더 관리 · ${folders.size}개",
+                    { showProtectedFolders = !showProtectedFolders },
+                    Modifier.fillMaxWidth(),
+                )
+                if (showProtectedFolders) folders.forEach { (path, items) ->
+                    val protected = path in state.protectedFolders
+                    val inherited = state.protectedFolders.firstOrNull { it.isNotEmpty() && it != path && path.startsWith(it) }
+                    Column(
+                        Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(14.dp)).padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        val label = if (protected) "보호 해제" else if (inherited != null) "상위 보호" else "보호"
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(path.trimEnd('/').ifEmpty { "기본 폴더" }, style = MaterialTheme.typography.bodyMedium)
+                            Text("${items.size}개 · ${bytesLabel(items.sumOf { it.sizeBytes })}", color = Muted, style = MaterialTheme.typography.bodySmall)
+                            if (inherited != null) Text("상위 ${inherited.trimEnd('/')} 폴더에서 보호 중", color = Muted, style = MaterialTheme.typography.labelSmall)
+                        }
+                        ActionButton(
+                            label, { vm.protectFolder(path, !protected) }, Modifier.fillMaxWidth(),
+                            enabled = protected || inherited == null,
+                        )
+                    }
+                }
+            }
+            SettingsSection("분석 캐시") {
+                Text("중복 분석 결과와 해시 캐시를 비웁니다. 사진·동영상 원본은 유지됩니다.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                ActionButton("분석 캐시 비우기", { confirmClear = true }, Modifier.fillMaxWidth())
+            }
+            SettingsSection("사진 글자 검색 데이터") {
+                Text("기기 안에 저장된 사진 속 글자 색인 ${state.ocrEntries.size}건을 관리합니다.",
+                    color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("초기화해도 사진·동영상 원본, 기존 사진 분석 결과, 보호 설정은 유지됩니다.",
+                    color = Muted, style = MaterialTheme.typography.bodySmall)
+                ActionButton("사진 글자 색인 초기화", { confirmClearOcr = true }, Modifier.fillMaxWidth())
+            }
+            if (adsPrivacyOptionsRequired) {
+                SettingsSection("광고 개인정보 선택") {
+                    Text("광고에 대한 개인정보 동의 여부를 다시 선택할 수 있습니다.",
+                        style = MaterialTheme.typography.bodySmall, color = Muted)
+                    ActionButton("광고 개인정보 선택 변경", onAdsPrivacyOptions, Modifier.fillMaxWidth())
+                }
+            }
+            SettingsSection("시크릿 클라우드") {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("클라우드 탭에 표시", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    Switch(
+                        checked = state.secretCloudVisible,
+                        onCheckedChange = vm::setSecretCloudVisible,
+                        modifier = Modifier.semantics { contentDescription = "시크릿 클라우드 표시" },
+                    )
+                }
+                ActionButton("비밀번호 설정", {
+                    secretPasswordRegistered = false
+                    showSecretPasswordSettings = true
+                }, Modifier.fillMaxWidth())
+                if (secretPasswordRegistered) CloudStatusMessage("비밀번호를 설정했습니다")
+            }
+            if (cloudConnection != null) {
+                if (cloudAccount != null) {
+                    SettingsSection("계정 관리") {
+                        Text("GalliPick 클라우드 계정 및 연관 데이터 탈퇴를 요청할 수 있습니다.",
+                            color = Muted, style = MaterialTheme.typography.bodySmall)
+                        CloudAccountDeletionButton(cloudConnection)
+                    }
+                }
+            }
+            SettingsGroupTitle("지원")
+            SettingsSection("개인정보") {
+                Text("기기 파일 정리·검색·중복 분석은 기기에서 처리합니다. 클라우드 백업을 선택하면 해당 사진·동영상 원본과 파일 정보가 서버에 전송됩니다.", style = MaterialTheme.typography.bodyMedium)
+                if (adsPrivacyOptionsRequired) {
+                    Text("광고 요청에 사용되는 기기 정보와 광고 식별자 등의 처리 기준은 개인정보처리방침을 참고해 주세요.",
+                        style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+                Text("사진 위치정보 접근은 원본 사진의 중복 검사에만 사용합니다. GPS 위치를 추적하거나 현재 위치를 수집하지 않습니다.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                ActionButton("개인정보처리방침", { uriHandler.openUri("https://hebi10.github.io/GalliPick/privacy.html") }, Modifier.fillMaxWidth())
+            }
+            ErrorReportSettings()
+            Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GalliMascot(Modifier.size(38.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("GalliPick · 기기 내 미디어 정리", style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+            }
+        }
+    }
+    if (confirmClear) ClearAnalysisCacheDialog(
+        onConfirm = { vm.clearAnalysisCache(); confirmClear = false },
+        onDismiss = { confirmClear = false },
+    )
+    if (confirmClearOcr) AlertDialog(
+        onDismissRequest = { confirmClearOcr = false },
+        title = { Text("사진 글자 색인 초기화") },
+        text = { Text("기기 안에 저장된 OCR 글자 검색 기록만 삭제합니다. 원본 사진과 정리 기록·보호 설정은 유지됩니다.") },
+        confirmButton = {
+            ActionButton("색인 초기화", {
+                vm.clearOcrIndex()
+                confirmClearOcr = false
+            }, filled = true)
+        },
+        dismissButton = { TextAction("취소", { confirmClearOcr = false }) },
+    )
+}
+
+private const val GALLIPICK_SUPPORT_EMAIL = "asdlkj0104@gmail.com"
+
+@Composable
+private fun ErrorReportSettings() {
+    val context = LocalContext.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    var showAddress by remember { mutableStateOf(false) }
+    SettingsSection("오류 보고하기") {
+        ActionButton("오류 보고 메일 작성", {
+            val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            val subject = Uri.encode("[GalliPick] 오류 보고")
+            val body = Uri.encode("문제가 발생한 화면:\n문제를 재현하는 방법:\n발생한 오류:\n\n앱 버전: $version")
+            try {
+                context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$GALLIPICK_SUPPORT_EMAIL?subject=$subject&body=$body")))
+            } catch (_: ActivityNotFoundException) {
+                showAddress = true
+            } catch (_: SecurityException) {
+                showAddress = true
+            }
+        }, Modifier.fillMaxWidth(), icon = Icons.Outlined.Email)
+    }
+    if (showAddress) {
+        AlertDialog(
+            onDismissRequest = { showAddress = false },
+            title = { Text("오류 보고하기") },
+            text = { Text("메일 앱을 열 수 없습니다. 아래 주소로 오류 내용을 보내 주세요.\n\n$GALLIPICK_SUPPORT_EMAIL") },
+            confirmButton = { TextAction("이메일 주소 복사", {
+                scope.launch {
+                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("GalliPick 지원 이메일", GALLIPICK_SUPPORT_EMAIL)))
+                    showAddress = false
+                }
+            }) },
+            dismissButton = { TextAction("닫기", { showAddress = false }) },
+        )
+    }
+}
+
+@Composable
+internal fun ClearAnalysisCacheDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss, shape = RoundedCornerShape(20.dp),
+        containerColor = AppSurface, titleContentColor = Ink, textContentColor = Muted,
+        title = { Text("분석 캐시를 비울까요?") },
+        text = { Text("중복 분석 결과와 해시 캐시를 초기화합니다. 다음 검사에서 다시 분석하며 사진·동영상 원본과 보호 설정은 유지합니다.") },
+        confirmButton = { ActionButton("비우기", onConfirm, filled = true) },
+        dismissButton = { TextAction("취소", onDismiss) },
+    )
+}
+
+@Composable
+private fun SettingsGroupTitle(title: String) {
+    Text(title, Modifier.padding(top = 4.dp).semantics { heading() },
+        style = MaterialTheme.typography.titleSmall, color = Ink)
+}
+
+@Composable
+private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    val icon = when (title) {
+        "화면 테마" -> Icons.Outlined.DarkMode
+        "파일 보기" -> Icons.Outlined.GridView
+        "미디어 접근" -> Icons.Outlined.PhotoLibrary
+        "휴지통" -> Icons.Outlined.RestoreFromTrash
+        "보호 폴더" -> Icons.Outlined.Folder
+        "분석 캐시" -> Icons.Outlined.CleaningServices
+        "사진 글자 검색 데이터" -> Icons.Outlined.TextFields
+        "오류 보고하기" -> Icons.Outlined.Email
+        "시크릿 클라우드" -> Icons.Outlined.Lock
+        else -> Icons.Outlined.Shield
+    }
+    Column(
+        Modifier.fillMaxWidth().galliCardSurface(AppSurface)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.size(32.dp).background(Panel, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                GalliIcon(icon, null, Modifier.size(20.dp))
+            }
+            Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
+        }
+        content()
+    }
+}

@@ -1,12 +1,46 @@
 from pathlib import Path
+import subprocess
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
-from gp_device import ACTIVITY, PACKAGE, find_control, installed_code_path, measure, startup_time, storage_kib
+from gp_device import ACTIVITY, PACKAGE, ensure_rooted_emulator, find_control, installed_code_path, measure, startup_time, storage_kib
 
 
 class DeviceMetricsTest(TestCase):
+    def test_root_reconnects_after_adbd_closes_the_command(self):
+        closed = subprocess.CalledProcessError(1, ["adb", "root"], output="adb: unable to connect for root: closed")
+        with patch("gp_device.adb", side_effect=["", "2000", closed, "", "0"]) as command:
+            ensure_rooted_emulator()
+            self.assertEqual(command.call_count, 5)
+            command.assert_called_with("shell", "id", "-u", timeout=15)
+
+    def test_already_rooted_emulator_does_not_restart_adbd(self):
+        with patch("gp_device.adb", side_effect=["", "0"]) as command:
+            ensure_rooted_emulator()
+            self.assertEqual(command.call_count, 2)
+
+    def test_root_retries_transient_timeout_but_requires_root_uid(self):
+        timeout = subprocess.TimeoutExpired(["adb", "wait-for-device"], 15)
+        with patch("gp_device.adb", side_effect=[timeout, "", "0"]), patch("gp_device.time.sleep") as sleep:
+            ensure_rooted_emulator()
+            sleep.assert_called_once_with(2)
+        with (
+            patch("gp_device.adb", side_effect=["", "2000", "adbd cannot run as root", "", "2000"] * 3) as command,
+            patch("gp_device.time.sleep") as sleep,
+            self.assertRaisesRegex(ValueError, "requires a rooted emulator"),
+        ):
+            ensure_rooted_emulator()
+        self.assertEqual(command.call_count, 15)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_unexpected_adb_failure_is_not_retried(self):
+        error = subprocess.CalledProcessError(1, ["adb", "root"], output="adb: unexpected failure")
+        with patch("gp_device.adb", side_effect=["", "2000", error]) as command:
+            with self.assertRaises(subprocess.CalledProcessError):
+                ensure_rooted_emulator()
+            self.assertEqual(command.call_count, 3)
+
     def test_startup_requires_the_expected_activity_state_and_duration(self):
         result = f"Status: ok\nLaunchState: WARM\nActivity: {PACKAGE}/{ACTIVITY}\nTotalTime: 347\nComplete"
         self.assertEqual(startup_time(result, "WARM"), 347)

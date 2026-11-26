@@ -10,6 +10,7 @@ import com.hebi.gallipick.domain.*
 import com.hebi.gallipick.data.CachedPhotoHash
 import com.hebi.gallipick.data.MediaCachePolicy
 import com.hebi.gallipick.data.VerifiedCatalog
+import com.hebi.gallipick.ui.RewardedAnalysisSession
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -63,6 +64,7 @@ class AppViewModel(
     savedStateHandle: SavedStateHandle = SavedStateHandle(),
 ) : AndroidViewModel(application) {
     val repository = (application as GalliPickApplication).repository
+    internal val rewardedAnalysis by lazy { RewardedAnalysisSession() }
     internal val trashReview by lazy { TrashReviewCoordinator(this, savedStateHandle, viewModelScope) }
     private val settings = AppSettings(application)
     private val _ui = MutableStateFlow(AppUiState(

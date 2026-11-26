@@ -18,12 +18,49 @@ UI_DUMP = "/data/local/tmp/gallipick-benchmark-window.xml"
 STARTUP_SAMPLES = 5
 
 
-def adb(*args):
+def adb(*args, timeout=180):
     result = subprocess.run(
         ["adb", *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        encoding="utf-8", timeout=180,
+        encoding="utf-8", timeout=timeout,
     )
     return result.stdout.strip()
+
+
+def is_adb_disconnect(error):
+    message = (error.stdout or "").lower()
+    return (
+        "closed" in message
+        or "device offline" in message
+        or "no devices/emulators found" in message
+        or "device not found" in message
+        or re.search(r"device ['\"][^'\"]+['\"] not found", message) is not None
+    )
+
+
+def ensure_rooted_emulator():
+    # Restarting adbd may close the root command before it can report success.
+    for attempt in range(3):
+        try:
+            adb("wait-for-device", timeout=15)
+            if adb("shell", "id", "-u", timeout=15) == "0":
+                return
+            try:
+                adb("root", timeout=15)
+            except subprocess.CalledProcessError as error:
+                if not is_adb_disconnect(error):
+                    raise
+            adb("wait-for-device", timeout=15)
+            if adb("shell", "id", "-u", timeout=15) == "0":
+                return
+        except subprocess.CalledProcessError as error:
+            if not is_adb_disconnect(error):
+                raise
+        except subprocess.TimeoutExpired:
+            pass
+        if attempt < 2:
+            print("Waiting for rooted emulator ADB connection", flush=True)
+            time.sleep(2)
+    raise ValueError("Installed storage measurement requires a rooted emulator after 3 attempts.")
 
 
 def startup_time(output, expected_state):
@@ -146,10 +183,7 @@ def main():
         raise ValueError("Run this benchmark on a disposable Android emulator.")
     if benchmark_installed():
         raise ValueError("Use a disposable emulator without the benchmark app already installed.")
-    adb("root")
-    adb("wait-for-device")
-    if adb("shell", "id", "-u") != "0":
-        raise ValueError("Installed storage measurement requires a rooted emulator.")
+    ensure_rooted_emulator()
 
     report = {
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),

@@ -50,17 +50,25 @@ function evaluateRequiredPlan(productId, planId, expectedPrice, subscription) {
 
 function evaluateCloudAnnual(subscription) {
   const plans = subscription?.basePlans;
-  const matching = Array.isArray(plans) ? plans.filter(plan => plan?.basePlanId === 'annual') : [];
+  const matching = Array.isArray(plans) ? plans.filter(plan =>
+    plan?.basePlanId === 'annual' ||
+    plan?.autoRenewingBasePlanType?.billingPeriodDuration === 'P1Y' ||
+    plan?.prepaidBasePlanType?.billingPeriodDuration === 'P1Y') : [];
   if (matching.length === 0) return plain('PASS', 'ANNUAL_NOT_CONFIGURED');
-  if (matching.length !== 1) return plain('FAIL', 'DUPLICATE_ANNUAL_BASE_PLAN');
-  const plan = matching[0];
-  if (plan.state === 'INACTIVE' || plan.state === 'DRAFT') return plain('PASS', 'ANNUAL_NOT_ACTIVE');
-  if (plan.state !== 'ACTIVE') return plain('UNVERIFIED', 'ANNUAL_STATE_NOT_VERIFIED');
-  const available = (Array.isArray(plan.regionalConfigs) &&
-    plan.regionalConfigs.some(region => region?.newSubscriberAvailability === true)) ||
-    plan.otherRegionsConfig?.newSubscriberAvailability === true;
-  return available ? plain('FAIL', 'CLOUD_ANNUAL_STILL_AVAILABLE_FOR_NEW_SUBSCRIBERS')
-    : plain('PASS', 'ACTIVE_LEGACY_ANNUAL_NOT_AVAILABLE_TO_NEW_SUBSCRIBERS');
+  if (new Set(matching.map(plan => plan.basePlanId)).size !== matching.length) {
+    return plain('FAIL', 'DUPLICATE_ANNUAL_BASE_PLAN');
+  }
+  const active = matching.filter(plan => plan.state === 'ACTIVE');
+  const available = active.some(plan =>
+    (Array.isArray(plan.regionalConfigs) &&
+      plan.regionalConfigs.some(region => region?.newSubscriberAvailability === true)) ||
+    plan.otherRegionsConfig?.newSubscriberAvailability === true);
+  if (available) return plain('FAIL', 'CLOUD_ANNUAL_STILL_AVAILABLE_FOR_NEW_SUBSCRIBERS');
+  if (matching.some(plan => !['ACTIVE', 'INACTIVE', 'DRAFT'].includes(plan.state))) {
+    return plain('UNVERIFIED', 'ANNUAL_STATE_NOT_VERIFIED');
+  }
+  return active.length > 0 ? plain('PASS', 'ACTIVE_LEGACY_ANNUAL_NOT_AVAILABLE_TO_NEW_SUBSCRIBERS')
+    : plain('PASS', 'ANNUAL_NOT_ACTIVE');
 }
 
 export function evaluatePlaySubscription(productId, resource) {

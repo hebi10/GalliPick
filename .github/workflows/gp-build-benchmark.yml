@@ -6,6 +6,8 @@ on:
       - 'app/build.gradle.kts'
       - 'scripts/performance/gp_build.py'
       - 'scripts/performance/test_gp_build.py'
+      - 'scripts/performance/gp_device.py'
+      - 'scripts/performance/test_gp_device.py'
       - '.github/workflows/gp-build-benchmark.yml'
   workflow_dispatch:
     inputs:
@@ -47,6 +49,9 @@ jobs:
         run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
       - name: Test package metrics parser
         run: python3 -B -m unittest discover -s scripts/performance -p 'test_gp_build.py'
+      - name: Test device metrics parser and ADB recovery
+        if: matrix.profile == 'playCloud'
+        run: python3 -B -m unittest discover -s scripts/performance -p 'test_gp_device.py'
       - name: Measure APK, AAB and runtime dependencies
         env:
           BUILD_PROFILE: ${{ matrix.profile }}

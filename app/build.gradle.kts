@@ -21,6 +21,12 @@ val sampleBannerAdUnitId = "ca-app-pub-3940256099942544/9214589741"
 val adsDebugTest = providers.gradleProperty("gallipickAdsTest")
     .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickAdsTest must be true or false") }
     .getOrElse(false)
+val rewardedAdsDebugTest = providers.gradleProperty("gallipickRewardedAdsTest")
+    .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickRewardedAdsTest must be true or false") }
+    .getOrElse(false)
+require(!rewardedAdsDebugTest || adsDebugTest) {
+    "gallipickRewardedAdsTest requires gallipickAdsTest=true."
+}
 val adsDebugPreview = providers.gradleProperty("gallipickAdsPreview")
     .map { it.toBooleanStrictOrNull() ?: throw GradleException("gallipickAdsPreview must be true or false") }
     .getOrElse(false)
@@ -73,9 +79,6 @@ fun readCloudFirebaseConfig(
     json: String,
     playSigningSha1: String? = null,
     expectedProjectId: String = cloudTestFirebaseProjectId,
-    externalAndroidOAuthClientId: String? = null,
-    externalWebOAuthClientId: String? = null,
-    developmentReference: (() -> String)? = null,
 ): Map<String, String> {
     fun Map<*, *>.objectField(name: String): Map<*, *> = this[name] as? Map<*, *> ?: emptyMap<Any, Any>()
     fun Map<*, *>.objectArray(name: String): List<Map<*, *>> =
@@ -109,28 +112,18 @@ fun readCloudFirebaseConfig(
     val production = expectedProjectId == cloudProductionFirebaseProjectId
     val firebaseWebClient = if (production) webClients.single() else webClients.first()
     val firebaseWebId = firebaseWebClient["client_id"] as String
-    val directAndroidClients = oauthClients.filter(::isPlaySigningAndroidClient)
-    val googleWebId = if (playSigningSha1 != null && directAndroidClients.isEmpty()) {
-        require(production)
-        val androidId = requireNotNull(externalAndroidOAuthClientId)
-        val webId = requireNotNull(externalWebOAuthClientId)
-        val referenceConfig = JsonSlurper().parseText(requireNotNull(developmentReference).invoke()) as Map<*, *>
-        requireSameProjectOAuth(referenceConfig, androidId, webId)
-        val referenceClients = androidClientFor(referenceConfig, cloudTestFirebaseProjectId).objectArray("oauth_client")
-        require(referenceClients.any { it["client_id"] == androidId && isPlaySigningAndroidClient(it) })
-        require(referenceClients.any { it["client_id"] == webId && (it["client_type"] as? Number)?.toInt() == 3 })
-        webId
-    } else {
-        if (production && playSigningSha1 != null) {
-            requireSameProjectOAuth(config, directAndroidClients.single()["client_id"] as String, firebaseWebId)
+    if (playSigningSha1 != null) {
+        val signingClients = oauthClients.filter(::isPlaySigningAndroidClient)
+        require(signingClients.isNotEmpty())
+        if (production) {
+            requireSameProjectOAuth(config, signingClients.single()["client_id"] as String, firebaseWebId)
         }
-        firebaseWebId
     }
     val values = listOf(
         client.objectField("client_info")["mobilesdk_app_id"],
         client.objectArray("api_key").first()["current_key"],
         expectedProjectId,
-        googleWebId,
+        firebaseWebId,
     ).map { it as String }
     require(values.all { it.matches(Regex("[a-zA-Z0-9_.:-]+")) })
     require(values.last().endsWith(".apps.googleusercontent.com"))
@@ -153,17 +146,7 @@ val playCloudFirebaseConfig = if (playCloudPilot) {
     val signingSha1 = normalizedSha1(providers.gradleProperty("gallipickPlayAppSigningSha1").orNull)
         ?: throw GradleException("The Play cloud pilot requires a valid gallipickPlayAppSigningSha1.")
     try {
-        readCloudFirebaseConfig(
-            json,
-            signingSha1,
-            releaseFirebaseProjectId,
-            providers.gradleProperty("gallipickPlayExternalAndroidOAuthClientId").orNull,
-            providers.gradleProperty("gallipickPlayExternalWebOAuthClientId").orNull,
-        ) {
-            val reference = File(providers.gradleProperty("gallipickPlayAndroidOAuthReferenceFile").get())
-            require(reference.isAbsolute && reference.isFile)
-            reference.readText()
-        }
+        readCloudFirebaseConfig(json, signingSha1, releaseFirebaseProjectId)
     } catch (_: Exception) {
         throw GradleException("Invalid Play cloud Firebase configuration for $cloudEnvironment. Check the Firebase project, Play signing certificate, and Android and web OAuth clients.")
     }
@@ -217,10 +200,11 @@ android {
         applicationId = galliPickApplicationId
         minSdk = 30
         targetSdk = 36
-        versionCode = 37
-        versionName = "0.2.26"
+        versionCode = 38
+        versionName = "0.2.27"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resValue("bool", "gallipick_ads_preview", "false")
+        resValue("bool", "gallipick_rewarded_ads_test", "false")
     }
     signingConfigs {
         create("galliPick") {
@@ -240,6 +224,7 @@ android {
     buildTypes {
         debug {
             resValue("bool", "gallipick_ads_enabled", adsDebugTest.toString())
+            resValue("bool", "gallipick_rewarded_ads_test", rewardedAdsDebugTest.toString())
             resValue("bool", "gallipick_ads_preview", (adsDebugPreview && !adsDebugTest).toString())
             resValue("string", "gallipick_admob_app_id", sampleAdMobAppId)
             resValue("string", "gallipick_admob_banner_unit_id", sampleBannerAdUnitId)

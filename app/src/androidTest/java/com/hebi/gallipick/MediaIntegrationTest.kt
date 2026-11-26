@@ -8,6 +8,8 @@ import android.net.Uri
 import android.provider.MediaStore
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hebi.gallipick.data.MediaRepository
@@ -29,6 +31,9 @@ import java.io.ByteArrayOutputStream
 class MediaIntegrationTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val app = instrumentation.targetContext.applicationContext as GalliPickApplication
+    private val appViewModelFactory = viewModelFactory {
+        initializer { AppViewModel(app) }
+    }
     private val repository: MediaRepository get() = app.repository
     private val created = mutableListOf<Uri>()
     private val stores = mutableListOf<ViewModelStore>()
@@ -126,7 +131,7 @@ class MediaIntegrationTest {
         lateinit var vm: AppViewModel
         instrumentation.runOnMainSync {
             val store = ViewModelStore().also { stores += it }
-            vm = ViewModelProvider(store, ViewModelProvider.AndroidViewModelFactory.getInstance(app))[AppViewModel::class.java]
+            vm = ViewModelProvider(store, appViewModelFactory)[AppViewModel::class.java]
             assertTrue(vm.ui.value.items.isEmpty())
             vm.setAccess(MediaAccess.PARTIAL)
             vm.refresh()
@@ -230,7 +235,7 @@ class MediaIntegrationTest {
         lateinit var vm: AppViewModel
         instrumentation.runOnMainSync {
             val store = ViewModelStore().also { stores += it }
-            vm = ViewModelProvider(store, ViewModelProvider.AndroidViewModelFactory.getInstance(app))[AppViewModel::class.java]
+            vm = ViewModelProvider(store, appViewModelFactory)[AppViewModel::class.java]
             vm.setAccess(MediaAccess.PARTIAL)
             vm.refresh()
         }

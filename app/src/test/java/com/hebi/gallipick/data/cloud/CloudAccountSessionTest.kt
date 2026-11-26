@@ -36,7 +36,7 @@ class CloudAccountSessionTest {
 
         assertEquals(second, session.account.value)
         assertEquals(2, backend.clears)
-        assertEquals(CloudAccountStatus(), session.status.value)
+        assertEquals(CloudAccountStatus(generation = 2), session.status.value)
     }
 
     @Test
@@ -106,7 +106,20 @@ class CloudAccountSessionTest {
         choosing.join()
 
         assertEquals(second, session.account.value)
-        assertEquals(CloudAccountStatus(), session.status.value)
+        assertEquals(CloudAccountStatus(generation = 1), session.status.value)
+    }
+
+    @Test
+    fun signOutAndSignBackIntoTheSameAccountAdvancesTheGeneration() = runTest {
+        val backend = TestBackend(second)
+        val session = CloudAccountSession(backend)
+        val initialGeneration = session.status.value.generation
+
+        session.signOut()
+        session.chooseAccount { "second-test-credential" }
+
+        assertEquals(second, session.account.value)
+        assertEquals(initialGeneration + 2, session.status.value.generation)
     }
 
     private class TestBackend(existing: CloudAccountIdentity?) : CloudAccountBackend {
