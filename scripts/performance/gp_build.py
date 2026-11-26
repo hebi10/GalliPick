@@ -10,6 +10,7 @@ import subprocess
 import zipfile
 
 from gp_r8_compat import verify_optimized_apk
+from gp_dex_metrics import compare_builds, inspect_bundle
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +36,7 @@ def dex_method_ids(header, entry_bytes):
 def archive_metrics(path):
     pattern = DEX_NAME if path.suffix == ".apk" else rf"[^/]+/dex/{DEX_NAME}"
     dex = {}
+    dex_sizes = {}
     with zipfile.ZipFile(path) as archive:
         for entry in archive.infolist():
             if re.fullmatch(pattern, entry.filename):
@@ -42,12 +44,15 @@ def archive_metrics(path):
                     raise ValueError(f"Duplicate DEX entry in {path.name}.")
                 with archive.open(entry) as content:
                     dex[entry.filename] = dex_method_ids(content.read(DEX_HEADER_BYTES), entry.file_size)
+                    dex_sizes[entry.filename] = entry.file_size
     if not dex:
         raise ValueError(f"No packaged DEX entries in {path.name}.")
     return {
         "file": path.name,
         "bytes": path.stat().st_size,
         "dex_files": len(dex),
+        "dex_uncompressed_bytes": sum(dex_sizes.values()),
+        "dex_uncompressed_bytes_by_file": dex_sizes,
         "dex_method_ids": sum(dex.values()),
         "dex_method_ids_by_file": dex,
     }
@@ -85,6 +90,8 @@ def measure(profile, minified, output):
         if len(artifacts) != 1:
             raise ValueError(f"Expected exactly one {kind.upper()} for {variant}.")
         metrics[kind] = archive_metrics(artifacts[0])
+        if kind == "aab":
+            metrics[kind]["dex_optimization"] = inspect_bundle(artifacts[0])
         if minified and kind == "apk":
             metrics["r8_compatibility"] = verify_optimized_apk(
                 artifacts[0], ROOT / "app" / "build" / "outputs" / "mapping" / variant,
@@ -123,6 +130,7 @@ def main():
             report["measurements"].append(measure(profile, False, output))
             if args.r8 and profile != "devCloud":
                 report["measurements"].append(measure(profile, True, output))
+        report["comparisons"] = compare_builds(report["measurements"])
         (output / "metrics.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired, zipfile.BadZipFile) as error:
         raise SystemExit(f"Build measurement stopped before a complete report was written. {error}") from None
