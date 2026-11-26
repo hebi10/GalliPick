@@ -9,6 +9,8 @@ import struct
 import subprocess
 import zipfile
 
+from gp_r8_compat import verify_optimized_apk
+
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILES = ("localOnly", "devCloud", "playCloud")
@@ -83,6 +85,10 @@ def measure(profile, minified, output):
         if len(artifacts) != 1:
             raise ValueError(f"Expected exactly one {kind.upper()} for {variant}.")
         metrics[kind] = archive_metrics(artifacts[0])
+        if minified and kind == "apk":
+            metrics["r8_compatibility"] = verify_optimized_apk(
+                artifacts[0], ROOT / "app" / "build" / "outputs" / "mapping" / variant,
+            )
 
     dependency_file = f"{profile}-{'r8' if minified else 'baseline'}-runtime.txt"
     (output / dependency_file).write_text(dependencies, encoding="utf-8")
@@ -118,7 +124,7 @@ def main():
             if args.r8 and profile != "devCloud":
                 report["measurements"].append(measure(profile, True, output))
         (output / "metrics.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    except (OSError, ValueError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
+    except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired, zipfile.BadZipFile) as error:
         raise SystemExit(f"Build measurement stopped before a complete report was written. {error}") from None
 
 

@@ -38,6 +38,13 @@ GitHub Actions의 **Android package benchmarks**는 빌드 설정이나 측정 �
 - `:app:verifyGalliPickR8Configuration`은 실제 Gradle DSL의 각 빌드 유형별 축소 플래그와 적용 규칙 목록을 확인하며 운영 키나 Firebase 비밀값 없이 실행합니다. 기존 패키지 벤치마크의 각 프로필에서 검사합니다.
 - GP-R8-01 병합, GP-R8-03~04 호환성 및 운영 연동 회귀 검증 전에는 이 변경을 main에 병합하거나 배포하지 않습니다. GP-R8-05에서 Google Play 최적화 비율을 별도 확인합니다.
 
+## GP-R8-03 이름 기반 런타임 호환성 계약
+
+- WorkManager의 기존 작업 DB는 Worker 클래스의 정규 이름을 저장합니다. 앱의 4개 예약 Worker의 원래 클래스 이름과 (Context, WorkerParameters) 공개 생성자를 명시적으로 보존합니다. 메서드 전체 및 패키지 전체 keep은 사용하지 않습니다.
+- Room은 생성된 구현 클래스를 이름으로 찾아 생성하는 경로를 사용합니다. 라이브러리의 consumer rule을 사용하고 `MediaDatabase`, `MediaDatabase_Impl` 및 구현 클래스 공개 무인자 생성자가 실제 APK에 남아 있는지 검사합니다.
+- `gp_r8_compat.py`는 최적화된 APK에서 매핑으로 이름을 복원하지 않은 DEX 클래스·생성자 정의를 확인하며 비어 있지 않은 매핑 파일을 요구합니다. localOnly/playCloud R8 패키지 검사 JSON에 APK·매핑 해시 및 확인 항목을 남깁니다. 일반 debug/baseline APK에는 적용하지 않습니다.
+- 자세한 라이브러리별 판단 및 잔여 실제 기기 QA는 [GP-R8-03 호환성 검토](gp-r8-03-compatibility.md)를 참고합니다.
+
 ## 기기 설치 공간과 시작 시간
 
 [Android package benchmarks](https://github.com/hebi10/GalliPick/actions/workflows/gp-build-benchmark.yml)는 R8 빌드 설정 또는 측정 코드 변경 PR에서 이 API 36 비교를 자동 실행합니다. 일반 기능 PR의 전체 기기 QA와는 별개입니다. 수동 실행도 가능하며 이 경우 `measure_device`를 선택합니다. 별도 Android 36 에뮬레이터에 임시 테스트 키로 서명한 Play Cloud 기준 APK와 R8 APK를 차례로 설치합니다. 두 APK에서 홈, 파일 탭, 필터 열기·닫기를 검증합니다. 저장 공간과 시작 시간은 `play-cloud-device-metrics` 아티팩트의 `metrics.json`에 남습니다. AVD 생성 및 실행은 동일한 `ANDROID_USER_HOME`, `ANDROID_EMULATOR_HOME`, `ANDROID_AVD_HOME`을 사용하고, APK 빌드 전에 실제 AVD 등록 파일과 `emulator -list-avds` 결과를 검증합니다. 벤치마크 전용 Linux 에뮬레이터는 독립 프로세스 그룹에서 실행하고 종료를 제한 시간 내에 처리합니다. 측정이 실패하거나 종료에 실패하면 성공 처리하지 않습니다. 패키지 측정에서 Maven Central HTTP 429가 확인되면 새 임시 결과 경로로 1회 재시도하며, 다른 오류는 그대로 실패 처리합니다.
