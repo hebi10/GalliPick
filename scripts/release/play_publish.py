@@ -11,6 +11,7 @@ from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from signing_bundle import ReleaseError
+from r8_release_gate import verify_optimization_evidence
 from verify_apk import TAG_PATTERN
 
 
@@ -189,6 +190,8 @@ def load_inputs(bundle, manifest, notes):
         if (not text or len(text) > 500 or "<" in text or ">" in text
                 or any(ord(character) < 32 and character not in "\n\t" for character in text)):
             raise ValueError()
+        # Verify the immutable payload before creating any Play edit.
+        verify_optimization_evidence(payload, evidence)
         return metadata, evidence, payload, text
     except (OSError, ValueError, TypeError, AttributeError, UnicodeError):
         raise ReleaseError("Verified AAB, matching signed provenance, manifest and plain text notes (1–500 characters) are required.") from None

@@ -20,7 +20,7 @@
 | `cloud-files-07-visual-qa.yml` | 지정된 기능 브랜치 대상 관련 PR, 수동 | Cloud 갤러리 캡처용 APK와 합성 파일 기반 시각 QA | — | [11-17 성공](https://github.com/hebi10/GalliPick/actions/runs/44055565983) |
 | `stage10e-captures.yml` | main 대상 PR, 수동 | 라이트·다크 네이티브 시각 QA. PR의 브랜치가 지정 패턴에 해당할 때만 빌드 | — | [11-08 성공](https://github.com/hebi10/GalliPick/actions/runs/42490897036), [11-23 건너뜀](https://github.com/hebi10/GalliPick/actions/runs/45137361864) |
 | `ui-captures.yml` | 지정된 디자인 브랜치 push, 수동 | 화면 크기별 UI 검증과 네이티브 캡처 | — | [11-08 성공](https://github.com/hebi10/GalliPick/actions/runs/42469129960) |
-| `ops04-safety.yml` | OPS-04 관련 PR, 수동 | 내부 게시의 AAB 증빙·승인 오프라인 검증 | — | [11-18 성공](https://github.com/hebi10/GalliPick/actions/runs/44253532044) |
+| `ops04-safety.yml` | OPS-04 관련 PR, 수동 | 내부 게시의 AAB 증빙·승인 및 R8 증빙 재검증 | — | [11-18 성공](https://github.com/hebi10/GalliPick/actions/runs/44253532044) |
 | `ops05-safety.yml` | OPS-05 관련 PR | 동일 버전 비공개 테스트 승격의 오프라인 검증 | — | [11-13 성공](https://github.com/hebi10/GalliPick/actions/runs/43364888634) |
 | `ops06-store-safety.yml` | OPS-06 관련 PR·main push | 스토어 이미지·아이콘 게이트의 오프라인 검증 | — | [11-13 성공](https://github.com/hebi10/GalliPick/actions/runs/43369906287) |
 | `ops07-safety.yml` | PR, 수동 | Play 변경 경로와 OPS 게이트 통합 검사 | — | [11-23 성공](https://github.com/hebi10/GalliPick/actions/runs/45137361817) |

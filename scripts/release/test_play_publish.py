@@ -12,6 +12,8 @@ from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 
 from signing_bundle import ReleaseError
+from r8_release_gate import require_optimized_bundle
+from r8_test_fixture import write_fixture
 
 try:
     import play_publish
@@ -95,7 +97,7 @@ class PlayPublishTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.directory = Path(temporary.name)
         self.bundle = self.directory / "GalliPick-v0.1.7-release.aab"
-        self.bundle.write_bytes(b"verified signed bundle bytes")
+        write_fixture(self.bundle)
         self.manifest = self.directory / "manifest.json"
         self.metadata = {"package": "com.hebi.gallipick", "version_code": 6,
                          "version_name": "0.1.7", "min_sdk": 30, "target_sdk": 36, "debuggable": False}
@@ -104,7 +106,8 @@ class PlayPublishTests(unittest.TestCase):
         self.evidence = {"source_commit": "a" * 40, "tag": "v0.1.7", "bundle_file": self.bundle.name,
                          "bundle_sha256": hashlib.sha256(self.bundle.read_bytes()).hexdigest(),
                          "bundle_bytes": self.bundle.stat().st_size, "signer_certificate_sha256": "b" * 64,
-                         "verified_payload_entries": 2, "bundletool_sha256": "c" * 64}
+                         "verified_payload_entries": 2, "bundletool_sha256": "c" * 64,
+                         "r8_optimization": require_optimized_bundle(self.bundle)}
         self.provenance.write_text(json.dumps(self.evidence))
         self.notes = self.directory / "notes.txt"
         self.notes.write_text("사용성을 개선했습니다.\n", encoding="utf-8")
@@ -253,6 +256,24 @@ class PlayPublishTests(unittest.TestCase):
                 self.provenance.write_text(json.dumps({**self.evidence, key: value}))
                 with self.assertRaises(ReleaseError):
                     self.run_client()
+        self.assertEqual(self.server.calls, [])
+
+    def test_missing_or_modified_r8_evidence_is_rejected_before_network(self):
+        missing = {key: value for key, value in self.evidence.items() if key != "r8_optimization"}
+        for evidence in (missing, {**self.evidence, "r8_optimization": {
+                **self.evidence["r8_optimization"], "bundle_sha256": "f" * 64}}):
+            self.provenance.write_text(json.dumps(evidence))
+            with self.assertRaisesRegex(ReleaseError, "R8 release gate"):
+                self.run_client()
+        self.assertEqual(self.server.calls, [])
+
+    def test_matching_outer_hash_cannot_hide_invalid_embedded_r8_metadata(self):
+        write_fixture(self.bundle, metadata=False)
+        evidence = {**self.evidence, "bundle_sha256": hashlib.sha256(self.bundle.read_bytes()).hexdigest(),
+                    "bundle_bytes": self.bundle.stat().st_size}
+        self.provenance.write_text(json.dumps(evidence))
+        with self.assertRaisesRegex(ReleaseError, "R8 release gate"):
+            self.run_client()
         self.assertEqual(self.server.calls, [])
 
     def test_notes_must_be_nonempty_plain_text_within_500_characters(self):

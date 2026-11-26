@@ -115,7 +115,7 @@ jobs:
           ORG_GRADLE_PROJECT_gallipickPlayCloudPilot: ${{ inputs.cloud_pilot || inputs.cloud_production }}
           ORG_GRADLE_PROJECT_gallipickCloudEnvironment: ${{ env.CLOUD_ENVIRONMENT }}
           ORG_GRADLE_PROJECT_gallipickPlayAppSigningSha1: ${{ vars.GALLIPICK_PLAY_APP_SIGNING_SHA1 }}
-        run: gradle --no-daemon --no-configuration-cache :app:verifyGalliPickSigning :app:testDebugUnitTest :app:lintRelease :app:bundleRelease --max-workers=2
+        run: gradle --no-daemon --no-configuration-cache :app:verifyGalliPickR8Configuration :app:verifyGalliPickSigning :app:testDebugUnitTest :app:lintRelease :app:bundleRelease --max-workers=2
       - name: Verify and stage Play bundle
         shell: bash
         run: |

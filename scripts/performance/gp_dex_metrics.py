@@ -176,7 +176,20 @@ def inspect_bundle(bundle):
     bundle = Path(bundle)
     if bundle.suffix.lower() != ".aab":
         raise ValueError("Provide an Android App Bundle (.aab).")
-    with zipfile.ZipFile(bundle) as archive:
+    # Open once so the digest and ZIP inspection use the same file descriptor.
+    with bundle.open("rb") as stream:
+        checksum = stream_sha256(stream)
+        stream.seek(0)
+        return inspect_zip(stream, checksum)
+
+
+def inspect_bundle_bytes(payload):
+    # The uploader has already read the exact immutable bytes it will transmit.
+    return inspect_zip(io.BytesIO(payload), hashlib.sha256(payload).hexdigest())
+
+
+def inspect_zip(source, bundle_checksum):
+    with zipfile.ZipFile(source) as archive:
         names = archive.namelist()
         if len(names) != len(set(names)):
             raise ValueError("Duplicate entries in AAB.")
@@ -205,7 +218,7 @@ def inspect_bundle(bundle):
         mapping = read_mapping_summary(archive)
     return {
         "schema": "gp-dex-metrics-v1",
-        "bundle_sha256": file_sha256(bundle),
+        "bundle_sha256": bundle_checksum,
         "dex_uncompressed_bytes": total_bytes,
         "module_dex_uncompressed_bytes": module_bytes,
         "other_dex_uncompressed_bytes": other_bytes,

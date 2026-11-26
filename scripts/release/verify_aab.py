@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 from signing_bundle import ReleaseError
+from r8_release_gate import require_optimized_bundle
 from verify_apk import TAG_PATTERN, parse_source_version
 
 
@@ -134,10 +135,15 @@ def stage_release(bundle, destination, tag, metadata, signature, source_commit, 
         raise ReleaseError("The AAB provenance identity is invalid.")
     if destination.exists() and (not destination.is_dir() or any(destination.iterdir())):
         raise ReleaseError("The AAB output directory must be empty.")
+    # Refuse to create an upload artifact unless the signed snapshot passes R8.
+    optimization = require_optimized_bundle(bundle)
     destination.mkdir(parents=True, exist_ok=True)
     output = destination / f"GalliPick-{tag}-release.aab"
     shutil.copyfile(bundle, output)
     digest = sha256(output)
+    if digest != optimization["bundle_sha256"]:
+        output.unlink()
+        raise ReleaseError("The staged AAB differs from the R8-verified snapshot.")
     (destination / "SHA256SUMS").write_text(f"{digest}  {output.name}\n", encoding="ascii")
     (destination / "manifest.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     provenance = {
@@ -146,7 +152,8 @@ def stage_release(bundle, destination, tag, metadata, signature, source_commit, 
         "signer_certificate_sha256": signature["certificate_sha256"],
         "verified_payload_entries": signature["verified_entries"],
         "bundletool_sha256": bundletool_sha256,
-        "validation": ["bundletool validate", "base manifest matches source", "all payload JAR signatures match pinned signer", "private signing material absent"],
+        "r8_optimization": optimization,
+        "validation": ["bundletool validate", "base manifest matches source", "all payload JAR signatures match pinned signer", "private signing material absent", "R8 compiler metadata and DEX checksums verified", "embedded R8 mapping retained", "applicable optimization threshold met"],
     }
     if cloud_environment:
         provenance.update(cloud_environment=cloud_environment,
