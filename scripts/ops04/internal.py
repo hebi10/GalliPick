@@ -9,6 +9,10 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "release"))
+from r8_release_gate import verify_optimization_evidence
+from signing_bundle import ReleaseError
+
 ANDROID = "{http://schemas.android.com/apk/res/android}"
 BUNDLE_PATH = Path("ops04-input")
 OUT = Path("ops04-verified")
@@ -141,6 +145,10 @@ def verify():
             and metadata.get("version_name") == env["VERSION_NAME"]
             and metadata.get("package") == env["APP_PACKAGE"],
             "Original GalliPick signed build provenance mismatch")
+    try:
+        optimization = verify_optimization_evidence(aab, evidence)
+    except ReleaseError as error:
+        raise GateError(str(error)) from None
     production = verify_cloud_artifact_selection(env)
     require((evidence.get("cloud_environment") == "production") == production,
             "Signed build Firebase environment differs from the approved selection")
@@ -154,7 +162,8 @@ def verify():
                 "source_artifact": env["ARTIFACT_NAME"], "aab_sha256": actual,
                 "certificate_sha256": signer, "application_id": identity[0],
                 "version_code": int(identity[1]), "version_name": identity[2],
-                "aab_path": str(aab), "play_uploaded": False}
+                "aab_path": str(aab), "play_uploaded": False,
+                "r8_optimization": optimization}
     if cloud_environment:
         evidence["cloud_environment"] = cloud_environment
     (OUT / "verified.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")

@@ -336,7 +336,7 @@ jobs:
       - name: Test release verification tools
         run: python3 -m unittest discover -s scripts/release -p 'test_*.py'
       - name: Test, lint and build both fixed-key release files
-        run: gradle --no-daemon --no-configuration-cache :app:verifyGalliPickSigning :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease --max-workers=2
+        run: gradle --no-daemon --no-configuration-cache :app:verifyGalliPickR8Configuration :app:verifyGalliPickSigning :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:bundleRelease --max-workers=2
       - name: Verify and stage the signed APK
         run: python3 scripts/release/verify_apk.py apk --tag "$RELEASE_TAG" --apk app/build/outputs/apk/release/app-release.apk --output release-dist
       - name: Verify and stage the signed Play bundle

@@ -24,7 +24,7 @@ Google Play는 2027년 2월부터 DEX 코드가 일정 크기 이상인 일반 �
 | 매핑 보조 지표 | AAB 내 proguard.map 클래스 매핑 행 중 개명된 비율 및 매핑 SHA-256. Play 점수 대용 금지 |
 | 실제 절감률 | 동일 프로필 baseline/R8 APK·AAB 크기, 비압축 모듈 DEX, 메서드 참조 수 차이. 각 0이 아닌 기준선 대비 계산 |
 
-메타데이터가 없거나 불완전하거나 신뢰할 수 없는 버전/해시 불일치가 있으면 비율을 0% 또는 임의 추정치로 대체하지 않습니다. JSON의 local_threshold_assessment는 로컬 판정이며 실제 Play Console 상태는 항상 unverified입니다. 기타 dex가 있는 적용 대상 AAB도 별도 확인이 필요합니다. 이 단계는 진단 및 측정 도구 추가이며 GP-R8-06에서 최종 릴리스 AAB 검사/실패 게이트를 별도로 연결합니다.
+메타데이터가 없거나 불완전하거나 신뢰할 수 없는 버전/해시 불일치가 있으면 비율을 0% 또는 임의 추정치로 대체하지 않습니다. JSON의 local_threshold_assessment는 로컬 판정이며 실제 Play Console 상태는 항상 unverified입니다. 기타 dex가 있는 적용 대상 AAB도 별도 확인이 필요합니다. GP-R8-05는 진단 및 측정 도구이며 GP-R8-06에서는 같은 분석을 실제 서명 AAB 검증과 게시 직전 차단 조건으로 사용합니다. [릴리스 차단 정책](gp-r8-06-release-gate.md).
 
 ## 실행
 

@@ -11,6 +11,7 @@ from unittest.mock import patch
 import zipfile
 
 from signing_bundle import ReleaseError
+from r8_test_fixture import fixture_entries, write_fixture
 
 try:
     import verify_aab
@@ -120,19 +121,21 @@ class AabMetadataTests(unittest.TestCase):
         api = self.api()
         with tempfile.TemporaryDirectory() as root:
             bundle = Path(root) / "input.aab"
-            bundle.write_bytes(b"verified fixture bundle")
+            write_fixture(bundle)
             output = Path(root) / "output"
             api.stage_release(bundle, output, "v0.1.7", METADATA,
                               {"certificate_sha256": "a" * 64, "verified_entries": 3}, "b" * 40, "c" * 64)
             self.assertEqual({p.name for p in output.iterdir()},
                              {"GalliPick-v0.1.7-release.aab", "SHA256SUMS", "manifest.json", "provenance.json"})
-            digest = hashlib.sha256(b"verified fixture bundle").hexdigest()
+            digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
             self.assertEqual((output / "SHA256SUMS").read_text(), digest + "  GalliPick-v0.1.7-release.aab\n")
             self.assertEqual(json.loads((output / "manifest.json").read_text()), METADATA)
             provenance = json.loads((output / "provenance.json").read_text())
             self.assertEqual(provenance["source_commit"], "b" * 40)
             self.assertEqual(provenance["bundle_sha256"], digest)
             self.assertEqual(provenance["signer_certificate_sha256"], "a" * 64)
+            self.assertEqual(provenance["r8_optimization"]["bundle_sha256"], digest)
+            self.assertEqual(provenance["r8_optimization"]["mapping_class_proxy"]["status"], "available")
             self.assertNotIn(str(root), json.dumps(provenance))
             with self.assertRaises(ReleaseError):
                 api.stage_release(bundle, output, "v0.1.7", METADATA,
@@ -161,11 +164,15 @@ class AabSignatureTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temporary.cleanup()
 
-    def bundle(self, name, *, signed=True, alias="one"):
+    def bundle(self, name, *, signed=True, alias="one", r8=False, **options):
         bundle = self.root / name
         with zipfile.ZipFile(bundle, "w") as archive:
             archive.writestr("base/manifest/AndroidManifest.xml", b"fixture protobuf manifest")
-            archive.writestr("base/dex/classes.dex", b"fixture payload")
+            if r8:
+                for entry, content in fixture_entries(**options).items():
+                    archive.writestr(entry, content)
+            else:
+                archive.writestr("base/dex/classes.dex", b"fixture payload")
             archive.writestr("META-INF/services/example.Service", b"signed metadata payload")
         if signed:
             self.sign(bundle, alias)
@@ -263,21 +270,26 @@ class AabSignatureTests(unittest.TestCase):
         return output
 
     def test_cli_stages_the_same_signed_snapshot_after_tool_validation(self):
-        bundle = self.bundle("cli-valid.aab")
+        bundle = self.bundle("cli-valid.aab", r8=True)
         output = self.run_cli(bundle)
         self.assertEqual((output / "GalliPick-v0.1.7-release.aab").read_bytes(), bundle.read_bytes())
         self.assertEqual(json.loads((output / "manifest.json").read_text()), METADATA)
         self.assertEqual(json.loads((output / "provenance.json").read_text())["signer_certificate_sha256"], self.pin)
 
     def test_cli_tool_failure_and_wrong_manifest_never_stage_a_bundle(self):
-        bundle = self.bundle("cli-reject.aab")
+        bundle = self.bundle("cli-reject.aab", r8=True)
         for arguments in [{"validation_fails": True}, {"manifest": MANIFEST.replace("com.hebi.gallipick", "wrong.package")}]:
             with self.subTest(arguments=arguments), self.assertRaises(ReleaseError) as failure:
                 self.run_cli(bundle, **arguments)
             self.assertNotIn("private tool diagnostic", str(failure.exception))
 
+    def test_cli_rejects_even_correctly_signed_bundle_when_r8_metadata_is_missing(self):
+        bundle = self.bundle("cli-no-r8.aab", r8=True, metadata=False)
+        with self.assertRaisesRegex(ReleaseError, "R8 release gate"):
+            self.run_cli(bundle)
+
     def test_cli_requires_production_project_evidence_from_the_signed_snapshot(self):
-        bundle = self.bundle("cli-cloud.aab")
+        bundle = self.bundle("cli-cloud.aab", r8=True)
         with self.assertRaises(ReleaseError):
             self.run_cli(bundle, cloud_environment="production", cloud_resources=firebase_resource("gallipick-dev"))
         output = self.run_cli(bundle, cloud_environment="production",

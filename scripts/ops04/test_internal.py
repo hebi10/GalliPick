@@ -1,5 +1,6 @@
 """OPS-04 offline tests. No Google Play or GitHub mutations."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -12,6 +13,8 @@ SCRIPT = ROOT / "scripts" / "ops04" / "internal.py"
 spec = importlib.util.spec_from_file_location("ops04_internal", SCRIPT)
 internal = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(internal)
+from r8_test_fixture import write_fixture
+from r8_release_gate import require_optimized_bundle
 
 class Ops04SafetyTests(unittest.TestCase):
     def environment(self, mode="publish"):
@@ -73,6 +76,43 @@ class Ops04SafetyTests(unittest.TestCase):
             with patch.object(internal, "BUNDLE_PATH", Path(folder)):
                 with self.assertRaises(internal.GateError):
                     internal.verify()
+
+    def test_verify_requires_original_r8_provenance_and_rechecks_actual_bundle(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            bundle = write_fixture(root / "GalliPick-v1.0.0-release.aab")
+            tool = root / "bundletool.jar"
+            tool.write_bytes(b"pinned fixture")
+            metadata = {"version_code": 123, "version_name": "1.0.0", "package": "com.hebi.gallipick"}
+            (root / "manifest.json").write_text(json.dumps(metadata))
+            original = {"source_commit": "a" * 40, "bundle_sha256": internal.digest(bundle),
+                        "r8_optimization": require_optimized_bundle(bundle)}
+            provenance = root / "provenance.json"
+            data = {**self.environment("check"), "APP_PACKAGE": "com.hebi.gallipick",
+                    "AAB_SHA256": original["bundle_sha256"], "BUNDLETOOL_JAR": str(tool),
+                    "GITHUB_OUTPUT": str(root / "github-output")}
+            xml = '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.hebi.gallipick" android:versionCode="123" android:versionName="1.0.0"/>'
+            real_digest = internal.digest
+            real_read = Path.read_text
+            pinned = "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29"
+            with patch.dict(os.environ, data, clear=True), \
+                    patch.object(internal, "BUNDLE_PATH", root), \
+                    patch.object(internal, "OUT", root / "verified"), \
+                    patch.object(internal, "digest", side_effect=lambda p: pinned if p == tool else real_digest(p)), \
+                    patch.object(internal, "invoke", return_value=xml), \
+                    patch.object(Path, "read_text", autospec=True,
+                                 side_effect=lambda path, *args, **kwargs:
+                                 "b" * 64 if str(path) == "signing/certificate.sha256"
+                                 else real_read(path, *args, **kwargs)):
+                provenance.write_text(json.dumps({key: value for key, value in original.items()
+                                                 if key != "r8_optimization"}))
+                with self.assertRaisesRegex(internal.GateError, "R8 release gate"):
+                    internal.verify()
+                self.assertFalse((root / "verified").exists())
+                provenance.write_text(json.dumps(original))
+                internal.verify()
+                self.assertEqual(json.loads((root / "verified/verified.json").read_bytes())["r8_optimization"],
+                                 original["r8_optimization"])
 
     def test_sha256_streaming_matches_reference(self):
         with tempfile.TemporaryDirectory() as folder:
