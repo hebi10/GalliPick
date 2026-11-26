@@ -35,7 +35,7 @@ GitHub Actions의 **Android package benchmarks**는 빌드 설정이나 측정 �
 
 ## 기기 설치 공간과 시작 시간
 
-[Android package benchmarks](https://github.com/hebi10/GalliPick/actions/workflows/gp-build-benchmark.yml)는 R8 빌드 설정 또는 측정 코드 변경 PR에서 이 API 36 비교를 자동 실행합니다. 일반 기능 PR의 전체 기기 QA와는 별개입니다. 수동 실행도 가능하며 이 경우 `measure_device`를 선택합니다. 별도 Android 36 에뮬레이터에 임시 테스트 키로 서명한 Play Cloud 기준 APK와 R8 APK를 차례로 설치합니다. 두 APK에서 홈, 파일 탭, 필터 열기·닫기를 검증합니다. 저장 공간과 시작 시간은 `play-cloud-device-metrics` 아티팩트의 `metrics.json`에 남습니다.
+[Android package benchmarks](https://github.com/hebi10/GalliPick/actions/workflows/gp-build-benchmark.yml)는 R8 빌드 설정 또는 측정 코드 변경 PR에서 이 API 36 비교를 자동 실행합니다. 일반 기능 PR의 전체 기기 QA와는 별개입니다. 수동 실행도 가능하며 이 경우 `measure_device`를 선택합니다. 별도 Android 36 에뮬레이터에 임시 테스트 키로 서명한 Play Cloud 기준 APK와 R8 APK를 차례로 설치합니다. 두 APK에서 홈, 파일 탭, 필터 열기·닫기를 검증합니다. 저장 공간과 시작 시간은 `play-cloud-device-metrics` 아티팩트의 `metrics.json`에 남습니다. 벤치마크 전용 Linux 에뮬레이터는 독립 프로세스 그룹에서 실행하고 종료를 제한 시간 내에 처리합니다. 측정이 실패하거나 종료에 실패하면 성공 처리하지 않습니다. 패키지 측정에서 Maven Central HTTP 429가 확인되면 새 임시 결과 경로로 1회 재시도하며, 다른 오류는 그대로 실패 처리합니다.
 
 - 설치 코드와 첫 화면 검증 후 생긴 앱 데이터의 디스크 사용량을 `du -sk` 기준 KiB로 각각 기록합니다. 에뮬레이터에 직접 설치한 APK의 측정이며 Play 기기별 다운로드 크기나 Android 설정의 저장 공간 합계와는 집계 범위가 다릅니다.
 - 첫 화면 검증으로 초기 설정을 마친 뒤, 프로세스를 종료한 cold start와 같은 프로세스에서 Activity를 다시 만든 warm start를 각 5회 측정합니다. Android가 표시한 시작 유형을 검사하고 `am start -W`의 첫 화면 표시 시간 `TotalTime` 원본과 중앙값을 기록합니다. 실제 기기 및 사진이 많은 환경의 시작 시간은 해당 환경에서 추가로 측정해야 합니다.

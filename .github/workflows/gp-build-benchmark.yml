@@ -8,6 +8,8 @@ on:
       - 'scripts/performance/test_gp_build.py'
       - 'scripts/performance/gp_device.py'
       - 'scripts/performance/test_gp_device.py'
+      - 'scripts/performance/gp_emulator.py'
+      - 'scripts/performance/test_gp_emulator.py'
       - '.github/workflows/gp-build-benchmark.yml'
   workflow_dispatch:
     inputs:
@@ -55,7 +57,27 @@ jobs:
       - name: Measure APK, AAB and runtime dependencies
         env:
           BUILD_PROFILE: ${{ matrix.profile }}
-        run: python3 scripts/performance/gp_build.py --profiles "$BUILD_PROFILE" --r8
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp_dir="$(mktemp -d "$RUNNER_TEMP/gp-package.XXXXXX")"
+          trap 'rm -rf "$temp_dir"' EXIT
+          for attempt in 1 2; do
+            output="$temp_dir/attempt-$attempt"
+            log="$temp_dir/attempt-$attempt.log"
+            if python3 scripts/performance/gp_build.py --profiles "$BUILD_PROFILE" --r8 --output "$output" 2>&1 | tee "$log"; then
+              mkdir -p build/gp-build
+              cp -a "$output/." build/gp-build/
+              exit 0
+            fi
+            if [[ "$attempt" == 1 ]] && grep -Eq 'https://repo\.maven\.apache\.org/.*Received status code 429' "$log"; then
+              echo 'Maven Central rate limit; retrying once after 30 seconds.'
+              sleep 30
+            else
+              exit 1
+            fi
+          done
+          exit 1
       - name: Upload measurements
         uses: actions/upload-artifact@v4
         with:
@@ -89,8 +111,10 @@ jobs:
           cache-read-only: true
       - name: Install compile SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
-      - name: Test device metrics parser
-        run: python3 -B -m unittest discover -s scripts/performance -p 'test_gp_device.py'
+      - name: Test device metrics parser and emulator lifecycle
+        run: |
+          python3 -B -m unittest discover -s scripts/performance -p 'test_gp_device.py'
+          python3 -B -m unittest discover -s scripts/performance -p 'test_gp_emulator.py'
       - name: Build and sign isolated APKs with an ephemeral key
         shell: bash
         run: |
@@ -121,14 +145,14 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 36
-          target: default
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: python3 scripts/performance/gp_device.py
+      - name: Prepare API 36 benchmark emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'emulator' 'system-images;android-36;default;x86_64'
+          echo no | avdmanager create avd --force -n gp-benchmark --package 'system-images;android-36;default;x86_64' --device 'pixel_6'
+      - name: Run device benchmark with bounded emulator cleanup
+        run: python3 scripts/performance/gp_emulator.py
       - name: Upload device measurements
         uses: actions/upload-artifact@v4
         with:
