@@ -67,7 +67,7 @@ jobs:
           retention-days: 14
 
   device:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.measure_device }}
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.measure_device) }}
     name: Play Cloud baseline and R8 device benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 50

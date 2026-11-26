@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
-from gp_device import ACTIVITY, PACKAGE, ensure_rooted_emulator, find_control, installed_code_path, measure, startup_time, storage_kib
+from gp_device import ACTIVITY, PACKAGE, ensure_rooted_emulator, find_control, installed_code_path, launch, measure, startup_time, storage_kib
 
 
 class DeviceMetricsTest(TestCase):
@@ -40,6 +40,16 @@ class DeviceMetricsTest(TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 ensure_rooted_emulator()
             self.assertEqual(command.call_count, 3)
+
+    def test_launch_uses_supported_numeric_intent_flags_for_cold_and_warm(self):
+        for state in ("COLD", "WARM"):
+            result = f"Status: ok\nLaunchState: {state}\nActivity: {PACKAGE}/{ACTIVITY}\nTotalTime: 347\nComplete"
+            with self.subTest(state=state), patch("gp_device.adb", return_value=result) as command:
+                self.assertEqual(launch(state), 347)
+                command.assert_called_once_with(
+                    "shell", "am", "start", "-W", "-a", "android.intent.action.MAIN",
+                    "-f", "0x10008000", "-n", f"{PACKAGE}/{ACTIVITY}",
+                )
 
     def test_startup_requires_the_expected_activity_state_and_duration(self):
         result = f"Status: ok\nLaunchState: WARM\nActivity: {PACKAGE}/{ACTIVITY}\nTotalTime: 347\nComplete"

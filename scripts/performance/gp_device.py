@@ -16,6 +16,8 @@ PACKAGE = "com.hebi.gallipick.benchmark"
 ACTIVITY = "com.hebi.gallipick.MainActivity"
 UI_DUMP = "/data/local/tmp/gallipick-benchmark-window.xml"
 STARTUP_SAMPLES = 5
+# Android Intent.FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_CLEAR_TASK.
+RESTART_TASK_FLAGS = "0x10008000"
 
 
 def adb(*args, timeout=180):
@@ -81,7 +83,7 @@ def startup_time(output, expected_state):
 def launch(expected_state):
     return startup_time(adb(
         "shell", "am", "start", "-W", "-a", "android.intent.action.MAIN",
-        "--activity-new-task", "--activity-clear-task", "-n", f"{PACKAGE}/{ACTIVITY}",
+        "-f", RESTART_TASK_FLAGS, "-n", f"{PACKAGE}/{ACTIVITY}",
     ), expected_state)
 
 
