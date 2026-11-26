@@ -114,10 +114,56 @@ def find_control(hierarchy, label, *, enabled=False):
     return None
 
 
-def wait_for_control(label):
+def launcher_anr_close_point(hierarchy):
+    """Recognize only the exact Quickstep system dialog observed in CI."""
+    nodes = list(ElementTree.fromstring(hierarchy).iter("node"))
+    if not any(node.get("package") == "android"
+               and node.get("resource-id") == "android:id/alertTitle"
+               and node.get("text") == "Quickstep isn't responding" for node in nodes):
+        return None
+    buttons = [node for node in nodes if node.get("package") == "android"
+               and node.get("resource-id") == "android:id/aerr_close"
+               and node.get("text") == "Close app"
+               and node.get("enabled") == "true" and node.get("clickable") == "true"]
+    if len(buttons) != 1:
+        return None
+    bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", buttons[0].get("bounds", ""))
+    if bounds:
+        left, top, right, bottom = map(int, bounds.groups())
+        if left < right and top < bottom:
+            return (left + right) // 2, (top + bottom) // 2
+    return None
+
+
+def recover_launcher_anr(hierarchy):
+    point = launcher_anr_close_point(hierarchy)
+    if point is None:
+        return False
+    # Never dismiss arbitrary system/app ANRs. Confirm the actual foreground
+    # window belongs to launcher3 and the benchmark activity is already resumed.
+    if adb("shell", "getprop", "ro.kernel.qemu", timeout=10) != "1" or adb("shell", "id", "-u", timeout=10) != "0":
+        return False
+    focus = adb("shell", "dumpsys", "window", timeout=15)
+    windows = re.findall(r"(?m)^\s*mCurrentFocus=(.*)$", focus)
+    apps = re.findall(r"(?m)^\s*mFocusedApp=(.*)$", focus)
+    if not windows or not re.fullmatch(r"Window\{[^}\r\n]* Application Not Responding: com\.android\.launcher3\}", windows[-1].strip()):
+        return False
+    if not apps or not re.search(rf"(?:^|\s){re.escape(PACKAGE + '/' + ACTIVITY)}(?:\s|}})", apps[-1]):
+        return False
+    activity = adb("shell", "dumpsys", "activity", "activities", timeout=15)
+    resumed = re.findall(r"(?m)^\s*topResumedActivity=(.*)$", activity)
+    if not resumed or not re.search(rf"(?:^|\s){re.escape(PACKAGE + '/' + ACTIVITY)}(?:\s|}})", resumed[-1]):
+        return False
+    print("Recovering confirmed external Quickstep ANR once during untimed initial smoke; GalliPick must still pass every check.", flush=True)
+    adb("shell", "input", "tap", str(point[0]), str(point[1]), timeout=10)
+    return True
+
+
+def wait_for_control(label, *, recover_launcher=False):
     deadline = time.monotonic() + 60
     last_hierarchy = None
     last_error = None
+    recovered_launcher = False
     while time.monotonic() < deadline:
         try:
             adb("shell", "rm", "-f", UI_DUMP, timeout=10)
@@ -129,6 +175,13 @@ def wait_for_control(label):
             point = None
         if point is not None:
             return point
+        if recover_launcher and not recovered_launcher and last_hierarchy is not None:
+            try:
+                if recover_launcher_anr(last_hierarchy):
+                    recovered_launcher = True
+                    deadline = max(deadline, time.monotonic() + 25)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ElementTree.ParseError) as error:
+                last_error = type(error).__name__
         time.sleep(0.4)
     capture_ui_failure(f"Missing control {label!r}", last_hierarchy, last_error)
     raise ValueError(f"The benchmark app did not display {label!r}.")
@@ -177,7 +230,8 @@ def capture_ui_failure(reason, hierarchy=None, last_error=None):
 
 
 def smoke_test():
-    wait_for_control("GalliPick")
+    # Recovery is permitted only here, never for a timed launch or an app ANR.
+    wait_for_control("GalliPick", recover_launcher=True)
     for label in ("파일", "파일 조건 선택", "필터 닫기"):
         x, y = wait_for_control(label)
         adb("shell", "input", "tap", str(x), str(y))
