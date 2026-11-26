@@ -21,6 +21,8 @@ OCR 합성 이미지 생성에 FFmpeg의 `drawtext` 필터를 사용합니다. �
 
 추가 보완: ADB root 재접속 후 폐기형 시험 에뮬레이터의 화면 켜짐·잠금 상태를 설정하고 실제 비활성 잠금을 확인합니다. 시스템 화면 인식 실패의 정확한 원인은 미확정이며 UI 계층, 화면 캡처, window/activity 및 crash buffer를 실패 아티팩트에 보관합니다. 동영상은 기존 H.264 시험 영상을 20초로 반복하여 실제 제목·활성 재생 버튼·양의 재생 위치·일시정지 전환을 확인합니다. 미디어 접근/보호/원본 SHA/OCR 등 기존 성공 조건은 유지합니다.
 
+추가 진단 결과: #194 실행 45775162778에서 앱 실행 직전 Quickstep(com.android.launcher3) ANR이 발생했고 GalliPick은 topResumedActivity로 확인됐습니다. 실제 UI XML의 `android:id/alertTitle`, `android:id/aerr_close`, 현재 focus 및 resumed activity가 모두 일치하는 폐기형 rooted 에뮬레이터에서만 최초 비계측 화면 검사 중 한 번 Close app을 누릅니다. 이후 GalliPick의 원래 UI 검사를 반드시 통과해야 합니다. GalliPick 자체 ANR, 다른 시스템 팝업, timed launch 실패 및 재발은 성공 처리하지 않습니다. ANR 표시를 전역 비활성화하지 않습니다.
+
 ## 별도 검증이 필요한 항목
 
 | 분류 | 필요 조건과 절차 | 합격 조건 |
