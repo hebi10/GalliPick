@@ -49,6 +49,10 @@ GitHub Actions의 **Android package benchmarks**는 빌드 설정이나 측정 �
 
 기존 API36 기기 비교 후 동일 임시 키로 서명한 비최적화 APK를 설치하고, 합성 사진·동영상으로 목록 설정·보호·중복 분석 상태를 생성합니다. 앱 데이터를 지우지 않고 R8 APK를 덮어써 실제 Room DB/WorkManager 기록과 UI·미리보기·새 중복 분석/OCR 실행을 검증합니다. 측정과 회귀 보고서가 모두 있어야 검사 성공입니다. 이 검사는 같은 소스/버전의 최적화 전후 업데이트로, 이전 Play 게시 버전이나 운영 로그인/결제/백업의 검증을 대체하지 않습니다. [검증 범위 및 운영 QA](gp-r8-04-regression.md).
 
+## GP-R8-05 DEX 최적화 측정
+
+AAB의 실제 비압축 DEX 크기, R8 컴파일러가 내장한 통계 및 DEX SHA-256 일치 여부를 측정합니다. 각 프로필의 기존 `metrics.json`에 `aab.dex_optimization`과 `comparisons`를 추가합니다. 매핑의 클래스 개명 비율, 실제 파일/DEX 감소율은 Play 최적화 비율과 별개입니다. 메타데이터 누락·오류는 미확인 상태로 기록하며 실제 Play Console 판정은 아직 하지 않습니다. [측정 기준 및 사용 방법](gp-r8-05-dex-metrics.md).
+
 ## 기기 설치 공간과 시작 시간
 
 [Android package benchmarks](https://github.com/hebi10/GalliPick/actions/workflows/gp-build-benchmark.yml)는 R8 빌드 설정 또는 측정 코드 변경 PR에서 이 API 36 비교를 자동 실행합니다. 일반 기능 PR의 전체 기기 QA와는 별개입니다. 수동 실행도 가능하며 이 경우 `measure_device`를 선택합니다. 별도 Android 36 에뮬레이터에 임시 테스트 키로 서명한 Play Cloud 기준 APK와 R8 APK를 차례로 설치합니다. 두 APK에서 홈, 파일 탭, 필터 열기·닫기를 검증합니다. 저장 공간과 시작 시간은 `play-cloud-device-metrics` 아티팩트의 `metrics.json`에 남습니다. AVD 생성 및 실행은 동일한 `ANDROID_USER_HOME`, `ANDROID_EMULATOR_HOME`, `ANDROID_AVD_HOME`을 사용하고, APK 빌드 전에 실제 AVD 등록 파일과 `emulator -list-avds` 결과를 검증합니다. 벤치마크 전용 Linux 에뮬레이터는 독립 프로세스 그룹에서 실행하고 종료를 제한 시간 내에 처리합니다. 측정이 실패하거나 종료에 실패하면 성공 처리하지 않습니다. 패키지 측정에서 Maven Central HTTP 429가 확인되면 새 임시 결과 경로로 1회 재시도하며, 다른 오류는 그대로 실패 처리합니다.

@@ -30,6 +30,8 @@ class BuildMetricsTest(unittest.TestCase):
             self.assertEqual(metrics["bytes"], path.stat().st_size)
             self.assertEqual(metrics["dex_method_ids_by_file"], {"classes.dex": 20, "classes2.dex": 5})
             self.assertEqual(metrics["dex_files"], 2)
+            self.assertEqual(metrics["dex_uncompressed_bytes"], len(fake_dex(20)) + len(fake_dex(5)))
+            self.assertEqual(metrics["dex_uncompressed_bytes_by_file"], {"classes.dex": len(fake_dex(20)), "classes2.dex": len(fake_dex(5))})
             self.assertEqual(metrics["dex_method_ids"], 25)
 
     def test_bundle_includes_dex_from_each_module(self):
