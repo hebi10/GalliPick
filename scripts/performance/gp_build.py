@@ -66,7 +66,7 @@ def measure(profile, minified, output):
     if not debug:
         gradle.append(f"-PgallipickBuildBenchmark={profile}")
     print(f"Measuring {profile} ({'R8' if minified else 'baseline'})", flush=True)
-    subprocess.run(gradle + [":app:clean"], cwd=ROOT, check=True)
+    subprocess.run(gradle + [":app:verifyGalliPickR8Configuration", ":app:clean"], cwd=ROOT, check=True)
     subprocess.run(gradle + [f":app:assemble{task_suffix}", f":app:bundle{task_suffix}"], cwd=ROOT, check=True)
 
     configuration = f"{variant}RuntimeClasspath"

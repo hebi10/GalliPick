@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'app/build.gradle.kts'
+      - 'app/proguard-rules.pro'
       - 'scripts/performance/gp_build.py'
       - 'scripts/performance/test_gp_build.py'
       - 'scripts/performance/gp_device.py'

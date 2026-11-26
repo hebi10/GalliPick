@@ -221,6 +221,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    val releaseOptimizationRules = listOf(
+        getDefaultProguardFile("proguard-android-optimize.txt"),
+        layout.projectDirectory.file("proguard-rules.pro").asFile,
+    )
     buildTypes {
         debug {
             resValue("bool", "gallipick_ads_enabled", adsDebugTest.toString())
@@ -236,7 +240,9 @@ android {
             }
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            setProguardFiles(releaseOptimizationRules)
             signingConfig = signingConfigs.getByName("galliPick")
             resValue("bool", "gallipick_ads_enabled", adsReleaseEnabled.toString())
             resValue("string", "gallipick_admob_app_id", if (adsReleaseEnabled) adMobAppId else sampleAdMobAppId)
@@ -244,6 +250,10 @@ android {
         }
         create("playPreparation") {
             initWith(getByName("release"))
+            // Preserve the independent, unsigned local-only preparation baseline.
+            isMinifyEnabled = false
+            isShrinkResources = false
+            setProguardFiles(emptyList<File>())
             resValue("bool", "gallipick_ads_enabled", "false")
             resValue("string", "gallipick_admob_app_id", sampleAdMobAppId)
             resValue("string", "gallipick_admob_banner_unit_id", sampleBannerAdUnitId)
@@ -260,9 +270,7 @@ android {
                 matchingFallbacks.add("release")
                 isMinifyEnabled = minifyBenchmark
                 isShrinkResources = minifyBenchmark
-                if (minifyBenchmark) {
-                    proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
-                }
+                setProguardFiles(if (minifyBenchmark) releaseOptimizationRules else emptyList<File>())
                 if (buildBenchmark == "playCloud") {
                     resValue("bool", "gallipick_ads_preview", "true")
                     cloudConfigResourceNames.forEach { name -> resValue("string", name, "") }
@@ -296,6 +304,37 @@ android {
     }
     testOptions { unitTests.isReturnDefaultValues = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+}
+
+androidComponents.finalizeDsl { extension ->
+    val expectedRules = listOf(
+        extension.getDefaultProguardFile("proguard-android-optimize.txt"),
+        layout.projectDirectory.file("proguard-rules.pro").asFile,
+    )
+    val problems = mutableListOf<String>()
+    fun verifyType(name: String, optimized: Boolean, rules: List<File>? = null) {
+        val type = extension.buildTypes.getByName(name)
+        if (type.isMinifyEnabled != optimized || type.isShrinkResources != optimized) {
+            problems += "$name code and resource shrinking must both be $optimized."
+        }
+        if (rules != null && type.proguardFiles != rules) {
+            problems += "$name must use the expected R8 rule files."
+        }
+    }
+    verifyType("release", true, expectedRules)
+    verifyType("debug", false)
+    verifyType("playPreparation", false, emptyList())
+    if (buildBenchmark != null) {
+        verifyType("releaseBenchmark", minifyBenchmark, if (minifyBenchmark) expectedRules else emptyList())
+    }
+    tasks.register("verifyGalliPickR8Configuration") {
+        group = "verification"
+        description = "Verify effective release and isolated benchmark optimization settings without signing."
+        doLast {
+            check(problems.isEmpty()) { problems.joinToString("\n") }
+            logger.lifecycle("GalliPick release and isolated R8 build configurations verified.")
+        }
+    }
 }
 
 tasks.configureEach {
