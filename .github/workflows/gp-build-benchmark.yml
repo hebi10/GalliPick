@@ -13,6 +13,8 @@ on:
       - 'scripts/performance/test_gp_device.py'
       - 'scripts/performance/gp_emulator.py'
       - 'scripts/performance/test_gp_emulator.py'
+      - 'scripts/performance/gp_r8_regression.py'
+      - 'scripts/performance/test_gp_r8_regression.py'
       - '.github/workflows/gp-build-benchmark.yml'
   workflow_dispatch:
     inputs:
@@ -120,6 +122,8 @@ jobs:
         run: |
           python3 -B -m unittest discover -s scripts/performance -p 'test_gp_device.py'
           python3 -B -m unittest discover -s scripts/performance -p 'test_gp_emulator.py'
+          python3 -B -m unittest discover -s scripts/performance -p 'test_gp_r8_regression.py'
+          command -v ffmpeg
       - name: Prepare and verify API 36 benchmark emulator before APK builds
         shell: bash
         run: |
@@ -162,6 +166,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: play-cloud-device-metrics
-          path: build/gp-device/metrics.json
+          path: |
+            build/gp-device/metrics.json
+            build/gp-device/regression.json
           if-no-files-found: error
           retention-days: 14
