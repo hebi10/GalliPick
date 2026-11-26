@@ -200,8 +200,8 @@ android {
         applicationId = galliPickApplicationId
         minSdk = 30
         targetSdk = 36
-        versionCode = 38
-        versionName = "0.2.27"
+        versionCode = 39
+        versionName = "0.2.28"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resValue("bool", "gallipick_ads_preview", "false")
         resValue("bool", "gallipick_rewarded_ads_test", "false")
