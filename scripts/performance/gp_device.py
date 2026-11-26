@@ -65,6 +65,19 @@ def ensure_rooted_emulator():
     raise ValueError("Installed storage measurement requires a rooted emulator after 3 attempts.")
 
 
+def prepare_interactive_emulator():
+    """Configure the disposable emulator screen after the root ADB restart."""
+    if adb("shell", "getprop", "ro.kernel.qemu", timeout=15) != "1" or adb("shell", "id", "-u", timeout=15) != "0":
+        raise ValueError("Interactive setup requires the disposable rooted emulator.")
+    adb("shell", "svc", "power", "stayon", "true", timeout=15)
+    adb("shell", "locksettings", "set-disabled", "true", timeout=15)
+    if adb("shell", "locksettings", "get-disabled", timeout=15) != "true":
+        raise ValueError("The disposable emulator lock screen could not be disabled.")
+    adb("shell", "input", "keyevent", "KEYCODE_WAKEUP", timeout=15)
+    adb("shell", "wm", "dismiss-keyguard", timeout=15)
+    print("Disposable emulator screen configured after ADB root.", flush=True)
+
+
 def startup_time(output, expected_state):
     fields = dict(re.findall(r"(?m)^(Status|LaunchState|Activity|TotalTime):[ \t]*([^\r\n]+)$", output))
     activity = fields.get("Activity")
@@ -87,9 +100,11 @@ def launch(expected_state):
     ), expected_state)
 
 
-def find_control(hierarchy, label):
+def find_control(hierarchy, label, *, enabled=False):
     for node in ElementTree.fromstring(hierarchy).iter("node"):
         if node.get("package") != PACKAGE or label not in (node.get("text"), node.get("content-desc")):
+            continue
+        if enabled and node.get("enabled") != "true":
             continue
         bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
         if bounds:
@@ -115,26 +130,50 @@ def wait_for_control(label):
         if point is not None:
             return point
         time.sleep(0.4)
-    # Keep the original acceptance condition. Capture only disposable emulator UI
-    # metadata and activity focus, not device/user files or arbitrary logcat data.
-    if last_hierarchy:
-        try:
-            nodes = list(ElementTree.fromstring(last_hierarchy).iter("node"))
-            packages = sorted({node.get("package") or "" for node in nodes})
-            controls = sorted({node.get("text") or node.get("content-desc") or ""
-                               for node in nodes if node.get("package") == PACKAGE})
-            print(f"Benchmark UI packages: {packages!r}; app controls: {controls[:30]!r}", flush=True)
-        except ElementTree.ParseError:
-            pass
-    if last_error:
-        print(f"Last UI automation error: {last_error}", flush=True)
-    try:
-        focus = adb("shell", "dumpsys", "window", "windows", timeout=10)
-        print("\n".join(line.strip() for line in focus.splitlines()
-                        if "mCurrentFocus=" in line or "mFocusedApp=" in line)[:2000], flush=True)
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
+    capture_ui_failure(f"Missing control {label!r}", last_hierarchy, last_error)
     raise ValueError(f"The benchmark app did not display {label!r}.")
+
+
+def capture_ui_failure(reason, hierarchy=None, last_error=None):
+    """Capture only the disposable CI emulator before uninstalling the test app."""
+    print(f"Benchmark UI failure: {reason}; last automation error: {last_error}", flush=True)
+    try:
+        if adb("shell", "getprop", "ro.kernel.qemu", timeout=10) != "1":
+            return
+        directory = OUTPUT / "ui-failure"
+        directory.mkdir(parents=True, exist_ok=True)
+        if hierarchy:
+            (directory / "hierarchy.xml").write_text(hierarchy, encoding="utf-8")
+            try:
+                labels = sorted({(node.get("package") or "", node.get("text") or node.get("content-desc") or "")
+                                 for node in ElementTree.fromstring(hierarchy).iter("node")})
+                print(f"Visible UI labels: {labels[:60]!r}", flush=True)
+            except ElementTree.ParseError:
+                pass
+        for name, command in (
+            ("window.txt", ("shell", "dumpsys", "window")),
+            ("activity.txt", ("shell", "dumpsys", "activity", "activities")),
+            ("crash.txt", ("logcat", "-d", "-b", "crash", "-t", "80")),
+        ):
+            try:
+                output = adb(*command, timeout=15)
+                (directory / name).write_text(output[-200_000:], encoding="utf-8")
+                if name == "window.txt":
+                    print("\n".join(line.strip() for line in output.splitlines()
+                                    if any(key in line for key in ("mCurrentFocus=", "mFocusedApp=", "mKeyguardShowing", "mShowingLockscreen")))[:3000], flush=True)
+                elif name == "crash.txt" and output:
+                    print("Crash buffer tail:\n" + output[-4000:], flush=True)
+            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                pass
+        try:
+            result = subprocess.run(["adb", "exec-out", "screencap", "-p"], check=True,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+            if result.stdout.startswith(b"\x89PNG\r\n\x1a\n"):
+                (directory / "screen.png").write_bytes(result.stdout)
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        print(f"Could not collect UI diagnostics: {type(error).__name__}", flush=True)
 
 
 def smoke_test():
@@ -209,6 +248,7 @@ def main():
     if benchmark_installed():
         raise ValueError("Use a disposable emulator without the benchmark app already installed.")
     ensure_rooted_emulator()
+    prepare_interactive_emulator()
 
     report = {
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
