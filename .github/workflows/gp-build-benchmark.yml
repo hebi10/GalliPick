@@ -123,7 +123,16 @@ jobs:
           python3 -B -m unittest discover -s scripts/performance -p 'test_gp_device.py'
           python3 -B -m unittest discover -s scripts/performance -p 'test_gp_emulator.py'
           python3 -B -m unittest discover -s scripts/performance -p 'test_gp_r8_regression.py'
-          command -v ffmpeg
+      - name: Ensure synthetic OCR fixture renderer is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -hide_banner -filters > "$RUNNER_TEMP/gp-ffmpeg-filters.txt" 2>&1
+          grep -Eq '[[:space:]]drawtext[[:space:]]' "$RUNNER_TEMP/gp-ffmpeg-filters.txt"
       - name: Prepare and verify API 36 benchmark emulator before APK builds
         shell: bash
         run: |
