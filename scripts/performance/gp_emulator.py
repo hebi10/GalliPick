@@ -149,7 +149,14 @@ def main(prepare=False):
                 )
                 if not report.is_file():
                     raise RuntimeError("Device benchmark did not produce its measurements.")
-                print("Both device measurements completed; stopping emulator.", flush=True)
+                print("Both device measurements completed; starting local upgrade regression.", flush=True)
+                subprocess.run(
+                    [sys.executable, str(ROOT / "scripts" / "performance" / "gp_r8_regression.py")],
+                    cwd=ROOT, env=env, check=True, timeout=600,
+                )
+                if not (OUTPUT / "regression.json").is_file():
+                    raise RuntimeError("Local upgrade regression did not produce its report.")
+                print("Device measurements and local upgrade regression completed; stopping emulator.", flush=True)
             finally:
                 stop_emulator(process, command)
         print("Benchmark emulator stopped; measurements are ready to upload.", flush=True)

@@ -13,6 +13,8 @@ on:
       - 'scripts/performance/test_gp_device.py'
       - 'scripts/performance/gp_emulator.py'
       - 'scripts/performance/test_gp_emulator.py'
+      - 'scripts/performance/gp_r8_regression.py'
+      - 'scripts/performance/test_gp_r8_regression.py'
       - '.github/workflows/gp-build-benchmark.yml'
   workflow_dispatch:
     inputs:
@@ -120,6 +122,17 @@ jobs:
         run: |
           python3 -B -m unittest discover -s scripts/performance -p 'test_gp_device.py'
           python3 -B -m unittest discover -s scripts/performance -p 'test_gp_emulator.py'
+          python3 -B -m unittest discover -s scripts/performance -p 'test_gp_r8_regression.py'
+      - name: Ensure synthetic OCR fixture renderer is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -hide_banner -filters > "$RUNNER_TEMP/gp-ffmpeg-filters.txt" 2>&1
+          grep -Eq '[[:space:]]drawtext[[:space:]]' "$RUNNER_TEMP/gp-ffmpeg-filters.txt"
       - name: Prepare and verify API 36 benchmark emulator before APK builds
         shell: bash
         run: |
@@ -162,6 +175,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: play-cloud-device-metrics
-          path: build/gp-device/metrics.json
+          path: |
+            build/gp-device/metrics.json
+            build/gp-device/regression.json
           if-no-files-found: error
+          retention-days: 14
+      - name: Upload failed emulator UI diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: play-cloud-device-failure-diagnostics
+          path: build/gp-device/ui-failure/
+          if-no-files-found: ignore
           retention-days: 14

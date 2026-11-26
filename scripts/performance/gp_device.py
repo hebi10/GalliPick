@@ -65,6 +65,19 @@ def ensure_rooted_emulator():
     raise ValueError("Installed storage measurement requires a rooted emulator after 3 attempts.")
 
 
+def prepare_interactive_emulator():
+    """Configure the disposable emulator screen after the root ADB restart."""
+    if adb("shell", "getprop", "ro.kernel.qemu", timeout=15) != "1" or adb("shell", "id", "-u", timeout=15) != "0":
+        raise ValueError("Interactive setup requires the disposable rooted emulator.")
+    adb("shell", "svc", "power", "stayon", "true", timeout=15)
+    adb("shell", "locksettings", "set-disabled", "true", timeout=15)
+    if adb("shell", "locksettings", "get-disabled", timeout=15) != "true":
+        raise ValueError("The disposable emulator lock screen could not be disabled.")
+    adb("shell", "input", "keyevent", "KEYCODE_WAKEUP", timeout=15)
+    adb("shell", "wm", "dismiss-keyguard", timeout=15)
+    print("Disposable emulator screen configured after ADB root.", flush=True)
+
+
 def startup_time(output, expected_state):
     fields = dict(re.findall(r"(?m)^(Status|LaunchState|Activity|TotalTime):[ \t]*([^\r\n]+)$", output))
     activity = fields.get("Activity")
@@ -87,9 +100,11 @@ def launch(expected_state):
     ), expected_state)
 
 
-def find_control(hierarchy, label):
+def find_control(hierarchy, label, *, enabled=False):
     for node in ElementTree.fromstring(hierarchy).iter("node"):
         if node.get("package") != PACKAGE or label not in (node.get("text"), node.get("content-desc")):
+            continue
+        if enabled and node.get("enabled") != "true":
             continue
         bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
         if bounds:
@@ -99,23 +114,124 @@ def find_control(hierarchy, label):
     return None
 
 
-def wait_for_control(label):
-    deadline = time.monotonic() + 35
+def launcher_anr_close_point(hierarchy):
+    """Recognize only the exact Quickstep system dialog observed in CI."""
+    nodes = list(ElementTree.fromstring(hierarchy).iter("node"))
+    if not any(node.get("package") == "android"
+               and node.get("resource-id") == "android:id/alertTitle"
+               and node.get("text") == "Quickstep isn't responding" for node in nodes):
+        return None
+    buttons = [node for node in nodes if node.get("package") == "android"
+               and node.get("resource-id") == "android:id/aerr_close"
+               and node.get("text") == "Close app"
+               and node.get("enabled") == "true" and node.get("clickable") == "true"]
+    if len(buttons) != 1:
+        return None
+    bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", buttons[0].get("bounds", ""))
+    if bounds:
+        left, top, right, bottom = map(int, bounds.groups())
+        if left < right and top < bottom:
+            return (left + right) // 2, (top + bottom) // 2
+    return None
+
+
+def recover_launcher_anr(hierarchy):
+    point = launcher_anr_close_point(hierarchy)
+    if point is None:
+        return False
+    # Never dismiss arbitrary system/app ANRs. Confirm the actual foreground
+    # window belongs to launcher3 and the benchmark activity is already resumed.
+    if adb("shell", "getprop", "ro.kernel.qemu", timeout=10) != "1" or adb("shell", "id", "-u", timeout=10) != "0":
+        return False
+    focus = adb("shell", "dumpsys", "window", timeout=15)
+    windows = re.findall(r"(?m)^\s*mCurrentFocus=(.*)$", focus)
+    apps = re.findall(r"(?m)^\s*mFocusedApp=(.*)$", focus)
+    if not windows or not re.fullmatch(r"Window\{[^}\r\n]* Application Not Responding: com\.android\.launcher3\}", windows[-1].strip()):
+        return False
+    if not apps or not re.search(rf"(?:^|\s){re.escape(PACKAGE + '/' + ACTIVITY)}(?:\s|}})", apps[-1]):
+        return False
+    activity = adb("shell", "dumpsys", "activity", "activities", timeout=15)
+    resumed = re.findall(r"(?m)^\s*topResumedActivity=(.*)$", activity)
+    if not resumed or not re.search(rf"(?:^|\s){re.escape(PACKAGE + '/' + ACTIVITY)}(?:\s|}})", resumed[-1]):
+        return False
+    print("Recovering confirmed external Quickstep ANR once during untimed initial smoke; GalliPick must still pass every check.", flush=True)
+    adb("shell", "input", "tap", str(point[0]), str(point[1]), timeout=10)
+    return True
+
+
+def wait_for_control(label, *, recover_launcher=False):
+    deadline = time.monotonic() + 60
+    last_hierarchy = None
+    last_error = None
+    recovered_launcher = False
     while time.monotonic() < deadline:
-        adb("shell", "rm", "-f", UI_DUMP)
         try:
-            adb("shell", "uiautomator", "dump", UI_DUMP)
-            point = find_control(adb("shell", "cat", UI_DUMP), label)
-        except (subprocess.CalledProcessError, ElementTree.ParseError):
+            adb("shell", "rm", "-f", UI_DUMP, timeout=10)
+            adb("shell", "uiautomator", "dump", UI_DUMP, timeout=15)
+            last_hierarchy = adb("shell", "cat", UI_DUMP, timeout=10)
+            point = find_control(last_hierarchy, label)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ElementTree.ParseError) as error:
+            last_error = type(error).__name__
             point = None
         if point is not None:
             return point
+        if recover_launcher and not recovered_launcher and last_hierarchy is not None:
+            try:
+                if recover_launcher_anr(last_hierarchy):
+                    recovered_launcher = True
+                    deadline = max(deadline, time.monotonic() + 25)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ElementTree.ParseError) as error:
+                last_error = type(error).__name__
         time.sleep(0.4)
+    capture_ui_failure(f"Missing control {label!r}", last_hierarchy, last_error)
     raise ValueError(f"The benchmark app did not display {label!r}.")
 
 
+def capture_ui_failure(reason, hierarchy=None, last_error=None):
+    """Capture only the disposable CI emulator before uninstalling the test app."""
+    print(f"Benchmark UI failure: {reason}; last automation error: {last_error}", flush=True)
+    try:
+        if adb("shell", "getprop", "ro.kernel.qemu", timeout=10) != "1":
+            return
+        directory = OUTPUT / "ui-failure"
+        directory.mkdir(parents=True, exist_ok=True)
+        if hierarchy:
+            (directory / "hierarchy.xml").write_text(hierarchy, encoding="utf-8")
+            try:
+                labels = sorted({(node.get("package") or "", node.get("text") or node.get("content-desc") or "")
+                                 for node in ElementTree.fromstring(hierarchy).iter("node")})
+                print(f"Visible UI labels: {labels[:60]!r}", flush=True)
+            except ElementTree.ParseError:
+                pass
+        for name, command in (
+            ("window.txt", ("shell", "dumpsys", "window")),
+            ("activity.txt", ("shell", "dumpsys", "activity", "activities")),
+            ("crash.txt", ("logcat", "-d", "-b", "crash", "-t", "80")),
+        ):
+            try:
+                output = adb(*command, timeout=15)
+                (directory / name).write_text(output[-200_000:], encoding="utf-8")
+                if name == "window.txt":
+                    print("\n".join(line.strip() for line in output.splitlines()
+                                    if any(key in line for key in ("mCurrentFocus=", "mFocusedApp=", "mKeyguardShowing", "mShowingLockscreen")))[:3000], flush=True)
+                elif name == "crash.txt" and output:
+                    print("Crash buffer tail:\n" + output[-4000:], flush=True)
+            except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                pass
+        try:
+            result = subprocess.run(["adb", "exec-out", "screencap", "-p"], check=True,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+            if result.stdout.startswith(b"\x89PNG\r\n\x1a\n"):
+                (directory / "screen.png").write_bytes(result.stdout)
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        print(f"Could not collect UI diagnostics: {type(error).__name__}", flush=True)
+
+
 def smoke_test():
-    wait_for_control("GalliPick")
+    # Recovery is permitted only here, never for a timed launch or an app ANR.
+    wait_for_control("GalliPick", recover_launcher=True)
     for label in ("파일", "파일 조건 선택", "필터 닫기"):
         x, y = wait_for_control(label)
         adb("shell", "input", "tap", str(x), str(y))
@@ -186,6 +302,7 @@ def main():
     if benchmark_installed():
         raise ValueError("Use a disposable emulator without the benchmark app already installed.")
     ensure_rooted_emulator()
+    prepare_interactive_emulator()
 
     report = {
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
