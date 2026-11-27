@@ -1,0 +1,84 @@
+name: GP-R8 native capture navigation regression
+on:
+  pull_request:
+    paths:
+      - 'app/src/androidTest/java/com/hebi/gallipick/NativeScreenCaptureTest.kt'
+      - 'app/src/androidTest/java/com/hebi/gallipick/ui/ReferenceNavigationFlowTest.kt'
+      - '.github/workflows/gp-native-capture-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gp-native-capture-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  capture-navigation:
+    name: Real activity capture and BackHandler regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '13114758'
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-read-only: true
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install compile SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Build test APKs before starting the emulator
+        run: gradle --no-daemon -PgallipickTestSigning=true assembleDebug assembleDebugAndroidTest --stacktrace --max-workers=2
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            adb shell am force-stop com.android.launcher3
+            adb shell settings put secure show_ime_with_hard_keyboard 1
+            gradle --no-daemon -PgallipickTestSigning=true '-Pandroid.testInstrumentationRunnerArguments.class=com.hebi.gallipick.NativeScreenCaptureTest#captureRealActivityWithExampleMedia,com.hebi.gallipick.ui.ReferenceNavigationFlowTest' connectedDebugAndroidTest --stacktrace --max-workers=2
+      - name: Verify all requested regression cases actually ran
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          reports = list(Path('app/build/outputs/androidTest-results/connected/debug').glob('TEST-*.xml'))
+          assert len(reports) == 1, 'Expected one device test result XML'
+          root = ET.parse(reports[0]).getroot()
+          cases = root.findall('.//testcase')
+          capture = [c for c in cases if c.get('classname') == 'com.hebi.gallipick.NativeScreenCaptureTest' and c.get('name') == 'captureRealActivityWithExampleMedia']
+          navigation = [c for c in cases if c.get('classname') == 'com.hebi.gallipick.ui.ReferenceNavigationFlowTest']
+          assert len(capture) == 1, 'Missing native capture regression'
+          assert any(c.get('name') == 'fourMainTabsAndCleanupDuplicateChildKeepBackAndSelectionCorrect' for c in navigation), 'Missing BackHandler regression'
+          assert len(cases) == len(capture) + len(navigation), 'Unexpected test selection'
+          for case in cases:
+              assert not any(case.find(tag) is not None for tag in ('failure', 'error', 'skipped')), 'Regression failed or was skipped: ' + str(case.attrib)
+          print(f'Verified {len(cases)} actual passing device regression cases.')
+          PY
+      - name: Upload actual device reports and capture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-capture-regression-reports
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            app/build/outputs/connected_android_test_additional_output/
+          retention-days: 14
+          if-no-files-found: warn

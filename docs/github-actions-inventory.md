@@ -10,6 +10,7 @@
 | --- | --- | --- | --- | --- |
 | `android.yml` | PR, 문서만 변경한 경우를 제외한 main push, 수동, `workflow_call` | Android 단위 테스트·Lint·디버그 빌드. `public-release`와 레거시 `play-deploy`에 호출 연결. OPS-03·09가 성공 이력 확인 | — | [11-23 성공](https://github.com/hebi10/GalliPick/actions/runs/45138409724) |
 | `device-tests.yml` | 수동, `workflow_call` | Android 전체 기기 QA. OPS-09가 수동 디스패치. `public-release`와 레거시 `play-deploy`에 호출 연결. OPS-03이 성공 이력 확인 | — | [11-23 성공](https://github.com/hebi10/GalliPick/actions/runs/45138526107) |
+| `gp-native-capture-regression.yml` | 네이티브 캡처·뒤로가기 테스트 관련 PR, 수동 | 실제 Activity 캡처 및 BackHandler 회귀만 API36에서 실행. 전체 기기 QA·배포와 별개이며 요청한 테스트 실행 여부와 실패·건너뜀을 확인 | — | 신규 선별 회귀 |
 | `cloud-verification.yml` | Firebase 관련 PR·main push | Firebase Functions 검사, 배포 없음 | — | [11-23 성공](https://github.com/hebi10/GalliPick/actions/runs/45138066973) |
 | `gp-exit-emulator-qa.yml` | 계정 삭제 관련 PR, 수동 | 합성 계정의 삭제를 Firebase 에뮬레이터에서 검증 | — | [11-23 성공](https://github.com/hebi10/GalliPick/actions/runs/45136023366) |
 | `gp-admin-readonly.yml` | 관리자 웹·관련 함수 PR, 수동 | Hosting 구성과 관리자 웹의 읽기 전용 계약 검증 | — | [11-20 성공](https://github.com/hebi10/GalliPick/actions/runs/44677628231) |
