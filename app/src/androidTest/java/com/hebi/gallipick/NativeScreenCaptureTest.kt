@@ -248,8 +248,21 @@ class NativeScreenCaptureTest {
             compose.onNodeWithContentDescription("정리로 돌아가기").assertIsDisplayed()
             compose.onNodeWithText("중복 정리").assertIsDisplayed()
             saveViewport("03-duplicates-before-scan")
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+            recordStage("return-from-duplicates")
+            // Exercise the Activity's actual BackHandler on the main thread rather than
+            // racing a raw key event against UiAutomation screenshot/window synchronization.
+            checkNotNull(scenario).onActivity { activity ->
+                activity.onBackPressedDispatcher.onBackPressed()
+            }
+            compose.waitUntil(timeoutMillis = 10_000) {
+                compose.onAllNodesWithText("중복 파일").fetchSemanticsNodes().isNotEmpty() &&
+                    compose.onAllNodesWithContentDescription("정리로 돌아가기").fetchSemanticsNodes().isEmpty()
+            }
             compose.onNodeWithText("중복 파일").performScrollTo().assertIsDisplayed()
+            compose.onNodeWithContentDescription("사진·동영상 중복 검사 열기").assertIsDisplayed()
+            compose.onNode(hasText("정리") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
+                .assertIsSelected()
+            compose.onNodeWithContentDescription("정리로 돌아가기").assertDoesNotExist()
             saveViewport("04-cleanup")
             recordStage("stage9g-real-history")
             compose.onNodeWithContentDescription("정리 기록 열기").performScrollTo().performClick()
