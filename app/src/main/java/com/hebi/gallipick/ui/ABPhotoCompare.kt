@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -166,6 +167,7 @@ internal fun ABPhotoComparison(
     onProtect: ((MediaItem) -> Unit)? = null,
     canProtect: (MediaItem) -> Boolean = { true },
     statusLabel: ((MediaItem) -> String)? = null,
+    previewMaxHeight: Dp? = null,
 ) {
     var mode by rememberSaveable { mutableStateOf("side") }
     var fullscreen by rememberSaveable(a.uri, b.uri) { mutableStateOf(false) }
@@ -184,7 +186,8 @@ internal fun ABPhotoComparison(
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val availableWidth = maxWidth
         val tablet = availableWidth >= 700.dp * fontScale
-        val previewHeight = if (tablet) 340.dp else 270.dp
+        val defaultPreviewHeight = if (tablet) 340.dp else 270.dp
+        val previewHeight = minOf(defaultPreviewHeight, previewMaxHeight ?: defaultPreviewHeight)
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
@@ -274,13 +277,26 @@ internal fun ABPhotoComparison(
                 }
                 IconAction("A/B 전체 화면", Icons.Outlined.Fullscreen) { fullscreen = true }
                 Spacer(Modifier.weight(1f))
-                if (availableWidth >= 400.dp * fontScale) {
+                if (previewMaxHeight == null && availableWidth >= 400.dp * fontScale) {
                     Text(if (synchronized) "양쪽 동기화" else "$activeSlot 조절",
                         style = MaterialTheme.typography.labelSmall, color = Muted)
                 }
             }
-            Text("비교 정보 · 미리보기는 긴 변 최대 2,048px",
-                color = Muted, style = MaterialTheme.typography.bodySmall)
+            val comparisonInfo = "비교 정보 · 미리보기는 긴 변 최대 2,048px"
+            if (previewMaxHeight != null && availableWidth >= 360.dp * fontScale) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(comparisonInfo, Modifier.weight(1f), color = Muted,
+                        style = MaterialTheme.typography.bodySmall)
+                    Text(if (synchronized) "양쪽 동기화" else "$activeSlot 조절",
+                        color = Muted, style = MaterialTheme.typography.labelSmall)
+                }
+            } else {
+                Text(comparisonInfo, color = Muted, style = MaterialTheme.typography.bodySmall)
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("A" to a, "B" to b).forEach { (slot, item) ->
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {

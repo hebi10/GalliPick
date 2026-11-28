@@ -52,6 +52,9 @@ internal fun SimilarPhotoCompareScreen(
     val bestCut = remember(group) { BestCutRecommender.assess(group) }
     val suggested = group.photos.firstOrNull { it.item.uri == bestCut.recommendedUri }
     val chosen = focused.uri in selectedUris
+    val showComparison = compareAB && second != null
+    val singleScroll = rememberScrollState()
+    val comparisonScroll = rememberScrollState()
     val selectedCount = group.photos.count { it.item.uri in selectedUris }
     val keptCount = group.photos.size - selectedCount
     BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -61,6 +64,11 @@ internal fun SimilarPhotoCompareScreen(
         val previewHeight = if (horizontal && maxWidth >= 900.dp)
             (maxHeight * .58f).coerceIn(280.dp, 420.dp)
         else if (horizontal) (maxHeight * .45f).coerceIn(220.dp, 340.dp) else 260.dp
+        val comparisonPreviewMaxHeight = if (maxWidth < 700.dp && maxHeight > maxWidth) {
+            (maxHeight * .29f).coerceIn(176.dp, 236.dp)
+        } else {
+            null
+        }
         Column(Modifier.fillMaxHeight().widthIn(max = 1220.dp).fillMaxWidth().padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -74,8 +82,29 @@ internal fun SimilarPhotoCompareScreen(
                     }
                 }
             }
-            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+            if (showComparison) {
+                Text("$groupTitle $groupIndex / $groupCount · 사진 ${group.photos.size}장",
+                    style = MaterialTheme.typography.bodySmall, color = Muted)
+            }
+            Column(Modifier.weight(1f).fillMaxWidth()
+                .verticalScroll(if (showComparison) comparisonScroll else singleScroll),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (showComparison && second != null) {
+                SimilarSectionCard(Modifier.testTag("similar-compare-preview")) {
+                    Text("A/B 사진 비교", style = MaterialTheme.typography.titleSmall)
+                    ABPhotoComparison(
+                        a = focused, b = second,
+                        selectedUris = selectedUris,
+                        canSelect = { item -> SimilarPhotoReviewPolicy.maySelect(
+                            group, selectedUris, item.uri, protectedFolders
+                        ) },
+                        onToggleCandidate = { item -> onToggleCandidate(item.uri) },
+                        onOpenMedia = onOpenMedia,
+                        modifier = Modifier.fillMaxWidth(),
+                        previewMaxHeight = comparisonPreviewMaxHeight,
+                    )
+                }
+            }
             SimilarSectionCard(Modifier.testTag("similar-compare-summary"), emphasized = true) {
                 Text("$groupTitle ${groupIndex} / ${groupCount}", style = MaterialTheme.typography.titleSmall)
                 Text("${group.photos.size}장 · 남길 사진 ${keptCount}장 · 정리 후보 ${selectedCount}장",
@@ -110,6 +139,20 @@ internal fun SimilarPhotoCompareScreen(
             }
             SimilarSectionCard(Modifier.testTag("similar-compare-choices")) {
                 Text("비교할 사진 선택", style = MaterialTheme.typography.titleSmall)
+                if (showComparison) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text("교체할 사진 선택", style = MaterialTheme.typography.labelMedium, color = Muted)
+                        TextButton(onClick = { editingSlotA = true },
+                            modifier = Modifier.semantics { contentDescription = "A 슬롯 선택" }) {
+                            Text(if (editingSlotA) "A 선택 중" else "사진 A", color = if (editingSlotA) Primary else Muted)
+                        }
+                        TextButton(onClick = { editingSlotA = false },
+                            modifier = Modifier.semantics { contentDescription = "B 슬롯 선택" }) {
+                            Text(if (!editingSlotA) "B 선택 중" else "사진 B", color = if (!editingSlotA) Primary else Muted)
+                        }
+                    }
+                }
                 LazyRow(Modifier.fillMaxWidth().semantics { contentDescription = "유사 사진 가로 비교 목록" },
                 contentPadding = PaddingValues(vertical = 4.dp, horizontal = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -142,33 +185,7 @@ internal fun SimilarPhotoCompareScreen(
                 }
                 }
             }
-            if (compareAB && second != null) {
-                SimilarSectionCard(Modifier.testTag("similar-compare-preview")) {
-                    Text("A/B 사진 비교", style = MaterialTheme.typography.titleSmall)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text("교체할 사진 선택", style = MaterialTheme.typography.labelMedium, color = Muted)
-                    TextButton(onClick = { editingSlotA = true },
-                        modifier = Modifier.semantics { contentDescription = "A 슬롯 선택" }) {
-                        Text(if (editingSlotA) "A 선택 중" else "사진 A", color = if (editingSlotA) Primary else Muted)
-                    }
-                    TextButton(onClick = { editingSlotA = false },
-                        modifier = Modifier.semantics { contentDescription = "B 슬롯 선택" }) {
-                        Text(if (!editingSlotA) "B 선택 중" else "사진 B", color = if (!editingSlotA) Primary else Muted)
-                    }
-                }
-                ABPhotoComparison(
-                    a = focused, b = second,
-                    selectedUris = selectedUris,
-                    canSelect = { item -> SimilarPhotoReviewPolicy.maySelect(
-                        group, selectedUris, item.uri, protectedFolders
-                    ) },
-                    onToggleCandidate = { item -> onToggleCandidate(item.uri) },
-                    onOpenMedia = onOpenMedia,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                }
-            } else {
+            if (!showComparison) {
             val details: @Composable () -> Unit = {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SimilarSectionCard(Modifier.testTag("similar-compare-info")) {
